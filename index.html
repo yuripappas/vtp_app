@@ -8,6 +8,38 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+<!-- ═══ TELA DE LOGIN ═══ -->
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;align-items:center;justify-content:center;flex-direction:column">
+  <div id="loginForm" style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r16);padding:36px 40px;width:380px;max-width:95vw;box-shadow:0 32px 80px rgba(107,33,212,.15)">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="width:72px;height:72px;border-radius:var(--r12);overflow:hidden;margin:0 auto 12px;box-shadow:0 4px 16px rgba(107,33,212,.3)">
+        <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:100%;height:100%;object-fit:cover">
+      </div>
+      <div style="font-size:1.1rem;font-weight:800;color:var(--text)">VTP Compras</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:3px">Vai Ter Pizza! · Sistema de Compras</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="field">
+        <label>E-mail</label>
+        <input class="inp" type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <div style="position:relative">
+          <input class="inp" type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" style="padding-right:40px">
+          <button onclick="toggleLoginPass()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:.85rem;padding:4px" title="Mostrar senha">👁</button>
+        </div>
+      </div>
+      <div id="loginError" style="font-size:.75rem;color:var(--red);min-height:18px;text-align:center"></div>
+      <button class="btn btn-primary" onclick="doLogin()" style="width:100%;justify-content:center;padding:11px;font-size:.85rem">Entrar →</button>
+    </div>
+    <div style="text-align:center;margin-top:20px;font-size:.7rem;color:var(--muted)">Acesso restrito · Vai Ter Pizza!</div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="appScreen" style="display:none;width:100%">
 <div class="app">
 
   <!-- ═══ SIDEBAR ═══ -->
@@ -65,12 +97,16 @@
       </nav>
       <div class="sb-bottom">
         <div class="sb-user">
-          <div class="sb-avatar">Y</div>
+          <div class="sb-avatar" id="sbAvatar">Y</div>
           <div class="sb-user-info">
             <div class="sb-user-name" id="sbUserName">Yuri Pappas</div>
-            <div class="sb-user-role">👑 Gerente</div>
+            <div class="sb-user-role" id="sbUserRole">👑 Gerente</div>
           </div>
         </div>
+        <button onclick="doLogout()" style="width:100%;margin-top:4px;padding:7px 8px;border-radius:var(--r8);background:none;border:none;font-family:Inter,sans-serif;font-size:.72rem;color:var(--muted);cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px" onmouseover="this.style.background='var(--red-light)';this.style.color='var(--red)'" onmouseout="this.style.background='none';this.style.color='var(--muted)'">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px"><path d="M13 3h4v14h-4M8 14l4-4-4-4M3 10h9"/></svg>
+          Sair
+        </button>
       </div>
     </aside>
     <div id="sbToggle" onclick="toggleSidebar()"
@@ -628,6 +664,8 @@
   </div>
 </div>
 
+</div><!-- /appScreen -->
+
 <div class="toast" id="toast"></div>
 
 <script src="js/data.js"></script>
@@ -638,8 +676,10 @@
 <script src="js/modules.js"></script>
 <script src="js/cadastros.js"></script>
 <script src="js/configuracoes.js"></script>
+<script src="js/login.js"></script>
 <script>
-  renderDashboard();
+  // Inicializa autenticação
+  initAuth();
 </script>
 </body>
 </html>
