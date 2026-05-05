@@ -232,3 +232,13 @@ td.r { text-align: right; }
   .f2, .f3 { grid-template-columns: 1fr; }
   .kpi-row { flex-direction: column; }
 }
+
+/* ── LOGIN ── */
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-8px)}
+  40%{transform:translateX(8px)}
+  60%{transform:translateX(-5px)}
+  80%{transform:translateX(5px)}
+}
+.shake { animation: shake .4s ease; }
