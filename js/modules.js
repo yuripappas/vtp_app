@@ -8,27 +8,59 @@
 // ══════════════════════════════════════════════════════════════
 
 function renderPreproducao() {
+  const de  = document.getElementById('prepDe')?.value  || '';
+  const ate = document.getElementById('prepAte')?.value || '';
   const prod = items.filter(i => i.isProd);
-  const pend = ordens.filter(o => o.status === 'pendente').length;
-  const prod_ = ordens.filter(o => o.status === 'produzido').length;
+
+  // Filtra ordens por período
+  const orFilt = ordens.filter(o => {
+    if (o.archived) return false;
+    if (de  && o.date < de)  return false;
+    if (ate && o.date > ate) return false;
+    return true;
+  });
+
+  const pend   = orFilt.filter(o => o.status === 'pendente').length;
+  const prodOk = orFilt.filter(o => o.status === 'produzido').length;
+
+  // Rendimento: soma planejado vs realizado no período
+  const totalPlan = orFilt.reduce((s, o) => s + o.qty, 0);
+  const totalReal = orFilt.filter(o => o.status === 'produzido').reduce((s, o) => s + (o.qtyReal ?? o.qty), 0);
+  const rendPct   = totalPlan > 0 ? Math.round(totalReal / totalPlan * 100) : 0;
 
   document.getElementById('prepKpi').innerHTML = `
     <div class="kpi"><div class="kpi-v">${prod.length}</div><div class="kpi-l">Preparados</div></div>
-    <div class="kpi"><div class="kpi-v" style="color:var(--orange-dark)">${pend}</div><div class="kpi-l">Ordens pendentes</div></div>
-    <div class="kpi"><div class="kpi-v" style="color:var(--green)">${prod_}</div><div class="kpi-l">Produzidos</div></div>`;
+    <div class="kpi"><div class="kpi-v" style="color:var(--orange-dark)">${pend}</div><div class="kpi-l">Pendentes</div></div>
+    <div class="kpi"><div class="kpi-v" style="color:var(--green)">${prodOk}</div><div class="kpi-l">Produzidos</div></div>
+    <div class="kpi">
+      <div class="kpi-v" style="color:${rendPct >= 95 ? 'var(--green)' : rendPct >= 80 ? 'var(--yellow)' : 'var(--red)'}">${rendPct}%</div>
+      <div class="kpi-l">Rendimento</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-v" style="font-size:1rem;color:var(--purple)">${fmt(totalReal)}</div>
+      <div class="kpi-l">kg produzidos</div>
+    </div>`;
 
   const grid = document.getElementById('prepGrid');
   grid.innerHTML = prod.map(item => {
-    const itemOrdens = ordens.filter(o => o.itemId === item.id).sort((a, b) => b.id - a.id);
+    const itemOrdens = orFilt.filter(o => o.itemId === item.id).sort((a, b) => b.id - a.id);
     const s          = gst(item);
     const pct        = item.ideal <= 0 ? 0 : Math.min(100, Math.round(item.qty / item.ideal * 100));
+
+    const planItem = itemOrdens.reduce((s, o) => s + o.qty, 0);
+    const realItem = itemOrdens.filter(o => o.status === 'produzido').reduce((s, o) => s + (o.qtyReal ?? o.qty), 0);
+    const rendItem = planItem > 0 ? Math.round(realItem / planItem * 100) : null;
+
     return `<div class="card" style="margin-bottom:0">
       <div class="card-header">
         <div>
           <div class="card-title">${item.name}</div>
           <div style="font-size:.67rem;color:var(--muted);margin-top:2px">${item.qty} ${item.unit} atual · ideal: ${item.ideal}</div>
         </div>
-        <span class="badge ${s === 'crit' ? 'b-red' : s === 'warn' ? 'b-yellow' : 'b-green'}">${s === 'crit' ? 'CRÍTICO' : s === 'warn' ? 'BAIXO' : 'OK'}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="badge ${s === 'crit' ? 'b-red' : s === 'warn' ? 'b-yellow' : 'b-green'}">${s === 'crit' ? 'CRÍTICO' : s === 'warn' ? 'BAIXO' : 'OK'}</span>
+          ${rendItem !== null ? `<span class="badge ${rendItem >= 95 ? 'b-green' : rendItem >= 80 ? 'b-yellow' : 'b-red'}" style="font-size:.58rem">⚙️ ${rendItem}% rendimento</span>` : ''}
+        </div>
       </div>
       <div class="card-body">
         <div class="prog-wrap" style="margin-bottom:10px">
@@ -38,24 +70,63 @@ function renderPreproducao() {
           <span style="font-size:.7rem;color:var(--muted)">${pct}%</span>
         </div>
         ${item.medPorcao ? `<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">Porção: ${item.medPorcao} kg/pizza · Rende ≈ ${Math.round(item.qty / item.medPorcao)} pizzas</div>` : ''}
-        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:120px;overflow-y:auto">
-          ${itemOrdens.slice(0, 4).map(o => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:var(--surface2);border-radius:var(--r6);font-size:.73rem">
-              <div>
-                <span style="font-weight:600">${o.qty} ${item.unit}</span>
-                <span style="color:var(--muted);margin-left:6px">${fmtD(o.date)} · ${o.turno || '—'}</span>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:150px;overflow-y:auto">
+          ${itemOrdens.slice(0, 5).map(o => {
+            const qtyReal = o.qtyReal ?? o.qty;
+            const diff    = o.status === 'produzido' ? qtyReal - o.qty : 0;
+            return `<div style="padding:6px 8px;background:var(--surface2);border-radius:var(--r6);font-size:.73rem;border-left:3px solid ${o.status === 'produzido' ? 'var(--green)' : 'var(--orange)'}">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${o.status === 'produzido' ? 4 : 0}px">
+                <div>
+                  <span style="font-weight:600">${o.qty} ${item.unit} plan.</span>
+                  <span style="color:var(--muted);margin-left:6px">${fmtD(o.date)} · ${o.turno || '—'}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:5px">
+                  <span class="badge ${o.status === 'produzido' ? 'b-green' : 'b-orange'}" style="font-size:.58rem">${o.status === 'produzido' ? '✓ Prod.' : 'Pend.'}</span>
+                  ${o.status === 'pendente' ? `<button class="btn btn-green btn-xs" onclick="openFinishOrdem(${o.id})">✓ Finalizar</button>` : ''}
+                </div>
               </div>
-              <div style="display:flex;align-items:center;gap:6px">
-                <span class="badge ${o.status === 'produzido' ? 'b-green' : 'b-orange'}" style="font-size:.58rem">${o.status === 'produzido' ? '✓ Prod.' : 'Pend.'}</span>
-                ${o.status === 'pendente' ? `<button class="btn btn-green btn-xs" onclick="finishOrdem(${o.id})">✓</button>` : ''}
-              </div>
-            </div>`).join('')}
-          ${itemOrdens.length === 0 ? `<div style="font-size:.72rem;color:var(--muted);text-align:center;padding:8px">Nenhuma ordem criada</div>` : ''}
+              ${o.status === 'produzido' ? `<div style="display:flex;gap:10px;font-size:.68rem;color:var(--muted)">
+                <span>Real: <strong style="color:var(--text)">${qtyReal} ${item.unit}</strong></span>
+                <span style="color:${diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--muted)'}">
+                  ${diff > 0 ? '▲' : diff < 0 ? '▼' : '='} ${Math.abs(diff).toFixed(2)} kg ${diff > 0 ? 'a mais' : diff < 0 ? 'a menos' : 'exato'}
+                </span>
+              </div>` : ''}
+            </div>`;
+          }).join('')}
+          ${itemOrdens.length === 0 ? `<div style="font-size:.72rem;color:var(--muted);text-align:center;padding:8px">Nenhuma ordem no período</div>` : ''}
         </div>
         <button class="btn btn-primary btn-sm" style="width:100%;justify-content:center" onclick="openOrdemModal(${item.id})">+ Nova Ordem</button>
       </div>
     </div>`;
   }).join('');
+}
+
+function clearPrepFiltro() {
+  document.getElementById('prepDe').value  = '';
+  document.getElementById('prepAte').value = '';
+  renderPreproducao();
+}
+
+function zerarCicloPrepara() {
+  const de  = document.getElementById('prepDe')?.value;
+  const ate = document.getElementById('prepAte')?.value;
+  const period = de && ate ? ` do período ${fmtD(de)} até ${fmtD(ate)}` : ' sem filtro de período';
+
+  if (!confirm(`Deseja arquivar todas as ordens concluídas${period}?
+
+Elas serão salvas no histórico mas não aparecerão mais na tela principal.`)) return;
+
+  const toArchive = ordens.filter(o => {
+    if (o.status !== 'produzido') return false;
+    if (de  && o.date < de)  return false;
+    if (ate && o.date > ate) return false;
+    return true;
+  });
+
+  toArchive.forEach(o => o.archived = true);
+  saveO();
+  clearPrepFiltro();
+  toast(`✅ ${toArchive.length} ordem(ns) arquivadas!`);
 }
 
 function openOrdemModal(preItemId) {
@@ -95,17 +166,56 @@ function saveOrdem() {
   toast('✅ Ordem criada!');
 }
 
+function openFinishOrdem(id) {
+  const o    = ordens.find(x => x.id === id);
+  const item = items.find(i => i.id === o?.itemId);
+  if (!o || !item) return;
+
+  document.getElementById('respTitle').textContent = `✅ Finalizar: ${item.name}`;
+  document.getElementById('respBody').innerHTML = `
+    <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:10px 14px;font-size:.77rem;margin-bottom:14px">
+      <strong>Quantidade planejada:</strong> ${o.qty} ${item.unit}<br>
+      <strong>Data:</strong> ${fmtD(o.date)} · ${o.turno || '—'} · ${o.resp || '—'}
+    </div>
+    <div class="field">
+      <label>Quantidade realizada (${item.unit})</label>
+      <input class="inp" type="number" id="fOrdemReal" value="${o.qty}" min="0" step="0.01"
+        placeholder="${o.qty}" style="font-size:1rem;font-weight:700;text-align:center">
+      <span style="font-size:.68rem;color:var(--muted);margin-top:4px">
+        Informe o que realmente foi produzido. Pode ser diferente do planejado.
+      </span>
+    </div>
+    <div class="field" style="margin-top:8px">
+      <label>Observação (opcional)</label>
+      <input class="inp" id="fOrdemObs" placeholder="ex: rendeu menos por conta da textura da carne..." value="${o.obs || ''}">
+    </div>`;
+  document.getElementById('respFoot').innerHTML = `
+    <button class="btn btn-outline" onclick="closeModal('ovResponse')">Cancelar</button>
+    <button class="btn btn-primary" onclick="finishOrdem(${id})">✅ Confirmar produção</button>`;
+  document.getElementById('ovResponse').classList.add('open');
+}
+
 function finishOrdem(id) {
-  const o = ordens.find(x => x.id === id);
-  if (!o) return;
+  const o    = ordens.find(x => x.id === id);
+  const item = items.find(i => i.id === o?.itemId);
+  if (!o || !item) return;
+
+  const qtyReal = parseFloat(document.getElementById('fOrdemReal')?.value) ?? o.qty;
+  const obs     = document.getElementById('fOrdemObs')?.value?.trim() || o.obs;
+
   o.status     = 'produzido';
+  o.qtyReal    = parseFloat(qtyReal.toFixed(3));
+  o.obs        = obs;
   o.finishedAt = new Date().toISOString();
-  const item = items.find(i => i.id === o.itemId);
-  if (item) { item.qty = parseFloat((item.qty + o.qty).toFixed(3)); saveI(); }
+
+  // Atualiza estoque com quantidade REAL produzida
+  item.qty = parseFloat((item.qty + o.qtyReal).toFixed(3));
+  saveI();
   saveO();
+  closeModal('ovResponse');
   renderPreproducao();
   renderDashboard();
-  toast('✅ Produção registrada!');
+  toast(`✅ Produção registrada! ${o.qtyReal} ${item.unit} adicionados ao estoque.`);
 }
 
 // ── PDF de ordens ──

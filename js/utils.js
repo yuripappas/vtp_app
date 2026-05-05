@@ -43,6 +43,7 @@ const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
   estoque:        { title: 'Estoque',               sub: 'Contagem e atualização de quantidades' },
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
+  desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
   compras:        { title: 'Compras',               sub: 'Requisição · Cotação · Mapa · Ordem de Compra' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },
@@ -70,6 +71,7 @@ function goModule(mod) {
   else if (mod === 'preproducao') renderPreproducao();
   else if (mod === 'compras')    renderComprasModule();
   else if (mod === 'cadastros')  renderCadastros();
+  else if (mod === 'desperdicio')   renderDesperdicio();
   else if (mod === 'configuracoes') renderConfiguracoes();
   else if (mod === 'relatorios') renderRelatorios();
   else if (mod === 'usuarios')   renderUsuarios();

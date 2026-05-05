@@ -11,6 +11,7 @@ const MODULE_PERMISSIONS = {
   dashboard:     ['gerente', 'supervisor', 'comprador'],
   estoque:       ['gerente', 'supervisor', 'comprador'],
   preproducao:   ['gerente', 'supervisor', 'comprador'],
+  desperdicio:   ['gerente', 'supervisor'],
   compras:       ['gerente', 'supervisor', 'comprador'],
   cadastros:     ['gerente', 'supervisor'],
   configuracoes: ['gerente'],
