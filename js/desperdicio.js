@@ -163,25 +163,42 @@ function openDespModal() {
 }
 
 function setDespOrigem(origem) {
-  document.getElementById('fdOrigem').value = origem;
-  // Update button styles
-  ['insumo','preparado','produto'].forEach(o => {
-    const btn = document.getElementById('orig-btn-' + o);
-    if (!btn) return;
-    const active = o === origem;
-    btn.style.background  = active ? 'var(--purple)' : 'var(--surface)';
-    btn.style.borderColor = active ? 'var(--purple)' : 'var(--border)';
-    btn.style.color       = active ? '#fff' : 'var(--text2)';
-  });
-  // Update note
-  const notes = {
-    insumo:    '📦 Insumos de compras — quantidade debitada do estoque automaticamente',
-    preparado: '🍳 Preparados de produção — quantidade debitada do estoque automaticamente',
-    produto:   '🍕 Produto final (pizza/bebida) — custo = preço de venda',
-  };
-  const noteEl = document.getElementById('origemNote');
-  if (noteEl) noteEl.textContent = notes[origem] || '';
-  updateDespOrigemList();
+  try {
+    // Atualiza hidden input
+    const hiddenEl = document.getElementById('fdOrigem');
+    if (hiddenEl) hiddenEl.value = origem;
+
+    // Atualiza botões
+    ['insumo','preparado','produto'].forEach(o => {
+      const btn = document.getElementById('orig-btn-' + o);
+      if (!btn) return;
+      if (o === origem) {
+        btn.style.background  = 'var(--purple)';
+        btn.style.borderColor = 'var(--purple)';
+        btn.style.color       = '#fff';
+      } else {
+        btn.style.background  = 'var(--surface)';
+        btn.style.borderColor = 'var(--border)';
+        btn.style.color       = 'var(--text2)';
+      }
+    });
+
+    // Atualiza nota
+    const noteEl = document.getElementById('origemNote');
+    if (noteEl) {
+      const notes = {
+        insumo:    '📦 Insumos de compras — quantidade debitada do estoque automaticamente',
+        preparado: '🍳 Preparados de produção — quantidade debitada do estoque automaticamente',
+        produto:   '🍕 Produto final (pizza/bebida) — custo = preço de venda',
+      };
+      noteEl.textContent = notes[origem] || '';
+    }
+
+    // Popula lista
+    updateDespOrigemList();
+  } catch(e) {
+    console.error('setDespOrigem error:', e);
+  }
 }
 
 function updateDespOrigemList() {
