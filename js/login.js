@@ -100,6 +100,9 @@ function doLogin() {
   if (sbRole) sbRole.textContent = PERMS[user.role]?.label || user.role;
   const sbAvatar = document.getElementById('sbAvatar');
   if (sbAvatar) sbAvatar.textContent = user.name.charAt(0).toUpperCase();
+  // Atualiza badge do dashboard
+  const dashBadge = document.getElementById('dashRoleBadge');
+  if (dashBadge) dashBadge.textContent = (PERMS[user.role]?.label || user.role) + ' · ' + user.name;
 }
 
 function doLogout() {
@@ -190,6 +193,8 @@ function initAuth() {
       if (sbRole) sbRole.textContent = PERMS[stillExists.role]?.label || stillExists.role;
       const sbAvatar = document.getElementById('sbAvatar');
       if (sbAvatar) sbAvatar.textContent = stillExists.name.charAt(0).toUpperCase();
+      const dashBadge = document.getElementById('dashRoleBadge');
+      if (dashBadge) dashBadge.textContent = (PERMS[stillExists.role]?.label || stillExists.role) + ' · ' + stillExists.name;
       return;
     }
   }
