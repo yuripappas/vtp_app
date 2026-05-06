@@ -897,59 +897,6 @@ function renderCompareTab() {
       </div>
     </div>`;
 }
-        <th class="c">🏆 Melhor</th>
-      </tr></thead>
-      <tbody>
-        ${cycleItemIds.map(itemId => {
-          const item     = items.find(i => i.id === itemId);
-          const ci       = cycle.items.find(c => c.itemId === itemId);
-          const rowData  = respSups.map(r => { const ri = r.items?.find(x => x.itemId === itemId); return { token: r.token, supId: r.supId, ri, payTerm: r.payTerm }; });
-          const prices   = rowData.map(d => d.ri?.unitPrice || Infinity).filter(p => p < Infinity);
-          const deliveries = rowData.map(d => d.ri?.deliveryDays || 99).filter(d => d < 99);
-          const minP = Math.min(...prices), maxP = Math.max(...prices);
-          const minD = Math.min(...deliveries), maxD = Math.max(...deliveries);
-          const scores   = rowData.map(d => d.ri ? calcScore(d.ri.unitPrice, d.ri.deliveryDays, d.payTerm, minP, maxP, minD, maxD) : null);
-          const maxScore = Math.max(...scores.filter(s => s !== null));
-          const winIdx   = scores.indexOf(maxScore);
-          const approved = approvals[itemId];
-          const refCost  = ci?.qty * (item?.cost || 0);
-          return `<tr>
-            <td>
-              <div class="iname">${item?.name}</div>
-              <div class="isub">${item?.cat} · ref: R$${fmt(item?.cost || 0)}</div>
-            </td>
-            <td class="c"><span style="font-family:monospace;font-size:.74rem">${ci?.qty} ${item?.unit}</span></td>
-            ${rowData.map((d, i) => {
-              const isWin = scores[i] === maxScore && scores[i] !== null;
-              const isApp = approved?.token === d.token;
-              if (!d.ri) return `<td class="c"><span class="badge b-gray">Sem resposta</span></td>`;
-              const saving = refCost - (d.ri.unitPrice * ci?.qty);
-              return `<td class="c" style="${isApp ? 'background:#F0FDF4;border:2px solid var(--green)' : isWin ? 'background:#F5F3FF' : ''}">
-                <div style="font-family:monospace;font-weight:700;font-size:.88rem;color:${isApp ? 'var(--green)' : isWin ? 'var(--purple)' : 'var(--text)'}">R$ ${fmt(d.ri.unitPrice)}</div>
-                <div style="font-size:.62rem;color:var(--muted);margin:2px 0">${d.ri.brand || '—'} · ${d.ri.deliveryDays}d · ${d.payTerm}</div>
-                <div style="display:flex;align-items:center;gap:3px;margin:3px 0">
-                  <div class="score-bar" style="flex:1">
-                    <div class="score-fill" style="width:${scores[i]}%;background:${isApp ? 'var(--green)' : isWin ? 'var(--purple)' : 'var(--muted)'}"></div>
-                  </div>
-                  <span style="font-size:.6rem;font-family:monospace;color:${isWin ? 'var(--purple)' : 'var(--muted)'}">${scores[i]}</span>
-                </div>
-                ${saving > 0 ? `<div style="font-size:.62rem;color:var(--green)">-R$${fmt(saving)}</div>` : ''}
-                ${isApp
-                  ? `<span class="badge b-green" style="font-size:.6rem">✅ Aprovado</span>`
-                  : `<button class="btn btn-green btn-xs" style="margin-top:4px" onclick="approveItem(${itemId},'${d.token}')">Aprovar</button>`}
-              </td>`;
-            }).join('')}
-            <td class="c">
-              ${winIdx >= 0 && rowData[winIdx]?.ri
-                ? `<div style="font-weight:700;color:var(--purple);font-size:.79rem">${sname(rowData[winIdx].supId)}</div><div style="font-size:.66rem;color:var(--muted)">Score ${maxScore}</div>`
-                : '—'}
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table></div>`;
-}
-
 function renderSuppliersTab() {
   const el    = document.getElementById('tab3-suppliers');
   const disps = cycle?.dispatches || [];
@@ -1148,20 +1095,8 @@ function renderOrdemCompra() {
         const num   = idx + 1;
 
         // Monta texto da OC para envio
-        const ocText = `Olá ${sup?.seller || sup?.name}! 👋
-
-Segue nossa Ordem de Compra ${cycle?.id}:
-
-` +
-          sg.items.map(i => { const item = items.find(x => x.id === i.itemId); return `• ${item?.name}: ${i.qty} ${item?.unit} × R$${fmt(i.unitPrice)} = R$${fmt(i.qty*i.unitPrice)}`; }).join('
-') +
-          `
-
-Total: R$${fmt(total)}
-Entrega: ${fmtD(cycle?.deliveryDate)}
-Pagamento: ${sg.payTerm} — ${sg.payMethod}
-
-Obrigado! 🍕`;
+        const ocLines = sg.items.map(i => { const item = items.find(x => x.id === i.itemId); return '• ' + (item?.name) + ': ' + i.qty + ' ' + (item?.unit) + ' × R$' + fmt(i.unitPrice) + ' = R$' + fmt(i.qty*i.unitPrice); });
+        const ocText = 'Olá ' + (sup?.seller || sup?.name) + '! 👋\n\nSegue nossa Ordem de Compra ' + (cycle?.id || '') + ':\n\n' + ocLines.join('\n') + '\n\nTotal: R$' + fmt(total) + '\nEntrega: ' + fmtD(cycle?.deliveryDate) + '\nPagamento: ' + sg.payTerm + ' — ' + sg.payMethod + '\n\nObrigado! 🍕';
 
         return `<div style="border:2px solid var(--border);border-radius:var(--r12);overflow:hidden;background:var(--surface)">
           <!-- Header do fornecedor -->
@@ -1204,12 +1139,10 @@ Obrigado! 🍕`;
               ? `<a href="mailto:${sup.email}?subject=Ordem de Compra ${cycle?.id}&body=${encodeURIComponent(ocText)}"
                   class="btn btn-outline btn-sm">📧 E-mail</a>`
               : ''}
-            <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(${JSON.stringify(ocText)}).then(()=>toast('📋 OC copiada!','info'))">
+            <button class="btn btn-outline btn-sm" onclick="copiarOC(${sg.supId})">
               📋 Copiar texto
             </button>
-            ${canal === 'manual'
-              ? `<span class="badge b-orange" style="align-self:center">Compra presencial/manual</span>`
-              : ''}
+            ${canal === 'manual' ? '<span class="badge b-orange" style="align-self:center">Compra manual</span>' : ''}
           </div>
         </div>`;
       }).join('')}
@@ -1219,6 +1152,28 @@ Obrigado! 🍕`;
       <button class="btn btn-outline" onclick="goStep(3)">← Voltar ao Mapa</button>
       <button class="btn btn-primary" onclick="finalizarCiclo()">✅ Finalizar Ciclo</button>
     </div>`;
+}
+
+function copiarOC(supId) {
+  const sg = Object.values((() => {
+    const by = {};
+    Object.entries(approvals).forEach(([itemId, ap]) => {
+      const resp = responses[ap.token];
+      if (!resp || resp.supId !== supId) return;
+      if (!by[supId]) by[supId] = { supId, payTerm: resp.payTerm, payMethod: resp.payMethod, items: [] };
+      const ri = resp.items?.find(x => x.itemId === parseInt(itemId));
+      const ci = cycle?.items?.find(c => c.itemId === parseInt(itemId));
+      if (ri && ci) by[supId].items.push({ ...ri, qty: ci.qty });
+    });
+    return by;
+  })())[0];
+  if (!sg) return;
+  const sup   = suppliers.find(s => s.id === supId);
+  const total = sg.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const text  = 'Olá ' + (sup?.seller || sup?.name) + '! Segue nossa OC ' + (cycle?.id || '') + ':\n\n' +
+    sg.items.map(i => { const item = items.find(x => x.id === i.itemId); return '• ' + item?.name + ': ' + i.qty + ' ' + item?.unit + ' × R$' + fmt(i.unitPrice) + ' = R$' + fmt(i.qty * i.unitPrice); }).join('\n') +
+    '\n\nTotal: R$' + fmt(total) + '\nEntrega: ' + fmtD(cycle?.deliveryDate) + '\nPagamento: ' + sg.payTerm + ' — ' + sg.payMethod;
+  navigator.clipboard.writeText(text).then(() => toast('📋 OC copiada!', 'info'));
 }
 
 function finalizarCiclo() {
@@ -1261,171 +1216,8 @@ function finalizarCiclo() {
 // CHECKLIST PRESENCIAL
 // ══════════════════════════════════════════════════════════════
 
-function openChecklistPresencial(selItems, selPresencialIdxs) {
-  const locs = selPresencialIdxs.map(i => presencialLocais[i]).filter(Boolean);
 
-  // Estado do checklist (salvo no localStorage por ciclo)
-  const checkKey = `vtp_checklist_${cycle?.id || 'avulso'}`;
-  let checked = JSON.parse(localStorage.getItem(checkKey) || '{}');
 
-  document.getElementById('respTitle').textContent = `🛒 Checklist de Compra Presencial`;
-  document.getElementById('respBody').innerHTML = `
-    <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:10px 14px;font-size:.77rem;color:var(--text2);margin-bottom:14px;line-height:1.6">
-      <strong style="color:var(--purple)">Como usar:</strong> Marque os itens conforme for comprando. O checklist fica salvo — você pode fechar e voltar depois. Ao finalizar, as quantidades são atualizadas no estoque.
-    </div>
 
-    ${locs.map((loc, li) => `
-      <div style="margin-bottom:18px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <div style="width:28px;height:28px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.75rem;font-weight:700;flex-shrink:0">${li + 1}</div>
-          <div>
-            <div style="font-size:.88rem;font-weight:700">${loc.name}</div>
-            ${loc.obs ? `<div style="font-size:.7rem;color:var(--muted)">${loc.obs}</div>` : ''}
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          ${selItems.map(si => {
-            const item   = items.find(i => i.id === si.itemId);
-            const key    = `${li}_${si.itemId}`;
-            const isDone = checked[key];
-            return `<div id="chk-row-${li}-${si.itemId}" style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1.5px solid ${isDone ? 'var(--green)' : 'var(--border)'};border-radius:var(--r8);background:${isDone ? 'var(--green-light)' : 'var(--surface)'};transition:all .2s;cursor:pointer" onclick="toggleChecklistItem('${checkKey}',${li},${si.itemId},this)">
-              <div style="width:22px;height:22px;border-radius:50%;border:2px solid ${isDone ? 'var(--green)' : 'var(--border2)'};background:${isDone ? 'var(--green)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s">
-                ${isDone ? '<span style="color:#fff;font-size:.75rem">✓</span>' : ''}
-              </div>
-              <div style="flex:1">
-                <div style="font-size:.82rem;font-weight:600;${isDone ? 'text-decoration:line-through;color:var(--muted)' : ''}">${item?.name}</div>
-                <div style="font-size:.67rem;color:var(--muted)">${si.qty} ${item?.unit} · ref R$${fmt(item?.cost || 0)}</div>
-              </div>
-              ${item?.brands?.[0] ? `<span class="badge b-purple" style="font-size:.6rem">⭐ ${item.brands[0]}</span>` : ''}
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`).join('')}
 
-    <div id="checklistProgress" style="margin-top:10px"></div>`;
 
-  _updateChecklistProgress(checkKey, selItems, locs);
-
-  document.getElementById('respFoot').innerHTML = `
-    <button class="btn btn-outline" onclick="closeModal('ovResponse')">Fechar</button>
-    <button class="btn btn-primary" onclick="finalizarChecklist('${checkKey}')">✅ Finalizar e atualizar estoque</button>`;
-
-  document.getElementById('ovResponse').classList.add('open');
-}
-
-function toggleChecklistItem(checkKey, locIdx, itemId, row) {
-  let checked = JSON.parse(localStorage.getItem(checkKey) || '{}');
-  const key   = `${locIdx}_${itemId}`;
-  checked[key] = !checked[key];
-  localStorage.setItem(checkKey, JSON.stringify(checked));
-
-  const isDone = checked[key];
-  row.style.border      = `1.5px solid ${isDone ? 'var(--green)' : 'var(--border)'}`;
-  row.style.background  = isDone ? 'var(--green-light)' : 'var(--surface)';
-  const circle = row.querySelector('div');
-  circle.style.borderColor = isDone ? 'var(--green)' : 'var(--border2)';
-  circle.style.background  = isDone ? 'var(--green)' : 'transparent';
-  circle.innerHTML         = isDone ? '<span style="color:#fff;font-size:.75rem">✓</span>' : '';
-  const nameEl = row.querySelector('.\\82rem');
-  row.querySelectorAll('[style*="font-size:.82rem"]').forEach(el => {
-    el.style.textDecoration = isDone ? 'line-through' : 'none';
-    el.style.color          = isDone ? 'var(--muted)' : '';
-  });
-
-  // Atualiza progresso
-  const selItems = cycle?.items || [];
-  const locs     = presencialLocais;
-  _updateChecklistProgress(checkKey, selItems, locs);
-}
-
-function _updateChecklistProgress(checkKey, selItems, locs) {
-  const el = document.getElementById('checklistProgress');
-  if (!el) return;
-  const checked = JSON.parse(localStorage.getItem(checkKey) || '{}');
-  const total   = selItems.length * locs.length;
-  const done    = Object.values(checked).filter(Boolean).length;
-  const pct     = total ? Math.round(done / total * 100) : 0;
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <span style="font-size:.74rem;font-weight:600;color:var(--text2)">Progresso da compra</span>
-      <span style="font-size:.74rem;font-weight:700;color:${pct === 100 ? 'var(--green)' : 'var(--purple)'}">${done}/${total} itens · ${pct}%</span>
-    </div>
-    <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-      <div style="height:100%;width:${pct}%;background:${pct === 100 ? 'var(--green)' : 'var(--purple)'};border-radius:3px;transition:width .4s"></div>
-    </div>
-    ${pct === 100 ? '<div style="margin-top:8px;font-size:.75rem;color:var(--green);font-weight:700;text-align:center">🎉 Todos os itens comprados!</div>' : ''}`;
-}
-
-function finalizarChecklist(checkKey) {
-  const checked  = JSON.parse(localStorage.getItem(checkKey) || '{}');
-  const selItems = cycle?.items || [];
-  let updated    = 0;
-
-  // Para cada item marcado como comprado, atualiza a quantidade no estoque
-  Object.entries(checked).forEach(([key, done]) => {
-    if (!done) return;
-    const [, itemIdStr] = key.split('_');
-    const itemId = parseInt(itemIdStr);
-    const si     = selItems.find(s => s.itemId === itemId);
-    const item   = items.find(i => i.id === itemId);
-    if (si && item) {
-      item.qty = parseFloat((item.qty + si.qty).toFixed(3));
-      updated++;
-    }
-  });
-
-  if (updated) {
-    saveI();
-    renderDashboard();
-    toast(`✅ ${updated} item(ns) atualizado(s) no estoque!`);
-  } else {
-    toast('Nenhum item marcado como comprado', 'err');
-    return;
-  }
-
-  localStorage.removeItem(checkKey);
-  closeModal('ovResponse');
-  goStep(3);
-}
-
-// Reabre checklist se existir sessão em andamento
-function checkOpenChecklist() {
-  if (!cycle) return;
-  const checkKey = `vtp_checklist_${cycle.id}`;
-  const saved    = localStorage.getItem(checkKey);
-  if (saved && cycle.items?.length) {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-orange btn-sm';
-    btn.textContent = '🛒 Retomar checklist presencial';
-    btn.onclick = () => openChecklistPresencial(cycle.items, presencialLocais.map((_, i) => i));
-    document.getElementById('topbarActions').appendChild(btn);
-  }
-}
-
-// Lista avulsa — checklist sem ciclo ativo
-function openChecklistAvulso() {
-  const needItems = items.filter(i => !i.isProd && gneed(i) > 0);
-  if (!needItems.length) { toast('Nenhum item precisa de reposição', 'info'); return; }
-
-  const selItems = needItems.map(i => ({ itemId: i.id, qty: gneed(i) }));
-
-  if (!presencialLocais.length) {
-    toast('Adicione pelo menos um local de compra presencial primeiro', 'err');
-    return;
-  }
-
-  const idxs = presencialLocais.map((_, i) => i);
-  // Usa um ciclo temporário para o checklist
-  const tempCycle = cycle || { id: 'AVULSO_' + Date.now(), items: selItems };
-  if (!cycle) {
-    const checkKey = `vtp_checklist_${tempCycle.id}`;
-    // Injeta items temporários
-    const fakeCycle = { id: tempCycle.id, items: selItems };
-    const origCycle = cycle;
-    cycle = fakeCycle;
-    openChecklistPresencial(selItems, idxs);
-    cycle = origCycle;
-  } else {
-    openChecklistPresencial(selItems, idxs);
-  }
-}

@@ -23,11 +23,6 @@ function renderDashboard() {
   // KPI cards
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card" onclick="goModule('estoque')">
-      <div class="kpi-icon" style="background:var(--purple-light)">📦</div>
-      <div class="kpi-val">${insumos.length}</div>
-      <div class="kpi-label">Insumos</div>
-    </div>
-    <div class="kpi-card" onclick="goModule('estoque')">
       <div class="kpi-icon" style="background:var(--red-light)">🚨</div>
       <div class="kpi-val" style="color:var(--red)">${crit}</div>
       <div class="kpi-label">Insumos críticos</div>
@@ -46,16 +41,6 @@ function renderDashboard() {
       <div class="kpi-icon" style="background:var(--purple-light)">📋</div>
       <div class="kpi-val">${respCount}/${totalDisp}</div>
       <div class="kpi-label">Cotações respondidas</div>
-    </div>
-    <div class="kpi-card" onclick="goModule('fornecedores')">
-      <div class="kpi-icon" style="background:var(--purple-light)">🏢</div>
-      <div class="kpi-val">${suppliers.length}</div>
-      <div class="kpi-label">Fornecedores</div>
-    </div>
-    <div class="kpi-card" onclick="goModule('relatorios')">
-      <div class="kpi-icon" style="background:var(--green-light)">💵</div>
-      <div class="kpi-val" style="color:var(--green);font-size:1.1rem">R$${fmt(calcEconomia())}</div>
-      <div class="kpi-label">Economia gerada</div>
     </div>`;
 
   // Alertas de estoque
