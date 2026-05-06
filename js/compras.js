@@ -267,21 +267,36 @@ function _setBuyBtn(active) {
   });
 }
 
-// ── STEP 2: Fornecedores ──
+// ── STEP 2: Fornecedores com canal de cotação ──
+// Canal salvo por fornecedor: 'whatsapp' | 'email' | 'manual'
+let _supCanais = JSON.parse(localStorage.getItem('vtp_sup_canais') || '{}');
+function _saveCanais() { localStorage.setItem('vtp_sup_canais', JSON.stringify(_supCanais)); }
+
+function setSupCanal(supId, canal) {
+  _supCanais[supId] = canal;
+  _saveCanais();
+  // Atualiza visual do card
+  ['whatsapp','email','manual'].forEach(c => {
+    const btn = document.getElementById(`canal-${supId}-${c}`);
+    if (!btn) return;
+    const isActive = c === canal;
+    btn.style.background   = isActive ? 'var(--purple)' : 'var(--surface)';
+    btn.style.color        = isActive ? '#fff' : 'var(--text2)';
+    btn.style.borderColor  = isActive ? 'var(--purple)' : 'var(--border)';
+  });
+}
+
 function renderDispatchSups() {
   const container = document.getElementById('dispatchSupList');
   if (!suppliers.length) {
-    container.innerHTML = `<div class="empty"><div class="empty-icon">🏢</div>Nenhum fornecedor cadastrado. <a href="#" onclick="goModule('fornecedores')" style="color:var(--purple)">Cadastre aqui</a>.</div>`;
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🏢</div>Nenhum fornecedor cadastrado. <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastre aqui</a>.</div>`;
     return;
   }
 
-  // Insumos selecionados no step 1
   const selItemIds = getSelItems().map(si => si.itemId);
-
-  // Filtra fornecedores: só os que têm pelo menos 1 insumo selecionado, ou sem vínculo (recebem todos)
   const filtSups = suppliers.filter(s => {
     const supItems = items.filter(i => i.supId === s.id).map(i => i.id);
-    if (!supItems.length) return true; // sem vínculo recebe todos
+    if (!supItems.length) return true;
     return supItems.some(id => selItemIds.includes(id));
   });
 
@@ -291,84 +306,60 @@ function renderDispatchSups() {
   }
 
   container.innerHTML = `
-    <!-- Fornecedores com WhatsApp -->
-    <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">💬 Via WhatsApp <span class="badge b-gray" style="font-size:.58rem">${filtSups.length} fornecedor(es) com insumos selecionados</span></div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px;background:var(--surface2);border-radius:var(--r8);padding:8px 12px">
+      Selecione os fornecedores e escolha o canal de cada cotação. Você poderá inserir as respostas manualmente no Mapa de Cotação.
+    </div>
     ${filtSups.map(s => {
       const si         = items.filter(i => i.supId === s.id && selItemIds.includes(i.id));
-      const dispatched = cycle?.dispatches?.find(d => d.supId === s.id && d.type !== 'presencial');
-      return `<div class="dispatch-card">
-        <div style="padding-top:2px">
-          <input type="checkbox" class="sup-chk" value="${s.id}" ${si.length || dispatched ? 'checked' : ''} style="accent-color:var(--purple);width:16px;height:16px">
+      const dispatched = cycle?.dispatches?.find(d => d.supId === s.id);
+      const canal      = _supCanais[s.id] || (s.phone ? 'whatsapp' : 'manual');
+      // Pré-seleciona canal padrão se não definido
+      if (!_supCanais[s.id]) { _supCanais[s.id] = canal; }
+
+      const canalLabels = {
+        whatsapp: { icon: '💬', label: 'WhatsApp', color: '#25D366' },
+        email:    { icon: '📧', label: 'E-mail',   color: 'var(--purple)' },
+        manual:   { icon: '📞', label: 'Manual',   color: 'var(--orange-dark)' },
+      };
+
+      return `<div class="dispatch-card" style="flex-direction:column;gap:10px;padding:14px">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <input type="checkbox" class="sup-chk" value="${s.id}" ${si.length || dispatched ? 'checked' : ''}
+            style="accent-color:var(--purple);width:16px;height:16px;margin-top:3px;flex-shrink:0">
+          <div style="flex:1">
+            <div style="font-size:.88rem;font-weight:700">${s.name}</div>
+            <div style="font-size:.71rem;color:var(--muted);margin-top:2px">
+              ${s.seller ? `👤 ${s.seller}` : ''}
+              ${s.phone  ? ` · 📞 ${s.phone}` : ''}
+              ${s.email  ? ` · ✉️ ${s.email}` : ''}
+            </div>
+            ${si.length
+              ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:6px">${si.map(i => `<span class="badge b-purple" style="font-size:.6rem">${i.name}</span>`).join('')}</div>`
+              : '<div style="font-size:.68rem;color:var(--muted);margin-top:4px">Receberá todos os itens selecionados</div>'}
+          </div>
+          ${dispatched ? `<span class="badge b-green" style="flex-shrink:0">✓ Enviado</span>` : ''}
         </div>
-        <div style="flex:1">
-          <div style="font-size:.86rem;font-weight:700">${s.name}</div>
-          <div style="font-size:.71rem;color:var(--muted);margin-top:2px">${s.seller ? `👤 ${s.seller} ` : ''}${s.phone ? `📞 ${s.phone}` : '<span style="color:var(--orange-dark)">⚠️ Sem WhatsApp</span>'}</div>
-          ${si.length
-            ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:6px">${si.map(i => `<span class="badge b-purple" style="font-size:.6rem">${i.name}</span>`).join('')}</div>`
-            : '<div style="font-size:.68rem;color:var(--muted);margin-top:4px">Receberá todos os itens</div>'}
+        <!-- Canal de cotação -->
+        <div style="display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px solid var(--border)">
+          <span style="font-size:.68rem;color:var(--muted);font-weight:600;margin-right:4px">Canal:</span>
+          ${['whatsapp','email','manual'].map(c => {
+            const isActive = canal === c;
+            const cl = canalLabels[c];
+            const disabled = c === 'whatsapp' && !s.phone ? 'opacity:.4;cursor:not-allowed' : '';
+            return `<button id="canal-${s.id}-${c}" onclick="setSupCanal(${s.id},'${c}')"
+              style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:.72rem;font-weight:600;border:1.5px solid ${isActive ? 'var(--purple)' : 'var(--border)'};background:${isActive ? 'var(--purple)' : 'var(--surface)'};color:${isActive ? '#fff' : 'var(--text2)'};cursor:pointer;transition:all .15s;${disabled}">
+              ${cl.icon} ${cl.label}
+            </button>`;
+          }).join('')}
+          ${canal === 'manual' ? `<span style="font-size:.65rem;color:var(--muted);margin-left:4px">Você inserirá a cotação manualmente no Mapa</span>` : ''}
+          ${canal === 'email' && s.email ? `<span style="font-size:.65rem;color:var(--muted);margin-left:4px">${s.email}</span>` : ''}
         </div>
-        <div>${dispatched ? `<span class="badge b-green">✓ Enviado</span>` : ''}</div>
       </div>`;
-    }).join('')}
-
-    <!-- Compra Presencial -->
-    <div style="margin-top:20px;padding-top:16px;border-top:2px dashed var(--border)">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">🛒 Compra Presencial</div>
-          <div style="font-size:.69rem;color:var(--muted);margin-top:2px">Supermercado, atacado ou fornecedor sem WhatsApp</div>
-        </div>
-        <button class="btn btn-outline btn-sm" onclick="addPresencialLocal()">+ Adicionar local</button>
-      </div>
-      <div id="presencialList"></div>
-    </div>`;
-
-  renderPresencialList();
+    }).join('')}`;
+  _saveCanais();
 }
 
-// ── Compra Presencial ──
-let presencialLocais = JSON.parse(localStorage.getItem('vtp_presencial') || '[]');
-
-function savePresencial() { localStorage.setItem('vtp_presencial', JSON.stringify(presencialLocais)); }
-
-function renderPresencialList() {
-  const el = document.getElementById('presencialList');
-  if (!el) return;
-  if (!presencialLocais.length) {
-    el.innerHTML = `<div style="font-size:.75rem;color:var(--muted);padding:10px 0">Nenhum local cadastrado. Adicione supermercados ou fornecedores sem WhatsApp.</div>`;
-    return;
-  }
-  el.innerHTML = presencialLocais.map((loc, idx) => `
-    <div class="dispatch-card" style="margin-bottom:8px">
-      <div style="padding-top:2px">
-        <input type="checkbox" class="presencial-chk" value="${idx}" checked style="accent-color:var(--purple);width:16px;height:16px">
-      </div>
-      <div style="flex:1">
-        <div style="font-size:.86rem;font-weight:700">${loc.name}</div>
-        ${loc.obs ? `<div style="font-size:.7rem;color:var(--muted);margin-top:2px">${loc.obs}</div>` : ''}
-      </div>
-      <button class="btn btn-red btn-xs" onclick="removePresencialLocal(${idx})">🗑</button>
-    </div>`).join('');
-}
-
-function addPresencialLocal() {
-  const name = prompt('Nome do local (ex: Atacadão, Supermercado X):');
-  if (!name || !name.trim()) return;
-  const obs = prompt('Observação opcional (ex: avenida, bairro):') || '';
-  presencialLocais.push({ name: name.trim(), obs: obs.trim() });
-  savePresencial();
-  renderPresencialList();
-}
-
-function removePresencialLocal(idx) {
-  presencialLocais.splice(idx, 1);
-  savePresencial();
-  renderPresencialList();
-}
-
-function getSelPresenciais() {
-  return [...document.querySelectorAll('.presencial-chk:checked')].map(c => parseInt(c.value));
-}
+function getSelPresenciais() { return []; } // mantido por compatibilidade
 
 function getSelItems() {
   return [...document.querySelectorAll('.buy-chk:checked')].map(c => {
@@ -421,22 +412,28 @@ function dispatchSelected() {
   cycle.dispatches = [...(cycle.dispatches || []), ...newDisps];
   saveC();
 
-  // Compras presenciais
-  const selPresenciais = getSelPresenciais();
-  if (selPresenciais.length) {
-    openChecklistPresencial(selItems, selPresenciais);
+  // Abre WA apenas para fornecedores com canal WhatsApp
+  const waDisps = newDisps.filter(d => d.canal === 'whatsapp');
+  if (waDisps.length) {
+    showWAMessages(waDisps, selItems, deadline, delivery, payTerm, payMethod, obs);
   }
 
-  if (newDisps.length) {
-    showWAMessages(newDisps, selItems, deadline, delivery, payTerm, payMethod, obs);
-  } else if (!selPresenciais.length) {
-    toast('Todos os fornecedores já foram contactados', 'info');
+  // Notifica canais manuais/email
+  const manualDisps = newDisps.filter(d => d.canal !== 'whatsapp');
+  if (manualDisps.length && !waDisps.length) {
+    const names = manualDisps.map(d => suppliers.find(s => s.id === d.supId)?.name).join(', ');
+    toast(`✅ ${manualDisps.length} fornecedor(es) registrado(s) para cotação manual: ${names}`);
+    goStep(3);
+  }
+
+  if (!newDisps.length) {
+    toast('Todos os fornecedores já foram registrados neste ciclo', 'info');
     goStep(3);
   }
 
   document.getElementById('snav2').classList.add('done');
   document.getElementById('snum2').textContent = '✓';
-  _renderCotacoesAbertas();
+  _renderComprasDashboard();
 }
 
 function showWAMessages(disps, selItems, deadline, delivery, payTerm, payMethod, obs) {
@@ -757,13 +754,22 @@ function renderCompareTab() {
   const el         = document.getElementById('tab3-compare');
   const respTokens = Object.keys(responses);
   if (!respTokens.length) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">⏳</div>Nenhuma cotação recebida ainda.<br><button class="btn btn-orange btn-sm" style="margin-top:12px" onclick="goStep(2)">Ir para envio</button></div>`;
+    el.innerHTML = `<div class="empty"><div class="empty-icon">⏳</div>Nenhuma cotação recebida ainda.<br>
+      ${(cycle?.dispatches||[]).filter(d=>d.status!=='responded').length > 0
+        ? `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center">
+            ${(cycle.dispatches||[]).filter(d=>d.status!=='responded').map(d =>
+              `<button class="btn btn-primary btn-sm" onclick="openManualResponse('${d.token}')">✏️ Inserir: ${sname(d.supId)}</button>`
+            ).join('')}
+           </div>` : ''}
+    </div>`;
     return;
   }
+
   const cycleItemIds = [...new Set(cycle.items.map(i => i.itemId))];
   const respSups     = respTokens.map(t => ({ token: t, ...responses[t] }));
-  const totalPrev    = cycle.items.reduce((s, ci) => { const item = items.find(i => i.id === ci.itemId); return s + ci.qty * (item?.cost || 0); }, 0);
-  const totalAprov   = Object.entries(approvals).reduce((s, [itemId, ap]) => {
+
+  const totalPrev  = cycle.items.reduce((s, ci) => { const item = items.find(i => i.id === ci.itemId); return s + ci.qty * (item?.cost || 0); }, 0);
+  const totalAprov = Object.entries(approvals).reduce((s, [itemId, ap]) => {
     const resp = responses[ap.token];
     const ri   = resp?.items?.find(x => x.itemId === parseInt(itemId));
     const ci   = cycle.items.find(c => c.itemId === parseInt(itemId));
@@ -771,21 +777,126 @@ function renderCompareTab() {
   }, 0);
   const economia = totalPrev - totalAprov;
 
+  // Separa itens com múltiplas cotações vs. única cotação
+  const itemsMulti   = cycleItemIds.filter(id => respSups.filter(r => r.items?.find(x => x.itemId === id)).length > 1);
+  const itemsSingle  = cycleItemIds.filter(id => respSups.filter(r => r.items?.find(x => x.itemId === id)).length === 1);
+  const itemsNone    = cycleItemIds.filter(id => respSups.filter(r => r.items?.find(x => x.itemId === id)).length === 0);
+
   el.innerHTML = `
-    ${Object.keys(approvals).length > 0
-      ? `<div style="background:var(--green-light);border:1.5px solid #86EFAC;border-radius:var(--r10);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-           <div>
-             <div style="font-weight:700;color:var(--green);font-size:.84rem">💰 Economia gerada neste ciclo</div>
-             <div style="font-size:.72rem;color:var(--green);margin-top:2px">Comparado ao custo de referência</div>
-           </div>
-           <div style="font-size:1.3rem;font-weight:800;color:var(--green)">R$ ${fmt(Math.max(0, economia))}</div>
-         </div>` : ''}
-    <div style="font-size:.74rem;color:var(--muted);margin-bottom:10px">🏆 Score = preço (50%) + prazo entrega (30%) + condição pagamento (20%)</div>
-    <div class="tbl-wrap" style="overflow-x:auto"><table>
-      <thead><tr>
-        <th style="min-width:140px">Produto</th>
-        <th class="c">Qtd.</th>
-        ${respSups.map(r => `<th class="c" style="min-width:160px">${sname(r.supId)}</th>`).join('')}
+    ${Object.keys(approvals).length > 0 ? `
+      <div style="background:var(--green-light);border:1.5px solid #86EFAC;border-radius:var(--r10);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div><div style="font-weight:700;color:var(--green);font-size:.84rem">💰 Economia gerada neste ciclo</div>
+        <div style="font-size:.72rem;color:var(--green);margin-top:2px">Comparado ao custo de referência</div></div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--green)">R$ ${fmt(Math.max(0, economia))}</div>
+      </div>` : ''}
+
+    ${itemsMulti.length > 0 ? `
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">
+        🏆 Comparativo de preços <span class="badge b-purple" style="font-size:.6rem">${itemsMulti.length} produto(s) com mais de 1 cotação</span>
+      </div>
+      <div style="font-size:.7rem;color:var(--muted);margin-bottom:10px">Score = preço (50%) + prazo entrega (30%) + pagamento (20%)</div>
+      <div class="tbl-wrap" style="overflow-x:auto;margin-bottom:20px"><table>
+        <thead><tr>
+          <th style="min-width:140px">Produto</th>
+          <th class="c">Qtd.</th>
+          ${respSups.map(r => `<th class="c" style="min-width:160px">${sname(r.supId)}${r.isManual?'<br><span style="font-size:.6rem;color:var(--muted)">manual</span>':''}</th>`).join('')}
+          <th class="c">Melhor</th>
+        </tr></thead>
+        <tbody>
+        ${itemsMulti.map(itemId => {
+          const item     = items.find(i => i.id === itemId);
+          const ci       = cycle.items.find(c => c.itemId === itemId);
+          const opts     = respSups.map(r => ({ ...r, ri: r.items?.find(x => x.itemId === itemId) })).filter(r => r.ri);
+          const prices   = opts.map(r => r.ri.unitPrice), dels = opts.map(r => r.ri.deliveryDays);
+          const minP = Math.min(...prices), maxP = Math.max(...prices), minD = Math.min(...dels), maxD = Math.max(...dels);
+          const scored   = opts.map(r => ({ ...r, score: calcScore(r.ri.unitPrice, r.ri.deliveryDays, r.payTerm, minP, maxP, minD, maxD) })).sort((a,b) => b.score-a.score);
+          const approved = approvals[itemId];
+          return `<tr>
+            <td><div class="iname">${item?.name}</div><div class="isub">${item?.cat} · ref R$${fmt(item?.cost||0)}</div></td>
+            <td class="c" style="font-size:.78rem">${ci?.qty} ${item?.unit}</td>
+            ${respSups.map(r => {
+              const ri = r.items?.find(x => x.itemId === itemId);
+              if (!ri) return `<td class="c"><span style="color:var(--muted);font-size:.72rem">Sem resposta</span></td>`;
+              const sc = scored.find(s => s.token === r.token);
+              const isApp = approved?.token === r.token;
+              const isBest = scored[0]?.token === r.token;
+              return `<td class="c" style="background:${isApp?'var(--green-light)':isBest?'var(--purple-xlight)':''}">
+                <div style="font-family:monospace;font-weight:700;font-size:.88rem;color:${isApp?'var(--green)':isBest?'var(--purple)':'var(--text)'}">R$${fmt(ri.unitPrice)}</div>
+                <div style="font-size:.64rem;color:var(--muted)">${ri.brand||'—'} · ${ri.deliveryDays}d</div>
+                <div style="font-size:.62rem;font-weight:700;color:${isBest?'var(--purple)':'var(--muted)'}">score ${sc?.score||0}</div>
+                ${isApp
+                  ? `<span class="badge b-green" style="font-size:.58rem;margin-top:3px">✓ Aprovado</span>`
+                  : `<button class="btn btn-primary btn-xs" style="margin-top:4px" onclick="approveItem(${itemId},'${r.token}')">Aprovar</button>`}
+              </td>`;
+            }).join('')}
+            <td class="c"><div style="font-size:.78rem;font-weight:700;color:var(--purple)">${sname(scored[0]?.supId)}</div><div style="font-size:.62rem;color:var(--muted)">Score ${scored[0]?.score}</div></td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table></div>` : ''}
+
+    ${itemsSingle.length > 0 ? `
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">
+        📋 Cotação única <span class="badge b-gray" style="font-size:.6rem">${itemsSingle.length} produto(s) com 1 fornecedor</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">
+        ${itemsSingle.map(itemId => {
+          const item     = items.find(i => i.id === itemId);
+          const ci       = cycle.items.find(c => c.itemId === itemId);
+          const r        = respSups.find(r => r.items?.find(x => x.itemId === itemId));
+          const ri       = r?.items?.find(x => x.itemId === itemId);
+          const approved = approvals[itemId];
+          const isApp    = approved?.token === r?.token;
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1.5px solid ${isApp?'var(--green)':'var(--border)'};border-radius:var(--r8);background:${isApp?'var(--green-light)':'var(--surface)'}">
+            <div style="flex:1">
+              <div style="font-size:.82rem;font-weight:600">${item?.name}</div>
+              <div style="font-size:.67rem;color:var(--muted)">${ci?.qty} ${item?.unit} · ${sname(r?.supId)} · ${ri?.brand||'—'} · ${ri?.deliveryDays}d</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-family:monospace;font-weight:700">R$${fmt(ri?.unitPrice||0)}</div>
+              <div style="font-size:.65rem;color:var(--muted)">total R$${fmt((ri?.unitPrice||0)*(ci?.qty||0))}</div>
+            </div>
+            ${isApp
+              ? `<span class="badge b-green">✓ Aprovado</span>`
+              : `<button class="btn btn-primary btn-sm" onclick="approveItem(${itemId},'${r?.token}')">Aprovar</button>`}
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+    ${itemsNone.length > 0 ? `
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--red);margin-bottom:8px">
+        ⏳ Aguardando cotação <span class="badge b-red" style="font-size:.6rem">${itemsNone.length} produto(s)</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
+        ${itemsNone.map(itemId => {
+          const item = items.find(i => i.id === itemId);
+          const ci   = cycle.items.find(c => c.itemId === itemId);
+          const pend = (cycle.dispatches||[]).filter(d => d.status !== 'responded' && (d.itemIds?.includes(itemId) || !d.itemIds?.length));
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2)">
+            <div style="flex:1"><div style="font-size:.8rem;font-weight:600">${item?.name}</div>
+            <div style="font-size:.65rem;color:var(--muted)">${ci?.qty} ${item?.unit}</div></div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap">
+              ${pend.map(d => `<button class="btn btn-primary btn-xs" onclick="openManualResponse('${d.token}')">✏️ ${sname(d.supId)}</button>`).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+    <!-- Botão enviar para aprovador -->
+    <div style="margin-top:16px;padding-top:14px;border-top:2px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div style="font-size:.75rem;color:var(--muted)">
+        ${Object.keys(approvals).length} de ${cycleItemIds.length} itens aprovados
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${Object.keys(approvals).length < cycleItemIds.length && respTokens.length > 0
+          ? `<button class="btn btn-outline btn-sm" onclick="enviarParaAprovador()" title="Notifica o aprovador que as cotações estão prontas para análise">
+               📤 Enviar para aprovador
+             </button>` : ''}
+        ${Object.keys(approvals).length > 0
+          ? `<button class="btn btn-primary" onclick="goStep(4)">Gerar Ordem de Compra →</button>` : ''}
+      </div>
+    </div>`;
+}
         <th class="c">🏆 Melhor</th>
       </tr></thead>
       <tbody>
@@ -887,6 +998,32 @@ function renderSuppliersTab() {
   }).join('');
 }
 
+// Notificação para aprovador
+function enviarParaAprovador() {
+  const gerentes = users.filter(u => u.role === 'gerente' || u.role === 'supervisor');
+  const aprovados = Object.keys(approvals).length;
+  const total     = cycle?.items?.length || 0;
+  const msg = `As cotações do ciclo ${cycle?.id} estão prontas para aprovação.
+
+${aprovados} de ${total} itens já com proposta selecionada.
+
+Acesse o sistema para aprovar: yuripappas.github.io/vtp-compras/`;
+
+  // Salva notificação
+  const notifs = JSON.parse(localStorage.getItem('vtp_notifs') || '[]');
+  notifs.push({ type: 'aprovacao', msg, date: new Date().toISOString(), cycleId: cycle?.id, read: false });
+  localStorage.setItem('vtp_notifs', JSON.stringify(notifs));
+
+  // Abre WhatsApp do gerente/supervisor se tiver número
+  const cfgWa = localStorage.getItem('vtp_wa_empresa');
+  if (cfgWa) {
+    window.open(`https://wa.me/55${cfgWa.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+    toast('✅ Aprovador notificado via WhatsApp!');
+  } else {
+    navigator.clipboard.writeText(msg).then(() => toast('📋 Mensagem copiada! Envie para o aprovador.', 'info'));
+  }
+}
+
 function renderApprovalTab() {
   const el           = document.getElementById('tab3-approval');
   const cycleItemIds = [...new Set(cycle?.items.map(i => i.itemId) || [])];
@@ -894,7 +1031,7 @@ function renderApprovalTab() {
   if (!respTokens.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">⏳</div>Nenhuma cotação recebida.</div>`; return; }
 
   el.innerHTML = `
-    <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">Aprove item a item. O score indica a melhor proposta considerando preço, entrega e pagamento.</div>
+    <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">Aprove item a item escolhendo o melhor fornecedor. O score considera preço, entrega e pagamento.</div>
     <div style="display:flex;flex-direction:column;gap:12px">
       ${cycleItemIds.map(itemId => {
         const item     = items.find(i => i.id === itemId);
@@ -905,7 +1042,16 @@ function renderApprovalTab() {
           .map(r => ({ ...r, ri: r.items?.find(x => x.itemId === itemId) }))
           .filter(r => r.ri);
 
-        if (!opts.length) return '';
+        if (!opts.length) return `<div style="padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2)">
+          <div style="font-size:.82rem;font-weight:600;color:var(--muted)">${item?.name}</div>
+          <div style="font-size:.68rem;color:var(--muted)">Aguardando cotação...</div>
+          <div style="display:flex;gap:4px;margin-top:6px">
+            ${(cycle.dispatches||[]).filter(d=>d.status!=='responded').map(d =>
+              `<button class="btn btn-primary btn-xs" onclick="openManualResponse('${d.token}')">✏️ Inserir: ${sname(d.supId)}</button>`
+            ).join('')}
+          </div>
+        </div>`;
+
         const prices     = opts.map(r => r.ri.unitPrice);
         const deliveries = opts.map(r => r.ri.deliveryDays);
         const minP = Math.min(...prices), maxP = Math.max(...prices);
@@ -925,7 +1071,7 @@ function renderApprovalTab() {
                 return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid ${isApp ? 'var(--green)' : idx === 0 ? 'var(--purple-light)' : 'var(--border)'};border-radius:var(--r8);background:${isApp ? 'var(--green-light)' : idx === 0 ? 'var(--purple-xlight)' : 'var(--surface)'}">
                   <div style="flex:1">
                     <div style="font-size:.82rem;font-weight:700">${sname(r.supId)}</div>
-                    <div style="font-size:.7rem;color:var(--muted)">${r.ri.brand || '—'} · ${r.ri.deliveryDays}d entrega · ${r.payTerm}</div>
+                    <div style="font-size:.7rem;color:var(--muted)">${r.ri.brand || '—'} · ${r.ri.deliveryDays}d · ${r.payTerm}${r.isManual?' · <em>manual</em>':''}</div>
                   </div>
                   <div style="text-align:right">
                     <div style="font-family:monospace;font-weight:800;font-size:.92rem">R$${fmt(r.ri.unitPrice)}</div>
@@ -963,23 +1109,22 @@ function renderOrdemCompra() {
     return;
   }
 
-  // Agrupa por fornecedor
   const bySupplier = {};
   appEntries.forEach(([itemId, ap]) => {
     const resp = responses[ap.token];
     if (!resp) return;
-    const key = resp.supId;
-    if (!bySupplier[key]) bySupplier[key] = { supId: resp.supId, payTerm: resp.payTerm, payMethod: resp.payMethod, items: [] };
-    const ri   = resp.items?.find(x => x.itemId === parseInt(itemId));
-    const ci   = cycle.items.find(c => c.itemId === parseInt(itemId));
-    if (ri && ci) bySupplier[key].items.push({ ...ri, qty: ci.qty });
+    if (!bySupplier[resp.supId]) bySupplier[resp.supId] = { supId: resp.supId, token: ap.token, payTerm: resp.payTerm, payMethod: resp.payMethod, canal: cycle?.dispatches?.find(d=>d.token===ap.token)?.canal||'manual', items: [] };
+    const ri = resp.items?.find(x => x.itemId === parseInt(itemId));
+    const ci = cycle.items.find(c => c.itemId === parseInt(itemId));
+    if (ri && ci) bySupplier[resp.supId].items.push({ ...ri, qty: ci.qty });
   });
 
   const totalGeral = Object.values(bySupplier).reduce((s, sg) => s + sg.items.reduce((ss, i) => ss + i.qty * i.unitPrice, 0), 0);
   const nowStr     = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
   document.getElementById('ocContent').innerHTML = `
-    <div class="oc-header">
+    <!-- Header OC -->
+    <div class="oc-header" style="margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
           <div style="font-size:.72rem;opacity:.7;margin-bottom:4px">ORDEM DE COMPRA</div>
@@ -989,49 +1134,88 @@ function renderOrdemCompra() {
         <div style="text-align:right">
           <div style="font-size:.72rem;opacity:.7">TOTAL APROVADO</div>
           <div style="font-size:1.6rem;font-weight:800">R$ ${fmt(totalGeral)}</div>
-          <div style="font-size:.7rem;opacity:.7">${appEntries.length} itens · ${Object.keys(bySupplier).length} fornecedores</div>
+          <div style="font-size:.7rem;opacity:.7">${appEntries.length} itens · ${Object.keys(bySupplier).length} fornecedor(es)</div>
         </div>
       </div>
     </div>
-    <div class="oc-grid">
-      ${Object.values(bySupplier).map(sg => {
+
+    <!-- Lista por fornecedor -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      ${Object.values(bySupplier).map((sg, idx) => {
         const sup   = suppliers.find(s => s.id === sg.supId);
         const total = sg.items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-        return `<div class="oc-sup-card">
-          <div class="oc-sup-header">
-            <div>
-              <div style="font-size:.84rem;font-weight:700;color:var(--purple)">${sup?.name || '—'}</div>
-              ${sup?.seller ? `<div style="font-size:.68rem;color:var(--muted)">👤 ${sup.seller}</div>` : ''}
+        const canal = sg.canal;
+        const num   = idx + 1;
+
+        // Monta texto da OC para envio
+        const ocText = `Olá ${sup?.seller || sup?.name}! 👋
+
+Segue nossa Ordem de Compra ${cycle?.id}:
+
+` +
+          sg.items.map(i => { const item = items.find(x => x.id === i.itemId); return `• ${item?.name}: ${i.qty} ${item?.unit} × R$${fmt(i.unitPrice)} = R$${fmt(i.qty*i.unitPrice)}`; }).join('
+') +
+          `
+
+Total: R$${fmt(total)}
+Entrega: ${fmtD(cycle?.deliveryDate)}
+Pagamento: ${sg.payTerm} — ${sg.payMethod}
+
+Obrigado! 🍕`;
+
+        return `<div style="border:2px solid var(--border);border-radius:var(--r12);overflow:hidden;background:var(--surface)">
+          <!-- Header do fornecedor -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--purple-xlight);border-bottom:1.5px solid var(--purple-light);flex-wrap:wrap;gap:8px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:28px;height:28px;border-radius:50%;background:var(--purple);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.8rem;font-weight:800;flex-shrink:0">${num}</div>
+              <div>
+                <div style="font-size:.9rem;font-weight:800;color:var(--purple)">${sup?.name || '—'}</div>
+                <div style="font-size:.68rem;color:var(--muted)">${sup?.seller ? '👤 ' + sup.seller + ' · ' : ''}${sg.payTerm} · ${sg.payMethod}</div>
+              </div>
             </div>
-            <div style="text-align:right">
-              <div style="font-family:monospace;font-weight:800;color:var(--purple)">R$${fmt(total)}</div>
-              <div style="font-size:.65rem;color:var(--muted)">${sg.payTerm} · ${sg.payMethod}</div>
-            </div>
+            <div style="font-family:monospace;font-size:1.1rem;font-weight:800;color:var(--purple)">R$ ${fmt(total)}</div>
           </div>
-          <div style="padding:12px 14px">
-            ${sg.items.map(i => {
+
+          <!-- Lista de itens -->
+          <div style="padding:0">
+            ${sg.items.map((i, iIdx) => {
               const item = items.find(x => x.id === i.itemId);
-              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
-                <div>
-                  <div style="font-size:.8rem;font-weight:600">${item?.name}</div>
-                  <div style="font-size:.65rem;color:var(--muted)">${i.qty} ${item?.unit} · ${i.brand || '—'}</div>
+              return `<div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);background:${iIdx%2===0?'var(--surface)':'var(--surface2)'}">
+                <div style="flex:1">
+                  <div style="font-size:.82rem;font-weight:600">${item?.name}</div>
+                  <div style="font-size:.65rem;color:var(--muted)">${i.qty} ${item?.unit} · ${i.brand||'—'}</div>
                 </div>
-                <div style="font-family:monospace;font-size:.78rem;font-weight:700">R$${fmt(i.qty * i.unitPrice)}</div>
+                <div style="text-align:right">
+                  <div style="font-family:monospace;font-size:.78rem;color:var(--muted)">R$${fmt(i.unitPrice)}/un</div>
+                  <div style="font-family:monospace;font-size:.84rem;font-weight:700">R$${fmt(i.qty*i.unitPrice)}</div>
+                </div>
               </div>`;
             }).join('')}
           </div>
-          ${sup?.phone
-            ? `<div style="padding:10px 14px;border-top:1px solid var(--border)">
-                 <a href="https://wa.me/55${sup.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${sup.seller || sup.name}! Segue nossa OC:\n\n${sg.items.map(i => { const item = items.find(x => x.id === i.itemId); return `• ${item?.name}: ${i.qty} ${item?.unit} — R$${fmt(i.unitPrice)}/un`; }).join('\n')}\n\nTotal: R$${fmt(total)}\nEntrega: ${fmtD(cycle?.deliveryDate)}\nPagamento: ${sg.payTerm} — ${sg.payMethod}`)}"
-                    target="_blank" class="btn btn-wa btn-sm" style="width:100%;justify-content:center">
-                   💬 Enviar OC por WhatsApp
-                 </a>
-               </div>`
-            : ''}
+
+          <!-- Ações de envio -->
+          <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;background:var(--surface2);border-top:1.5px solid var(--border)">
+            <span style="font-size:.68rem;font-weight:700;color:var(--muted);align-self:center">Enviar OC:</span>
+            ${sup?.phone
+              ? `<a href="https://wa.me/55${(sup.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(ocText)}"
+                  target="_blank" class="btn btn-wa btn-sm">💬 WhatsApp</a>`
+              : `<span style="font-size:.68rem;color:var(--muted)">Sem WhatsApp cadastrado</span>`}
+            ${sup?.email
+              ? `<a href="mailto:${sup.email}?subject=Ordem de Compra ${cycle?.id}&body=${encodeURIComponent(ocText)}"
+                  class="btn btn-outline btn-sm">📧 E-mail</a>`
+              : ''}
+            <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText(${JSON.stringify(ocText)}).then(()=>toast('📋 OC copiada!','info'))">
+              📋 Copiar texto
+            </button>
+            ${canal === 'manual'
+              ? `<span class="badge b-orange" style="align-self:center">Compra presencial/manual</span>`
+              : ''}
+          </div>
         </div>`;
       }).join('')}
     </div>
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px">
+
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:16px">
       <button class="btn btn-outline" onclick="goStep(3)">← Voltar ao Mapa</button>
       <button class="btn btn-primary" onclick="finalizarCiclo()">✅ Finalizar Ciclo</button>
     </div>`;
