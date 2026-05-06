@@ -8,37 +8,41 @@
 // ══════════════════════════════════════════════════════════════
 
 function renderPreproducao() {
-  const de  = document.getElementById('prepDe')?.value  || '';
-  const ate = document.getElementById('prepAte')?.value || '';
   const prod = items.filter(i => i.isProd);
 
-  // Filtra ordens por período
-  const orFilt = ordens.filter(o => {
-    if (o.archived) return false;
-    if (de  && o.date < de)  return false;
-    if (ate && o.date > ate) return false;
-    return true;
-  });
+  // Ordens ativas (não arquivadas)
+  const orFilt = ordens.filter(o => !o.archived);
 
-  const pend   = orFilt.filter(o => o.status === 'pendente').length;
-  const prodOk = orFilt.filter(o => o.status === 'produzido').length;
+  const critCount = prod.filter(i => gst(i) === 'crit').length;
+  const warnCount = prod.filter(i => gst(i) === 'warn').length;
+  const okCount   = prod.filter(i => gst(i) === 'ok').length;
+  const pend      = orFilt.filter(o => o.status === 'pendente').length;
 
-  // Rendimento: soma planejado vs realizado no período
+  // Rendimento geral
   const totalPlan = orFilt.reduce((s, o) => s + o.qty, 0);
   const totalReal = orFilt.filter(o => o.status === 'produzido').reduce((s, o) => s + (o.qtyReal ?? o.qty), 0);
   const rendPct   = totalPlan > 0 ? Math.round(totalReal / totalPlan * 100) : 0;
 
   document.getElementById('prepKpi').innerHTML = `
-    <div class="kpi"><div class="kpi-v">${prod.length}</div><div class="kpi-l">Preparados</div></div>
-    <div class="kpi"><div class="kpi-v" style="color:var(--orange-dark)">${pend}</div><div class="kpi-l">Pendentes</div></div>
-    <div class="kpi"><div class="kpi-v" style="color:var(--green)">${prodOk}</div><div class="kpi-l">Produzidos</div></div>
-    <div class="kpi">
-      <div class="kpi-v" style="color:${rendPct >= 95 ? 'var(--green)' : rendPct >= 80 ? 'var(--yellow)' : 'var(--red)'}">${rendPct}%</div>
-      <div class="kpi-l">Rendimento</div>
+    <div class="kpi" style="cursor:pointer" onclick="goModule('preproducao')">
+      <div class="kpi-v" style="color:var(--red)">${critCount}</div>
+      <div class="kpi-l">Críticos</div>
     </div>
     <div class="kpi">
-      <div class="kpi-v" style="font-size:1rem;color:var(--purple)">${fmt(totalReal)}</div>
-      <div class="kpi-l">kg produzidos</div>
+      <div class="kpi-v" style="color:var(--yellow)">${warnCount}</div>
+      <div class="kpi-l">Baixo</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-v" style="color:var(--green)">${okCount}</div>
+      <div class="kpi-l">OK</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-v" style="color:var(--orange-dark)">${pend}</div>
+      <div class="kpi-l">Ordens pend.</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-v" style="color:${rendPct >= 95 ? 'var(--green)' : rendPct >= 80 ? 'var(--yellow)' : rendPct > 0 ? 'var(--red)' : 'var(--muted)'}">${rendPct > 0 ? rendPct + '%' : '—'}</div>
+      <div class="kpi-l">Rendimento</div>
     </div>`;
 
   const grid = document.getElementById('prepGrid');
@@ -103,31 +107,32 @@ function renderPreproducao() {
 }
 
 function clearPrepFiltro() {
-  document.getElementById('prepDe').value  = '';
-  document.getElementById('prepAte').value = '';
   renderPreproducao();
 }
 
 function zerarCicloPrepara() {
-  const de  = document.getElementById('prepDe')?.value;
-  const ate = document.getElementById('prepAte')?.value;
-  const period = de && ate ? ` do período ${fmtD(de)} até ${fmtD(ate)}` : ' sem filtro de período';
+  if (!confirm(`⚠️ Zerar ciclo de pré-produção?
 
-  if (!confirm(`Deseja arquivar todas as ordens concluídas${period}?
+Esta ação vai:
+• Zerar a quantidade atual de TODOS os preparados (produção interna)
+• Arquivar todas as ordens existentes
 
-Elas serão salvas no histórico mas não aparecerão mais na tela principal.`)) return;
+Após isso, importe o CSV do Cardápio Web para atualizar os estoques reais.
 
-  const toArchive = ordens.filter(o => {
-    if (o.status !== 'produzido') return false;
-    if (de  && o.date < de)  return false;
-    if (ate && o.date > ate) return false;
-    return true;
-  });
+Deseja continuar?`)) return;
 
-  toArchive.forEach(o => o.archived = true);
+  // Zera qty de todos os preparados
+  items.filter(i => i.isProd).forEach(i => { i.qty = 0; });
+  saveI();
+
+  // Arquiva todas as ordens
+  const count = ordens.filter(o => !o.archived).length;
+  ordens.forEach(o => o.archived = true);
   saveO();
-  clearPrepFiltro();
-  toast(`✅ ${toArchive.length} ordem(ns) arquivadas!`);
+
+  renderPreproducao();
+  renderDashboard();
+  toast(`✅ Ciclo zerado! ${count} ordem(ns) arquivadas. Importe o CSV para atualizar.`);
 }
 
 function openOrdemModal(preItemId) {
@@ -480,17 +485,15 @@ function toggleCatTag(el) {
   el.style.color        = isActive ? '#fff' : 'var(--text2)';
 }
 
-// Badge críticos na sidebar de pré-produção
+// Badge críticos na sidebar (estoque + pré-produção)
 function updatePrepBadge() {
+  const prepCrit = items.filter(i => i.isProd && gst(i) === 'crit').length;
   const badge = document.getElementById('prepBadge');
-  if (!badge) return;
-  const crits = items.filter(i => i.isProd && gst(i) === 'crit').length;
-  if (crits > 0) {
-    badge.textContent = crits;
-    badge.style.display = 'inline-flex';
-  } else {
-    badge.style.display = 'none';
-  }
+  if (badge) { badge.textContent = prepCrit > 0 ? prepCrit : ''; badge.style.display = prepCrit > 0 ? 'inline-flex' : 'none'; }
+
+  const estCrit = items.filter(i => !i.isProd && gst(i) === 'crit').length;
+  const badgeEst = document.getElementById('badge-estoque');
+  if (badgeEst) { badgeEst.textContent = estCrit > 0 ? estCrit : ''; badgeEst.style.display = estCrit > 0 ? 'inline-flex' : 'none'; }
 }
 
 function saveSup() {

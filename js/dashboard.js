@@ -30,7 +30,12 @@ function renderDashboard() {
     <div class="kpi-card" onclick="goModule('estoque')">
       <div class="kpi-icon" style="background:var(--red-light)">🚨</div>
       <div class="kpi-val" style="color:var(--red)">${crit}</div>
-      <div class="kpi-label">Críticos</div>
+      <div class="kpi-label">Insumos críticos</div>
+    </div>
+    <div class="kpi-card" onclick="goModule('preproducao')">
+      <div class="kpi-icon" style="background:var(--red-light)">🍳</div>
+      <div class="kpi-val" style="color:var(--red)">${items.filter(i => i.isProd && gst(i) === 'crit').length}</div>
+      <div class="kpi-label">Prep. críticos</div>
     </div>
     <div class="kpi-card" onclick="goModule('compras')">
       <div class="kpi-icon" style="background:var(--orange-light)">💰</div>
@@ -128,11 +133,13 @@ function renderDashboard() {
         </div>`).join('')}
     </div>`;
 
-  // Badge de alertas na sidebar
-  const badge = document.getElementById('badge-estoque');
-  if (badge) badge.textContent = crit || '';
-}
+  // ── Badges na sidebar ──
+  // Estoque: críticos de insumos
+  const badgeEst = document.getElementById('badge-estoque');
+  if (badgeEst) { badgeEst.textContent = crit > 0 ? crit : ''; badgeEst.style.display = crit > 0 ? 'inline-flex' : 'none'; }
 
-// Atualiza badge sempre que dashboard renderiza
-const _origRenderDash = renderDashboard;
-function renderDashboard() { _origRenderDash(); if(typeof updatePrepBadge==='function') updatePrepBadge(); }
+  // Pré-produção: críticos de preparados
+  const prodCrit = items.filter(i => i.isProd && gst(i) === 'crit').length;
+  const badgePre = document.getElementById('prepBadge');
+  if (badgePre) { badgePre.textContent = prodCrit > 0 ? prodCrit : ''; badgePre.style.display = prodCrit > 0 ? 'inline-flex' : 'none'; }
+}
