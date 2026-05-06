@@ -170,18 +170,7 @@ function _refreshRow(id) {
 }
 
 // ── Sazonal ──
-function goToCompras() {
-  const need = items.filter(i => !i.isProd && gneed(i) > 0);
-  if (!need.length) { toast('Nenhum item precisa de reposição!', 'info'); return; }
-  sazonalPctAtual = 0;
-  document.getElementById('sazonalPct').value  = 0;
-  document.getElementById('sazonalNome').value = '';
-  document.getElementById('sazonalPreview').style.display = 'none';
-  document.querySelectorAll('.sazonal-preset').forEach(p => { p.style.background = ''; p.style.borderColor = 'var(--border)'; });
-  const normal = document.querySelector('.sazonal-preset[data-val="0"]');
-  if (normal) { normal.style.background = 'var(--purple-xlight)'; normal.style.borderColor = 'var(--purple)'; }
-  document.getElementById('ovSazonal').classList.add('open');
-}
+
 
 function selectPreset(el, val) {
   document.querySelectorAll('.sazonal-preset').forEach(p => { p.style.background = ''; p.style.borderColor = 'var(--border)'; });
