@@ -36,18 +36,21 @@ function renderDesperdicio() {
   });
 
   // ── KPIs ──
-  const totalCusto = filt.reduce((s, d) => {
+  // Usa d.custo quando disponível (registros novos), senão calcula pelo custo do item
+  const _getCusto = d => {
+    if (d.custo !== undefined && d.custo !== null) return d.custo;
     const item = items.find(i => i.id === d.itemId);
-    return s + (item?.cost || 0) * d.qty;
-  }, 0);
+    return (item?.cost || 0) * d.qty;
+  };
+
+  const totalCusto = filt.reduce((s, d) => s + _getCusto(d), 0);
 
   const porTipo = {};
   TIPOS_DESPERDICIO.forEach(t => { porTipo[t.id] = { qty: 0, custo: 0 }; });
   filt.forEach(d => {
-    const item = items.find(i => i.id === d.itemId);
     if (!porTipo[d.tipo]) porTipo[d.tipo] = { qty: 0, custo: 0 };
     porTipo[d.tipo].qty   += d.qty;
-    porTipo[d.tipo].custo += (item?.cost || 0) * d.qty;
+    porTipo[d.tipo].custo += _getCusto(d);
   });
 
   document.getElementById('despKpi').innerHTML = `
@@ -85,12 +88,14 @@ function renderDesperdicio() {
   // ── Top insumos mais desperdiçados ──
   const porItem = {};
   filt.forEach(d => {
-    if (!porItem[d.itemId]) porItem[d.itemId] = { qty: 0, custo: 0 };
-    const item = items.find(i => i.id === d.itemId);
-    porItem[d.itemId].qty   += d.qty;
-    porItem[d.itemId].custo += (item?.cost || 0) * d.qty;
-    porItem[d.itemId].name  = item?.name || '—';
-    porItem[d.itemId].unit  = item?.unit || '';
+    // Use nome/unidade do registro (novos) ou do item (antigos)
+    const item    = d.itemId ? items.find(i => i.id === d.itemId) : null;
+    const chave   = d.prodId ? 'prod_' + d.prodId : d.itemId ? 'item_' + d.itemId : 'nome_' + (d.nome || 'x');
+    if (!porItem[chave]) porItem[chave] = { qty: 0, custo: 0 };
+    porItem[chave].qty   += d.qty;
+    porItem[chave].custo += _getCusto(d);
+    porItem[chave].name   = d.nome || item?.name || '—';
+    porItem[chave].unit   = d.unidade || item?.unit || '';
   });
 
   const topItems = Object.entries(porItem).sort(([,a],[,b]) => b.custo - a.custo).slice(0, 5);
