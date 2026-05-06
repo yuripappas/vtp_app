@@ -62,7 +62,7 @@
         <button class="sb-item" id="nav-estoque" onclick="goModule('estoque')">
           <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7l7-4 7 4v6l-7 4-7-4V7z"/><path d="M10 3v14M3 7l7 4 7-4"/></svg></span>
           <span class="sb-label">Estoque</span>
-          <span id="badge-estoque" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:.58rem;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;margin-left:auto"></span>
+          <span class="sb-badge" id="badge-estoque"></span>
         </button>
         <button class="sb-item" id="nav-preproducao" onclick="goModule('preproducao')">
           <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h6a2 2 0 012 2v4M9 3v14m0 0h6a2 2 0 002-2V9M9 17H3a2 2 0 01-2-2V9m0 0h18"/></svg></span>
@@ -366,12 +366,33 @@
                 </div>
               </div>
             </div>
+            <!-- Filtros Step 1 -->
+            <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--surface2)">
+              <input class="inp" style="max-width:180px;padding:6px 10px;font-size:.77rem" placeholder="🔍 Buscar insumo..."
+                oninput="setBuyFilter('search',this.value)">
+              <select class="inp" id="buyCatFil" style="max-width:160px;padding:6px 10px;font-size:.77rem"
+                onchange="setBuyFilter('cat',this.value)">
+                <option value="">Todas categorias</option>
+              </select>
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                <button class="btn btn-sm" id="bf-need" onclick="setBuyFilter('status','need');_setBuyBtn('need')"
+                  style="background:var(--purple);color:#fff;border-color:var(--purple);font-size:.7rem">⚠️ Com necessidade</button>
+                <button class="btn btn-outline btn-sm" id="bf-crit" onclick="setBuyFilter('status','crit');_setBuyBtn('crit')"
+                  style="font-size:.7rem">🔴 Críticos</button>
+                <button class="btn btn-outline btn-sm" id="bf-warn" onclick="setBuyFilter('status','warn');_setBuyBtn('warn')"
+                  style="font-size:.7rem">🟡 Baixos</button>
+                <button class="btn btn-outline btn-sm" id="bf-all" onclick="setBuyFilter('status','all');_setBuyBtn('all')"
+                  style="font-size:.7rem">📦 Todos</button>
+                <button class="btn btn-outline btn-sm" id="bf-sel" onclick="setBuyFilter('status','sel');_setBuyBtn('sel')"
+                  style="font-size:.7rem;display:none">📋 Seleção estoque</button>
+              </div>
+            </div>
             <div class="tbl-wrap" style="border:none;border-radius:0">
               <table>
                 <thead><tr>
-                  <th><input type="checkbox" id="chkAll" onchange="toggleAllItems(this)" style="accent-color:var(--purple)"> Incluir</th>
+                  <th style="width:36px"><input type="checkbox" id="chkAll" onchange="toggleAllItems(this)" style="accent-color:var(--purple)"></th>
                   <th>Insumo</th><th class="c">Quantidade</th><th class="c">Un.</th>
-                  <th>Marca Principal</th><th>Alternativas</th><th class="r">Custo Ref.</th>
+                  <th>Marca Principal</th><th>Alternativas</th><th class="r">Custo / Status</th>
                 </tr></thead>
                 <tbody id="buyItemsBody"></tbody>
               </table>
