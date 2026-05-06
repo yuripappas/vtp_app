@@ -3,7 +3,7 @@
  * utils.js — Funções utilitárias, helpers e UI geral
  */
 
-const gst   = i => i.qty <= i.min * .4 ? 'crit' : i.qty < i.min ? 'warn' : 'ok';
+const gst   = i => i.qty <= i.min * .4 ? 'crit' : i.qty < i.min ? 'warn' : i.qty < i.ideal ? 'warn' : 'ok';
 const gneed = i => Math.max(0, i.ideal - i.qty);
 const fmt   = n => Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtD  = d => d ? new Date(d).toLocaleDateString('pt-BR') : '—';

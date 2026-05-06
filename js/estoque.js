@@ -45,10 +45,7 @@ function _renderEstKpis(insumos) {
       <div class="kpi-v" style="color:var(--green)">${ok}</div>
       <div class="kpi-l">OK</div>
     </div>
-    <div class="kpi">
-      <div class="kpi-v" style="color:var(--purple);font-size:1rem">R$${fmt(total)}</div>
-      <div class="kpi-l">Estimativa</div>
-    </div>`;
+`;
 }
 
 function _renderEstoqueTabela(insumos) {
@@ -138,20 +135,24 @@ function _renderEstoqueTabela(insumos) {
           <div style="display:flex;align-items:center;gap:6px;justify-content:center">
             ${inCart ? `
               <div style="display:flex;align-items:center;gap:4px;background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:4px 8px">
-                <button onclick="ajustarCarrinho(${i.id}, -1)" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">−</button>
+                <button onclick="ajustarCarrinho(${i.id}, -1)" style="width:22px;height:22px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700">−</button>
                 <input type="number" value="${inCart.qty}" min="0.001" step="0.001"
-                  style="width:54px;border:none;background:transparent;font-size:.78rem;font-weight:700;text-align:center;color:var(--purple);font-family:monospace"
+                  style="width:58px;border:none;background:transparent;font-size:.84rem;font-weight:800;text-align:center;color:var(--purple);font-family:monospace"
                   onchange="setCarrinhoQty(${i.id}, this.value)">
-                <span style="font-size:.6rem;color:var(--purple)">${i.unit}</span>
-                <button onclick="ajustarCarrinho(${i.id}, 1)" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
-                <button onclick="removerCarrinho(${i.id})" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--red-light);color:var(--red);font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+                <span style="font-size:.68rem;color:var(--purple);font-weight:600">${i.unit}</span>
+                <button onclick="ajustarCarrinho(${i.id}, 1)" style="width:22px;height:22px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700">+</button>
+                <button onclick="removerCarrinho(${i.id})" style="width:22px;height:22px;border-radius:50%;border:none;background:var(--red-light);color:var(--red);font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
               </div>
             ` : `
-              <div style="font-size:.72rem;color:var(--muted);font-weight:600;font-family:monospace">${need > 0 ? fmt(need) + ' ' + i.unit : '—'}</div>
-              <button onclick="addCarrinho(${i.id})"
-                style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:var(--r8);border:none;background:var(--purple);color:#fff;font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap">
-                🛒 Adicionar
-              </button>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="text-align:right">
+                  <div style="font-size:1rem;font-weight:800;color:var(--purple);font-family:monospace;line-height:1">${fmt(need > 0 ? need : gneed(i) || 0)}</div>
+                  <div style="font-size:.62rem;color:var(--muted);font-weight:500">${i.unit} sugerido</div>
+                </div>
+                <button onclick="addCarrinho(${i.id})"
+                  title="Adicionar ao carrinho"
+                  style="width:32px;height:32px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(107,33,212,.3)">+</button>
+              </div>
             `}
           </div>
         </td>
