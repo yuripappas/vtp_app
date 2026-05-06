@@ -191,12 +191,42 @@
             <button class="btn btn-primary btn-sm" id="saveBtn" style="display:none" onclick="saveStock()">💾 Salvar contagem</button>
           </div>
         </div>
+        <!-- Barra de seleção -->
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);margin-bottom:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.78rem;font-weight:600;color:var(--text2)">
+            <input type="checkbox" id="estChkAll" style="accent-color:var(--purple);width:15px;height:15px"
+              onchange="toggleEstAll(this)"> Selecionar tudo
+          </label>
+          <div style="width:1px;height:18px;background:var(--border)"></div>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('crit')">🔴 Só críticos</button>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('warn')">🟡 Só baixos</button>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('need')">⚠️ Com necessidade</button>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('none')">☐ Desmarcar tudo</button>
+          <span style="margin-left:auto;font-size:.72rem;color:var(--purple);font-weight:600" id="estSelCount"></span>
+        </div>
         <div class="tbl-wrap">
           <table>
+            <colgroup>
+              <col style="width:32px">
+              <col>
+              <col style="width:52px">
+              <col style="width:88px">
+              <col style="width:88px">
+              <col style="width:88px">
+              <col style="width:140px">
+              <col style="width:80px">
+              <col style="width:110px">
+            </colgroup>
             <thead><tr>
-              <th>Insumo</th><th class="c">Un.</th><th class="c">Qtd. Atual</th>
-              <th class="c">Mínimo</th><th class="c">Ideal</th>
-              <th>Nível</th><th class="c">Status</th><th class="r">Necessidade</th>
+              <th class="c"></th>
+              <th>Insumo</th>
+              <th class="c">Un.</th>
+              <th class="c">Qtd. Atual</th>
+              <th class="c">Mínimo</th>
+              <th class="c">Ideal</th>
+              <th>Nível</th>
+              <th class="c">Status</th>
+              <th class="r">Necessidade</th>
             </tr></thead>
             <tbody id="estoqueBody"></tbody>
           </table>
@@ -277,7 +307,33 @@
 
       <!-- COMPRAS -->
       <div class="page" id="page-compras" style="padding:0">
-        <!-- Painel de cotações em aberto -->
+
+        <!-- ── Dashboard fixo de cotações ── -->
+        <div id="comprasDashboard" style="background:var(--surface);border-bottom:2px solid var(--border);padding:14px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Status do ciclo atual</div>
+              <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-top:2px" id="cDashCiclo">Nenhum ciclo ativo</div>
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap" id="cDashKpis"></div>
+            <div id="cDashTimer" style="font-size:.78rem;font-family:monospace"></div>
+            <div id="cDashActions" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          </div>
+          <!-- Barra progresso fornecedores -->
+          <div id="cDashProgress" style="margin-top:10px;display:none">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:.68rem;color:var(--muted)">
+              <span id="cDashProgLabel">Cotações recebidas</span>
+              <span id="cDashProgPct"></span>
+            </div>
+            <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div id="cDashProgBar" style="height:100%;background:var(--green);border-radius:3px;transition:width .4s"></div>
+            </div>
+            <!-- Status individual por fornecedor -->
+            <div id="cDashSupStatus" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+          </div>
+        </div>
+
+        <!-- Painel de cotações em aberto (legado) -->
         <div id="cotacoesAbertas" style="display:none"></div>
 
         <div class="steps-bar">
@@ -311,7 +367,15 @@
             </div>
           </div>
           <div class="card">
-            <div class="card-header"><div class="card-title">📋 Itens para Cotação</div><div style="font-size:.72rem;color:var(--muted)" id="buyItemCount"></div></div>
+            <div class="card-header">
+              <div class="card-title">📋 Itens para Cotação</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-size:.72rem;color:var(--purple);font-weight:600" id="buyItemCount"></div>
+                <div id="estSelBadge" style="display:none">
+                  <span class="badge b-purple" style="font-size:.62rem">✓ Importado do Estoque</span>
+                </div>
+              </div>
+            </div>
             <div class="tbl-wrap" style="border:none;border-radius:0">
               <table>
                 <thead><tr>
