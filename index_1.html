@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VTP Compras — Vai Ter Pizza!</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ═══ TELA DE LOGIN ═══ -->
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;align-items:center;justify-content:center;flex-direction:column">
+  <div id="loginForm" style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r16);padding:36px 40px;width:380px;max-width:95vw;box-shadow:0 32px 80px rgba(107,33,212,.15)">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="width:72px;height:72px;border-radius:var(--r12);overflow:hidden;margin:0 auto 12px;box-shadow:0 4px 16px rgba(107,33,212,.3)">
+        <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:100%;height:100%;object-fit:cover">
+      </div>
+      <div style="font-size:1.1rem;font-weight:800;color:var(--text)">VTP Compras</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:3px">Vai Ter Pizza! · Sistema de Compras</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="field">
+        <label>E-mail</label>
+        <input class="inp" type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <div style="position:relative">
+          <input class="inp" type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" style="padding-right:40px">
+          <button onclick="toggleLoginPass()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:.85rem;padding:4px" title="Mostrar senha">👁</button>
+        </div>
+      </div>
+      <div id="loginError" style="font-size:.75rem;color:var(--red);min-height:18px;text-align:center"></div>
+      <button class="btn btn-primary" onclick="doLogin()" style="width:100%;justify-content:center;padding:11px;font-size:.85rem">Entrar →</button>
+    </div>
+    <div style="text-align:center;margin-top:20px;font-size:.7rem;color:var(--muted)">Acesso restrito · Vai Ter Pizza!</div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="appScreen" style="display:none;width:100%">
+<div class="app">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <div class="sidebar-wrap">
+    <aside class="sidebar" id="sidebar">
+      <div class="sb-header">
+        <div class="sb-logo-icon" style="background:none;padding:0;overflow:hidden">
+          <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:34px;height:34px;object-fit:cover;border-radius:var(--r8);display:block">
+        </div>
+        <span class="sb-logo-text">Vai Ter Pizza!</span>
+      </div>
+      <nav class="sb-nav">
+        <div class="sb-section">Principal</div>
+        <button class="sb-item active" id="nav-dashboard" onclick="goModule('dashboard')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg></span>
+          <span class="sb-label">Dashboard</span>
+        </button>
+
+        <div class="sb-section">Operação</div>
+        <button class="sb-item" id="nav-estoque" onclick="goModule('estoque')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7l7-4 7 4v6l-7 4-7-4V7z"/><path d="M10 3v14M3 7l7 4 7-4"/></svg></span>
+          <span class="sb-label">Estoque</span>
+          <span class="sb-badge" id="badge-estoque"></span>
+        </button>
+        <button class="sb-item" id="nav-preproducao" onclick="goModule('preproducao')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h6a2 2 0 012 2v4M9 3v14m0 0h6a2 2 0 002-2V9M9 17H3a2 2 0 01-2-2V9m0 0h18"/></svg></span>
+          <span class="sb-label">Pré-produção</span>
+          <span id="prepBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:.58rem;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;margin-left:auto"></span>
+        </button>
+        <button class="sb-item" id="nav-desperdicio" onclick="goModule('desperdicio')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/><circle cx="10" cy="10" r="8"/></svg></span>
+          <span class="sb-label">Desperdício</span>
+        </button>
+        <button class="sb-item" id="nav-compras" onclick="goModule('compras')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h2l2.5 8h8L18 7H7"/><circle cx="9" cy="17" r="1.2"/><circle cx="15" cy="17" r="1.2"/></svg></span>
+          <span class="sb-label">Compras</span>
+        </button>
+
+        <div class="sb-section">Configuração</div>
+        <button class="sb-item" id="nav-cadastros" onclick="goModule('cadastros')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v8a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="7" y="3" width="6" height="4" rx="1"/><path d="M7 11h6M7 14h4"/></svg></span>
+          <span class="sb-label">Cadastros</span>
+        </button>
+        <button class="sb-item" id="nav-configuracoes" onclick="goModule('configuracoes')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="3"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42"/></svg></span>
+          <span class="sb-label">Configurações</span>
+        </button>
+
+        <div class="sb-section">Análise</div>
+        <button class="sb-item" id="nav-relatorios" onclick="goModule('relatorios')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16V9M8 16V5M12 16v-6M16 16v-3"/></svg></span>
+          <span class="sb-label">Relatórios</span>
+        </button>
+
+        <div class="sb-section">Sistema</div>
+        <button class="sb-item" id="nav-usuarios" onclick="goModule('usuarios')">
+          <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 01-4 0zM2 8a2 2 0 114 0 2 2 0 014 0zM17 17a5 5 0 00-10 0M6 17a5 5 0 0110 0"/></svg></span>
+          <span class="sb-label">Usuários</span>
+        </button>
+      </nav>
+      <div class="sb-bottom">
+        <div class="sb-user">
+          <div class="sb-avatar" id="sbAvatar">Y</div>
+          <div class="sb-user-info">
+            <div class="sb-user-name" id="sbUserName">Yuri Pappas</div>
+            <div class="sb-user-role" id="sbUserRole">👑 Gerente</div>
+          </div>
+        </div>
+        <button onclick="doLogout()" style="width:100%;margin-top:4px;padding:7px 8px;border-radius:var(--r8);background:none;border:none;font-family:Inter,sans-serif;font-size:.72rem;color:var(--muted);cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px" onmouseover="this.style.background='var(--red-light)';this.style.color='var(--red)'" onmouseout="this.style.background='none';this.style.color='var(--muted)'">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px"><path d="M13 3h4v14h-4M8 14l4-4-4-4M3 10h9"/></svg>
+          Sair
+        </button>
+      </div>
+    </aside>
+    <div id="sbToggle" onclick="toggleSidebar()"
+      style="position:fixed;top:18px;left:48px;width:24px;height:24px;background:var(--surface);border:1.5px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;transition:left .22s cubic-bezier(.4,0,.2,1)">
+      <svg id="toggleIcon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" style="width:10px;height:10px"><path d="M4 2l4 4-4 4"/></svg>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN ═══ -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="topbarTitle">Dashboard</div>
+        <div class="topbar-sub" id="topbarSub">Visão geral do sistema</div>
+      </div>
+      <div id="topbarActions"></div>
+    </div>
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dashboard">
+        <div class="dash-welcome">
+          <div class="dw-text">
+            <h2 id="dashGreeting">Olá! 👋</h2>
+            <p id="dashDate"></p>
+            <div class="dw-badge" id="dashRoleBadge">👑 Gerente · Acesso total</div>
+          </div>
+          <div style="position:relative;z-index:1;flex-shrink:0">
+            <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:72px;height:72px;object-fit:cover;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.25)">
+          </div>
+        </div>
+        <div class="kpi-grid" id="kpiGrid"></div>
+        <div class="dash-grid2">
+          <div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">🚨 Alertas de Estoque</div><button class="btn btn-outline btn-xs" onclick="goModule('estoque')">Ver tudo</button></div>
+              <div id="dashAlerts"></div>
+            </div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">📋 Histórico Recente</div><button class="btn btn-outline btn-xs" onclick="goModule('relatorios')">Ver tudo</button></div>
+              <div id="dashHistorico"></div>
+            </div>
+          </div>
+          <div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">🏆 Top Fornecedores</div><span class="badge b-purple">Score</span></div>
+              <div id="dashRanking"></div>
+            </div>
+            <div class="card">
+              <div class="card-header"><div class="card-title">💰 Custo por Categoria</div></div>
+              <div class="card-body" id="dashChart"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ESTOQUE -->
+      <div class="page" id="page-estoque">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Contagem de Estoque</h2>
+            <div style="font-size:.72rem;color:var(--muted)">Atualize quantidades, mínimos e ideais · cadastros em <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastros</a></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="openImportModal()">📥 Importar CSV</button>
+            <button class="btn btn-primary btn-sm" onclick="goToCompras()">Gerar Lista de Compras →</button>
+          </div>
+        </div>
+        <div class="kpi-row" id="estoqueKpi"></div>
+        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
+          <input class="inp" style="max-width:220px;padding:7px 12px" id="srchEstoque" placeholder="🔍 Buscar insumo..." oninput="renderEstoque()">
+          <select class="inp" style="max-width:180px;padding:7px 10px" id="catFil" onchange="renderEstoque()"><option value="">Todas categorias</option></select>
+          <select class="inp" style="max-width:160px;padding:7px 10px" id="stFil" onchange="renderEstoque()">
+            <option value="">Todos os status</option><option value="crit">🔴 Crítico</option><option value="warn">🟡 Baixo</option><option value="ok">🟢 OK</option>
+          </select>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <span style="font-size:.7rem;color:var(--muted)" id="chgCnt"></span>
+            <button class="btn btn-primary btn-sm" id="saveBtn" style="display:none" onclick="saveStock()">💾 Salvar contagem</button>
+          </div>
+        </div>
+        <!-- Barra de seleção -->
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);margin-bottom:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:.78rem;font-weight:600;color:var(--text2)">
+            <input type="checkbox" id="estChkAll" style="accent-color:var(--purple);width:15px;height:15px"
+              onchange="toggleEstAll(this)"> Selecionar tudo
+          </label>
+          <div style="width:1px;height:18px;background:var(--border)"></div>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('crit')">🔴 Só críticos</button>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('warn')">🟡 Só baixos</button>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('need')">⚠️ Com necessidade</button>
+          <button class="btn btn-outline btn-xs" onclick="selectEstByStatus('none')">☐ Desmarcar tudo</button>
+          <span style="margin-left:auto;font-size:.72rem;color:var(--purple);font-weight:600" id="estSelCount"></span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <colgroup>
+              <col style="width:32px">
+              <col>
+              <col style="width:52px">
+              <col style="width:88px">
+              <col style="width:88px">
+              <col style="width:88px">
+              <col style="width:140px">
+              <col style="width:80px">
+              <col style="width:110px">
+            </colgroup>
+            <thead><tr>
+              <th class="c"></th>
+              <th>Insumo</th>
+              <th class="c">Un.</th>
+              <th class="c">Qtd. Atual</th>
+              <th class="c">Mínimo</th>
+              <th class="c">Ideal</th>
+              <th>Nível</th>
+              <th class="c">Status</th>
+              <th class="r">Necessidade</th>
+            </tr></thead>
+            <tbody id="estoqueBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PRÉ-PRODUÇÃO -->
+      <div class="page" id="page-preproducao">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Pré-produção</h2>
+            <div style="font-size:.72rem;color:var(--muted)">Ordens de produção · preparados em <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastros</a></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="openExportPDF()">📄 Exportar PDF</button>
+            <button class="btn btn-red btn-sm" onclick="zerarCicloPrepara()" title="Zera estoque de preparados e arquiva ordens. Importe o CSV após isso.">🔄 Zerar ciclo</button>
+            <button class="btn btn-primary btn-sm" onclick="openOrdemModal()">+ Nova Ordem</button>
+          </div>
+        </div>
+
+        <div class="kpi-row" id="prepKpi"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px" id="prepGrid"></div>
+      </div>
+
+              
+
+<!-- DESPERDÍCIO -->
+      <div class="page" id="page-desperdicio">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Controle de Desperdício</h2>
+            <div style="font-size:.72rem;color:var(--muted)">Monitore perdas de insumos e seu impacto financeiro</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openDespModal()">+ Registrar desperdício</button>
+        </div>
+        <!-- Filtros -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:10px 14px;flex-wrap:wrap">
+          <span style="font-size:.72rem;font-weight:600;color:var(--muted)">📅 Período:</span>
+          <input type="date" class="inp" id="despDe" style="padding:5px 8px;width:140px;font-size:.77rem" onchange="renderDesperdicio()">
+          <span style="font-size:.72rem;color:var(--muted)">até</span>
+          <input type="date" class="inp" id="despAte" style="padding:5px 8px;width:140px;font-size:.77rem" onchange="renderDesperdicio()">
+          <select class="inp" id="despTipoFil" style="padding:5px 8px;width:170px;font-size:.77rem" onchange="renderDesperdicio()">
+            <option value="">Todos os tipos</option>
+            <option value="preproducao">🍳 Erro pré-produção</option>
+            <option value="montagem">🍕 Montagem incorreta</option>
+            <option value="entrega">🛵 Erro de entrega</option>
+            <option value="validade">📅 Vencimento</option>
+            <option value="acidente">⚠️ Acidente</option>
+            <option value="outro">📦 Outro</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="clearDespFiltro()">Limpar</button>
+        </div>
+        <div class="kpi-row" id="despKpi"></div>
+        <div class="dash-grid2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">📊 Custo por tipo</div></div>
+            <div class="card-body" id="despChart"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">🏆 Insumos mais desperdiçados</div></div>
+            <div id="despTopItems"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">📋 Registros</div></div>
+          <div class="card-body" id="despLista"></div>
+        </div>
+      </div>
+
+      <!-- COMPRAS -->
+      <div class="page" id="page-compras" style="padding:0">
+
+        <!-- ── Dashboard fixo de cotações ── -->
+        <div id="comprasDashboard" style="background:var(--surface);border-bottom:2px solid var(--border);padding:14px 20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)">Status do ciclo atual</div>
+              <div style="font-size:.82rem;font-weight:700;color:var(--text);margin-top:2px" id="cDashCiclo">Nenhum ciclo ativo</div>
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap" id="cDashKpis"></div>
+            <div id="cDashTimer" style="font-size:.78rem;font-family:monospace"></div>
+            <div id="cDashActions" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          </div>
+          <!-- Barra progresso fornecedores -->
+          <div id="cDashProgress" style="margin-top:10px;display:none">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:.68rem;color:var(--muted)">
+              <span id="cDashProgLabel">Cotações recebidas</span>
+              <span id="cDashProgPct"></span>
+            </div>
+            <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div id="cDashProgBar" style="height:100%;background:var(--green);border-radius:3px;transition:width .4s"></div>
+            </div>
+            <!-- Status individual por fornecedor -->
+            <div id="cDashSupStatus" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+          </div>
+        </div>
+
+        <!-- Painel de cotações em aberto (legado) -->
+        <div id="cotacoesAbertas" style="display:none"></div>
+
+        <div class="steps-bar">
+          <button class="step-btn active" id="snav1" onclick="goStep(1)"><div class="step-num" id="snum1">1</div>Requisição</button>
+          <div class="step-arrow">›</div>
+          <button class="step-btn" id="snav2" onclick="goStep(2)"><div class="step-num" id="snum2">2</div>Cotação</button>
+          <div class="step-arrow">›</div>
+          <button class="step-btn" id="snav3" onclick="goStep(3)"><div class="step-num" id="snum3">3</div>Mapa de Cotação</button>
+          <div class="step-arrow">›</div>
+          <button class="step-btn" id="snav4" onclick="goStep(4)"><div class="step-num" id="snum4">4</div>Ordem de Compra</button>
+        </div>
+
+        <div class="step-content active" id="cstep1">
+          <div class="card">
+            <div class="card-header"><div class="card-title">⚙️ Configurações do Ciclo</div></div>
+            <div class="card-body">
+              <div class="f4">
+                <div class="field"><label>Prazo para resposta</label><input class="inp" type="datetime-local" id="cfgDeadline"></div>
+                <div class="field"><label>Data de recebimento</label><input class="inp" type="date" id="cfgDelivery"></div>
+                <div class="field"><label>Prazo de pagamento</label>
+                  <select class="inp" id="cfgPayTerm"><option>À vista</option><option>7 dias</option><option>14 dias</option><option>21 dias</option><option>28 dias</option><option>30 dias</option><option>45 dias</option><option>60 dias</option></select>
+                </div>
+                <div class="field"><label>Forma de pagamento</label>
+                  <select class="inp" id="cfgPayMethod"><option>PIX</option><option>Boleto</option><option>Transferência</option><option>Cheque</option><option>A combinar</option></select>
+                </div>
+              </div>
+              <div class="field" style="margin-top:8px">
+                <label>Observações para fornecedores</label>
+                <textarea class="inp" id="cfgObs" rows="2" placeholder="ex: Produto dentro do prazo de validade. Entrega apenas em horário comercial."></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📋 Itens para Cotação</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-size:.72rem;color:var(--purple);font-weight:600" id="buyItemCount"></div>
+                <div id="estSelBadge" style="display:none">
+                  <span class="badge b-purple" style="font-size:.62rem">✓ Importado do Estoque</span>
+                </div>
+              </div>
+            </div>
+            <!-- Filtros Step 1 -->
+            <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--surface2)">
+              <input class="inp" style="max-width:180px;padding:6px 10px;font-size:.77rem" placeholder="🔍 Buscar insumo..."
+                oninput="setBuyFilter('search',this.value)">
+              <select class="inp" id="buyCatFil" style="max-width:160px;padding:6px 10px;font-size:.77rem"
+                onchange="setBuyFilter('cat',this.value)">
+                <option value="">Todas categorias</option>
+              </select>
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                <button class="btn btn-sm" id="bf-need" onclick="setBuyFilter('status','need');_setBuyBtn('need')"
+                  style="background:var(--purple);color:#fff;border-color:var(--purple);font-size:.7rem">⚠️ Com necessidade</button>
+                <button class="btn btn-outline btn-sm" id="bf-crit" onclick="setBuyFilter('status','crit');_setBuyBtn('crit')"
+                  style="font-size:.7rem">🔴 Críticos</button>
+                <button class="btn btn-outline btn-sm" id="bf-warn" onclick="setBuyFilter('status','warn');_setBuyBtn('warn')"
+                  style="font-size:.7rem">🟡 Baixos</button>
+                <button class="btn btn-outline btn-sm" id="bf-all" onclick="setBuyFilter('status','all');_setBuyBtn('all')"
+                  style="font-size:.7rem">📦 Todos</button>
+                <button class="btn btn-outline btn-sm" id="bf-sel" onclick="setBuyFilter('status','sel');_setBuyBtn('sel')"
+                  style="font-size:.7rem;display:none">📋 Seleção estoque</button>
+              </div>
+            </div>
+            <div class="tbl-wrap" style="border:none;border-radius:0">
+              <table>
+                <thead><tr>
+                  <th style="width:36px"><input type="checkbox" id="chkAll" onchange="toggleAllItems(this)" style="accent-color:var(--purple)"></th>
+                  <th>Insumo</th><th class="c">Quantidade</th><th class="c">Un.</th>
+                  <th>Marca Principal</th><th>Alternativas</th><th class="r">Custo / Status</th>
+                </tr></thead>
+                <tbody id="buyItemsBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end">
+            <button class="btn btn-primary" onclick="goStep(2)">Selecionar Fornecedores →</button>
+          </div>
+        </div>
+
+        <div class="step-content" id="cstep2">
+          <div class="card">
+            <div class="card-header"><div class="card-title">🏢 Selecionar Fornecedores</div></div>
+            <div class="card-body"><div id="dispatchSupList"></div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-outline" onclick="goStep(1)">← Voltar</button>
+            <button class="btn btn-primary" onclick="dispatchSelected()">Confirmar e avançar →</button>
+          </div>
+        </div>
+
+        <div class="step-content" id="cstep3">
+          <div id="mapaStatus" style="margin-bottom:16px"></div>
+          <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">
+            <button id="tab3a" onclick="setTab3('compare')" style="padding:9px 18px;font-size:.77rem;font-weight:600;color:var(--purple);cursor:pointer;border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;font-family:Inter,sans-serif">📊 Comparativo</button>
+            <button id="tab3b" onclick="setTab3('suppliers')" style="padding:9px 18px;font-size:.77rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif">🏢 Por Fornecedor</button>
+            <button id="tab3c" onclick="setTab3('approval')" style="padding:9px 18px;font-size:.77rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif">✅ Aprovar por Item</button>
+          </div>
+          <div id="tab3-compare"></div>
+          <div id="tab3-suppliers" style="display:none"></div>
+          <div id="tab3-approval" style="display:none"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:16px;flex-wrap:wrap;gap:8px">
+            <button class="btn btn-outline" onclick="goStep(2)">← Voltar</button>
+            <button class="btn btn-primary" onclick="goStep(4)">Gerar Ordem de Compra →</button>
+          </div>
+        </div>
+
+        <div class="step-content" id="cstep4">
+          <div id="ocContent"></div>
+        </div>
+      </div>
+
+      <!-- CADASTROS -->
+      <div class="page" id="page-cadastros">
+        <div style="margin-bottom:20px">
+          <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Cadastros</h2>
+          <div style="font-size:.72rem;color:var(--muted)">Configuração base do sistema · insumos, fornecedores e pré-preparo</div>
+        </div>
+        <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px">
+          <button id="cad-tab-insumos" onclick="setCadTab('insumos')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--purple);cursor:pointer;border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;font-family:Inter,sans-serif">📦 Insumos</button>
+          <button id="cad-tab-fornecedores" onclick="setCadTab('fornecedores')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif">🏢 Fornecedores</button>
+          <button id="cad-tab-preparo" onclick="setCadTab('preparo')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif">🍳 Pré-preparo</button>
+          <button id="cad-tab-produtos" onclick="setCadTab('produtos')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif">🍕 Produtos</button>
+        </div>
+        <div id="cad-insumos">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input class="inp" style="max-width:200px;padding:7px 12px" id="srchCadInsumos" placeholder="🔍 Buscar..." oninput="renderCadInsumos()">
+              <select class="inp" style="max-width:160px;padding:7px 10px" id="catCadFil" onchange="renderCadInsumos()"><option value="">Todas categorias</option></select>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Novo Insumo</button>
+          </div>
+          <div id="cadInsumosGrid"></div>
+        </div>
+        <div id="cad-fornecedores" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <input class="inp" style="max-width:200px;padding:7px 12px" id="srchCadForn" placeholder="🔍 Buscar..." oninput="renderFornecedores()">
+            <button class="btn btn-primary btn-sm" onclick="openSupModal()">+ Novo Fornecedor</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px" id="supGrid"></div>
+        </div>
+        <div id="cad-preparo" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <div style="font-size:.8rem;color:var(--muted)">Cadastre os preparados internos que aparecem na Pré-produção</div>
+            <button class="btn btn-primary btn-sm" onclick="openPreparoModal()">+ Novo Preparado</button>
+          </div>
+          
+        </div>
+
+        <!-- ABA PRODUTOS -->
+        <div id="cad-produtos" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-size:.8rem;font-weight:700">Sabores e Produtos</div>
+              <div style="font-size:.7rem;color:var(--muted)">Sabores de pizza com preço · usados no desperdício de produto</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-outline btn-sm" onclick="openSaborModal()">+ Novo Sabor</button>
+              <button class="btn btn-primary btn-sm" onclick="openProdModal()">+ Outro Produto</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <button id="prod-tab-sabores" onclick="setProdTab('sabores')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--purple);border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">🍕 Sabores</button>
+            <button id="prod-tab-outros" onclick="setProdTab('outros')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">📦 Outros</button>
+          </div>
+          <div id="cadSaboresGrid"></div>
+          <div id="cadProdutosGrid" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- CONFIGURAÇÕES -->
+              
+
+      <div class="page" id="page-configuracoes">
+        <div style="margin-bottom:20px">
+          <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Configurações</h2>
+          <div style="font-size:.72rem;color:var(--muted)">Dados da empresa e preferências do sistema</div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">🏪 Dados da Empresa</div></div>
+          <div class="card-body">
+            <div class="f2" style="gap:12px">
+              <div class="field"><label>Nome da empresa</label><input class="inp" id="cfgEmpresa" placeholder="ex: Vai Ter Pizza!"></div>
+              <div class="field"><label>Responsável pelas compras</label><input class="inp" id="cfgResponsavel" placeholder="ex: Yuri Pappas"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">💬 WhatsApp da Empresa</div></div>
+          <div class="card-body">
+            <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px 14px;font-size:.77rem;color:var(--text2);margin-bottom:14px;line-height:1.6">
+              <strong style="color:var(--purple)">Como funciona:</strong> Este número será usado para enviar cotações pelo WhatsApp. Cada fornecedor receberá apenas os insumos que ele trabalha, conforme cadastrado em <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastros → Fornecedores</a>.
+            </div>
+            <div class="f2">
+              <div class="field">
+                <label>Número WhatsApp (com DDD)</label>
+                <input class="inp" id="cfgWhatsapp" placeholder="ex: 82999999999" maxlength="11">
+                <span style="font-size:.65rem;color:var(--muted);margin-top:3px">Somente números, sem espaços ou traços</span>
+              </div>
+              <div class="field">
+                <label>Código da loja (Cardápio Web)</label>
+                <input class="inp" id="cfgCodLoja" placeholder="ex: 29503">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">🔔 Notificações de Estoque</div></div>
+          <div class="card-body">
+            <div class="f2">
+              <div class="field">
+                <label>Percentual crítico (% do mínimo)</label>
+                <input class="inp" type="number" id="cfgPctCrit" placeholder="40" min="1" max="100">
+                <span style="font-size:.65rem;color:var(--muted);margin-top:3px">Padrão: 40% — abaixo disso fica CRÍTICO</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="saveConfiguracoes()">💾 Salvar configurações</button>
+      </div>
+
+      <!-- RELATÓRIOS -->
+      <div class="page" id="page-relatorios">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Relatórios & Inteligência</h2>
+            <div style="font-size:.72rem;color:var(--muted)">Histórico de cotações · evolução de preços · CMV estimado</div>
+          </div>
+          <!-- Filtro de período -->
+          <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:8px 14px;flex-wrap:wrap;gap:8px">
+            <span style="font-size:.72rem;color:var(--muted);font-weight:600">📅 Período:</span>
+            <input type="date" class="inp" id="relDe" style="padding:5px 8px;width:140px" onchange="renderRelatorios()">
+            <span style="font-size:.72rem;color:var(--muted)">até</span>
+            <input type="date" class="inp" id="relAte" style="padding:5px 8px;width:140px" onchange="renderRelatorios()">
+            <button class="btn btn-outline btn-sm" onclick="clearRelFiltro()">Limpar</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="card"><div class="card-header"><div class="card-title">📋 Histórico de Ciclos</div><span id="relCicloCount" class="badge b-gray"></span></div><div id="relHistorico"></div></div>
+          <div class="card"><div class="card-header"><div class="card-title">📈 Evolução de Preços</div></div><div class="card-body" id="relPrecos"></div></div>
+        </div>
+        <div class="card"><div class="card-header"><div class="card-title">🏢 Desempenho por Fornecedor</div></div><div class="card-body" id="relFornecedores"></div></div>
+      </div>
+
+      <!-- USUÁRIOS -->
+      <div class="page" id="page-usuarios">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;flex-wrap:wrap;gap:12px">
+          <div><h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Usuários & Permissões</h2></div>
+          <button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Novo Usuário</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px" id="userList"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAIS ═══ -->
+
+<!-- Modal: Insumo -->
+<div class="overlay" id="ovItem">
+  <div class="mbox">
+    <div class="mh"><div class="mt" id="itemModalTitle">Novo Insumo</div><button class="mc" onclick="closeModal('ovItem')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="eItemId">
+      <div class="field"><label>Nome *</label><input class="inp" id="fName" placeholder="ex: Mussarela em Barra"></div>
+      <div class="f2">
+        <div class="field"><label>Categoria</label><input class="inp" id="fCat" placeholder="ex: Laticínios" list="catDL"><datalist id="catDL"></datalist></div>
+        <div class="field"><label>Unidade</label>
+          <select class="inp" id="fUnit"><option>kg</option><option>g</option><option>L</option><option>ml</option><option>un</option><option>cx</option><option>pct</option><option>fardo</option></select>
+        </div>
+      </div>
+      <div class="field"><label>Código Cardápio Web *</label><input class="inp" id="fCode" placeholder="ex: 157629"><span style="font-size:.65rem;color:var(--muted);margin-top:3px">Usado para evitar duplicatas na importação</span></div>
+      <hr class="sdiv"><div class="slbl">Marcas preferidas</div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;align-items:center;gap:8px;background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:8px 12px">
+          <span style="font-size:.67rem;font-weight:700;color:var(--purple);min-width:64px">⭐ Principal</span>
+          <input class="inp" id="fB0" placeholder="ex: Polenghi" style="background:#fff">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--lilac-light);border:1.5px solid #E9D5FF;border-radius:var(--r8);padding:8px 12px">
+          <span style="font-size:.67rem;font-weight:700;color:var(--lilac);min-width:64px">2ª opção</span>
+          <input class="inp" id="fB1" placeholder="ex: Scala" style="background:#fff">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--lilac-light);border:1.5px solid #E9D5FF;border-radius:var(--r8);padding:8px 12px">
+          <span style="font-size:.67rem;font-weight:700;color:var(--lilac);min-width:64px">3ª opção</span>
+          <input class="inp" id="fB2" placeholder="ex: Tirolez" style="background:#fff">
+        </div>
+      </div>
+      <hr class="sdiv"><div class="slbl">Quantidades & Custos</div>
+      <div class="field"><label>Fornecedor vinculado</label><select class="inp" id="fSupId"><option value="">— Sem fornecedor —</option></select></div>
+      <div class="f3">
+        <div class="field"><label>Qtd. mínima</label><input class="inp" type="number" id="fMin" placeholder="0" min="0" step="0.1"></div>
+        <div class="field"><label>Qtd. ideal</label><input class="inp" type="number" id="fIdeal" placeholder="0" min="0" step="0.1"></div>
+        <div class="field"><label>Custo ref. (R$)</label><input class="inp" type="number" id="fCost" placeholder="0.00" step="0.01"></div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delItemBtn" style="display:none;margin-right:auto" onclick="deleteItem()">🗑 Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovItem')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveItem()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Pré-preparo -->
+<div class="overlay" id="ovPreparo">
+  <div class="mbox">
+    <div class="mh"><div class="mt" id="preparoModalTitle">Novo Preparado</div><button class="mc" onclick="closeModal('ovPreparo')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="ePreparoId">
+      <div class="f2">
+        <div class="f2">
+        <div class="field"><label>Nome do preparado *</label><input class="inp" id="fpName" placeholder="ex: Frango Desfiado"></div>
+        <div class="field">
+          <label>Código Cardápio Web</label>
+          <input class="inp" id="fpCode" placeholder="ex: 157638">
+          <div style="font-size:.63rem;color:var(--muted);margin-top:2px">Para sync automático via importação CSV</div>
+        </div>
+      </div>
+        <div class="field">
+          <label>Código Cardápio Web</label>
+          <input class="inp" id="fpCode" placeholder="ex: 157638">
+          <span style="font-size:.63rem;color:var(--muted);margin-top:2px">Usado para sync com importação CSV</span>
+        </div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Unidade</label><select class="inp" id="fpUnit"><option>kg</option><option>g</option><option>L</option><option>un</option></select></div>
+        <div class="field"><label>Custo de produção (R$/kg)</label><input class="inp" type="number" id="fpCost" placeholder="0.00" step="0.01"></div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Qtd. mínima</label><input class="inp" type="number" id="fpMin" placeholder="0" min="0" step="0.1"></div>
+        <div class="field"><label>Qtd. ideal</label><input class="inp" type="number" id="fpIdeal" placeholder="0" min="0" step="0.1"></div>
+      </div>
+      <div class="field"><label>Porção por pizza (kg)</label><input class="inp" type="number" id="fpPorcao" placeholder="ex: 0.090" step="0.001"></div>
+      <div class="field"><label>Observações / instruções</label><textarea class="inp" id="fpObs" rows="2" placeholder="ex: Cozinhar em baixa temperatura por 4h..."></textarea></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delPreparoBtn" style="display:none;margin-right:auto" onclick="deletePreparo()">🗑 Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovPreparo')">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePreparo()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Desperdício -->
+<div class="overlay" id="ovDesp">
+  <div class="mbox">
+    <div class="mh"><div class="mt" id="despModalTitle">Registrar Desperdício</div><button class="mc" onclick="closeModal('ovDesp')">✕</button></div>
+    <div class="mb">
+      <div class="field">
+        <label>Origem do desperdício *</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <button type="button" id="orig-btn-insumo" onclick="setDespOrigem('insumo')"
+            style="padding:6px 14px;border-radius:20px;font-size:.76rem;font-weight:600;border:1.5px solid var(--purple);background:var(--purple);color:#fff;cursor:pointer">
+            📦 Insumo
+          </button>
+          <button type="button" id="orig-btn-preparado" onclick="setDespOrigem('preparado')"
+            style="padding:6px 14px;border-radius:20px;font-size:.76rem;font-weight:600;border:1.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
+            🍳 Preparado
+          </button>
+          <button type="button" id="orig-btn-produto" onclick="setDespOrigem('produto')"
+            style="padding:6px 14px;border-radius:20px;font-size:.76rem;font-weight:600;border:1.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
+            🍕 Produto
+          </button>
+        </div>
+        <input type="hidden" id="fdOrigem" value="insumo">
+        <div id="origemNote" style="font-size:.68rem;color:var(--muted);margin-top:2px">📦 Insumos de compras — quantidade debitada do estoque automaticamente</div>
+      </div>
+      <div class="field">
+        <label id="fdQtyLabel">Item *</label>
+        <select class="inp" id="fdItemId" onchange="onDespItemChange()">
+          <option value="">Selecionar...</option>
+        </select>
+      </div>
+
+      <!-- Área de sabores (só aparece para pizza) -->
+      <div id="fdPizzaArea" style="display:none">
+        <div class="f2">
+          <div class="field">
+            <label id="fdSabor1Label">Sabor *</label>
+            <select class="inp" id="fdSabor1" onchange="_calcPizzaCusto()">
+              <option value="">Selecionar sabor...</option>
+            </select>
+          </div>
+          <div class="field" id="fdSabor2Row">
+            <label>2º Sabor (1/2) *</label>
+            <select class="inp" id="fdSabor2" onchange="_calcPizzaCusto()">
+              <option value="">Selecionar sabor...</option>
+            </select>
+          </div>
+        </div>
+        <div id="fdCustoPreview" style="margin-top:8px"></div>
+      </div>
+      <div class="f2">
+        <div class="field">
+          <label>Quantidade perdida *</label>
+          <input class="inp" type="number" id="fdQty" placeholder="0" min="0.001" step="0.01">
+        </div>
+        <div class="field">
+          <label>Tipo de desperdício *</label>
+          <select class="inp" id="fdTipo">
+            <option value="preproducao">🍳 Erro de pré-produção</option>
+            <option value="montagem">🍕 Montagem incorreta</option>
+            <option value="entrega">🛵 Erro de entrega</option>
+            <option value="validade">📅 Vencimento/validade</option>
+            <option value="acidente">⚠️ Acidente/queda</option>
+            <option value="outro">📦 Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Data</label><input class="inp" type="date" id="fdDate"></div>
+        <div class="field"><label>Responsável</label><input class="inp" id="fdResp" placeholder="ex: Ana Silva"></div>
+      </div>
+      <div class="field">
+        <label>Descrição / o que aconteceu</label>
+        <textarea class="inp" id="fdObs" rows="2" placeholder="ex: Pizza com mussarela em excesso foi descartada pelo cliente..."></textarea>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delDespBtn" style="display:none;margin-right:auto" onclick="deleteDesperdicios(_editDespId)">🗑 Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovDesp')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveDesp()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Importar CSV -->
+<div class="overlay" id="ovImport">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt">📥 Importar do Cardápio Web</div><button class="mc" onclick="closeModal('ovImport')">✕</button></div>
+    <div class="mb">
+      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px 14px;font-size:.76rem;color:var(--text2);line-height:1.6">
+        <strong style="color:var(--purple)">Como exportar:</strong> Cardápio Web → Estoque → Relatório de Insumos → Exportar CSV<br>
+        <strong style="color:var(--purple)">Deduplicação:</strong> O sistema usa o <strong>código do Cardápio Web</strong> para identificar insumos e evitar duplicatas.
+      </div>
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('csvFile').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop(event)">
+        <div style="font-size:2rem;margin-bottom:8px">📄</div>
+        <div style="font-size:.84rem;font-weight:600;color:var(--text2)">Clique ou arraste o arquivo CSV aqui</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Exportado do Cardápio Web · formato UTF-8</div>
+        <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="handleFile(this)">
+      </div>
+      <div id="importPreview"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="closeModal('ovImport')">Cancelar</button>
+      <button class="btn btn-primary" id="importBtn" style="display:none" onclick="confirmImport()">✅ Importar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Fornecedor -->
+<div class="overlay" id="ovSup">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt" id="supModalTitle">Novo Fornecedor</div><button class="mc" onclick="closeModal('ovSup')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="eSupId">
+      <div class="field"><label>Nome da empresa *</label><input class="inp" id="sfName" placeholder="ex: Up Distribuidora"></div>
+      <div class="f2">
+        <div class="field"><label>Vendedor / Contato</label><input class="inp" id="sfSeller" placeholder="ex: João Miguel"></div>
+        <div class="field"><label>WhatsApp</label><input class="inp" id="sfPhone" placeholder="ex: 82999999999"></div>
+      </div>
+      <div class="field"><label>E-mail</label><input class="inp" id="sfEmail" type="email" placeholder="ex: joao@empresa.com"></div>
+      <div class="field">
+        <label>Categorias que fornece</label>
+        <div id="sfCatsWrap" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2);min-height:42px;cursor:pointer" onclick="toggleCatsDropdown()"></div>
+        <div id="sfCatsDropdown" style="display:none;border:1.5px solid var(--purple-light);border-radius:var(--r8);background:var(--surface);box-shadow:0 8px 24px rgba(107,33,212,.12);padding:8px;margin-top:4px;z-index:10">
+          <div style="display:flex;flex-wrap:wrap;gap:6px" id="sfCatsOptions"></div>
+        </div>
+        <input type="hidden" id="sfCats">
+      </div>
+      <hr class="sdiv"><div class="slbl">Insumos que este fornecedor trabalha</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">Somente estes insumos serão enviados na cotação pelo WhatsApp</div>
+      <input class="inp" id="sfItemSearch" placeholder="🔍 Buscar insumo..." style="margin-bottom:8px" oninput="filterSupItems()">
+      <div id="sfItems" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:2px"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delSupBtn" style="display:none;margin-right:auto" onclick="deleteSup()">🗑 Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovSup')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveSup()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Resposta / WA -->
+<div class="overlay" id="ovResponse">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt" id="respTitle">Simular Resposta</div><button class="mc" onclick="closeModal('ovResponse')">✕</button></div>
+    <div class="mb" id="respBody"></div>
+    <div class="mf" id="respFoot"></div>
+  </div>
+</div>
+
+<!-- Modal: Usuário -->
+<div class="overlay" id="ovUser">
+  <div class="mbox">
+    <div class="mh"><div class="mt" id="userModalTitle">Novo Usuário</div><button class="mc" onclick="closeModal('ovUser')">✕</button></div>
+    <div class="mb">
+      <input type="hidden" id="eUserId">
+      <div class="field"><label>Nome completo *</label><input class="inp" id="fuName" placeholder="ex: Ana Silva"></div>
+      <div class="f2">
+        <div class="field"><label>E-mail *</label><input class="inp" id="fuEmail" type="email" placeholder="ana@vaiterpizza.com"></div>
+        <div class="field"><label>Perfil</label>
+          <select class="inp" id="fuRole" onchange="renderPermPreview()">
+            <option value="gerente">👑 Gerente</option><option value="supervisor">🔑 Supervisor</option><option value="comprador">🛒 Comprador</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Senha inicial</label><input class="inp" id="fuPass" type="password" placeholder="mínimo 6 caracteres"></div>
+      <hr class="sdiv"><div class="slbl">Permissões</div>
+      <div id="permPreview"></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delUserBtn" style="display:none;margin-right:auto" onclick="deleteUser()">🗑 Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovUser')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveUser()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Ordem de Produção -->
+<div class="overlay" id="ovOrdem">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt">Nova Ordem de Produção</div><button class="mc" onclick="closeModal('ovOrdem')">✕</button></div>
+    <div class="mb">
+      <div class="f2">
+        <div class="field"><label>Preparado</label><select class="inp" id="opItem"><option value="">Selecionar...</option></select></div>
+        <div class="field"><label>Quantidade</label><input class="inp" type="number" id="opQty" placeholder="0" min="0" step="0.1"></div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Data prevista</label><input class="inp" type="date" id="opDate"></div>
+        <div class="field"><label>Responsável</label><input class="inp" id="opResp" placeholder="ex: Cinara"></div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Conferente</label><input class="inp" id="opConf" placeholder="ex: Guilherme"></div>
+        <div class="field"><label>Turno</label><select class="inp" id="opTurno"><option>Manhã</option><option>Tarde</option><option>Noite</option></select></div>
+      </div>
+      <div class="field"><label>Observações</label><textarea class="inp" id="opObs" rows="2"></textarea></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="closeModal('ovOrdem')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveOrdem()">Criar Ordem</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: PDF -->
+<div class="overlay" id="ovPDF">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt">📄 Exportar Ordens de Produção</div><button class="mc" onclick="closeModal('ovPDF')">✕</button></div>
+    <div class="mb">
+      <div class="f2">
+        <div class="field"><label>De</label><input class="inp" type="date" id="pdfDe"></div>
+        <div class="field"><label>Até</label><input class="inp" type="date" id="pdfAte"></div>
+      </div>
+      <div class="field"><label>Status</label><select class="inp" id="pdfStatus"><option value="">Todos</option><option value="pendente">Pendentes</option><option value="produzido">Produzidos</option></select></div>
+      <div id="pdfOrdensList" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto"></div>
+      <div id="pdfEmpty" style="display:none;text-align:center;color:var(--muted);font-size:.8rem;padding:20px">Nenhuma ordem encontrada.</div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="closeModal('ovPDF')">Cancelar</button>
+      <button class="btn btn-primary" onclick="generatePDF()">🖨️ Gerar PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Sazonal -->
+<div class="overlay" id="ovSazonal">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt">📅 Ajuste Sazonal de Compras</div><button class="mc" onclick="closeModal('ovSazonal')">✕</button></div>
+    <div class="mb">
+      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px 14px;font-size:.78rem;color:var(--text2);line-height:1.6">
+        <strong style="color:var(--purple)">Deseja ajustar as quantidades para esta semana?</strong><br>O ajuste é temporário e não altera os valores padrão do cadastro.
+      </div>
+      <div class="field"><label>Nome do período (opcional)</label><input class="inp" id="sazonalNome" placeholder="ex: Feriado de Corpus Christi"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="sazonal-preset" data-val="30" onclick="selectPreset(this,30)" style="border:2px solid var(--border);border-radius:var(--r10);padding:14px;cursor:pointer;transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px">🔴</div><div style="font-size:.82rem;font-weight:700;color:var(--red)">Alta demanda</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Feriado, evento especial</div><div style="font-size:1rem;font-weight:800;color:var(--red);margin-top:8px">+30%</div></div>
+        <div class="sazonal-preset" data-val="15" onclick="selectPreset(this,15)" style="border:2px solid var(--border);border-radius:var(--r10);padding:14px;cursor:pointer;transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px">🟠</div><div style="font-size:.82rem;font-weight:700;color:var(--orange-dark)">Acima do normal</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Fim de semana longo</div><div style="font-size:1rem;font-weight:800;color:var(--orange-dark);margin-top:8px">+15%</div></div>
+        <div class="sazonal-preset" data-val="0" onclick="selectPreset(this,0)" style="border:2px solid var(--purple);border-radius:var(--r10);padding:14px;cursor:pointer;background:var(--purple-xlight);transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px">🟡</div><div style="font-size:.82rem;font-weight:700;color:var(--purple)">Semana normal</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Sem ajuste</div><div style="font-size:1rem;font-weight:800;color:var(--purple);margin-top:8px">0%</div></div>
+        <div class="sazonal-preset" data-val="-20" onclick="selectPreset(this,-20)" style="border:2px solid var(--border);border-radius:var(--r10);padding:14px;cursor:pointer;transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px">🟢</div><div style="font-size:.82rem;font-weight:700;color:var(--green)">Baixa demanda</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Período de férias</div><div style="font-size:1rem;font-weight:800;color:var(--green);margin-top:8px">-20%</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="field" style="flex:1">
+          <label>Percentual personalizado</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input class="inp" type="number" id="sazonalPct" value="0" min="-80" max="200" step="5" oninput="onPctChange(this)" style="width:100px">
+            <span style="font-size:.82rem;color:var(--muted)">%</span>
+          </div>
+        </div>
+      </div>
+      <div id="sazonalPreview" style="display:none">
+        <hr class="sdiv"><div class="slbl" style="margin-bottom:8px">Prévia do ajuste</div>
+        <div class="tbl-wrap" style="max-height:180px;overflow-y:auto">
+          <table><thead><tr><th>Insumo</th><th class="c">Ideal atual</th><th class="c">Ideal ajustado</th><th class="r">Necessidade orig.</th><th class="r">Necessidade ajust.</th></tr></thead><tbody id="sazonalPreviewBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="closeModal('ovSazonal');iniciarCompras()">Pular ajuste</button>
+      <button class="btn btn-primary" onclick="confirmarSazonal()">Aplicar e continuar →</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /appScreen -->
+
+<!-- Modal: Sabor de Pizza -->
+<div class="overlay" id="ovSabor">
+  <div class="mbox" style="max-width:420px">
+    <div class="mh"><div class="mt" id="fsabModalTitle">Novo Sabor</div><button class="mc" onclick="closeModal('ovSabor')">✕</button></div>
+    <div class="mb">
+      <div style="font-size:.72rem;color:var(--muted);background:var(--surface2);border-radius:var(--r8);padding:8px 12px;margin-bottom:12px" id="fsabTipo"></div>
+      <div class="field"><label>Nome do sabor *</label><input class="inp" id="fsabName" placeholder="ex: Frango Caipira"></div>
+      <div class="field">
+        <label>Acréscimo no preço (R$)</label>
+        <input class="inp" type="number" id="fsabAcr" placeholder="0.00" step="0.50" min="0">
+        <span style="font-size:.68rem;color:var(--muted);margin-top:3px">0 = incluso no preço base</span>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+        <input type="checkbox" id="fsabActive" checked style="accent-color:var(--purple);width:16px;height:16px">
+        <span style="font-size:.8rem">Sabor ativo (aparece na lista)</span>
+      </label>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delSaborBtn" style="display:none;margin-right:auto" onclick="deleteSabor()">🗑 Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovSabor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveSabor()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Produto -->
+<div class="overlay" id="ovProd">
+  <div class="mbox">
+    <div class="mh"><div class="mt" id="fprodModalTitle">Novo Produto</div><button class="mc" onclick="closeModal('ovProd')">✕</button></div>
+    <div class="mb">
+      <div class="f2">
+        <div class="field"><label>Nome do produto *</label><input class="inp" id="fprodName" placeholder="ex: Pizza Grande Salgada"></div>
+        <div class="field"><label>Categoria</label>
+          <select class="inp" id="fprodCat">
+            <option>Pizza Pequena</option>
+            <option>Pizza Grande</option>
+            <option>Bebida</option>
+            <option>Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Preço de venda (R$) *</label><input class="inp" type="number" id="fprodPrice" placeholder="0.00" step="0.01" min="0"></div>
+        <div class="field" style="justify-content:flex-end">
+          <label style="display:flex;align-items:center;gap:8px;margin-top:20px;cursor:pointer">
+            <input type="checkbox" id="fprodActive" checked style="accent-color:var(--purple);width:16px;height:16px">
+            <span style="font-size:.8rem">Produto ativo</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delProdBtn" style="display:none;margin-right:auto" onclick="deleteProd()">🗑 Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovProd')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveProd()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/estoque.js"></script>
+<script src="js/compras.js"></script>
+<script src="js/modules.js"></script>
+<script src="js/cadastros.js"></script>
+<script src="js/configuracoes.js"></script>
+<script src="js/desperdicio.js"></script>
+<script src="js/login.js"></script>
+<script>
+  // Seta datas padrão dos filtros
+  const _hoje = new Date().toISOString().slice(0,10);
+  const _30d  = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
+  ['despDe','relDe'].forEach(id => { const el = document.getElementById(id); if(el && !el.value) el.value = _30d; });
+  ['despAte','relAte'].forEach(id => { const el = document.getElementById(id); if(el && !el.value) el.value = _hoje; });
+  // Seta período padrão da pré-produção (semana atual)
+
+  // Renderiza categorias ao abrir modal de fornecedor
+  document.addEventListener('DOMContentLoaded', () => {
+    if(typeof renderCatTags === 'function') renderCatTags([]);
+  });
+  // Inicializa autenticação
+  initAuth();
+</script>
+</body>
+</html>
