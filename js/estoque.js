@@ -84,18 +84,32 @@ function _renderEstoqueTabela(insumos) {
     return;
   }
 
-  tbody.innerHTML = Object.entries(byCat).map(([cat, catItems]) => {
-    return `<tr style="background:var(--surface2)">
-      <td colspan="8" style="padding:8px 14px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)">${cat}</td>
-    </tr>` + catItems.map(i => {
-      const st    = gst(i);
-      const need  = gneed(i);
-      const pct   = i.ideal > 0 ? Math.min(100, Math.round(i.qty / i.ideal * 100)) : 0;
-      const inCart = _carrinho.find(c => c.itemId === i.id);
-      const stColors = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' };
-      const stLabels = { crit:'CRÍTICO', warn:'BAIXO', ok:'OK' };
+  const stColors = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' };
+  const stLabels = { crit:'CRÍTICO', warn:'BAIXO', ok:'OK' };
+  // Ajuste 3: cor de fundo da linha por status quando filtro = todos
+  const rowBg = {
+    crit: 'background:#FFF1F1',
+    warn: 'background:#FFFBEB',
+    ok:   'background:var(--surface)',
+  };
 
-      return `<tr id="est-row-${i.id}">
+  tbody.innerHTML = Object.entries(byCat).map(([cat, catItems]) => {
+    // Ajuste 1: cabeçalho de categoria com visual destacado
+    return `<tr>
+      <td colspan="8" style="padding:10px 16px 6px;background:var(--surface2);border-top:2px solid var(--border);border-bottom:1px solid var(--border)">
+        <span style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--purple)">${cat}</span>
+      </td>
+    </tr>` + catItems.map((i, rowIdx) => {
+      const st     = gst(i);
+      const need   = gneed(i);
+      const pct    = i.ideal > 0 ? Math.min(100, Math.round(i.qty / i.ideal * 100)) : 0;
+      const inCart = _carrinho.find(c => c.itemId === i.id);
+      // Ajuste 3: fundo colorido por status
+      const bg = rowBg[st] || 'background:var(--surface)';
+      // Ajuste 1: linhas alternadas dentro da categoria ficam ligeiramente diferentes
+      const altBg = rowIdx % 2 === 0 ? bg : bg.replace('background:', 'background:') ;
+
+      return `<tr id="est-row-${i.id}" style="${bg};border-bottom:1px solid var(--border)">
         <td style="padding:10px 14px">
           <div style="font-size:.83rem;font-weight:600">${i.name}</div>
           ${i.brands?.length ? `<div style="font-size:.65rem;color:var(--muted)">${i.brands.slice(0,2).join(' · ')}</div>` : ''}
@@ -121,27 +135,25 @@ function _renderEstoqueTabela(insumos) {
           <span style="padding:3px 8px;border-radius:10px;font-size:.65rem;font-weight:700;background:${stColors[st]}22;color:${stColors[st]}">${stLabels[st]}</span>
         </td>
         <td class="c" style="min-width:160px">
-          ${need > 0 ? `
-            <div style="display:flex;align-items:center;gap:6px;justify-content:center">
-              ${inCart ? `
-                <div style="display:flex;align-items:center;gap:4px;background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:4px 8px">
-                  <button onclick="ajustarCarrinho(${i.id}, -1)" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">−</button>
-                  <input type="number" value="${inCart.qty}" min="0.001" step="0.001"
-                    style="width:54px;border:none;background:transparent;font-size:.78rem;font-weight:700;text-align:center;color:var(--purple);font-family:monospace"
-                    onchange="setCarrinhoQty(${i.id}, this.value)">
-                  <span style="font-size:.6rem;color:var(--purple)">${i.unit}</span>
-                  <button onclick="ajustarCarrinho(${i.id}, 1)" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
-                  <button onclick="removerCarrinho(${i.id})" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--red-light);color:var(--red);font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
-                </div>
-              ` : `
-                <div style="font-size:.72rem;color:var(--muted);font-weight:600;font-family:monospace">${fmt(need)} ${i.unit}</div>
-                <button onclick="addCarrinho(${i.id})"
-                  style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:var(--r8);border:none;background:var(--purple);color:#fff;font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap">
-                  🛒 Adicionar
-                </button>
-              `}
-            </div>
-          ` : `<span style="font-size:.7rem;color:var(--muted)">— OK</span>`}
+          <div style="display:flex;align-items:center;gap:6px;justify-content:center">
+            ${inCart ? `
+              <div style="display:flex;align-items:center;gap:4px;background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:4px 8px">
+                <button onclick="ajustarCarrinho(${i.id}, -1)" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">−</button>
+                <input type="number" value="${inCart.qty}" min="0.001" step="0.001"
+                  style="width:54px;border:none;background:transparent;font-size:.78rem;font-weight:700;text-align:center;color:var(--purple);font-family:monospace"
+                  onchange="setCarrinhoQty(${i.id}, this.value)">
+                <span style="font-size:.6rem;color:var(--purple)">${i.unit}</span>
+                <button onclick="ajustarCarrinho(${i.id}, 1)" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--purple);color:#fff;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
+                <button onclick="removerCarrinho(${i.id})" style="width:20px;height:20px;border-radius:50%;border:none;background:var(--red-light);color:var(--red);font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+              </div>
+            ` : `
+              <div style="font-size:.72rem;color:var(--muted);font-weight:600;font-family:monospace">${need > 0 ? fmt(need) + ' ' + i.unit : '—'}</div>
+              <button onclick="addCarrinho(${i.id})"
+                style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:var(--r8);border:none;background:var(--purple);color:#fff;font-size:.72rem;font-weight:600;cursor:pointer;white-space:nowrap">
+                🛒 Adicionar
+              </button>
+            `}
+          </div>
         </td>
       </tr>`;
     }).join('');
