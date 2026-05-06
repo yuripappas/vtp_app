@@ -7,6 +7,104 @@
 // MÓDULO PRINCIPAL
 // ══════════════════════════════════════════════════════════════
 
+// ── Dashboard fixo de compras (sempre visível no topo) ──
+function _renderComprasDashboard() {
+  const cicloEl   = document.getElementById('cDashCiclo');
+  const kpisEl    = document.getElementById('cDashKpis');
+  const timerEl   = document.getElementById('cDashTimer');
+  const actEl     = document.getElementById('cDashActions');
+  const progDiv   = document.getElementById('cDashProgress');
+  const progBar   = document.getElementById('cDashProgBar');
+  const progPct   = document.getElementById('cDashProgPct');
+  const supStatus = document.getElementById('cDashSupStatus');
+  if (!cicloEl) return;
+
+  if (!cycle) {
+    cicloEl.textContent = 'Nenhum ciclo ativo';
+    kpisEl.innerHTML    = '<span style="font-size:.74rem;color:var(--muted)">Inicie uma requisição para começar</span>';
+    timerEl.innerHTML   = '';
+    actEl.innerHTML     = '';
+    if (progDiv) progDiv.style.display = 'none';
+    return;
+  }
+
+  const disps      = cycle.dispatches || [];
+  const responded  = disps.filter(d => d.status === 'responded').length;
+  const pending    = disps.filter(d => d.status === 'sent').length;
+  const approved   = Object.keys(approvals).length;
+  const totalItems = cycle.items?.length || 0;
+  const deadlineMs = new Date(cycle.deadline) - Date.now();
+  const hoursLeft  = Math.max(0, Math.floor(deadlineMs / 3600000));
+  const minsLeft   = Math.max(0, Math.floor((deadlineMs % 3600000) / 60000));
+  const isExp      = deadlineMs < 0;
+  const pct        = disps.length ? Math.round(responded / disps.length * 100) : 0;
+
+  cicloEl.textContent = cycle.id;
+
+  kpisEl.innerHTML = `
+    <div style="text-align:center;padding:6px 12px;background:var(--surface2);border-radius:var(--r8)">
+      <div style="font-size:1rem;font-weight:800;color:var(--purple)">${totalItems}</div>
+      <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Itens</div>
+    </div>
+    <div style="text-align:center;padding:6px 12px;background:var(--surface2);border-radius:var(--r8)">
+      <div style="font-size:1rem;font-weight:800;color:var(--text)">${disps.length}</div>
+      <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Fornecedores</div>
+    </div>
+    <div style="text-align:center;padding:6px 12px;background:var(--green-light);border-radius:var(--r8)">
+      <div style="font-size:1rem;font-weight:800;color:var(--green)">${responded}</div>
+      <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Responderam</div>
+    </div>
+    <div style="text-align:center;padding:6px 12px;background:${pending > 0 ? 'var(--yellow-light)' : 'var(--surface2)'};border-radius:var(--r8)">
+      <div style="font-size:1rem;font-weight:800;color:${pending > 0 ? 'var(--yellow)' : 'var(--muted)'}">${pending}</div>
+      <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Pendentes</div>
+    </div>
+    <div style="text-align:center;padding:6px 12px;background:var(--purple-xlight);border-radius:var(--r8)">
+      <div style="font-size:1rem;font-weight:800;color:var(--purple)">${approved}</div>
+      <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Aprovados</div>
+    </div>`;
+
+  // Timer
+  timerEl.innerHTML = `
+    <div style="text-align:center;padding:6px 14px;border-radius:var(--r8);background:${isExp ? 'var(--green-light)' : hoursLeft < 3 ? 'var(--red-light)' : 'var(--yellow-light)'};border:1.5px solid ${isExp ? 'var(--green)' : hoursLeft < 3 ? 'var(--red)' : 'var(--yellow)'}">
+      <div style="font-size:1rem;font-weight:800;color:${isExp ? 'var(--green)' : hoursLeft < 3 ? 'var(--red)' : 'var(--yellow)'}">
+        ${isExp ? '✓ Encerrado' : hoursLeft + 'h ' + minsLeft + 'm'}
+      </div>
+      <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${isExp ? 'prazo encerrado' : 'restantes'}</div>
+    </div>`;
+
+  // Ações rápidas
+  const pendDisps = disps.filter(d => d.status === 'sent');
+  actEl.innerHTML = `
+    ${pendDisps.length > 0 ? pendDisps.map(d => {
+      const sup = suppliers.find(s => s.id === d.supId);
+      return `<button class="btn btn-primary btn-xs" onclick="openManualResponse('${d.token}')" title="Inserir resposta de ${sup?.name}">
+        ✏️ ${sup?.name?.split(' ')[0] || 'Forn.'}
+      </button>`;
+    }).join('') : ''}
+    ${responded > 0 ? `<button class="btn btn-outline btn-xs" onclick="goStep(3)">📊 Ver mapa</button>` : ''}`;
+
+  // Barra progresso
+  if (progDiv) progDiv.style.display = disps.length ? '' : 'none';
+  if (progBar) progBar.style.width = pct + '%';
+  if (progBar) progBar.style.background = pct === 100 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+  if (progPct) progPct.textContent = pct + '% respondidos';
+
+  // Status por fornecedor
+  if (supStatus) {
+    supStatus.innerHTML = disps.map(d => {
+      const sup  = suppliers.find(s => s.id === d.supId);
+      const resp = responses[d.token];
+      const isResp = d.status === 'responded';
+      const isMan  = resp?.isManual;
+      return `<div style="display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:20px;font-size:.68rem;font-weight:600;border:1.5px solid ${isResp ? 'var(--green)' : 'var(--border)'};background:${isResp ? 'var(--green-light)' : 'var(--surface2)'}">
+        <span>${isResp ? '✓' : '⏳'}</span>
+        <span>${sup?.name?.split(' ')[0] || '?'}</span>
+        ${isMan ? '<span style="font-size:.55rem;color:var(--muted)">(manual)</span>' : ''}
+      </div>`;
+    }).join('');
+  }
+}
+
 function renderComprasModule() {
   const d = new Date(Date.now() + 24 * 36e5);
   if (!document.getElementById('cfgDeadline').value)
@@ -16,6 +114,10 @@ function renderComprasModule() {
     document.getElementById('cfgDelivery').value = d2.toISOString().slice(0, 10);
   renderBuyItems();
   goStep(1);
+  _renderComprasDashboard();
+  // Atualiza dashboard a cada 60s
+  clearInterval(window._comprasDashTimer);
+  window._comprasDashTimer = setInterval(_renderComprasDashboard, 60000);
 }
 
 function goStep(n) {
@@ -41,7 +143,8 @@ function renderBuyItems() {
   const estSel = _getEstSel();
   if (estSel && estSel.length > 0) {
     localStorage.removeItem('vtp_estoque_sel');
-    _buyFilter.status = 'all'; // mostra todos para poder ver o que foi selecionado
+    _buyFilter.status = 'sel'; // modo seleção: só mostra os marcados
+    _buyFilter._sel   = estSel;
   }
   const insumos = items.filter(i => !i.isProd && i.ideal > 0);
 
@@ -59,6 +162,7 @@ function renderBuyItems() {
   let filt = insumos.filter(i => {
     if (_buyFilter.cat && i.cat !== _buyFilter.cat) return false;
     if (q && !i.name.toLowerCase().includes(q)) return false;
+    if (_buyFilter.status === 'sel')    return (_buyFilter._sel || []).includes(i.id);
     if (_buyFilter.status === 'need')   return gneed(i) > 0;
     if (_buyFilter.status === 'crit')   return gst(i) === 'crit';
     if (_buyFilter.status === 'warn')   return gst(i) === 'warn';
@@ -119,6 +223,9 @@ function renderBuyItems() {
     }).join('')}`).join('');
 
   _updateBuyCounter();
+  // Show import badge if came from estoque
+  const badge = document.getElementById('estSelBadge');
+  if (badge) badge.style.display = _buyFilter.status === 'sel' ? '' : 'none';
 }
 
 function _updateBuyCounter() {
@@ -152,7 +259,7 @@ function setBuyFilter(field, val) {
 }
 
 function _setBuyBtn(active) {
-  ['need','crit','warn','all'].forEach(k => {
+  ['sel','need','crit','warn','all'].forEach(k => {
     const btn = document.getElementById(`bf-${k}`);
     if (!btn) return;
     if (k === active) { btn.style.background = 'var(--purple)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--purple)'; }
@@ -168,11 +275,26 @@ function renderDispatchSups() {
     return;
   }
 
+  // Insumos selecionados no step 1
+  const selItemIds = getSelItems().map(si => si.itemId);
+
+  // Filtra fornecedores: só os que têm pelo menos 1 insumo selecionado, ou sem vínculo (recebem todos)
+  const filtSups = suppliers.filter(s => {
+    const supItems = items.filter(i => i.supId === s.id).map(i => i.id);
+    if (!supItems.length) return true; // sem vínculo recebe todos
+    return supItems.some(id => selItemIds.includes(id));
+  });
+
+  if (!filtSups.length) {
+    container.innerHTML = `<div class="empty"><div class="empty-icon">🏢</div>Nenhum fornecedor vinculado aos insumos selecionados. <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastre aqui</a>.</div>`;
+    return;
+  }
+
   container.innerHTML = `
     <!-- Fornecedores com WhatsApp -->
-    <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">💬 Via WhatsApp</div>
-    ${suppliers.map(s => {
-      const si         = items.filter(i => i.supId === s.id);
+    <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px">💬 Via WhatsApp <span class="badge b-gray" style="font-size:.58rem">${filtSups.length} fornecedor(es) com insumos selecionados</span></div>
+    ${filtSups.map(s => {
+      const si         = items.filter(i => i.supId === s.id && selItemIds.includes(i.id));
       const dispatched = cycle?.dispatches?.find(d => d.supId === s.id && d.type !== 'presencial');
       return `<div class="dispatch-card">
         <div style="padding-top:2px">
@@ -319,7 +441,7 @@ function dispatchSelected() {
 
 function showWAMessages(disps, selItems, deadline, delivery, payTerm, payMethod, obs) {
   if (!disps.length) { toast('Todos os fornecedores já foram contactados', 'info'); goStep(3); return; }
-  const baseUrl   = window.location.href.split('?')[0].replace('.html', '') + 'cotacao-fornecedor.html';
+  // Cotação recebida diretamente pelo WhatsApp — inserida manualmente no mapa
   const itemLines = selItems.map(si => {
     const item = items.find(i => i.id === si.itemId);
     const b    = (item?.brands || []).filter(x => x);
@@ -333,7 +455,8 @@ function showWAMessages(disps, selItems, deadline, delivery, payTerm, payMethod,
     </div>
     ${disps.map(d => {
       const sup   = suppliers.find(s => s.id === d.supId);
-      const msg   = `Olá ${sup?.seller || sup?.name}! 👋\n\nA *Vai Ter Pizza!* solicita sua cotação:\n\n${itemLines}\n\n📅 *Prazo:* ${fmtDT(deadline)}\n🚚 *Entrega:* ${fmtD(delivery)}\n💳 *Pagamento:* ${payTerm} — ${payMethod}\n${obs ? '\n📝 ' + obs + '\n' : ''}\nPreencha sua proposta:\n👉 ${baseUrl}?token=${d.token}\n\nObrigado! 🍕`;
+      // Monta mensagem com instruções para responder via WhatsApp
+      const msg   = `Olá ${sup?.seller || sup?.name}! 👋\n\nA *Vai Ter Pizza!* solicita sua cotação para os itens abaixo. Por favor, responda com preço unitário, marca e prazo de entrega de cada item:\n\n${itemLines}\n\n📅 *Prazo para cotação:* ${fmtDT(deadline)}\n🚚 *Entrega desejada:* ${fmtD(delivery)}\n💳 *Pagamento:* ${payTerm} — ${payMethod}\n${obs ? '\n📝 ' + obs + '\n' : ''}\nResponda neste mesmo WhatsApp com os preços. Obrigado! 🍕`;
       const waUrl = `https://wa.me/55${(sup?.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`;
       return `<div style="border:1.5px solid var(--border);border-radius:var(--r10);padding:14px;margin-bottom:10px">
         <div style="font-weight:700;font-size:.86rem;margin-bottom:8px">🏢 ${sup?.name} ${sup?.seller ? '· ' + sup.seller : ''}</div>
@@ -352,6 +475,137 @@ function showWAMessages(disps, selItems, deadline, delivery, payTerm, payMethod,
 }
 
 // ── STEP 2B: Simular resposta ──
+// Inserção manual de cotação (fornecedor respondeu por telefone/outra via)
+function openManualResponse(token) {
+  const dispatch = cycle?.dispatches?.find(d => d.token === token);
+  if (!dispatch) return;
+  const sup       = suppliers.find(s => s.id === dispatch.supId);
+  const selItems  = dispatch.itemIds?.length
+    ? cycle.items.filter(ci => dispatch.itemIds.includes(ci.itemId))
+    : cycle.items;
+
+  document.getElementById('respTitle').textContent = `✏️ Inserir cotação — ${sup?.name}`;
+  document.getElementById('respBody').innerHTML = `
+    <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:10px 12px;font-size:.76rem;color:var(--text2);margin-bottom:12px">
+      <strong>📞 Resposta manual</strong> — use quando o fornecedor respondeu por telefone, e-mail ou outra via.
+    </div>
+    <div class="f2" style="margin-bottom:10px">
+      <div class="field"><label>Forma de pagamento</label>
+        <select class="inp" id="rPayTerm">
+          <option>30 dias</option><option>28 dias</option><option>21 dias</option>
+          <option>14 dias</option><option>7 dias</option><option>À vista</option>
+        </select>
+      </div>
+      <div class="field"><label>Modalidade</label>
+        <select class="inp" id="rPayMethod">
+          <option>Boleto</option><option>PIX</option><option>Cartão</option><option>Dinheiro</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:12px"><label>Observação</label><input class="inp" id="rNote" placeholder="ex: respondeu por telefone às 14h"></div>
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Preços por item</div>
+    <div style="display:flex;flex-direction:column;gap:6px" id="rItemsManual">
+      ${selItems.map(ci => {
+        const item = items.find(i => i.id === ci.itemId);
+        const existing = responses[token]?.items?.find(x => x.itemId === ci.itemId);
+        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface)">
+          <div style="flex:1">
+            <div style="font-size:.8rem;font-weight:600">${item?.name}</div>
+            <div style="font-size:.65rem;color:var(--muted)">${ci.qty} ${item?.unit} necessários · ref R$${fmt(item?.cost || 0)}/un</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="text" placeholder="Marca" style="width:90px;padding:4px 7px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.74rem;font-family:Inter,sans-serif"
+              id="rm-brand-${ci.itemId}" value="${existing?.brand || ''}">
+            <div style="position:relative">
+              <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:.7rem;color:var(--muted)">R$</span>
+              <input type="number" placeholder="0,00" step="0.01" min="0"
+                style="width:80px;padding:4px 7px 4px 24px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.78rem;font-weight:600;font-family:monospace"
+                id="rm-price-${ci.itemId}" value="${existing?.unitPrice || ''}"
+                oninput="updateManualTotal(${ci.itemId},${ci.qty})">
+            </div>
+            <div style="font-size:.72rem;font-weight:700;color:var(--purple);font-family:monospace;min-width:60px;text-align:right" id="rm-total-${ci.itemId}">
+              ${existing?.unitPrice ? 'R$' + fmt(existing.unitPrice * ci.qty) : '—'}
+            </div>
+            <div style="font-size:.58rem;color:var(--muted)" id="rm-dias-wrap-${ci.itemId}">
+              <input type="number" placeholder="dias" min="1" max="90"
+                style="width:48px;padding:4px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.72rem;text-align:center;font-family:monospace"
+                id="rm-days-${ci.itemId}" value="${existing?.deliveryDays || 1}">
+              <div style="text-align:center;font-size:.58rem;color:var(--muted)">dias</div>
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:var(--r8);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:.8rem;font-weight:600;color:var(--text2)">Total da cotação:</span>
+      <span style="font-size:1rem;font-weight:800;color:var(--purple);font-family:monospace" id="rmGrandTotal">—</span>
+    </div>`;
+
+  document.getElementById('respFoot').innerHTML = `
+    <button class="btn btn-outline" onclick="closeModal('ovResponse')">Cancelar</button>
+    <button class="btn btn-primary" onclick="submitManualResponse('${token}')">✅ Confirmar cotação</button>`;
+  document.getElementById('ovResponse').classList.add('open');
+
+  // Calcula totais iniciais
+  selItems.forEach(ci => updateManualTotal(ci.itemId, ci.qty));
+}
+
+function updateManualTotal(itemId, qty) {
+  const price = parseFloat(document.getElementById(`rm-price-${itemId}`)?.value) || 0;
+  const el = document.getElementById(`rm-total-${itemId}`);
+  if (el) el.textContent = price > 0 ? 'R$' + fmt(price * qty) : '—';
+  // Atualiza grand total
+  const allPrices = document.querySelectorAll('[id^="rm-price-"]');
+  let grand = 0;
+  allPrices.forEach(inp => {
+    const iid = parseInt(inp.id.replace('rm-price-',''));
+    const ci  = cycle?.items?.find(c => c.itemId === iid);
+    grand += (parseFloat(inp.value) || 0) * (ci?.qty || 0);
+  });
+  const gtEl = document.getElementById('rmGrandTotal');
+  if (gtEl) gtEl.textContent = grand > 0 ? 'R$ ' + fmt(grand) : '—';
+}
+
+function submitManualResponse(token) {
+  const dispatch = cycle?.dispatches?.find(d => d.token === token);
+  if (!dispatch) return;
+  const selItems = dispatch.itemIds?.length
+    ? cycle.items.filter(ci => dispatch.itemIds.includes(ci.itemId))
+    : cycle.items;
+
+  const respItems = selItems.map(ci => {
+    const price = parseFloat(document.getElementById(`rm-price-${ci.itemId}`)?.value) || 0;
+    return {
+      itemId:       ci.itemId,
+      unitPrice:    price,
+      brand:        document.getElementById(`rm-brand-${ci.itemId}`)?.value?.trim() || '',
+      deliveryDays: parseInt(document.getElementById(`rm-days-${ci.itemId}`)?.value) || 1,
+      qty:          ci.qty,
+    };
+  }).filter(r => r.unitPrice > 0);
+
+  if (!respItems.length) { toast('Insira pelo menos um preço', 'err'); return; }
+
+  responses[token] = {
+    supId:       dispatch.supId,
+    token,
+    items:       respItems,
+    payTerm:     document.getElementById('rPayTerm')?.value   || '30 dias',
+    payMethod:   document.getElementById('rPayMethod')?.value || 'Boleto',
+    note:        (document.getElementById('rNote')?.value     || '') + ' [manual]',
+    submittedAt: new Date().toISOString(),
+    isManual:    true,
+  };
+  dispatch.status = 'responded';
+  saveR(); saveC();
+  closeModal('ovResponse');
+  toast('✅ Cotação registrada manualmente!');
+  _renderCotacoesAbertas();
+  renderMapaStatus();
+  setTab3(currentTab3);
+  renderDashboard();
+}
+
 function openSimResponse(token) {
   const dispatch   = cycle?.dispatches?.find(d => d.token === token);
   if (!dispatch) return;
@@ -439,6 +693,7 @@ function submitSimResponse(token) {
   saveR(); saveC();
   closeModal('ovResponse');
   toast('✅ Resposta registrada!');
+  _renderComprasDashboard();
   renderMapaStatus();
   setTab3(currentTab3);
   renderDashboard();
@@ -474,7 +729,10 @@ function renderMapaStatus() {
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${disps.filter(d => d.status !== 'responded').map(d =>
-          `<button class="btn btn-orange btn-sm" onclick="openSimResponse('${d.token}')">🧪 Simular: ${sname(d.supId)}</button>`
+          `<div style="display:flex;gap:5px">
+             <button class="btn btn-primary btn-sm" onclick="openManualResponse('${d.token}')">✏️ ${sname(d.supId)}</button>
+             <button class="btn btn-orange btn-sm" onclick="openSimResponse('${d.token}')">🧪</button>
+           </div>`
         ).join('')}
       </div>
     </div>`;
@@ -624,7 +882,7 @@ function renderSuppliersTab() {
                </tbody>
              </table></div>
            </div>`
-        : `<div class="card-body"><div style="color:var(--muted);font-size:.8rem">Aguardando resposta...</div></div>`}
+        : `<div class="card-body"><div style="display:flex;align-items:center;justify-content:space-between"><span style="color:var(--muted);font-size:.8rem">Aguardando resposta...</span><button class="btn btn-primary btn-sm" onclick="openManualResponse('${d.token}')">✏️ Inserir cotação</button></div></div>`}
     </div>`;
   }).join('');
 }

@@ -53,7 +53,8 @@ function renderEstoque() {
     return `<tr style="${rc}" id="row-${item.id}">
       <td class="c" style="width:36px">
         <input type="checkbox" class="est-chk" value="${item.id}" ${needChk ? 'checked' : ''}
-          style="accent-color:var(--purple);width:15px;height:15px" title="Incluir na lista de compras">
+          style="accent-color:var(--purple);width:15px;height:15px" title="Incluir na lista de compras"
+          onchange="updateEstSelCount()">
       </td>
       <td>
         <div class="iname">${item.name}</div>
@@ -105,6 +106,7 @@ function renderEstoque() {
   }).join('');
 
   updateSaveBtn();
+  updateEstSelCount();
 }
 
 // ── Quantidade (acumula para salvar juntos) ──
@@ -224,6 +226,46 @@ function confirmarSazonal() {
 }
 
 function iniciarCompras() { goModule('compras'); }
+
+function toggleEstAll(chk) {
+  document.querySelectorAll('.est-chk').forEach(c => c.checked = chk.checked);
+  updateEstSelCount();
+}
+
+function selectEstByStatus(mode) {
+  document.querySelectorAll('.est-chk').forEach(c => {
+    const id   = parseInt(c.value);
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    const s = gst(item);
+    if      (mode === 'crit') c.checked = s === 'crit';
+    else if (mode === 'warn') c.checked = s === 'warn';
+    else if (mode === 'need') c.checked = gneed(item) > 0;
+    else if (mode === 'none') c.checked = false;
+  });
+  updateEstSelCount();
+  // Sincroniza checkbox "selecionar tudo"
+  const all = document.querySelectorAll('.est-chk');
+  const chk = document.querySelectorAll('.est-chk:checked');
+  const allChk = document.getElementById('estChkAll');
+  if (allChk) {
+    allChk.checked = chk.length === all.length && all.length > 0;
+    allChk.indeterminate = chk.length > 0 && chk.length < all.length;
+  }
+}
+
+function updateEstSelCount() {
+  const total   = document.querySelectorAll('.est-chk').length;
+  const checked = document.querySelectorAll('.est-chk:checked').length;
+  const el = document.getElementById('estSelCount');
+  if (el) el.textContent = checked > 0 ? `${checked} de ${total} selecionados` : '';
+  // Sync header checkbox
+  const allChk = document.getElementById('estChkAll');
+  if (allChk) {
+    allChk.checked = checked === total && total > 0;
+    allChk.indeterminate = checked > 0 && checked < total;
+  }
+}
 
 function goToCompras() {
   // Coleta itens selecionados (com checkbox marcado) na tela de estoque
