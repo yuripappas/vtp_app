@@ -46,6 +46,7 @@ const modInfo = {
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
   compras:        { title: 'Compras',               sub: 'Requisição · Cotação · Mapa · Ordem de Compra' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
+  previsao:       { title: 'Previsão de Demanda', sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },
   relatorios:     { title: 'Relatórios',            sub: 'Histórico, análises e inteligência' },
   usuarios:       { title: 'Usuários & Permissões', sub: 'Gestão de acesso à plataforma' },
@@ -72,6 +73,7 @@ function goModule(mod) {
   else if (mod === 'compras')    renderComprasModule();
   else if (mod === 'cadastros')  renderCadastros();
   else if (mod === 'desperdicio')   renderDesperdicio();
+  else if (mod === 'previsao')      renderPrevisao();
   else if (mod === 'configuracoes') renderConfiguracoes();
   else if (mod === 'relatorios') renderRelatorios();
   else if (mod === 'usuarios')   renderUsuarios();
