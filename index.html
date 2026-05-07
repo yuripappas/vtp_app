@@ -69,6 +69,10 @@
           <span class="sb-label">Pré-produção</span>
           <span id="prepBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:.58rem;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;margin-left:auto"></span>
         </button>
+        <button class="sb-item" id="nav-previsao" onclick="goModule('previsao')" title="Previsão de Demanda">
+          <span class="sb-icon">📈</span>
+          <span class="sb-label">Previsão</span>
+        </button>
         <button class="sb-item" id="nav-desperdicio" onclick="goModule('desperdicio')">
           <span class="sb-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/><circle cx="10" cy="10" r="8"/></svg></span>
           <span class="sb-label">Desperdício</span>
@@ -307,6 +311,15 @@
         <!-- Conteúdo das etapas -->
         <div id="comprasContent" style="padding:24px"></div>
       </div><!-- /page-compras -->
+
+      <!-- PREVISÃO -->
+      <div class="page" id="page-previsao">
+        <div style="margin-bottom:20px">
+          <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Previsão de Demanda</h2>
+          <div style="font-size:.72rem;color:var(--muted)">Planejamento do dia · Massas · Fermento · Motoboys</div>
+        </div>
+        <div id="previsaoContent"></div>
+      </div>
 
       <!-- CADASTROS -->
       <!-- CADASTROS -->
@@ -870,7 +883,8 @@
 <script src="js/estoque.js"></script>
 <script src="js/compras.js"></script>
 <script src="js/modules.js"></script>
-<script src="js/cadastros.js"></script>
+<script src="js/previsao.js"></script>
+  <script src="js/cadastros.js"></script>
 <script src="js/configuracoes.js"></script>
 <script src="js/desperdicio.js"></script>
 <script src="js/login.js"></script>
@@ -920,6 +934,90 @@
     <div class="mf">
       <button class="btn btn-outline" onclick="closeModal('ovAddItem')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveItemManual()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Configurações da Previsão -->
+<div class="overlay" id="ovCfgPrevisao">
+  <div class="mbox" style="max-width:520px">
+    <div class="mh">
+      <div class="mt">⚙️ Configurar Previsão de Demanda</div>
+      <button class="mc" onclick="closeModal('ovCfgPrevisao')">✕</button>
+    </div>
+    <div class="mb" style="display:flex;flex-direction:column;gap:0">
+
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:4px 0 8px">🍞 Receita base de massa</div>
+      <div class="f2">
+        <div class="field">
+          <label>Farinha por batida (kg)</label>
+          <input class="inp" type="number" id="cfgFarinhaKg" step="0.5" min="1" placeholder="5">
+          <span style="font-size:.66rem;color:var(--muted)">kg de farinha por batida padrão</span>
+        </div>
+        <div class="field">
+          <label>Fermento base (g/kg farinha)</label>
+          <input class="inp" type="number" id="cfgFermentoPorKg" step="0.5" min="1" placeholder="10">
+          <span style="font-size:.66rem;color:var(--muted)">gramas de fermento fresco por kg de farinha</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Temperatura de referência da receita (°C)</label>
+        <input class="inp" type="number" id="cfgTempRef" step="1" min="15" max="35" placeholder="22">
+        <span style="font-size:.66rem;color:var(--muted)">temperatura ambiente quando a receita foi desenvolvida</span>
+      </div>
+
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:12px 0 8px">⚖️ Peso das bolas de massa</div>
+      <div class="f2">
+        <div class="field">
+          <label>Bola pequena (g de farinha)</label>
+          <input class="inp" type="number" id="cfgGramasPequena" step="5" min="100" placeholder="220">
+        </div>
+        <div class="field">
+          <label>Bola grande (g de farinha)</label>
+          <input class="inp" type="number" id="cfgGramasGrande" step="5" min="100" placeholder="350">
+        </div>
+      </div>
+
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:12px 0 8px">🛵 Motoboys e Delivery</div>
+      <div class="f2">
+        <div class="field">
+          <label>Entregas por motoboy (turno)</label>
+          <input class="inp" type="number" id="cfgEntregasMoto" step="1" min="1" placeholder="8">
+        </div>
+        <div class="field">
+          <label>% delivery dia normal</label>
+          <input class="inp" type="number" id="cfgPctDelivery" step="5" min="0" max="100" placeholder="60">
+        </div>
+      </div>
+      <div class="field">
+        <label>% delivery com chuva</label>
+        <input class="inp" type="number" id="cfgPctChuva" step="5" min="0" max="100" placeholder="80">
+      </div>
+
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:12px 0 8px">⚡ Coeficientes de ajuste</div>
+      <div class="f2">
+        <div class="field">
+          <label>Feriado / data especial</label>
+          <input class="inp" type="number" id="cfgCoefFeriado" step="0.05" min="1" max="3" placeholder="1.35">
+          <span style="font-size:.66rem;color:var(--muted)">1.35 = +35%</span>
+        </div>
+        <div class="field">
+          <label>Evento próximo</label>
+          <input class="inp" type="number" id="cfgCoefEvento" step="0.05" min="1" max="3" placeholder="1.20">
+          <span style="font-size:.66rem;color:var(--muted)">1.20 = +20%</span>
+        </div>
+      </div>
+
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:12px 0 8px">💬 WhatsApp do time</div>
+      <div class="field">
+        <label>Número do grupo WA (com código do país)</label>
+        <input class="inp" id="cfgWaGrupo" placeholder="5511999999999" type="tel">
+        <span style="font-size:.66rem;color:var(--muted)">ex: 5511999887766 · sem espaços ou traços</span>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-outline" onclick="closeModal('ovCfgPrevisao')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarCfgPrevisao()">💾 Salvar configurações</button>
     </div>
   </div>
 </div>
