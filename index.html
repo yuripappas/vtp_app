@@ -340,7 +340,13 @@
               <input class="inp" style="max-width:200px;padding:7px 12px" id="srchCadInsumos" placeholder="🔍 Buscar..." oninput="renderCadInsumos()">
               <select class="inp" style="max-width:160px;padding:7px 10px" id="catCadFil" onchange="renderCadInsumos()"><option value="">Todas categorias</option></select>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Novo Insumo</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-outline btn-sm" onclick="abrirImportCadInsumos()" style="display:flex;align-items:center;gap:5px">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Importar CSV
+              </button>
+              <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Novo Insumo</button>
+            </div>
           </div>
           <div id="cadInsumosGrid"></div>
         </div>
