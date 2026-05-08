@@ -623,3 +623,189 @@ function deleteSabor() {
 }
 
 
+
+// ══════════════════════════════════════════════════════════════
+// IMPORTAR INSUMOS DO CARDÁPIO WEB (CSV)
+// ══════════════════════════════════════════════════════════════
+function abrirImportCadInsumos() {
+  const popup = document.createElement('div');
+  popup.id = 'popupImportCad';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:600;display:flex;align-items:center;justify-content:center;padding:16px';
+  popup.innerHTML = `
+    <div style="background:white;border-radius:var(--r12);padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <div style="font-size:.96rem;font-weight:800">Importar insumos do Cardápio Web</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Importa nome, categoria, código, unidade e custo do relatório de estoque</div>
+        </div>
+        <button onclick="document.getElementById('popupImportCad').remove()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--muted)">✕</button>
+      </div>
+
+      <!-- Drop zone -->
+      <div id="cadImportDrop"
+        onclick="document.getElementById('cadImportFile').click()"
+        ondragover="event.preventDefault();this.style.borderColor='var(--purple)'"
+        ondragleave="this.style.borderColor='var(--border)'"
+        ondrop="event.preventDefault();parseCadCSV(event.dataTransfer.files[0])"
+        style="border:2px dashed var(--border);border-radius:var(--r10);padding:28px;text-align:center;cursor:pointer;transition:border-color .2s;margin-bottom:14px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div style="font-size:.82rem;font-weight:600;color:var(--text2)">Clique ou arraste o arquivo CSV aqui</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Relatório de Estoque de Insumos do Cardápio Web (.csv)</div>
+        <input type="file" id="cadImportFile" accept=".csv,.txt" style="display:none" onchange="parseCadCSV(this.files[0])">
+      </div>
+
+      <div id="cadImportPreview"></div>
+    </div>`;
+  document.body.appendChild(popup);
+}
+
+function parseCadCSV(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    let text = e.target.result.replace(/^\uFEFF/, '');
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) { toast('CSV inválido', 'err'); return; }
+
+    const sep  = lines[0].includes(';') ? ';' : ',';
+    const norm = s => s.trim().replace(/"/g,'').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const header = lines[0].split(sep).map(norm);
+    const col    = (...keys) => header.findIndex(h => keys.some(k => h.includes(norm(k))));
+
+    const nameIdx = col('insumo','nome','produto');
+    const codeIdx = col('cod. interno','codigo interno','cod interno');
+    const catIdx  = col('categoria');
+    const unitIdx = col('medida','unidade');
+    const costIdx = col('preco de custo','custo de custo');
+    const minIdx  = col('estoque minimo','minimo');
+
+    if (nameIdx === -1) { toast('Coluna "Insumo" não encontrada no CSV', 'err'); return; }
+
+    const parseMoney = v => parseFloat((v||'').replace(/[R$\s]/g,'').replace(',','.')) || 0;
+    const parseNum   = v => { const n = parseFloat((v||'').replace(',','.')); return isNaN(n) ? null : n; };
+
+    const rows = lines.slice(1).map(line => {
+      const cols = line.split(sep).map(c => c.trim().replace(/"/g,''));
+      return {
+        name: nameIdx >= 0 ? cols[nameIdx]||'' : '',
+        code: codeIdx >= 0 ? cols[codeIdx]||'' : '',
+        cat:  catIdx  >= 0 ? cols[catIdx] ||'' : '',
+        unit: unitIdx >= 0 ? cols[unitIdx]||'un' : 'un',
+        cost: costIdx >= 0 ? parseMoney(cols[costIdx]) : 0,
+        min:  minIdx  >= 0 ? parseNum(cols[minIdx])    : null,
+      };
+    }).filter(r => r.name);
+
+    // Classifica em: novos | atualizar | ignorar (sem mudança)
+    const novos    = [];
+    const atualizar = [];
+
+    rows.forEach(r => {
+      const exist = items.find(i =>
+        (r.code && i.code && i.code.toString() === r.code) ||
+        i.name.toLowerCase().trim() === r.name.toLowerCase().trim()
+      );
+      if (!exist) {
+        novos.push(r);
+      } else {
+        const changes = [];
+        if (r.code && exist.code !== r.code)   changes.push(`código: ${exist.code||'—'} → ${r.code}`);
+        if (r.cat  && exist.cat  !== r.cat)    changes.push(`categoria: ${exist.cat} → ${r.cat}`);
+        if (r.cost && Math.abs(exist.cost - r.cost) > 0.01) changes.push(`custo: R$${exist.cost} → R$${r.cost}`);
+        if (r.min  !== null && Math.abs(exist.min - r.min) > 0.001) changes.push(`mín: ${exist.min} → ${r.min}`);
+        if (changes.length) atualizar.push({ ...r, id: exist.id, existName: exist.name, changes });
+      }
+    });
+
+    const prev = document.getElementById('cadImportPreview');
+    if (!prev) return;
+
+    prev.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        ${novos.length    ? `<span style="padding:3px 10px;border-radius:10px;font-size:.72rem;font-weight:700;background:var(--green-light);color:var(--green)">${novos.length} novos</span>` : ''}
+        ${atualizar.length? `<span style="padding:3px 10px;border-radius:10px;font-size:.72rem;font-weight:700;background:var(--yellow-light);color:#92400e">${atualizar.length} com atualizações</span>` : ''}
+        ${!novos.length && !atualizar.length ? `<span style="font-size:.8rem;color:var(--muted)">Todos os itens já estão atualizados.</span>` : ''}
+      </div>
+
+      ${novos.length ? `
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">
+          Novos insumos (${novos.length})
+        </div>
+        <div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
+          ${novos.map(r => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--green-light);border:1px solid var(--green);border-radius:var(--r6);font-size:.74rem">
+              <div>
+                <strong>${r.name}</strong>
+                <span style="color:var(--muted);margin-left:6px">${r.cat} · ${r.unit} · #${r.code||'—'}</span>
+              </div>
+              ${r.cost ? `<span style="font-family:monospace;color:var(--green);font-weight:700">R$${r.cost.toFixed(2)}</span>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
+
+      ${atualizar.length ? `
+        <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">
+          Atualizações (${atualizar.length})
+        </div>
+        <div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
+          ${atualizar.map(r => `
+            <div style="padding:7px 10px;background:var(--yellow-light);border:1px solid var(--yellow);border-radius:var(--r6);font-size:.74rem">
+              <strong>${r.existName}</strong>
+              <div style="color:var(--muted);margin-top:2px;font-size:.68rem">${r.changes.join(' · ')}</div>
+            </div>`).join('')}
+        </div>` : ''}
+
+      ${(novos.length || atualizar.length) ? `
+        <div style="display:flex;gap:8px">
+          <button onclick="document.getElementById('popupImportCad').remove()" class="btn btn-outline" style="flex:1">Cancelar</button>
+          <button onclick="confirmarImportCad()" class="btn btn-primary" style="flex:2;display:flex;align-items:center;justify-content:center;gap:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Confirmar importação
+          </button>
+        </div>` : `
+        <button onclick="document.getElementById('popupImportCad').remove()" class="btn btn-outline" style="width:100%">Fechar</button>`}`;
+
+    // Guarda para confirmar
+    window._cadImportData = { novos, atualizar };
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function confirmarImportCad() {
+  const data = window._cadImportData;
+  if (!data) return;
+
+  // Adiciona novos
+  data.novos.forEach(r => {
+    items.push({
+      id:     nextIid++,
+      name:   r.name.trim(),
+      cat:    r.cat.trim() || 'Geral',
+      unit:   r.unit || 'un',
+      qty:    0,
+      min:    r.min || 0,
+      ideal:  (r.min || 0) * 2,
+      cost:   r.cost || 0,
+      supId:  null,
+      brands: [],
+      code:   r.code || '',
+      isProd: r.cat.toLowerCase().includes('produção') || r.cat.toLowerCase().includes('interno'),
+    });
+  });
+
+  // Atualiza existentes
+  data.atualizar.forEach(r => {
+    const item = items.find(i => i.id === r.id);
+    if (!item) return;
+    if (r.code) item.code = r.code;
+    if (r.cat)  item.cat  = r.cat;
+    if (r.cost > 0) item.cost = r.cost;
+    if (r.min !== null) item.min = r.min;
+  });
+
+  saveI();
+  document.getElementById('popupImportCad')?.remove();
+  renderCadInsumos();
+  toast(`✅ ${data.novos.length} novos + ${data.atualizar.length} atualizados!`);
+  window._cadImportData = null;
+}
