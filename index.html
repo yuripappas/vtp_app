@@ -922,35 +922,39 @@
 </script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
-  <div class="mbox" style="max-width:480px">
-    <div class="mh"><div class="mt">+ Adicionar Item</div><button class="mc" onclick="closeModal('ovAddItem')"></button></div>
+  <div class="mbox" style="max-width:500px">
+    <div class="mh"><div class="mt">Adicionar Item à Lista</div><button class="mc" onclick="closeModal('ovAddItem')"></button></div>
     <div class="mb">
-      <div class="field"><label>Nome do item *</label><input class="inp" id="aiNome" placeholder="ex: Farinha de rosca"></div>
+      <div class="field"><label>Nome do item *</label><input class="inp" id="aiNome" placeholder="ex: Farinha de trigo, Luvas, Detergente..."></div>
       <div class="f2">
         <div class="field"><label>Quantidade *</label><input class="inp" type="number" id="aiQtd" placeholder="0" min="0.001" step="0.001"></div>
         <div class="field"><label>Unidade</label>
-          <select class="inp" id="aiUnit"><option>un</option><option>kg</option><option>L</option><option>g</option><option>ml</option><option>cx</option><option>pct</option></select>
+          <select class="inp" id="aiUnit">
+            <option>un</option><option>kg</option><option>g</option>
+            <option>L</option><option>ml</option><option>cx</option><option>pct</option><option>sc</option>
+          </select>
         </div>
       </div>
       <div class="f2">
         <div class="field"><label>Categoria</label>
-        <select class="inp" id="aiCat">
-          <option value="">— Selecionar</option>
-          <option>Limpeza</option>
-          <option>EPIs</option>
-          <option>Utensílios</option>
-          <option>Manutenção</option>
-          <option>Equipamentos</option>
-          <option>Escritório</option>
-        </select>
-      </div>
+          <select class="inp" id="aiCat">
+            <option value="">— Selecionar</option>
+            <option>Limpeza</option><option>EPIs</option><option>Utensílios</option>
+            <option>Manutenção</option><option>Equipamentos</option><option>Escritório</option><option>Geral</option>
+          </select>
+        </div>
         <div class="field"><label>Preço est. (R$)</label><input class="inp" type="number" id="aiPreco" placeholder="0,00" step="0.01" min="0"></div>
       </div>
-      <div class="field"><label>Observações</label><input class="inp" id="aiObs" placeholder="marca preferida, urgente..."></div>
+      <div class="field">
+        <label>Fornecedor / Local de compra</label>
+        <input class="inp" id="aiLocal" placeholder="ex: Atacadão, Makro, Up Distribuidora... (deixe vazio para definir depois)">
+        <div style="font-size:.67rem;color:var(--muted);margin-top:4px">Se informar um local, o item será marcado como compra presencial</div>
+      </div>
+      <div class="field"><label>Observações</label><input class="inp" id="aiObs" placeholder="marca preferida, urgente, especificação..."></div>
     </div>
     <div class="mf">
       <button class="btn btn-outline" onclick="closeModal('ovAddItem')">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveItemManual()">Adicionar</button>
+      <button class="btn btn-primary" onclick="saveItemManual()">Adicionar item</button>
     </div>
   </div>
 </div>
