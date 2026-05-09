@@ -185,7 +185,7 @@
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn btn-outline btn-sm" onclick="openImportModal()">Importar CSV</button>
-                <button id="saveStockBtn" class="btn btn-primary btn-sm" onclick="saveStock()" style="display:none">Salvar</button>
+                <button id="saveStockBtn" class="btn btn-primary btn-sm" onclick="saveStock()" style="display:none">Salvar estoque</button>
               </div>
             </div>
 
@@ -194,16 +194,11 @@
 
             <!-- Filtros -->
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-              <input class="inp" style="max-width:220px;padding:7px 12px" placeholder=" Buscar insumo..." oninput="setEstSearch(this.value)">
+              <input class="inp" style="max-width:220px;padding:7px 12px" placeholder="Buscar insumo..." oninput="setEstSearch(this.value)">
               <select class="inp" id="estCatFil" style="max-width:200px;padding:7px 10px" onchange="setEstCat(this.value)">
                 <option value="">Todas categorias</option>
               </select>
-              <div style="display:flex;gap:5px;flex-wrap:wrap">
-                <button class="btn btn-outline btn-sm" style="background:var(--red-light);color:var(--red);border-color:var(--red)" onclick="setEstFiltro('crit')">Críticos</button>
-                <button class="btn btn-outline btn-sm" style="background:var(--yellow-light);color:#92400e" onclick="setEstFiltro('warn')">Baixos</button>
-                <button class="btn btn-outline btn-sm" onclick="setEstFiltro('need')">Com necessidade</button>
-                <button class="btn btn-outline btn-sm" onclick="setEstFiltro('all')">Todos</button>
-              </div>
+              <div class="filter-bar" id="estFiltrosBtns"></div>
             </div>
 
             <!-- Tabela -->
@@ -217,7 +212,7 @@
                   <th class="c">Ideal</th>
                   <th>Nível</th>
                   <th class="c">Status</th>
-                  <th class="c">Ação</th>
+                  <th style="text-align:right;width:190px">Comprar</th>
                 </tr></thead>
                 <tbody id="estTableBody"></tbody>
               </table>
@@ -689,7 +684,7 @@
       </div>
       <hr class="sdiv"><div class="slbl">Insumos que este fornecedor trabalha</div>
       <div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">Somente estes insumos serão enviados na cotação pelo WhatsApp</div>
-      <input class="inp" id="sfItemSearch" placeholder=" Buscar insumo..." style="margin-bottom:8px" oninput="filterSupItems()">
+      <input class="inp" id="sfItemSearch" placeholder="Buscar insumo..." style="margin-bottom:8px" oninput="filterSupItems()">
       <div id="sfItems" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:2px"></div>
     </div>
     <div class="mf">
