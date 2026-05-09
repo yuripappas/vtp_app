@@ -8,103 +8,207 @@
 // ══════════════════════════════════════════════════════════════
 
 function renderPreproducao() {
-  const prod = items.filter(i => i.isProd);
-
-  // Ordens ativas (não arquivadas)
+  const prod   = items.filter(i => i.isProd);
   const orFilt = ordens.filter(o => !o.archived);
 
-  const critCount = prod.filter(i => gst(i) === 'crit').length;
-  const warnCount = prod.filter(i => gst(i) === 'warn').length;
-  const okCount   = prod.filter(i => gst(i) === 'ok').length;
-  const pend      = orFilt.filter(o => o.status === 'pendente').length;
+  const critCount  = prod.filter(i => gst(i) === 'crit').length;
+  const warnCount  = prod.filter(i => gst(i) === 'warn').length;
+  const okCount    = prod.filter(i => gst(i) === 'ok').length;
+  const pendCount  = orFilt.filter(o => o.status === 'pendente').length;
+  const prodCount  = orFilt.filter(o => o.status === 'produzido').length;
 
-  // Rendimento geral
-  const totalPlan = orFilt.reduce((s, o) => s + o.qty, 0);
-  const totalReal = orFilt.filter(o => o.status === 'produzido').reduce((s, o) => s + (o.qtyReal ?? o.qty), 0);
-  const rendPct   = totalPlan > 0 ? Math.round(totalReal / totalPlan * 100) : 0;
-
+  // KPIs
   document.getElementById('prepKpi').innerHTML = `
-    <div class="kpi" style="cursor:pointer" onclick="goModule('preproducao')">
-      <div class="kpi-v" style="color:var(--red)">${critCount}</div>
-      <div class="kpi-l">Críticos</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-v" style="color:var(--yellow)">${warnCount}</div>
-      <div class="kpi-l">Baixo</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-v" style="color:var(--green)">${okCount}</div>
-      <div class="kpi-l">OK</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-v" style="color:var(--orange-dark)">${pend}</div>
-      <div class="kpi-l">Ordens pend.</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-v" style="color:${rendPct >= 95 ? 'var(--green)' : rendPct >= 80 ? 'var(--yellow)' : rendPct > 0 ? 'var(--red)' : 'var(--muted)'}">${rendPct > 0 ? rendPct + '%' : '—'}</div>
-      <div class="kpi-l">Rendimento</div>
-    </div>`;
+    ${_prepKpi(critCount, 'Críticos',  'var(--red)',        'crit', 'alert-circle')}
+    ${_prepKpi(warnCount, 'Baixo',     'var(--yellow)',     'warn', 'alert-triangle')}
+    ${_prepKpi(okCount,   'OK',        'var(--green)',      'ok',   'check-circle')}
+    ${_prepKpi(pendCount, 'Pendentes', 'var(--orange-dark)','pend', 'clock')}
+    ${_prepKpi(prodCount, 'Produzidos','var(--purple)',     'prod', 'check-circle')}`;
 
-  const grid = document.getElementById('prepGrid');
-  grid.innerHTML = prod.map(item => {
-    const itemOrdens = orFilt.filter(o => o.itemId === item.id).sort((a, b) => b.id - a.id);
-    const s          = gst(item);
-    const pct        = item.ideal <= 0 ? 0 : Math.min(100, Math.round(item.qty / item.ideal * 100));
+  // Filtro bar
+  _renderPrepFiltros();
 
-    const planItem = itemOrdens.reduce((s, o) => s + o.qty, 0);
-    const realItem = itemOrdens.filter(o => o.status === 'produzido').reduce((s, o) => s + (o.qtyReal ?? o.qty), 0);
-    const rendItem = planItem > 0 ? Math.round(realItem / planItem * 100) : null;
-
-    return `<div class="card" style="margin-bottom:0">
-      <div class="card-header">
-        <div>
-          <div class="card-title">${item.name}</div>
-          <div style="font-size:.67rem;color:var(--muted);margin-top:2px">${item.qty} ${item.unit} atual · ideal: ${item.ideal}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <span class="badge ${s === 'crit' ? 'b-red' : s === 'warn' ? 'b-yellow' : 'b-green'}">${s === 'crit' ? 'CRÍTICO' : s === 'warn' ? 'BAIXO' : 'OK'}</span>
-          ${rendItem !== null ? `<span class="badge ${rendItem >= 95 ? 'b-green' : rendItem >= 80 ? 'b-yellow' : 'b-red'}" style="font-size:.58rem">${lc("settings",14,"currentColor")}️ ${rendItem}% rendimento</span>` : ''}
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="prog-wrap" style="margin-bottom:10px">
-          <div class="prog-track">
-            <div class="prog-fill" style="width:${pct}%;background:${s === 'crit' ? 'var(--red)' : s === 'warn' ? 'var(--yellow)' : 'var(--green)'}"></div>
-          </div>
-          <span style="font-size:.7rem;color:var(--muted)">${pct}%</span>
-        </div>
-        ${item.medPorcao ? `<div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">Porção: ${item.medPorcao} kg/pizza · Rende ≈ ${Math.round(item.qty / item.medPorcao)} pizzas</div>` : ''}
-        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;max-height:150px;overflow-y:auto">
-          ${itemOrdens.slice(0, 5).map(o => {
-            const qtyReal = o.qtyReal ?? o.qty;
-            const diff    = o.status === 'produzido' ? qtyReal - o.qty : 0;
-            return `<div style="padding:6px 8px;background:var(--surface2);border-radius:var(--r6);font-size:.73rem;border-left:3px solid ${o.status === 'produzido' ? 'var(--green)' : 'var(--orange)'}">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${o.status === 'produzido' ? 4 : 0}px">
-                <div>
-                  <span style="font-weight:600">${o.qty} ${item.unit} plan.</span>
-                  <span style="color:var(--muted);margin-left:6px">${fmtD(o.date)} · ${o.turno || '—'}</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:5px">
-                  <span class="badge ${o.status === 'produzido' ? 'b-green' : 'b-orange'}" style="font-size:.58rem">${o.status === 'produzido' ? '${lc("check",13,"currentColor")} Prod.' : 'Pend.'}</span>
-                  ${o.status === 'pendente' ? `<button class="btn btn-green btn-xs" onclick="openFinishOrdem(${o.id})">${lc("check",13,"currentColor")} Finalizar</button>` : ''}
-                </div>
-              </div>
-              ${o.status === 'produzido' ? `<div style="display:flex;gap:10px;font-size:.68rem;color:var(--muted)">
-                <span>Real: <strong style="color:var(--text)">${qtyReal} ${item.unit}</strong></span>
-                <span style="color:${diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--muted)'}">
-                  ${diff > 0 ? '▲' : diff < 0 ? '▼' : '='} ${Math.abs(diff).toFixed(2)} kg ${diff > 0 ? 'a mais' : diff < 0 ? 'a menos' : 'exato'}
-                </span>
-              </div>` : ''}
-            </div>`;
-          }).join('')}
-          ${itemOrdens.length === 0 ? `<div style="font-size:.72rem;color:var(--muted);text-align:center;padding:8px">Nenhuma ordem no período</div>` : ''}
-        </div>
-        <button class="btn btn-primary btn-sm" style="width:100%;justify-content:center" onclick="openOrdemModal(${item.id})">+ Nova Ordem</button>
-      </div>
-    </div>`;
-  }).join('');
+  // Grid de cards
+  _renderPrepGrid(prod, orFilt);
   updatePrepBadge();
 }
+
+function _prepKpi(val, label, cor, filtro, icon) {
+  const active = (window._prepFiltro || 'all') === filtro;
+  return `
+    <div class="kpi" onclick="_setPrepFiltro('${filtro}')"
+      style="cursor:pointer;border-color:${active ? cor : 'var(--border)'};background:${active ? cor + '11' : 'var(--surface)'}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        ${lc(icon, 16, active ? cor : 'var(--muted)')}
+        <div class="kpi-v" style="color:${cor};font-size:1.4rem">${val}</div>
+      </div>
+      <div class="kpi-l">${label}</div>
+    </div>`;
+}
+
+function _renderPrepFiltros() {
+  const el = document.getElementById('prepFiltroBar');
+  if (!el) return;
+  const f = window._prepFiltro || 'all';
+  const btns = [
+    { id:'all',  label:'Todos',     icon:'package',        cls:'' },
+    { id:'crit', label:'Críticos',  icon:'alert-circle',   cls:'f-red' },
+    { id:'warn', label:'Baixo',     icon:'alert-triangle', cls:'f-yellow' },
+    { id:'ok',   label:'OK',        icon:'check-circle',   cls:'f-green' },
+    { id:'pend', label:'Pendentes', icon:'clock',          cls:'' },
+    { id:'prod', label:'Produzidos',icon:'check',          cls:'f-green' },
+  ];
+  el.innerHTML = btns.map(b =>
+    `<button class="filter-btn ${b.cls} ${f===b.id?'active':''}" onclick="_setPrepFiltro('${b.id}')">
+      ${lc(b.icon, 12, 'currentColor')} ${b.label}
+    </button>`
+  ).join('');
+}
+
+function _setPrepFiltro(filtro) {
+  window._prepFiltro = (window._prepFiltro === filtro && filtro !== 'all') ? 'all' : filtro;
+  renderPreproducao();
+}
+
+function _renderPrepGrid(prod, orFilt) {
+  const f = window._prepFiltro || 'all';
+  const grid = document.getElementById('prepGrid');
+  if (!grid) return;
+
+  // Filtra itens conforme status e filtro ativo
+  let filtProd = prod.filter(item => {
+    const s = gst(item);
+    if (f === 'crit') return s === 'crit';
+    if (f === 'warn') return s === 'warn';
+    if (f === 'ok')   return s === 'ok';
+    if (f === 'pend') return orFilt.some(o => o.itemId === item.id && o.status === 'pendente');
+    if (f === 'prod') return orFilt.some(o => o.itemId === item.id && o.status === 'produzido');
+    return true;
+  }).sort((a,b) => {
+    const order = { crit:0, warn:1, ok:2 };
+    return (order[gst(a)]||2) - (order[gst(b)]||2) || a.name.localeCompare(b.name);
+  });
+
+  if (!filtProd.length) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;padding:40px;text-align:center">
+        <div class="empty-icon">${lc('chef-hat', 24, 'var(--muted)')}</div>
+        <div style="font-size:.82rem;color:var(--muted);margin-top:8px">Nenhum item encontrado para este filtro</div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = filtProd.map(item => {
+    const itemOrdens = orFilt.filter(o => o.itemId === item.id).sort((a,b) => b.id - a.id);
+    const s   = gst(item);
+    const pct = item.ideal <= 0 ? 0 : Math.min(100, Math.round(item.qty / item.ideal * 100));
+    const stColor = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' }[s];
+    const pendOrdens = itemOrdens.filter(o => o.status === 'pendente');
+    const prodOrdens = itemOrdens.filter(o => o.status === 'produzido');
+
+    // Pizzas que rende
+    const rendePizzas = item.medPorcao && item.qty > 0
+      ? Math.floor(item.qty / item.medPorcao)
+      : null;
+
+    return `
+      <div class="card" style="margin-bottom:0;border-left:3px solid ${stColor}">
+
+        <!-- Header do card -->
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">
+            <div>
+              <div style="font-size:.88rem;font-weight:700;color:var(--text)">${item.name}</div>
+              ${item.cat ? `<div style="font-size:.65rem;color:var(--muted);margin-top:1px">${item.cat}</div>` : ''}
+            </div>
+            <span class="chip chip-${s==='crit'?'red':s==='warn'?'yellow':'green'}">
+              ${lc(s==='crit'?'alert-circle':s==='warn'?'alert-triangle':'check-circle', 10, 'currentColor')}
+              ${s==='crit'?'CRÍTICO':s==='warn'?'BAIXO':'OK'}
+            </span>
+          </div>
+
+          <!-- Quantidade atual vs ideal -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+            <div style="background:var(--surface2);border-radius:var(--r8);padding:9px 12px">
+              <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Atual</div>
+              <div style="font-size:1.2rem;font-weight:800;color:${stColor};font-family:monospace">${fmt(item.qty)}</div>
+              <div style="font-size:.62rem;color:var(--muted)">${item.unit}</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:var(--r8);padding:9px 12px">
+              <div style="font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Ideal</div>
+              <div style="font-size:1.2rem;font-weight:800;color:var(--text);font-family:monospace">${fmt(item.ideal)}</div>
+              <div style="font-size:.62rem;color:var(--muted)">${item.unit}</div>
+            </div>
+          </div>
+
+          <!-- Barra de progresso -->
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:${rendePizzas!==null?'8px':'0'}">
+            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${stColor};border-radius:3px;transition:width .4s"></div>
+            </div>
+            <span style="font-size:.7rem;font-weight:700;color:${stColor};min-width:36px;text-align:right">${pct}%</span>
+          </div>
+
+          ${rendePizzas !== null ? `
+            <div style="font-size:.68rem;color:var(--muted);display:flex;align-items:center;gap:4px">
+              ${lc('tag', 11, 'var(--muted)')}
+              Rende ≈ <strong style="color:var(--text)">${rendePizzas} pizzas</strong>
+              · porção ${item.medPorcao}kg/pizza
+            </div>` : ''}
+        </div>
+
+        <!-- Ordens pendentes -->
+        ${pendOrdens.length ? `
+          <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+            <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px">
+              Pendentes (${pendOrdens.length})
+            </div>
+            ${pendOrdens.map(o => `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--orange-light);border:1px solid #FCD34D;border-radius:var(--r8);margin-bottom:5px">
+                <div>
+                  <div style="font-size:.78rem;font-weight:700">${fmt(o.qty)} ${item.unit}</div>
+                  <div style="font-size:.64rem;color:var(--muted)">${fmtD(o.date)}${o.resp?' · '+o.resp:''}${o.obs?' · '+o.obs:''}</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="openFinishOrdem(${o.id})"
+                  style="white-space:nowrap;gap:4px">
+                  ${lc('check', 12, '#fff')} Finalizar
+                </button>
+              </div>`).join('')}
+          </div>` : ''}
+
+        <!-- Ordens produzidas recentes -->
+        ${prodOrdens.length ? `
+          <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+            <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px">
+              Produzidos recentes
+            </div>
+            ${prodOrdens.slice(0,2).map(o => {
+              const diff = (o.qtyReal ?? o.qty) - o.qty;
+              return `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--green-light);border:1px solid #86EFAC;border-radius:var(--r8);margin-bottom:4px">
+                  <div>
+                    <div style="font-size:.75rem;font-weight:600">
+                      ${fmt(o.qtyReal ?? o.qty)} ${item.unit}
+                      ${Math.abs(diff) > 0.001 ? `<span style="font-size:.64rem;color:${diff>0?'var(--green)':'var(--red)'}"> (${diff>0?'+':''}${fmt(diff)})</span>` : ''}
+                    </div>
+                    <div style="font-size:.63rem;color:var(--muted)">${fmtD(o.date)}${o.resp?' · '+o.resp:''}</div>
+                  </div>
+                  <span class="chip chip-green">${lc('check',10,'currentColor')} Prod.</span>
+                </div>`; 
+            }).join('')}
+          </div>` : ''}
+
+        <!-- Rodapé: nova ordem -->
+        <div style="padding:12px 16px">
+          <button class="btn btn-primary btn-sm" style="width:100%;justify-content:center"
+            onclick="openOrdemModal(${item.id})">
+            ${lc('plus', 13, '#fff')} Nova Ordem
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
 
 function clearPrepFiltro() {
   renderPreproducao();
