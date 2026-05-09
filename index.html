@@ -554,28 +554,35 @@
 
 <!-- Modal: Desperdício -->
 <div class="overlay" id="ovDesp">
-  <div class="mbox">
-    <div class="mh"><div class="mt" id="despModalTitle">Registrar Desperdício</div><button class="mc" onclick="closeModal('ovDesp')"></button></div>
+  <div class="mbox" style="max-width:520px">
+    <div class="mh">
+      <div class="mt" id="despModalTitle">Registrar Desperdício</div>
+      <button class="mc" onclick="closeModal('ovDesp')">&times;</button>
+    </div>
     <div class="mb">
+
+      <!-- Origem -->
       <div class="field">
         <label>Origem do desperdício *</label>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="display:flex;gap:7px;margin-top:2px">
           <button type="button" id="orig-btn-insumo" onclick="setDespOrigem('insumo')"
-            style="padding:6px 14px;border-radius:20px;font-size:.76rem;font-weight:600;border:1.5px solid var(--purple);background:var(--purple);color:#fff;cursor:pointer">
+            style="flex:1;padding:8px;border-radius:var(--r8);border:1.5px solid var(--purple);background:var(--purple);color:#fff;font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
             Insumo
           </button>
           <button type="button" id="orig-btn-preparado" onclick="setDespOrigem('preparado')"
-            style="padding:6px 14px;border-radius:20px;font-size:.76rem;font-weight:600;border:1.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
+            style="flex:1;padding:8px;border-radius:var(--r8);border:1.5px solid var(--border);background:var(--surface);color:var(--text2);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
             Preparado
           </button>
           <button type="button" id="orig-btn-produto" onclick="setDespOrigem('produto')"
-            style="padding:6px 14px;border-radius:20px;font-size:.76rem;font-weight:600;border:1.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer">
+            style="flex:1;padding:8px;border-radius:var(--r8);border:1.5px solid var(--border);background:var(--surface);color:var(--text2);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
             Produto
           </button>
         </div>
         <input type="hidden" id="fdOrigem" value="insumo">
-        <div id="origemNote" style="font-size:.68rem;color:var(--muted);margin-top:2px">Insumos de compras — quantidade debitada do estoque automaticamente</div>
+        <div id="origemNote" style="font-size:.68rem;color:var(--muted);margin-top:4px">Insumos de compras — quantidade debitada do estoque</div>
       </div>
+
+      <!-- Item -->
       <div class="field">
         <label id="fdQtyLabel">Item *</label>
         <select class="inp" id="fdItemId" onchange="onDespItemChange()">
@@ -583,59 +590,70 @@
         </select>
       </div>
 
-      <!-- Área de sabores (só aparece para pizza) -->
+      <!-- Área pizza -->
       <div id="fdPizzaArea" style="display:none">
         <div class="f2">
           <div class="field">
             <label id="fdSabor1Label">Sabor *</label>
-            <select class="inp" id="fdSabor1" onchange="_calcPizzaCusto()">
-              <option value="">Selecionar sabor...</option>
-            </select>
+            <select class="inp" id="fdSabor1" onchange="_calcPizzaCusto()"><option value="">Selecionar...</option></select>
           </div>
           <div class="field" id="fdSabor2Row">
             <label>2º Sabor (1/2) *</label>
-            <select class="inp" id="fdSabor2" onchange="_calcPizzaCusto()">
-              <option value="">Selecionar sabor...</option>
-            </select>
+            <select class="inp" id="fdSabor2" onchange="_calcPizzaCusto()"><option value="">Selecionar...</option></select>
           </div>
         </div>
-        <div id="fdCustoPreview" style="margin-top:8px"></div>
+        <div id="fdCustoPreview" style="margin-top:4px"></div>
       </div>
+
+      <!-- Qtd + Tipo de ocasião -->
       <div class="f2">
         <div class="field">
           <label>Quantidade perdida *</label>
-          <input class="inp" type="number" id="fdQty" placeholder="0" min="0.001" step="0.01">
+          <input class="inp" type="number" id="fdQty" placeholder="0" min="0.001" step="0.001">
         </div>
         <div class="field">
-          <label>Tipo de desperdício *</label>
+          <label>Tipo de ocasião *</label>
           <select class="inp" id="fdTipo">
-            <option value="preproducao"> Erro de pré-produção</option>
-            <option value="montagem"> Montagem incorreta</option>
-            <option value="entrega"> Erro de entrega</option>
-            <option value="validade"> Vencimento/validade</option>
-            <option value="acidente">️ Acidente/queda</option>
-            <option value="outro"> Outro</option>
+            <option value="preproducao">Erro de pré-produção</option>
+            <option value="montagem">Montagem incorreta</option>
+            <option value="entrega">Erro de entrega</option>
+            <option value="validade">Vencimento/validade</option>
+            <option value="acidente">Acidente/queda</option>
+            <option value="alimentacao">Alimentação</option>
+            <option value="cortesia">Cortesias</option>
+            <option value="marketing">Marketing</option>
+            <option value="outro">Outro</option>
           </select>
         </div>
       </div>
+
+      <!-- Data + Responsável -->
       <div class="f2">
-        <div class="field"><label>Data</label><input class="inp" type="date" id="fdDate"></div>
-        <div class="field"><label>Responsável</label><input class="inp" id="fdResp" placeholder="ex: Ana Silva"></div>
+        <div class="field">
+          <label>Data</label>
+          <input class="inp" type="date" id="fdDate">
+        </div>
+        <div class="field">
+          <label>Responsável *</label>
+          <input class="inp" id="fdResp" placeholder="Nome de quem registrou">
+        </div>
       </div>
+
+      <!-- Observação -->
       <div class="field">
-        <label>Descrição / o que aconteceu</label>
-        <textarea class="inp" id="fdObs" rows="2" placeholder="ex: Pizza com mussarela em excesso foi descartada pelo cliente..."></textarea>
+        <label>O que aconteceu</label>
+        <textarea class="inp" id="fdObs" rows="2" placeholder="Descreva brevemente o que aconteceu..."></textarea>
       </div>
+
     </div>
     <div class="mf">
-      <button class="btn btn-red btn-sm" id="delDespBtn" style="display:none;margin-right:auto" onclick="deleteDesperdicios(_editDespId)"> Excluir</button>
+      <button class="btn btn-red btn-sm" id="delDespBtn" style="display:none;margin-right:auto" onclick="deleteDesperdicios(_editDespId)">Excluir</button>
       <button class="btn btn-outline" onclick="closeModal('ovDesp')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveDesp()">Registrar</button>
     </div>
   </div>
 </div>
 
-<!-- Modal: Importar CSV -->
 <div class="overlay" id="ovImport">
   <div class="mbox wide">
     <div class="mh"><div class="mt"> Importar do Cardápio Web</div><button class="mc" onclick="closeModal('ovImport')"></button></div>
