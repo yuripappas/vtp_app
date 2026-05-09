@@ -1373,11 +1373,54 @@ function _renderHistorico() {
       return true;
     });
 
+  // Totalizadores do conjunto filtrado
+  const concluidas  = hist.filter(l => l.status === 'concluida');
+  const emAndamento = hist.filter(l => l.status !== 'concluida');
+  const totalGasto  = concluidas.reduce((s,l) => s + (l.valorFinal||0), 0);
+  const totalItens  = concluidas.reduce((s,l) => s + (l.itens?.length||0), 0);
+  const economia    = concluidas.reduce((s,l) => s + Math.max(0,(l.valorEstimado||0)-(l.valorFinal||0)), 0);
+  const ticketMedio = concluidas.length ? totalGasto / concluidas.length : 0;
+  const filtrando   = !!(busca || de || ate || filtro);
+
   document.getElementById('comprasContent').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
       <div>
         <h3 style="font-size:.96rem;font-weight:800;margin-bottom:3px">${lc('clock',14,'var(--purple)')} Histórico de Compras</h3>
-        <div style="font-size:.71rem;color:var(--muted)">${hist.length} lista(s) encontrada(s)</div>
+        <div style="font-size:.71rem;color:var(--muted)">${hist.length} lista(s)${filtrando?' no período/filtro selecionado':''}</div>
+      </div>
+    </div>
+
+    <!-- Totalizadores -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r10);padding:12px 16px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);margin-bottom:4px">
+          ${lc('dollar-sign',11,'var(--purple)')} Total comprado
+        </div>
+        <div style="font-size:1.2rem;font-weight:800;color:var(--purple);font-family:monospace">R$ ${fmt(totalGasto)}</div>
+        <div style="font-size:.64rem;color:var(--muted);margin-top:2px">${concluidas.length} lista(s) concluída(s)</div>
+      </div>
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">
+          ${lc('shopping-bag',11,'currentColor')} Ticket médio
+        </div>
+        <div style="font-size:1.2rem;font-weight:800;color:var(--text);font-family:monospace">R$ ${fmt(ticketMedio)}</div>
+        <div style="font-size:.64rem;color:var(--muted);margin-top:2px">por lista concluída</div>
+      </div>
+      <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r10);padding:12px 16px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:4px">
+          ${lc('trending-down',11,'var(--green)')} Economia gerada
+        </div>
+        <div style="font-size:1.2rem;font-weight:800;color:var(--green);font-family:monospace">R$ ${fmt(economia)}</div>
+        <div style="font-size:.64rem;color:var(--muted);margin-top:2px">estimado vs. final</div>
+      </div>
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px">
+        <div style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">
+          ${lc('package',11,'currentColor')} Itens comprados
+        </div>
+        <div style="font-size:1.2rem;font-weight:800;color:var(--text)">${totalItens}</div>
+        <div style="font-size:.64rem;color:var(--muted);margin-top:2px">
+          ${emAndamento.length > 0 ? emAndamento.length+' em andamento' : 'todas concluídas'}
+        </div>
       </div>
     </div>
 
@@ -1402,13 +1445,12 @@ function _renderHistorico() {
           ${Object.entries(STATUS_ETAPA).map(([k,v])=>`<option value="${k}" ${filtro===k?'selected':''}>${v.label}</option>`).join('')}
         </select>
       </div>
-      ${(busca||de||ate||filtro)?`<button class="btn btn-outline btn-sm" onclick="_limparFiltrosHist()">${lc('x',12)} Limpar</button>`:''}
+      ${filtrando?`<button class="btn btn-outline btn-sm" onclick="_limparFiltrosHist()">${lc('x',12)} Limpar</button>`:''}
     </div>
 
     ${hist.length===0?`<div class="empty" style="padding:40px"><div class="empty-icon">${lc('clock',24,'var(--muted)')}</div>Nenhuma lista encontrada.</div>`
-    :hist.map(l=>_cardHistorico(l)).join('')}`;
+    :hist.map(l=>_cardHistorico(l)).join('')}\`;
 }
-
 function _limparFiltrosHist() {
   ['histBusca','histDe','histAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const s=document.getElementById('histFiltro'); if(s) s.value='';
