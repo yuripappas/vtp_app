@@ -242,3 +242,66 @@ td.r { text-align: right; }
   80%{transform:translateX(5px)}
 }
 .shake { animation: shake .4s ease; }
+
+/* ── ICON CONSISTENCY ── */
+.icon-sm { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+svg { display: block; }
+
+/* ── BUTTON IMPROVEMENTS ── */
+.btn { transition: all .15s ease; }
+.btn:active { transform: scale(.97); }
+.btn-red:hover { background: #FECACA; }
+.btn-orange:hover { background: #FDE68A; }
+.btn-xs:hover { opacity: .85; }
+
+/* ── TABLE IMPROVEMENTS ── */
+thead th { position: sticky; top: 0; z-index: 1; }
+td { vertical-align: middle; }
+.td-icon { width: 40px; text-align: center; padding: 8px 6px; }
+.td-actions { width: 120px; text-align: right; white-space: nowrap; }
+.td-comprar { width: 200px; text-align: right; }
+
+/* ── KPI IMPROVEMENTS ── */
+.kpi { transition: border-color .15s, box-shadow .15s; }
+.kpi:hover { border-color: var(--purple-light); box-shadow: 0 2px 8px rgba(107,33,212,.08); }
+
+/* ── INPUT IMPROVEMENTS ── */
+.inp::placeholder { color: var(--muted); opacity: .7; }
+select.inp { cursor: pointer; }
+
+/* ── BADGE IMPROVEMENTS ── */
+.badge { vertical-align: middle; }
+
+/* ── STATUS CHIPS ── */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 20px; font-size: .62rem; font-weight: 700; white-space: nowrap; border: 1.5px solid transparent; }
+.chip-red    { background: var(--red-light);    color: var(--red);       border-color: #FCA5A5; }
+.chip-yellow { background: var(--yellow-light); color: #92400E;          border-color: #FCD34D; }
+.chip-green  { background: var(--green-light);  color: var(--green);     border-color: #86EFAC; }
+.chip-purple { background: var(--purple-light); color: var(--purple);    border-color: var(--purple-light); }
+.chip-gray   { background: var(--surface2);     color: var(--muted);     border-color: var(--border); }
+.chip-orange { background: var(--orange-light); color: var(--orange-dark); border-color: #FCD34D; }
+
+/* ── FILTER BUTTONS ── */
+.filter-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.filter-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 20px; font-size: .72rem; font-weight: 600; border: 1.5px solid var(--border); background: var(--surface); color: var(--text2); cursor: pointer; transition: all .15s; white-space: nowrap; }
+.filter-btn:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-xlight); }
+.filter-btn.active { border-color: var(--purple); color: var(--purple); background: var(--purple-xlight); }
+.filter-btn.f-red.active    { border-color: var(--red);    color: var(--red);    background: var(--red-light); }
+.filter-btn.f-yellow.active { border-color: var(--yellow); color: #92400E;       background: var(--yellow-light); }
+.filter-btn.f-green.active  { border-color: var(--green);  color: var(--green);  background: var(--green-light); }
+
+/* ── SECTION HEADERS ── */
+.section-label { font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--purple-light); }
+
+/* ── EMPTY STATE IMPROVED ── */
+.empty-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: var(--surface2); border-radius: var(--r12); margin: 0 auto 12px; }
+
+/* ── DIVIDER ── */
+.divider { height: 1px; background: var(--border); margin: 12px 0; }
