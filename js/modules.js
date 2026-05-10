@@ -647,294 +647,526 @@ function deleteSup() {
 // RELATÓRIOS
 // ══════════════════════════════════════════════════════════════
 
+
 function renderRelatorios() {
   const el = document.getElementById('relatoriosContent');
   if (!el) return;
 
-  // ── Coleta de dados ──────────────────────────────────────────
-  const now      = new Date();
-  const mesAtual = now.toISOString().slice(0,7); // "YYYY-MM"
+  // Inicializa aba se necessário
+  if (!window._relTab) window._relTab = 'visao';
+  _renderRelTabs(el);
+}
 
-  // Compras concluídas
-  const listasConc  = listas.filter(l => l.status === 'concluida');
-  const totalGasto  = listasConc.reduce((s,l) => s+(l.valorFinal||0), 0);
-  const totalEcon   = listasConc.reduce((s,l) => s+Math.max(0,(l.valorEstimado||0)-(l.valorFinal||0)), 0);
+function _renderRelTabs(el) {
+  if (!el) el = document.getElementById('relatoriosContent');
+  if (!el) return;
 
-  // Estoque
-  const insumos     = items.filter(i => !i.isProd);
-  const criticos    = insumos.filter(i => gst(i) === 'crit').length;
-  const baixos      = insumos.filter(i => gst(i) === 'warn').length;
-  const custoCriticos = insumos.filter(i => gst(i) === 'crit').reduce((s,i) => s + gneed(i)*i.cost, 0);
+  const tabs = [
+    { id:'visao',      label:'Visão Geral',    icon:'layout-dashboard' },
+    { id:'compras',    label:'Compras',         icon:'shopping-bag'     },
+    { id:'desperdicio',label:'Desperdício',      icon:'trash-2'          },
+    { id:'producao',   label:'Produção',         icon:'chef-hat'         },
+    { id:'estoque',    label:'Estoque',          icon:'package'          },
+  ];
 
-  // Desperdício
-  const despTotal   = desperdicios.reduce((s,d) => s + (d.qty*(d.precoUnit||d.custo||0)), 0);
-  const despMes     = desperdicios.filter(d => (d.date||'').slice(0,7) === mesAtual)
-                        .reduce((s,d) => s+(d.qty*(d.precoUnit||d.custo||0)), 0);
+  el.innerHTML = `
+    <!-- Tab bar -->
+    <div style="display:flex;border-bottom:1.5px solid var(--border);margin:-0px -0px 20px;padding:0;gap:0;background:var(--surface);position:sticky;top:0;z-index:10">
+      ${tabs.map(t => {
+        const active = window._relTab === t.id;
+        return `<button onclick="window._relTab='${t.id}';_renderRelTabs()"
+          style="display:flex;align-items:center;gap:6px;padding:11px 16px;border:none;
+          border-bottom:2.5px solid ${active?'var(--purple)':'transparent'};
+          background:none;color:${active?'var(--purple)':'var(--muted)'};
+          font-size:.78rem;font-weight:${active?'700':'500'};cursor:pointer;
+          font-family:Inter,sans-serif;white-space:nowrap;transition:all .15s">
+          ${lc(t.icon,12,'currentColor')} ${t.label}
+        </button>`;
+      }).join('')}
+    </div>
+    <div id="relConteudo" style="padding:0 24px 24px"></div>`;
 
-  // Pré-produção
-  const prodOrdens  = ordens.filter(o => !o.archived);
-  const prodFeitas  = prodOrdens.filter(o => o.status === 'produzido').length;
-  const prodPend    = prodOrdens.filter(o => o.status === 'pendente').length;
+  const tabEl = document.getElementById('relConteudo');
+  if (!tabEl) return;
 
-  // Insights automáticos
+  if      (window._relTab === 'visao')       _relVisaoGeral(tabEl);
+  else if (window._relTab === 'compras')     _relCompras(tabEl);
+  else if (window._relTab === 'desperdicio') _relDesperdicio(tabEl);
+  else if (window._relTab === 'producao')    _relProducao(tabEl);
+  else if (window._relTab === 'estoque')     _relEstoque(tabEl);
+}
+
+// ── Helpers de UI ──────────────────────────────────────────────
+function _relKpi(icon, label, val, cor, bg, sub) {
+  return `<div style="background:${bg};border:1.5px solid ${cor}22;border-radius:var(--r10);padding:13px 16px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      ${lc(icon,11,cor)}
+      <span style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:${cor}">${label}</span>
+    </div>
+    <div style="font-size:1.1rem;font-weight:800;color:${cor};font-family:monospace">${val}</div>
+    ${sub?`<div style="font-size:.62rem;color:var(--muted);margin-top:2px">${sub}</div>`:''}
+  </div>`;
+}
+
+function _relBarras(dados, maxVal, corBarra, formatFn) {
+  return dados.map(([label, val]) => {
+    const pct = maxVal > 0 ? Math.round(val/maxVal*100) : 0;
+    return `<div style="display:flex;align-items:center;gap:8px">
+      <div style="font-size:.69rem;color:var(--muted);width:72px;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${label}">${label}</div>
+      <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${corBarra};border-radius:4px;transition:width .4s"></div>
+      </div>
+      <div style="font-size:.69rem;font-family:monospace;width:72px;text-align:right;font-weight:600;color:var(--text)">${formatFn(val)}</div>
+    </div>`;
+  }).join('');
+}
+
+function _relInsights() {
+  const insumos  = items.filter(i => !i.isProd);
+  const criticos = insumos.filter(i => gst(i) === 'crit').length;
+  const custoCrit = insumos.filter(i=>gst(i)==='crit').reduce((s,i)=>s+gneed(i)*i.cost,0);
+  const now = new Date();
+  const mesAtual = now.toISOString().slice(0,7);
+  const despMes  = desperdicios.filter(d=>(d.date||'').slice(0,7)===mesAtual)
+                     .reduce((s,d)=>s+(d.qty*(d.precoUnit||d.custo||0)),0);
+  const listasConc = listas.filter(l=>l.status==='concluida');
+  const totalEcon  = listasConc.reduce((s,l)=>s+Math.max(0,(l.valorEstimado||0)-(l.valorFinal||0)),0);
+  const prodPend   = ordens.filter(o=>!o.archived&&o.status==='pendente').length;
+  const semFone    = suppliers.filter(s=>!s.phone).length;
+
   const insights = [];
-  if (criticos > 0)
-    insights.push({ icon:'alert-circle', cor:'var(--red)', bg:'var(--red-light)',
-      txt: `${criticos} insumo(s) em nível crítico — necessidade de R$${fmt(custoCriticos)}` });
-  if (despMes > 500)
-    insights.push({ icon:'trending-up', cor:'var(--orange-dark)', bg:'var(--orange-light)',
-      txt: `Desperdício este mês: R$${fmt(despMes)} — acima de R$500` });
-  if (prodPend > 5)
-    insights.push({ icon:'clock', cor:'var(--yellow)', bg:'var(--yellow-light)',
-      txt: `${prodPend} ordens de produção pendentes no pré-preparo` });
-  if (totalEcon > 0)
-    insights.push({ icon:'trending-down', cor:'var(--green)', bg:'var(--green-light)',
-      txt: `Economia total em compras: R$${fmt(totalEcon)} vs. estimativas` });
-  if (suppliers.filter(s=>!s.phone).length > 0)
-    insights.push({ icon:'phone-off', cor:'var(--muted)', bg:'var(--surface2)',
-      txt: `${suppliers.filter(s=>!s.phone).length} fornecedor(es) sem telefone cadastrado` });
+  if (criticos > 0)     insights.push({icon:'alert-circle',   cor:'var(--red)',        bg:'var(--red-light)',    txt:`${criticos} insumo(s) em nível crítico — reposição estimada R$${fmt(custoCrit)}`});
+  if (despMes > 500)    insights.push({icon:'trending-up',     cor:'var(--orange-dark)',bg:'var(--orange-light)', txt:`Desperdício este mês: R$${fmt(despMes)} — acima de R$500`});
+  if (prodPend > 5)     insights.push({icon:'clock',           cor:'var(--yellow)',     bg:'var(--yellow-light)', txt:`${prodPend} ordens de produção pendentes no pré-preparo`});
+  if (totalEcon > 0)    insights.push({icon:'trending-down',   cor:'var(--green)',      bg:'var(--green-light)',  txt:`Economia total em compras: R$${fmt(totalEcon)} vs estimativas`});
+  if (semFone > 0)      insights.push({icon:'phone-off',       cor:'var(--muted)',      bg:'var(--surface2)',     txt:`${semFone} fornecedor(es) sem telefone cadastrado`});
 
-  // Top insumos por custo estimado de reposição
-  const topNeed = [...insumos].filter(i=>gneed(i)>0)
-    .sort((a,b) => gneed(b)*b.cost - gneed(a)*a.cost).slice(0,5);
+  if (!insights.length)
+    return `<div class="empty" style="padding:20px">${lc('check-circle',18,'var(--green)')}<div style="margin-top:6px;font-size:.8rem">Tudo dentro do esperado!</div></div>`;
 
-  // Desperdício por tipo
-  const despPorTipo = {};
-  desperdicios.forEach(d => {
-    if (!despPorTipo[d.tipo]) despPorTipo[d.tipo] = 0;
-    despPorTipo[d.tipo] += d.qty*(d.precoUnit||d.custo||0);
-  });
-  const despTipoMax = Math.max(...Object.values(despPorTipo), 1);
+  return insights.map(ins => `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);background:${ins.bg}08">
+      <div style="width:26px;height:26px;border-radius:50%;background:${ins.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        ${lc(ins.icon,12,ins.cor)}
+      </div>
+      <div style="font-size:.75rem;color:var(--text);line-height:1.5;padding-top:3px">${ins.txt}</div>
+    </div>`).join('');
+}
 
-  // Compras por mês (últimos 6 meses)
-  const comprasMes = {};
-  for (let i=5; i>=0; i--) {
-    const d = new Date(now); d.setMonth(d.getMonth()-i);
-    const k = d.toISOString().slice(0,7);
-    comprasMes[k] = listasConc.filter(l=>(l.dataConclusao||'').slice(0,7)===k)
-      .reduce((s,l)=>s+(l.valorFinal||0),0);
-  }
-  const compMax = Math.max(...Object.values(comprasMes),1);
+// ══════════════════════════════════════════════════════════════
+// ABA 1 — VISÃO GERAL
+// ══════════════════════════════════════════════════════════════
+function _relVisaoGeral(el) {
+  const insumos     = items.filter(i => !i.isProd);
+  const listasConc  = listas.filter(l => l.status === 'concluida');
+  const totalGasto  = listasConc.reduce((s,l)=>s+(l.valorFinal||0),0);
+  const totalEcon   = listasConc.reduce((s,l)=>s+Math.max(0,(l.valorEstimado||0)-(l.valorFinal||0)),0);
+  const despTotal   = desperdicios.reduce((s,d)=>s+(d.qty*(d.precoUnit||d.custo||0)),0);
+  const criticos    = insumos.filter(i=>gst(i)==='crit').length;
+  const prodFeitas  = ordens.filter(o=>!o.archived&&o.status==='produzido').length;
 
-  // Top fornecedores por volume
-  const supVolume = suppliers.map(s => {
-    const vol = listasConc.reduce((tot,l) =>
-      tot + (l.itens||[]).filter(i=>i.fornecedorId===s.id)
-        .reduce((s2,i)=>s2+(i.qtdRecebida||0)*(i.precoUnitFinal||i.precoUnitEstimado||0),0), 0);
-    return { s, vol };
-  }).filter(x=>x.vol>0).sort((a,b)=>b.vol-a.vol).slice(0,5);
-
-  const supVolMax = supVolume[0]?.vol || 1;
-
-  el.innerHTML = \`
-    <!-- KPIs rápidos -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
-      \${[
-        {icon:'dollar-sign', label:'Total em compras',  val:'R$'+fmt(totalGasto),   cor:'var(--purple)', bg:'var(--purple-xlight)'},
-        {icon:'trending-down',label:'Economia gerada',  val:'R$'+fmt(totalEcon),    cor:'var(--green)',  bg:'var(--green-light)'},
-        {icon:'trash-2',     label:'Custo desperdício', val:'R$'+fmt(despTotal),    cor:'var(--red)',    bg:'var(--red-light)'},
-        {icon:'alert-circle',label:'Itens críticos',    val:criticos+' insumos',    cor:'var(--red)',    bg:'var(--red-light)'},
-        {icon:'check-square',label:'Produções feitas',  val:prodFeitas+' ordens',   cor:'var(--green)',  bg:'var(--green-light)'},
-        {icon:'shopping-bag',label:'Listas concluídas', val:listasConc.length+'',   cor:'var(--purple)', bg:'var(--purple-xlight)'},
-      ].map(k=>\`
-        <div style="background:\${k.bg};border:1.5px solid \${k.cor}22;border-radius:var(--r10);padding:14px 16px">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            \${lc(k.icon,12,k.cor)}
-            <span style="font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:\${k.cor}">\${k.label}</span>
-          </div>
-          <div style="font-size:1.1rem;font-weight:800;color:\${k.cor}">\${k.val}</div>
-        </div>
-      \`).join('')}
+  el.innerHTML = `
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px">
+      ${_relKpi('dollar-sign',  'Total em compras',  'R$'+fmt(totalGasto),  'var(--purple)',      'var(--purple-xlight)', listasConc.length+' listas')}
+      ${_relKpi('trending-down','Economia gerada',    'R$'+fmt(totalEcon),   'var(--green)',       'var(--green-light)',   'estimado vs. final')}
+      ${_relKpi('trash-2',      'Custo desperdício',  'R$'+fmt(despTotal),   'var(--red)',         'var(--red-light)',     'total acumulado')}
+      ${_relKpi('alert-circle', 'Itens críticos',     criticos+' insumos',   'var(--red)',         'var(--red-light)',     'precisam de reposição')}
+      ${_relKpi('check-square', 'Produções feitas',   prodFeitas+' ordens',  'var(--green)',       'var(--green-light)',   'pré-preparo')}
+      ${_relKpi('shopping-bag', 'Listas concluídas',  listasConc.length+'',  'var(--purple)',      'var(--purple-xlight)','histórico de compras')}
     </div>
 
+    <!-- Insights + Evolução compras -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-
-      <!-- Insights automáticos -->
       <div class="card">
-        <div class="card-header"><div class="card-title">\${lc('zap',14,'var(--purple)')} Insights Automáticos</div></div>
-        <div class="card-body" style="padding:0">
-          \${insights.length ? insights.map(ins=>\`
-            <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
-              <div style="width:28px;height:28px;border-radius:50%;background:\${ins.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                \${lc(ins.icon,13,ins.cor)}
-              </div>
-              <div style="font-size:.76rem;color:var(--text);line-height:1.4;padding-top:4px">\${ins.txt}</div>
-            </div>
-          \`).join('') : \`
-            <div class="empty" style="padding:24px">
-              \${lc('check-circle',20,'var(--green)')}
-              <div style="margin-top:8px;font-size:.8rem">Tudo dentro do esperado!</div>
-            </div>
-          \`}
-        </div>
+        <div class="card-header"><div class="card-title">${lc('zap',13,'var(--purple)')} Insights Automáticos</div></div>
+        <div class="card-body" style="padding:0">${_relInsights()}</div>
       </div>
-
-      <!-- Compras por mês -->
       <div class="card">
-        <div class="card-header"><div class="card-title">\${lc('bar-chart-2',14,'var(--purple)')} Compras — Últimos 6 meses</div></div>
+        <div class="card-header"><div class="card-title">${lc('bar-chart-2',13,'var(--purple)')} Compras — Últimos 6 meses</div></div>
         <div class="card-body">
-          <div style="display:flex;flex-direction:column;gap:8px">
-            \${Object.entries(comprasMes).map(([mes, val])=>{
-              const pct = Math.round(val/compMax*100);
-              const [y,m] = mes.split('-');
-              const nome = new Date(+y,+m-1,1).toLocaleString('pt-BR',{month:'short'}).replace('.','');
-              return \`<div style="display:flex;align-items:center;gap:8px">
-                <div style="font-size:.7rem;color:var(--muted);width:30px;text-align:right;flex-shrink:0">\${nome}</div>
-                <div style="flex:1;height:20px;background:var(--border);border-radius:4px;overflow:hidden">
-                  <div style="height:100%;width:\${pct}%;background:linear-gradient(90deg,var(--purple),var(--lilac));border-radius:4px;transition:width .4s"></div>
-                </div>
-                <div style="font-size:.7rem;font-family:monospace;width:70px;text-align:right;font-weight:600;color:var(--purple)">
-                  \${val>0?'R$'+fmt(val):'—'}
-                </div>
-              </div>\`;
-            }).join('')}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-
-      <!-- Desperdício por tipo -->
-      <div class="card">
-        <div class="card-header"><div class="card-title">\${lc('trash-2',14,'var(--red)')} Desperdício por Tipo de Ocasião</div></div>
-        <div class="card-body">
-          \${Object.keys(despPorTipo).length ? \`
-            <div style="display:flex;flex-direction:column;gap:9px">
-              \${Object.entries(despPorTipo).sort((a,b)=>b[1]-a[1]).map(([tipo,val])=>{
-                const td = typeof TIPOS_DESPERDICIO !== 'undefined' ? TIPOS_DESPERDICIO.find(t=>t.id===tipo) : null;
-                const pct = Math.round(val/despTipoMax*100);
-                return \`<div style="display:flex;align-items:center;gap:8px">
-                  <div style="font-size:.7rem;color:var(--muted);width:80px;text-align:right;flex-shrink:0">\${td?.label||tipo}</div>
-                  <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-                    <div style="height:100%;width:\${pct}%;background:var(--red);border-radius:4px"></div>
-                  </div>
-                  <div style="font-size:.7rem;font-family:monospace;width:64px;text-align:right;color:var(--red)">R$\${fmt(val)}</div>
-                </div>\`;
-              }).join('')}
-            </div>
-          \` : '<div class="empty" style="padding:20px">Sem registros de desperdício.</div>'}
-        </div>
-      </div>
-
-      <!-- Pré-produção: eficiência -->
-      <div class="card">
-        <div class="card-header"><div class="card-title">\${lc('chef-hat',14,'var(--purple)')} Pré-produção — Status</div></div>
-        <div class="card-body">
-          \${(() => {
-            const total = prodOrdens.length;
-            if (!total) return '<div class="empty" style="padding:20px">Nenhuma ordem registrada.</div>';
-            const pct = total > 0 ? Math.round(prodFeitas/total*100) : 0;
-            const itensProd = items.filter(i=>i.isProd);
-            return \`
-              <div style="margin-bottom:14px">
-                <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-                  <span style="font-size:.74rem;color:var(--muted)">Ordens concluídas</span>
-                  <span style="font-size:.74rem;font-weight:700;color:\${pct>70?'var(--green)':'var(--orange-dark)'}">\${pct}%</span>
-                </div>
-                <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-                  <div style="height:100%;width:\${pct}%;background:\${pct>70?'var(--green)':'var(--yellow)'};border-radius:4px;transition:width .4s"></div>
-                </div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
-                \${[
-                  {label:'Feitas',   val:prodFeitas, cor:'var(--green)'},
-                  {label:'Pendentes',val:prodPend,   cor:'var(--orange-dark)'},
-                  {label:'Total',    val:total,      cor:'var(--purple)'},
-                ].map(x=>\`
-                  <div style="text-align:center;padding:8px;background:var(--surface2);border-radius:var(--r8)">
-                    <div style="font-size:1rem;font-weight:800;color:\${x.cor}">\${x.val}</div>
-                    <div style="font-size:.62rem;color:var(--muted)">\${x.label}</div>
-                  </div>
-                \`).join('')}
-              </div>
-              <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:6px">Preparados críticos</div>
-              <div style="display:flex;flex-wrap:wrap;gap:4px">
-                \${itensProd.filter(i=>gst(i)==='crit').map(i=>\`
-                  <span class="badge b-red" style="font-size:.62rem">\${i.name}</span>
-                \`).join('') || '<span style="font-size:.74rem;color:var(--green)">Nenhum crítico</span>'}
-              </div>
-            \`;
+          ${(() => {
+            const now = new Date();
+            const meses = {};
+            for (let i=5;i>=0;i--) {
+              const d=new Date(now); d.setMonth(d.getMonth()-i);
+              const k=d.toISOString().slice(0,7);
+              meses[k]=listas.filter(l=>l.status==='concluida'&&(l.dataConclusao||'').slice(0,7)===k)
+                .reduce((s,l)=>s+(l.valorFinal||0),0);
+            }
+            const mx=Math.max(...Object.values(meses),1);
+            const dados=Object.entries(meses).map(([mes,val])=>{
+              const [y,m]=mes.split('-');
+              const nome=new Date(+y,+m-1,1).toLocaleString('pt-BR',{month:'short'}).replace('.','');
+              return [nome,val];
+            });
+            return `<div style="display:flex;flex-direction:column;gap:8px">${_relBarras(dados,mx,'linear-gradient(90deg,var(--purple),var(--lilac))',v=>v>0?'R$'+fmt(v):'—')}</div>`;
           })()}
         </div>
       </div>
     </div>
 
-    <!-- Top insumos necessários + Top fornecedores -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-
+    <!-- Necessidades reposição + Top fornecedores -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div class="card">
-        <div class="card-header"><div class="card-title">\${lc('alert-triangle',14,'var(--yellow)')} Maiores Necessidades de Reposição</div></div>
-        <div class="card-body">
-          \${topNeed.length ? topNeed.map((i,idx)=>\`
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-              <div style="width:22px;height:22px;border-radius:50%;background:\${idx===0?'var(--red-light)':'var(--surface2)'};
-                color:\${idx===0?'var(--red)':'var(--muted)'};font-size:.68rem;font-weight:800;
-                display:flex;align-items:center;justify-content:center;flex-shrink:0">\${idx+1}</div>
-              <div style="flex:1">
-                <div style="font-size:.78rem;font-weight:600">\${i.name}</div>
-                <div style="font-size:.64rem;color:var(--muted)">\${i.cat}</div>
-              </div>
-              <div style="text-align:right">
-                <div style="font-size:.76rem;font-weight:700;font-family:monospace;color:var(--red)">R$\${fmt(gneed(i)*i.cost)}</div>
-                <div style="font-size:.6rem;color:var(--muted)">\${fmt(gneed(i))} \${i.unit} faltando</div>
-              </div>
-            </div>
-          \`).join('') : '<div class="empty" style="padding:20px">Estoque OK!</div>'}
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><div class="card-title">\${lc('building-2',14,'var(--purple)')} Top Fornecedores por Volume</div></div>
-        <div class="card-body">
-          \${supVolume.length ? supVolume.map((x,idx)=>{
-            const pct = Math.round(x.vol/supVolMax*100);
-            return \`<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">
-              <div style="width:20px;height:20px;border-radius:50%;background:\${idx===0?'#FEF3C7':'var(--surface2)'};
-                color:\${idx===0?'#D97706':'var(--muted)'};font-size:.62rem;font-weight:800;
-                display:flex;align-items:center;justify-content:center;flex-shrink:0">\${idx+1}</div>
+        <div class="card-header"><div class="card-title">${lc('alert-triangle',13,'var(--yellow)')} Maiores Necessidades</div></div>
+        <div class="card-body" style="padding:0">
+          ${[...insumos].filter(i=>gneed(i)>0).sort((a,b)=>gneed(b)*b.cost-gneed(a)*a.cost).slice(0,6).map((i,idx)=>`
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border)">
+              <div style="width:20px;height:20px;border-radius:50%;background:${idx===0?'var(--red-light)':'var(--surface2)'};color:${idx===0?'var(--red)':'var(--muted)'};font-size:.65rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${idx+1}</div>
               <div style="flex:1;min-width:0">
-                <div style="font-size:.75rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\${x.s.name}</div>
-                <div style="height:5px;background:var(--border);border-radius:3px;margin-top:3px;overflow:hidden">
-                  <div style="height:100%;width:\${pct}%;background:var(--purple);border-radius:3px"></div>
-                </div>
+                <div style="font-size:.77rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i.name}</div>
+                <div style="font-size:.62rem;color:var(--muted)">${i.cat}</div>
               </div>
-              <div style="font-size:.7rem;font-family:monospace;font-weight:700;color:var(--purple);white-space:nowrap">R$\${fmt(x.vol)}</div>
-            </div>\`;
-          }).join('') : '<div class="empty" style="padding:20px">Sem histórico de compras.</div>'}
+              <div style="text-align:right;flex-shrink:0">
+                <div style="font-size:.74rem;font-weight:700;font-family:monospace;color:var(--red)">R$${fmt(gneed(i)*i.cost)}</div>
+                <div style="font-size:.6rem;color:var(--muted)">${fmt(gneed(i))} ${i.unit}</div>
+              </div>
+            </div>`).join('') || '<div class="empty" style="padding:20px">Estoque OK!</div>'}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">${lc('building-2',13,'var(--purple)')} Top Fornecedores</div></div>
+        <div class="card-body">
+          ${(() => {
+            const listasConc=listas.filter(l=>l.status==='concluida');
+            const sv=suppliers.map(s=>({s,vol:listasConc.reduce((t,l)=>t+(l.itens||[]).filter(i=>i.fornecedorId===s.id).reduce((s2,i)=>s2+(i.qtdRecebida||0)*(i.precoUnitFinal||i.precoUnitEstimado||0),0),0)})).filter(x=>x.vol>0).sort((a,b)=>b.vol-a.vol).slice(0,5);
+            const mx=sv[0]?.vol||1;
+            if(!sv.length) return '<div class="empty" style="padding:20px">Sem histórico.</div>';
+            return `<div style="display:flex;flex-direction:column;gap:9px">${sv.map((x,idx)=>`
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:18px;height:18px;border-radius:50%;background:${idx===0?'#FEF3C7':'var(--surface2)'};color:${idx===0?'#D97706':'var(--muted)'};font-size:.6rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${idx+1}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:.74rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${x.s.name}</div>
+                  <div style="height:5px;background:var(--border);border-radius:3px;margin-top:3px;overflow:hidden"><div style="height:100%;width:${Math.round(x.vol/mx*100)}%;background:var(--purple);border-radius:3px"></div></div>
+                </div>
+                <div style="font-size:.68rem;font-family:monospace;font-weight:700;color:var(--purple);flex-shrink:0">R$${fmt(x.vol)}</div>
+              </div>`).join('')}</div>`;
+          })()}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ABA 2 — COMPRAS
+// ══════════════════════════════════════════════════════════════
+function _relCompras(el) {
+  const listasConc = listas.filter(l=>l.status==='concluida');
+  const totalGasto = listasConc.reduce((s,l)=>s+(l.valorFinal||0),0);
+  const totalEcon  = listasConc.reduce((s,l)=>s+Math.max(0,(l.valorEstimado||0)-(l.valorFinal||0)),0);
+  const ticketMed  = listasConc.length ? totalGasto/listasConc.length : 0;
+  const now        = new Date();
+
+  // Compras por mês — 12 meses
+  const meses12 = {};
+  for (let i=11;i>=0;i--) {
+    const d=new Date(now); d.setMonth(d.getMonth()-i);
+    const k=d.toISOString().slice(0,7);
+    const v=listasConc.filter(l=>(l.dataConclusao||'').slice(0,7)===k).reduce((s,l)=>s+(l.valorFinal||0),0);
+    const [y,m]=k.split('-');
+    const nome=new Date(+y,+m-1,1).toLocaleString('pt-BR',{month:'short'}).replace('.','') + `/${y.slice(2)}`;
+    meses12[nome]=v;
+  }
+  const mx12=Math.max(...Object.values(meses12),1);
+
+  // Volume por fornecedor
+  const supVol=suppliers.map(s=>({nome:s.name,vol:listasConc.reduce((t,l)=>t+(l.itens||[]).filter(i=>i.fornecedorId===s.id).reduce((s2,i)=>s2+(i.qtdRecebida||0)*(i.precoUnitFinal||i.precoUnitEstimado||0),0),0)})).filter(x=>x.vol>0).sort((a,b)=>b.vol-a.vol);
+  const mxSup=supVol[0]?.vol||1;
+
+  // Itens mais comprados
+  const itensMais={};
+  listasConc.forEach(l=>(l.itens||[]).forEach(i=>{
+    if(!itensMais[i.nome]) itensMais[i.nome]={total:0,vezes:0};
+    itensMais[i.nome].total+=(i.qtdRecebida||0)*(i.precoUnitFinal||i.precoUnitEstimado||0);
+    itensMais[i.nome].vezes++;
+  }));
+  const topItens=Object.entries(itensMais).sort((a,b)=>b[1].total-a[1].total).slice(0,6);
+
+  el.innerHTML = `
+    <!-- KPIs -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+      ${_relKpi('dollar-sign',  'Total comprado',    'R$'+fmt(totalGasto), 'var(--purple)', 'var(--purple-xlight)', listasConc.length+' listas')}
+      ${_relKpi('trending-down','Economia gerada',   'R$'+fmt(totalEcon),  'var(--green)',  'var(--green-light)',   'estimado vs. final')}
+      ${_relKpi('shopping-bag', 'Ticket médio',      'R$'+fmt(ticketMed),  'var(--purple)', 'var(--purple-xlight)', 'por lista concluída')}
+      ${_relKpi('building-2',   'Fornecedores ativos', supVol.length+'',   'var(--purple)', 'var(--purple-xlight)', 'com compras realizadas')}
+    </div>
+
+    <!-- Evolução 12 meses + Por fornecedor -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">${lc('bar-chart-2',13,'var(--purple)')} Evolução — 12 meses</div></div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:7px">
+            ${_relBarras(Object.entries(meses12),mx12,'var(--purple)',v=>v>0?'R$'+fmt(v):'—')}
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">${lc('building-2',13,'var(--purple)')} Volume por Fornecedor</div></div>
+        <div class="card-body">
+          ${supVol.length ? `<div style="display:flex;flex-direction:column;gap:7px">
+            ${_relBarras(supVol.map(x=>[x.nome,x.vol]),mxSup,'var(--purple)',v=>'R$'+fmt(v))}
+          </div>` : '<div class="empty" style="padding:20px">Sem histórico.</div>'}
         </div>
       </div>
     </div>
 
-    <!-- Estoque: distribuição por categoria -->
-    <div class="card" style="margin-bottom:16px">
-      <div class="card-header"><div class="card-title">\${lc('package',14,'var(--purple)')} Estoque — Distribuição por Categoria</div></div>
-      <div class="card-body">
-        \${(() => {
-          const cats = {};
-          insumos.forEach(i => {
-            if (!cats[i.cat]) cats[i.cat] = {ok:0,warn:0,crit:0,total:0};
-            cats[i.cat][gst(i)]++;
-            cats[i.cat].total++;
-          });
-          const catArr = Object.entries(cats).sort((a,b)=>b[1].crit-a[1].crit||b[1].warn-a[1].warn);
-          if (!catArr.length) return '<div class="empty" style="padding:20px">Sem insumos cadastrados.</div>';
-          return \`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
-            \${catArr.map(([cat,c])=>\`
-              <div style="background:var(--surface2);border:1.5px solid \${c.crit>0?'var(--red)':c.warn>0?'var(--yellow)':'var(--border)'};border-radius:var(--r8);padding:10px 12px">
-                <div style="font-size:.74rem;font-weight:700;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\${cat}</div>
-                <div style="display:flex;gap:5px">
-                  \${c.crit>0?'<span class="badge b-red" style="font-size:.6rem">'+c.crit+' crit.</span>':''}
-                  \${c.warn>0?'<span class="badge b-yellow" style="font-size:.6rem">'+c.warn+' baixo</span>':''}
-                  \${c.ok>0?'<span class="badge b-green" style="font-size:.6rem">'+c.ok+' ok</span>':''}
-                </div>
-              </div>
-            \`).join('')}
-          </div>\`;
-        })()}
+    <!-- Itens mais comprados -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">${lc('package',13,'var(--purple)')} Itens Mais Comprados</div></div>
+      <div class="card-body" style="padding:0">
+        ${topItens.length ? topItens.map(([nome,d],idx)=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border)">
+            <div style="width:20px;height:20px;border-radius:50%;background:${idx<3?'var(--purple)':'var(--surface2)'};color:${idx<3?'#fff':'var(--muted)'};font-size:.65rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${idx+1}</div>
+            <div style="flex:1"><div style="font-size:.8rem;font-weight:600">${nome}</div></div>
+            <div style="font-size:.7rem;color:var(--muted)">${d.vezes}x comprado</div>
+            <div style="font-size:.78rem;font-weight:700;font-family:monospace;color:var(--purple)">R$${fmt(d.total)}</div>
+          </div>`).join('')
+        : '<div class="empty" style="padding:20px">Sem histórico de compras.</div>'}
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ABA 3 — DESPERDÍCIO
+// ══════════════════════════════════════════════════════════════
+function _relDesperdicio(el) {
+  const now      = new Date();
+  const mesAtual = now.toISOString().slice(0,7);
+  const despTotal= desperdicios.reduce((s,d)=>s+(d.qty*(d.precoUnit||d.custo||0)),0);
+  const despMes  = desperdicios.filter(d=>(d.date||'').slice(0,7)===mesAtual).reduce((s,d)=>s+(d.qty*(d.precoUnit||d.custo||0)),0);
+
+  // Por tipo de ocasião
+  const porTipo={};
+  desperdicios.forEach(d=>{
+    if(!porTipo[d.tipo]) porTipo[d.tipo]=0;
+    porTipo[d.tipo]+=d.qty*(d.precoUnit||d.custo||0);
+  });
+  const tipoDados=Object.entries(porTipo).sort((a,b)=>b[1]-a[1]);
+  const mxTipo=tipoDados[0]?.[1]||1;
+
+  // Por mês — 6 meses
+  const meses={};
+  for(let i=5;i>=0;i--){
+    const d=new Date(now); d.setMonth(d.getMonth()-i);
+    const k=d.toISOString().slice(0,7);
+    const v=desperdicios.filter(x=>(x.date||'').slice(0,7)===k).reduce((s,d)=>s+(d.qty*(d.precoUnit||d.custo||0)),0);
+    const [y,m]=k.split('-');
+    meses[new Date(+y,+m-1,1).toLocaleString('pt-BR',{month:'short'}).replace('.','')] = v;
+  }
+  const mxMes=Math.max(...Object.values(meses),1);
+
+  // Por responsável
+  const porResp={};
+  desperdicios.forEach(d=>{
+    const r=d.responsavel||'Não informado';
+    if(!porResp[r]) porResp[r]=0;
+    porResp[r]+=d.qty*(d.precoUnit||d.custo||0);
+  });
+  const respDados=Object.entries(porResp).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const mxResp=respDados[0]?.[1]||1;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+      ${_relKpi('trash-2',    'Total desperdício', 'R$'+fmt(despTotal), 'var(--red)',         'var(--red-light)',    'acumulado')}
+      ${_relKpi('calendar',   'Este mês',          'R$'+fmt(despMes),   despMes>500?'var(--red)':'var(--orange-dark)', despMes>500?'var(--red-light)':'var(--orange-light)', new Date().toLocaleString('pt-BR',{month:'long'}))}
+      ${_relKpi('clipboard-list','Registros',       desperdicios.length+'','var(--purple)',    'var(--purple-xlight)','total de ocorrências')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="card">
+        <div class="card-header"><div class="card-title">${lc('tag',13,'var(--red)')} Por Tipo de Ocasião</div></div>
+        <div class="card-body">
+          ${tipoDados.length ? `<div style="display:flex;flex-direction:column;gap:8px">
+            ${tipoDados.map(([tipo,val])=>{
+              const td=typeof TIPOS_DESPERDICIO!=='undefined'?TIPOS_DESPERDICIO.find(t=>t.id===tipo):null;
+              const pct=Math.round(val/mxTipo*100);
+              return `<div style="display:flex;align-items:center;gap:8px">
+                <div style="font-size:.69rem;color:var(--muted);width:80px;text-align:right;flex-shrink:0">${td?.label||tipo}</div>
+                <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--red);border-radius:4px"></div></div>
+                <div style="font-size:.69rem;font-family:monospace;width:68px;text-align:right;color:var(--red)">R$${fmt(val)}</div>
+              </div>`;
+            }).join('')}
+          </div>` : '<div class="empty" style="padding:20px">Sem registros.</div>'}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">${lc('bar-chart-2',13,'var(--red)')} Evolução Mensal</div></div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${_relBarras(Object.entries(meses),mxMes,'var(--red)',v=>v>0?'R$'+fmt(v):'—')}
+          </div>
+        </div>
       </div>
     </div>
-  \`;
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">${lc('user',13,'var(--red)')} Por Responsável</div></div>
+      <div class="card-body">
+        ${respDados.length ? `<div style="display:flex;flex-direction:column;gap:8px">
+          ${_relBarras(respDados,mxResp,'var(--orange-dark)',v=>'R$'+fmt(v))}
+        </div>` : '<div class="empty" style="padding:20px">Sem dados de responsável.</div>'}
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ABA 4 — PRÉ-PRODUÇÃO
+// ══════════════════════════════════════════════════════════════
+function _relProducao(el) {
+  const todas   = ordens.filter(o=>!o.archived);
+  const feitas  = todas.filter(o=>o.status==='produzido');
+  const pend    = todas.filter(o=>o.status==='pendente');
+  const efic    = todas.length ? Math.round(feitas.length/todas.length*100) : 0;
+
+  // Por preparado
+  const porItem={};
+  todas.forEach(o=>{
+    if(!porItem[o.itemId]) porItem[o.itemId]={feitas:0,pend:0,nome:''};
+    const it=items.find(x=>x.id===o.itemId);
+    porItem[o.itemId].nome=it?.name||'#'+o.itemId;
+    if(o.status==='produzido') porItem[o.itemId].feitas++;
+    else porItem[o.itemId].pend++;
+  });
+  const topProd=Object.values(porItem).sort((a,b)=>(b.feitas+b.pend)-(a.feitas+a.pend)).slice(0,6);
+
+  // Itens críticos de pré-preparo
+  const itensProd=items.filter(i=>i.isProd);
+  const prepCrit=itensProd.filter(i=>gst(i)==='crit');
+  const prepBaixo=itensProd.filter(i=>gst(i)==='warn');
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+      ${_relKpi('check-square','Ordens feitas',    feitas.length+'',  'var(--green)',       'var(--green-light)',   'concluídas')}
+      ${_relKpi('clock',       'Pendentes',         pend.length+'',    'var(--orange-dark)', 'var(--orange-light)', 'aguardando produção')}
+      ${_relKpi('percent',     'Eficiência',        efic+'%',          efic>70?'var(--green)':'var(--orange-dark)', efic>70?'var(--green-light)':'var(--orange-light)', 'ordens concluídas')}
+      ${_relKpi('chef-hat',    'Preparados',        itensProd.length+'','var(--purple)',     'var(--purple-xlight)','cadastrados')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <!-- Eficiência barra -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">${lc('chef-hat',13,'var(--purple)')} Status Geral</div></div>
+        <div class="card-body">
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+              <span style="font-size:.74rem;color:var(--muted)">Ordens concluídas</span>
+              <span style="font-size:.74rem;font-weight:700;color:${efic>70?'var(--green)':'var(--orange-dark)'}">${efic}%</span>
+            </div>
+            <div style="height:10px;background:var(--border);border-radius:5px;overflow:hidden">
+              <div style="height:100%;width:${efic}%;background:${efic>70?'var(--green)':'var(--yellow)'};border-radius:5px;transition:width .4s"></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+            ${[{l:'Feitas',v:feitas.length,c:'var(--green)'},{l:'Pendentes',v:pend.length,c:'var(--orange-dark)'},{l:'Total',v:todas.length,c:'var(--purple)'}]
+              .map(x=>`<div style="text-align:center;padding:8px;background:var(--surface2);border-radius:var(--r8)">
+                <div style="font-size:1rem;font-weight:800;color:${x.c}">${x.v}</div>
+                <div style="font-size:.62rem;color:var(--muted)">${x.l}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Itens de estoque críticos -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">${lc('alert-circle',13,'var(--red)')} Preparados em Alerta</div></div>
+        <div class="card-body" style="padding:0">
+          ${prepCrit.length===0&&prepBaixo.length===0
+            ? `<div class="empty" style="padding:20px">${lc('check-circle',16,'var(--green)')}<div style="margin-top:6px;font-size:.78rem">Todos em dia!</div></div>`
+            : [...prepCrit.map(i=>({...i,st:'crit'})),...prepBaixo.map(i=>({...i,st:'warn'}))].map(i=>`
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border)">
+                  <div style="width:8px;height:8px;border-radius:50%;background:${i.st==='crit'?'var(--red)':'var(--yellow)'};flex-shrink:0"></div>
+                  <div style="flex:1"><div style="font-size:.78rem;font-weight:600">${i.name}</div></div>
+                  <span class="badge ${i.st==='crit'?'b-red':'b-yellow'}" style="font-size:.6rem">${i.st==='crit'?'CRÍTICO':'BAIXO'}</span>
+                </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Por preparado -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">${lc('list',13,'var(--purple)')} Ordens por Preparado</div></div>
+      <div class="card-body" style="padding:0">
+        ${topProd.length ? topProd.map(p=>`
+          <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border)">
+            <div style="flex:1"><div style="font-size:.8rem;font-weight:600">${p.nome}</div></div>
+            <div style="display:flex;gap:6px">
+              ${p.feitas>0?`<span class="badge b-green" style="font-size:.62rem">${p.feitas} feitas</span>`:''}
+              ${p.pend>0?`<span class="badge b-orange" style="font-size:.62rem">${p.pend} pend.</span>`:''}
+            </div>
+          </div>`).join('')
+        : '<div class="empty" style="padding:20px">Nenhuma ordem registrada.</div>'}
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ABA 5 — ESTOQUE
+// ══════════════════════════════════════════════════════════════
+function _relEstoque(el) {
+  const insumos = items.filter(i=>!i.isProd);
+  const criticos= insumos.filter(i=>gst(i)==='crit');
+  const baixos  = insumos.filter(i=>gst(i)==='warn');
+  const ok      = insumos.filter(i=>gst(i)==='ok');
+  const custRep = criticos.reduce((s,i)=>s+gneed(i)*i.cost,0)+baixos.reduce((s,i)=>s+gneed(i)*i.cost,0);
+
+  // Por categoria
+  const cats={};
+  insumos.forEach(i=>{
+    if(!cats[i.cat]) cats[i.cat]={ok:0,warn:0,crit:0,total:0,custo:0};
+    cats[i.cat][gst(i)]++;
+    cats[i.cat].total++;
+    cats[i.cat].custo+=gneed(i)*i.cost;
+  });
+  const catArr=Object.entries(cats).sort((a,b)=>b[1].crit-a[1].crit||b[1].warn-a[1].warn);
+
+  // Top custo de reposição
+  const topCusto=[...insumos].filter(i=>gneed(i)>0).sort((a,b)=>gneed(b)*b.cost-gneed(a)*a.cost).slice(0,8);
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+      ${_relKpi('alert-circle','Críticos',      criticos.length+'', 'var(--red)',         'var(--red-light)',    'abaixo do mínimo')}
+      ${_relKpi('alert-triangle','Baixos',      baixos.length+'',   'var(--yellow)',      'var(--yellow-light)', 'abaixo do ideal')}
+      ${_relKpi('check-circle','OK',            ok.length+'',       'var(--green)',       'var(--green-light)',  'dentro do esperado')}
+      ${_relKpi('dollar-sign', 'Custo reposição','R$'+fmt(custRep), 'var(--orange-dark)', 'var(--orange-light)', 'críticos + baixos')}
+    </div>
+
+    <!-- Distribuição por categoria -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><div class="card-title">${lc('package',13,'var(--purple)')} Distribuição por Categoria</div></div>
+      <div class="card-body">
+        ${catArr.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+          ${catArr.map(([cat,c])=>`
+            <div style="background:var(--surface2);border:1.5px solid ${c.crit>0?'var(--red)':c.warn>0?'var(--yellow)':'var(--border)'};border-radius:var(--r8);padding:10px 12px">
+              <div style="font-size:.74rem;font-weight:700;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${cat}">${cat}</div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                ${c.crit>0?`<span class="badge b-red" style="font-size:.58rem">${c.crit} crit.</span>`:''}
+                ${c.warn>0?`<span class="badge b-yellow" style="font-size:.58rem">${c.warn} baixo</span>`:''}
+                ${c.ok>0?`<span class="badge b-green" style="font-size:.58rem">${c.ok} ok</span>`:''}
+              </div>
+              ${c.custo>0?`<div style="font-size:.6rem;color:var(--muted);margin-top:4px">Rep: R$${fmt(c.custo)}</div>`:''}
+            </div>`).join('')}
+        </div>` : '<div class="empty" style="padding:20px">Sem insumos cadastrados.</div>'}
+      </div>
+    </div>
+
+    <!-- Top necessidades -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">${lc('alert-triangle',13,'var(--yellow)')} Maiores Necessidades de Reposição</div></div>
+      <div class="card-body" style="padding:0">
+        ${topCusto.length ? topCusto.map((i,idx)=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border)">
+            <span class="badge ${gst(i)==='crit'?'b-red':'b-yellow'}" style="font-size:.6rem;flex-shrink:0">${gst(i)==='crit'?'CRÍTICO':'BAIXO'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.79rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i.name}</div>
+              <div style="font-size:.62rem;color:var(--muted)">${i.cat} · faltam ${fmt(gneed(i))} ${i.unit}</div>
+            </div>
+            <div style="font-size:.78rem;font-weight:700;font-family:monospace;color:var(--red);flex-shrink:0">R$${fmt(gneed(i)*i.cost)}</div>
+          </div>`).join('')
+        : '<div class="empty" style="padding:20px">Estoque OK!</div>'}
+      </div>
+    </div>`;
 }
 
 

@@ -36,7 +36,10 @@ let ordens       = JSON.parse(localStorage.getItem('vtp_ordens')     || '[]');
 // ══════════════════════════════════════════════════════════════
 // LISTAS DE COMPRAS (substitui "ciclos")
 // ══════════════════════════════════════════════════════════════
-let listas = JSON.parse(localStorage.getItem('vtp_listas') || '[]');
+let listas       = JSON.parse(localStorage.getItem('vtp_listas')        || '[]');
+let cycleHistory = JSON.parse(localStorage.getItem('vtp_cycle_history') || '[]');
+let responses    = {};   // cotações respondidas por fornecedor (em memória)
+let cycle        = null; // ciclo ativo atual (legado)
 
 // Contadores
 let nextIid  = Math.max(...items.map(i => i.id), 0) + 1;
