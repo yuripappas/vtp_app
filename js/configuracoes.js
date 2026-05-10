@@ -62,31 +62,73 @@ function saveConfiguracoes() {
 
 // ── Aba Cadastros ─────────────────────────────────────────────
 function _renderCfgCadastros() {
-  const el = document.getElementById('cfgCadastrosResumo');
+  const el = document.getElementById('cfgCadastrosContent');
   if (!el) return;
 
   const insumos    = items.filter(i => !i.isProd);
-  const preparados = items.filter(i => i.isProd);
+  const preparados = items.filter(i =>  i.isProd);
   const cats       = [...new Set(insumos.map(i => i.cat))];
 
-  el.innerHTML = [
-    { icon:'package',    label:'Insumos',      val: insumos.length,    sub: `${cats.length} categorias`,       color:'var(--purple)', bg:'var(--purple-xlight)', action:"goModule('cadastros')" },
-    { icon:'building-2', label:'Fornecedores',  val: suppliers.length,  sub: `${suppliers.filter(s=>s.phone).length} com WhatsApp`, color:'var(--blue,#3B82F6)', bg:'#EFF6FF', action:"goModule('cadastros')" },
-    { icon:'chef-hat',   label:'Pré-preparo',   val: preparados.length, sub: `${ordens?.filter(o=>o.status==='pendente').length||0} ordens pendentes`, color:'var(--orange-dark)', bg:'var(--orange-light)', action:"goModule('preproducao')" },
-    { icon:'users',      label:'Usuários',      val: users.length,      sub: `${users.filter(u=>u.role==='gerente').length} gerente(s)`, color:'var(--green)', bg:'var(--green-light)', action:"setCfgTab('usuarios')" },
-  ].map(c => `
-    <div onclick="${c.action}" style="background:${c.bg};border:1.5px solid ${c.color}20;border-radius:var(--r10);padding:14px 16px;cursor:pointer;transition:all .15s"
-      onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <div style="width:28px;height:28px;border-radius:50%;background:${c.color};display:flex;align-items:center;justify-content:center">
-          ${lc(c.icon, 13, '#fff')}
-        </div>
-        <span style="font-size:.74rem;font-weight:700;color:var(--text)">${c.label}</span>
+  const cards = [
+    {
+      icon:'package', label:'Insumos', cor:'var(--purple)', bg:'var(--purple-xlight)',
+      val: insumos.length, sub: `${cats.length} categorias`,
+      tab:'insumos', desc:'Cadastre e gerencie todos os insumos da cozinha'
+    },
+    {
+      icon:'building-2', label:'Fornecedores', cor:'#3B82F6', bg:'#EFF6FF',
+      val: suppliers.length, sub: `${suppliers.filter(s=>s.phone).length} com WhatsApp`,
+      tab:'fornecedores', desc:'Gerencie fornecedores e vínculos com insumos'
+    },
+    {
+      icon:'chef-hat', label:'Pré-preparo', cor:'var(--orange-dark)', bg:'var(--orange-light)',
+      val: preparados.length, sub: `${ordens?.filter(o=>o.status==='pendente').length||0} ordens pendentes`,
+      tab:'preparo', desc:'Cadastre preparados e controle ordens de produção'
+    },
+    {
+      icon:'tag', label:'Produtos / Cardápio', cor:'var(--green)', bg:'var(--green-light)',
+      val: (typeof produtos !== 'undefined' ? produtos.length : 0), sub: 'sabores e tamanhos',
+      tab:'produtos', desc:'Gerencie o cardápio e produtos à venda'
+    },
+  ];
+
+  el.innerHTML = `
+    <div style="padding:20px 24px">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:16px">
+        Clique em qualquer card para abrir o cadastro correspondente.
       </div>
-      <div style="font-size:1.4rem;font-weight:800;color:${c.color};font-family:monospace;margin-bottom:2px">${c.val}</div>
-      <div style="font-size:.65rem;color:var(--muted)">${c.sub}</div>
-    </div>
-  `).join('');
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+        ${cards.map(c => `
+          <div onclick="abrirCadastroNaConfig('${c.tab}')"
+            style="background:${c.bg};border:1.5px solid ${c.cor}22;border-radius:var(--r12);padding:18px;cursor:pointer;transition:all .15s"
+            onmouseover="this.style.borderColor='${c.cor}';this.style.transform='translateY(-2px)'"
+            onmouseout="this.style.borderColor='${c.cor}22';this.style.transform=''">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <div style="width:36px;height:36px;border-radius:50%;background:${c.cor};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                ${lc(c.icon, 16, '#fff')}
+              </div>
+              <div>
+                <div style="font-size:.84rem;font-weight:700">${c.label}</div>
+                <div style="font-size:.62rem;color:var(--muted)">${c.sub}</div>
+              </div>
+            </div>
+            <div style="font-size:1.6rem;font-weight:800;color:${c.cor};font-family:monospace;margin-bottom:4px">${c.val}</div>
+            <div style="font-size:.68rem;color:var(--muted);line-height:1.4">${c.desc}</div>
+            <div style="display:flex;align-items:center;gap:4px;margin-top:10px;font-size:.7rem;font-weight:600;color:${c.cor}">
+              ${lc('external-link', 11, 'currentColor')} Abrir cadastro
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+function abrirCadastroNaConfig(tab) {
+  // Navega para o módulo de cadastros na aba certa
+  goModule('cadastros');
+  if (typeof setCadTab === 'function') {
+    setTimeout(() => setCadTab(tab), 50);
+  }
 }
 
 // ── Aba Usuários ──────────────────────────────────────────────

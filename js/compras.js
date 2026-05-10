@@ -1449,7 +1449,7 @@ function _renderHistorico() {
     </div>
 
     ${hist.length===0?`<div class="empty" style="padding:40px"><div class="empty-icon">${lc('clock',24,'var(--muted)')}</div>Nenhuma lista encontrada.</div>`
-    :hist.map(l=>_cardHistorico(l)).join('')}\`;
+    :hist.map(l=>_cardHistorico(l)).join('')}`;
 }
 function _limparFiltrosHist() {
   ['histBusca','histDe','histAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});

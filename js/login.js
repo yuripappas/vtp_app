@@ -131,11 +131,13 @@ function applyPermissions(user) {
   const role = user.role;
   Object.entries(MODULE_PERMISSIONS).forEach(([mod, roles]) => {
     const navEl = document.getElementById(`nav-${mod}`);
-    if (navEl) {
-      navEl.style.display = roles.includes(role) ? '' : 'none';
-    }
+    if (navEl) navEl.style.display = roles.includes(role) ? '' : 'none';
   });
-  // Seções da sidebar
+  // Botão de configurações no rodapé (id diferente)
+  const cfgBottom = document.getElementById('nav-configuracoes-bottom');
+  if (cfgBottom) {
+    cfgBottom.style.display = (MODULE_PERMISSIONS.configuracoes||[]).includes(role) ? '' : 'none';
+  }
   _updateSections();
 }
 

@@ -60,6 +60,10 @@ function goModule(mod) {
   }
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
   document.getElementById(`nav-${mod}`)?.classList.add('active');
+  // Configurações tem dois botões (nav e rodapé) — ativa ambos
+  if (mod === 'configuracoes') {
+    document.getElementById('nav-configuracoes-bottom')?.classList.add('active');
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(`page-${mod}`).classList.add('active');
   const info = modInfo[mod];
