@@ -82,29 +82,25 @@
           <span class="sb-label">Compras</span>
         </button>
 
-        <div class="sb-section">Configuração</div>
-        <button class="sb-item" id="nav-cadastros" onclick="goModule('cadastros')">
-          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
-          <span class="sb-label">Cadastros</span>
-        </button>
-        <button class="sb-item" id="nav-configuracoes" onclick="goModule('configuracoes')">
-          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
-          <span class="sb-label">Configurações</span>
-        </button>
-
         <div class="sb-section">Análise</div>
         <button class="sb-item" id="nav-relatorios" onclick="goModule('relatorios')">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
           <span class="sb-label">Relatórios</span>
         </button>
 
-        <div class="sb-section">Sistema</div>
-        <button class="sb-item" id="nav-usuarios" onclick="goModule('usuarios')">
-          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-          <span class="sb-label">Usuários</span>
-        </button>
       </nav>
       <div class="sb-bottom">
+        <!-- Configurações isolada acima do perfil — padrão UI profissional -->
+        <button class="sb-item" id="nav-configuracoes-bottom" onclick="goModule('configuracoes')"
+          style="margin-bottom:4px;border-top:1px solid var(--border);padding-top:8px">
+          <span class="sb-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </span>
+          <span class="sb-label" style="font-size:.74rem">Configurações</span>
+        </button>
         <div class="sb-user">
           <div class="sb-avatar" id="sbAvatar">Y</div>
           <div class="sb-user-info">
@@ -446,14 +442,9 @@
           <button class="btn btn-primary" onclick="saveConfiguracoes()">Salvar configurações</button>
         </div>
 
-        <!-- Aba: Cadastros (redireciona para o módulo) -->
-        <div id="cfgPanelCadastros" style="padding:24px;display:none">
-          <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r12);padding:24px;text-align:center;margin-bottom:16px">
-            <div style="font-size:.9rem;font-weight:700;margin-bottom:8px">Insumos, Fornecedores e Pré-preparo</div>
-            <div style="font-size:.78rem;color:var(--muted);margin-bottom:16px">Gerencie todos os cadastros do sistema no módulo dedicado</div>
-            <button class="btn btn-primary" onclick="goModule('cadastros')">Ir para Cadastros</button>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px" id="cfgCadastrosResumo"></div>
+        <!-- Aba: Cadastros — conteúdo do módulo embutido -->
+        <div id="cfgPanelCadastros" style="padding:0;display:none">
+          <div id="cfgCadastrosContent"></div>
         </div>
 
         <!-- Aba: Usuários (redireciona para o módulo) -->
