@@ -181,19 +181,23 @@ function _renderEtapa1() {
   l.etapa = 1;
   saveListas();
 
-  // AUTO-POPULATE: para cada item, adiciona cotação de todos os fornecedores cadastrados
+  // AUTO-POPULATE: para cada item, adiciona cotação de TODOS os fornecedores cadastrados
   l.itens.forEach(i => {
     if (!i.cotacoes) i.cotacoes = [];
     const itemCad = items.find(x => x.id === i.itemId);
-    // Suporta supIds (novo) e supId (legado)
-    const supIds = itemCad?.supIds?.length
-      ? itemCad.supIds
-      : (itemCad?.supId ? [itemCad.supId] : []);
-    supIds.forEach(supId => {
-      if (!i.cotacoes.some(c => c.supId === supId)) {
-        i.cotacoes.push({ supId, precoUnit: null, respondido: false, prazo: '', pagamento: '', emFalta: false });
-      }
-    });
+    if (itemCad) {
+      // Suporta supIds (array novo) e supId (legado)
+      const supIds = itemCad.supIds?.length
+        ? [...itemCad.supIds]
+        : (itemCad.supId ? [itemCad.supId] : []);
+      supIds.forEach(supId => {
+        if (supId && !i.cotacoes.some(c => c.supId === supId)) {
+          i.cotacoes.push({ supId, precoUnit: null, respondido: false, prazo: '', pagamento: '', emFalta: false });
+        }
+      });
+    }
+    // Item manual com local preenchido → presencial (sem cotação)
+    if (i.origem === 'manual' && i.localCompra) i.tipoCompra = 'presencial';
   });
   saveListas();
 
@@ -231,11 +235,12 @@ function _renderEtapa1() {
     </div>
     ${prazoHtml}
     <div class="card" style="margin-bottom:16px;overflow:hidden">
-      <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
         <button onclick="abrirAddItemManual()"
-          style="display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--r8);
-          border:1.5px solid var(--purple);background:white;color:var(--purple);font-size:.76rem;font-weight:700;cursor:pointer">
-          ${lc('plus', 13, 'var(--purple)')} Adicionar item
+          style="display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:var(--r8);
+          border:1.5px solid var(--purple);background:var(--purple);color:#fff;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s"
+          onmouseover="this.style.background='var(--purple-dark,#5B21B6)'" onmouseout="this.style.background='var(--purple)'">
+          ${lc('plus', 14, '#fff')} Adicionar item
         </button>
         <div style="font-size:.67rem;color:var(--muted)">${lc('info', 12, 'var(--muted)')} Fornecedores cadastrados já foram adicionados automaticamente</div>
       </div>
@@ -679,14 +684,41 @@ function limparPrazo() {
 
 function avancarParaAprovacao() {
   if (!_listaAtual) return;
-  _listaAtual.itens.forEach(i => { if (!i.cotacoes?.length) i.tipoCompra='presencial'; });
+
+  // Item 2: validar cotações obrigatórias para itens com fornecedor
+  const pendentesCotacao = _listaAtual.itens.filter(i => {
+    if (!i.cotacoes?.length) return false; // sem fornecedor → presencial, OK
+    const todasEmFalta = i.cotacoes.every(c => c.emFalta);
+    if (todasEmFalta) return false; // todos em falta → vai para presencial
+    // Tem fornecedor mas nenhuma cotação com preço preenchido
+    const temPreco = i.cotacoes.some(c => !c.emFalta && c.precoUnit > 0);
+    return !temPreco;
+  });
+
+  if (pendentesCotacao.length > 0) {
+    const nomes = pendentesCotacao.map(i => `• ${i.nome}`).join('\n');
+    // Banner de aviso visível na tela
+    const banner = document.createElement('div');
+    banner.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:600;background:var(--red);color:#fff;padding:12px 20px;border-radius:var(--r10);box-shadow:0 4px 20px rgba(0,0,0,.25);font-size:.82rem;font-weight:600;max-width:380px;text-align:center;line-height:1.5';
+    banner.innerHTML = `${lc('alert-circle',16,'#fff')} ${pendentesCotacao.length} item(s) sem cotação preenchida:<br><span style="font-weight:400;font-size:.74rem">${pendentesCotacao.map(i=>i.nome).join(', ')}</span>`;
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 4000);
+    return;
+  }
+
+  // Define tipo de compra por item
   _listaAtual.itens.forEach(i => {
-    if (i.cotacoes?.length) {
-      const melhor = _melhorCotacao(i.cotacoes);
-      if (melhor) { i.precoUnitFinal=melhor.precoUnit; i.fornecedorId=melhor.supId; i.tipoCompra='fornecedor'; }
+    if (!i.cotacoes?.length || i.cotacoes.every(c => c.emFalta)) {
+      i.tipoCompra = 'presencial';
     }
   });
-  _listaAtual.etapa=2; _listaAtual.status='aguard_aprovacao'; saveListas();
+  _listaAtual.itens.forEach(i => {
+    if (i.tipoCompra !== 'presencial' && i.cotacoes?.length) {
+      const melhor = _melhorCotacao(i.cotacoes);
+      if (melhor) { i.precoUnitFinal = melhor.precoUnit; i.fornecedorId = melhor.supId; i.tipoCompra = 'fornecedor'; }
+    }
+  });
+  _listaAtual.etapa = 2; _listaAtual.status = 'aguard_aprovacao'; saveListas();
   _renderDashCompras(); _renderEtapa2(); toast('Lista enviada para aprovação!');
 }
 
@@ -746,7 +778,11 @@ function _renderEtapa2() {
 function _cardAprovacaoItem(i, isPresencial) {
   const sup=suppliers.find(s=>s.id===i.fornecedorId);
   const qtd=i.qtdAprovada??i.qtdSelecionada;
-  const preco=i.precoUnitFinal||i.precoUnitEstimado||0;
+  // Item 3: para fornecedor só aceita preço real da cotação; presencial pode usar estimado
+  const preco = isPresencial
+    ? (i.precoUnitFinal||i.precoUnitEstimado||0)
+    : (i.precoUnitFinal||0);
+  const semPreco = !isPresencial && !i.precoUnitFinal;
   const total=qtd*preco;
   const isAprov=i.aprovado===true, isReprov=i.aprovado===false;
   return `<div style="border:1.5px solid ${isAprov?'var(--green)':isReprov?'var(--red)':'var(--border)'};border-radius:var(--r10);background:${isAprov?'var(--green-light)':isReprov?'var(--red-light)':'var(--surface)'};overflow:hidden;transition:all .2s">
@@ -760,8 +796,9 @@ function _cardAprovacaoItem(i, isPresencial) {
         <div style="text-align:center"><div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">Qtd</div><div style="font-size:.82rem;font-weight:700;font-family:monospace">${fmt(qtd)} ${i.unidade}</div></div>
         <div style="text-align:center"><div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">${isPresencial?'Orç. máx.':'Preço unit.'}</div><div style="font-size:.82rem;font-weight:700;font-family:monospace;color:${isPresencial?'var(--orange-dark)':'var(--text)'}">R$ ${fmt(preco)}</div></div>
         <div style="text-align:center"><div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">Total</div><div style="font-size:.88rem;font-weight:800;color:var(--purple);font-family:monospace">R$ ${fmt(total)}</div></div>
+        ${semPreco?`<div style="display:flex;align-items:center;gap:5px;padding:4px 8px;background:var(--red-light);border:1px solid var(--red);border-radius:var(--r6);font-size:.68rem;color:var(--red);font-weight:600">${lc('alert-circle',11,'currentColor')} Sem preço</div>`:''}
         <div style="display:flex;gap:5px">
-          <button onclick="aprovarItem2(${i.id})" style="padding:6px 13px;border-radius:var(--r8);border:1.5px solid ${isAprov?'var(--green)':'var(--border)'};background:${isAprov?'var(--green)':'var(--surface)'};color:${isAprov?'#fff':'var(--text2)'};font-size:.72rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px">${lc('check',12,'currentColor')} Aprovar</button>
+          <button onclick="aprovarItem2(${i.id})" ${semPreco?'disabled title="Preencha o preço na cotação antes de aprovar" style="opacity:.4;cursor:not-allowed;padding:6px 13px;border-radius:var(--r8);border:1.5px solid var(--border);background:var(--surface);color:var(--muted);font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:4px"':`style="padding:6px 13px;border-radius:var(--r8);border:1.5px solid ${isAprov?'var(--green)':'var(--border)'};background:${isAprov?'var(--green)':'var(--surface)'};color:${isAprov?'#fff':'var(--text2)'};font-size:.72rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px"`}>${lc('check',12,'currentColor')} Aprovar</button>
           <button onclick="reprovarItem2(${i.id})" style="padding:6px 13px;border-radius:var(--r8);border:1.5px solid ${isReprov?'var(--red)':'var(--border)'};background:${isReprov?'var(--red)':'var(--surface)'};color:${isReprov?'#fff':'var(--text2)'};font-size:.72rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px">${lc('x',12,'currentColor')} Reprovar</button>
         </div>
       </div>
@@ -890,13 +927,22 @@ function reprovarLista() {
 // ETAPA 3 — ORDEM DE COMPRA
 // ══════════════════════════════════════════════════════════════
 function _renderEtapa3() {
-  const l=_listaAtual;
-  const itensPresencial=l.itens.filter(i=>i.tipoCompra==='presencial');
-  const itensForn=l.itens.filter(i=>i.tipoCompra!=='presencial');
-  const bySup={};
-  itensForn.forEach(i=>{const k=i.fornecedorId||0; if(!bySup[k])bySup[k]=[]; bySup[k].push(i);});
+  const l = _listaAtual;
+  const itensPresencial = l.itens.filter(i => i.tipoCompra === 'presencial');
+  const itensForn       = l.itens.filter(i => i.tipoCompra !== 'presencial');
+  const bySup = {};
+  itensForn.forEach(i => { const k = i.fornecedorId||0; if(!bySup[k]) bySup[k]=[]; bySup[k].push(i); });
 
-  document.getElementById('comprasContent').innerHTML=`
+  // Progresso: OCs enviadas + presenciais compradas
+  const totalOCs     = Object.keys(bySup).length;
+  const enviadas     = Object.values(bySup).filter(itens => itens[0]?.statusOC === 'confirmada' || itens[0]?.statusOC === 'enviada').length;
+  const presCompradas= itensPresencial.filter(i => i.compraPresRealizada).length;
+  const totalPresencial = itensPresencial.length ? 1 : 0; // 1 grupo presencial
+  const totalGrupos  = totalOCs + totalPresencial;
+  const concluidos   = enviadas + (itensPresencial.length > 0 && itensPresencial.every(i => i.compraPresRealizada) ? 1 : 0);
+  const tudoPronto   = totalGrupos > 0 && concluidos >= totalGrupos;
+
+  document.getElementById('comprasContent').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
         <h3 style="font-size:.96rem;font-weight:800;margin-bottom:3px">${lc('shopping-bag',14,'var(--purple)')} Ordem de Compra · ${l.codigo}</h3>
@@ -904,74 +950,193 @@ function _renderEtapa3() {
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="_renderEtapa2()">${lc('arrow-left',13)} Aprovação</button>
-        <button class="btn btn-primary btn-sm" onclick="avancarParaRecebimento()">Recebimento ${lc('arrow-right',13,'#fff')}</button>
+        <button class="btn btn-sm" onclick="avancarParaRecebimento()"
+          style="${tudoPronto
+            ? 'background:var(--purple);color:#fff;border:none;'
+            : 'background:var(--surface2);color:var(--muted);border:1.5px solid var(--border);'
+          }display:flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--r8);font-size:.82rem;font-weight:700">
+          ${lc('arrow-right',13,'currentColor')} Ir para Recebimento
+        </button>
       </div>
     </div>
-    ${Object.entries(bySup).map(([supId,itens],idx)=>{
-      const sup=parseInt(supId)?suppliers.find(s=>s.id===parseInt(supId)):null;
-      const total=itens.reduce((s,i)=>s+(i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitFinal||i.precoUnitEstimado||0),0);
-      const ocText=_montaOCText(sup,itens,l);
-      const stOC=itens[0]?.statusOC||'pendente';
-      const stOCC={pendente:'var(--muted)',enviada:'var(--yellow)',confirmada:'var(--green)'};
-      const stOCL={pendente:'Não enviada',enviada:'Enviada',confirmada:'Confirmada'};
-      return `<div class="card" style="margin-bottom:14px;overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--purple-xlight);border-bottom:1.5px solid var(--purple-light);flex-wrap:wrap;gap:8px">
+
+    <!-- OCs por fornecedor -->
+    ${Object.entries(bySup).map(([supId,itens],idx) => {
+      const sup    = parseInt(supId) ? suppliers.find(s => s.id === parseInt(supId)) : null;
+      const total  = itens.reduce((s,i) => s+(i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitFinal||0), 0);
+      const ocText = _montaOCText(sup, itens, l);
+      const stOC   = itens[0]?.statusOC || 'pendente';
+      const stColors = { pendente:'var(--muted)', enviada:'var(--yellow)', confirmada:'var(--green)' };
+      const stLabels = { pendente:'Não enviada', enviada:'Enviada', confirmada:'Confirmada' };
+      const isConfirmada = stOC === 'confirmada';
+      const isEnviada    = stOC === 'enviada' || isConfirmada;
+
+      return `<div class="card" style="margin-bottom:14px;overflow:hidden;border:1.5px solid ${isConfirmada?'var(--green)':isEnviada?'var(--yellow)':'var(--border)'}">
+        <!-- Cabeçalho OC -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+          background:${isConfirmada?'var(--green-light)':isEnviada?'var(--yellow-light)':'var(--purple-xlight)'};
+          border-bottom:1.5px solid ${isConfirmada?'var(--green)':isEnviada?'var(--yellow)':'var(--purple-light)'};flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:.88rem;font-weight:800;color:var(--purple)">${sup?.name||'! Fornecedor não definido'}</div>
-            ${sup?.seller?`<div style="font-size:.67rem;color:var(--muted);margin-top:1px">${lc('user',11,'var(--muted)')} ${sup.seller}</div>`:''}
+            <div style="font-size:.88rem;font-weight:800;color:${isConfirmada?'var(--green)':'var(--purple)'}">
+              ${sup?.name || '⚠️ Fornecedor'}
+            </div>
+            ${sup?.seller?`<div style="font-size:.67rem;color:var(--muted)">${lc('user',11,'var(--muted)')} ${sup.seller}</div>`:''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:.67rem;font-weight:700;color:${stOCC[stOC]};padding:3px 8px;border-radius:20px;border:1px solid ${stOCC[stOC]};background:white">
-              ${lc(stOC==='confirmada'?'check-circle':stOC==='enviada'?'send':'clock',11,'currentColor')} ${stOCL[stOC]}
-            </span>
-            <div style="font-size:.96rem;font-weight:800;color:var(--purple)">R$ ${fmt(total)}</div>
+            <div style="font-size:.9rem;font-weight:800;color:var(--purple)">R$ ${fmt(total)}</div>
             <button class="btn btn-outline btn-xs" onclick="copiarOC3(${idx})">${lc('copy',12)} Copiar</button>
-            ${sup?.phone?`<a href="https://wa.me/55${(sup.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(ocText)}" target="_blank" onclick="marcarOCEnviada(${idx})" class="btn btn-wa btn-xs">${lc('send',12,'#fff')} Enviar OC</a>`:''}
+            ${sup?.phone ? `
+              <a href="https://wa.me/55${(sup.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(ocText)}"
+                target="_blank" onclick="marcarOCEnviada(${idx})" class="btn btn-wa btn-xs">
+                ${lc('send',12,'#fff')} Enviar OC
+              </a>` : ''}
           </div>
         </div>
-        ${itens.map((i,iIdx)=>`<div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);background:${iIdx%2===0?'var(--surface)':'var(--surface2)'}">
-          <div style="flex:1"><div style="font-size:.8rem;font-weight:600">${i.nome}</div><div style="font-size:.62rem;color:var(--muted)">${i.categoria}</div></div>
-          <div style="font-size:.76rem;font-family:monospace;color:var(--muted)">${fmt(i.qtdAprovada??i.qtdSelecionada)} ${i.unidade}</div>
-          <div style="font-size:.8rem;font-weight:700;font-family:monospace;color:var(--purple)">R$ ${fmt((i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitFinal||i.precoUnitEstimado||0))}</div>
-        </div>`).join('')}
-      </div>`;
-    }).join('')}
-    ${itensPresencial.length?`<div class="card" style="margin-bottom:14px;overflow:hidden">
-      <div style="padding:12px 16px;background:var(--orange-light);border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div>
-          <div style="font-size:.88rem;font-weight:800;color:var(--orange-dark)">${lc('shopping-cart',14,'var(--orange-dark)')} Compra Presencial</div>
-          <div style="font-size:.68rem;color:var(--muted)">Itens organizados por categoria · informe local e responsável</div>
-        </div>
-        <button class="btn btn-outline btn-xs" onclick="imprimirListaPresencial()">${lc('printer',12)} Imprimir lista</button>
-      </div>
-      ${[...itensPresencial].sort((a,b)=>a.categoria.localeCompare(b.categoria)||a.nome.localeCompare(b.nome)).map((i, idx)=>{
-        const u = typeof getCurrentUser==='function'?getCurrentUser():null;
-        const respDefault = i.responsavelCompra || u?.name || '';
-        return `<div style="padding:12px 16px;border-bottom:1px solid var(--border);background:${idx%2===0?'var(--surface)':'var(--surface2)'}">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+
+        <!-- Itens da OC -->
+        ${itens.map((i,iIdx) => `
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);
+            background:${iIdx%2===0?'var(--surface)':'var(--surface2)'}">
             <div style="flex:1">
-              <div style="font-size:.82rem;font-weight:600">${i.nome}</div>
+              <div style="font-size:.8rem;font-weight:600">${i.nome}</div>
               <div style="font-size:.62rem;color:var(--muted)">${i.categoria}</div>
             </div>
-            <div style="font-size:.76rem;font-family:monospace">${fmt(i.qtdAprovada??i.qtdSelecionada)} ${i.unidade}</div>
-            <div style="font-size:.72rem;color:var(--orange-dark);font-weight:700">Teto: R$ ${fmt((i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitEstimado||0))}</div>
+            <div style="font-size:.76rem;font-family:monospace;color:var(--muted)">${fmt(i.qtdAprovada??i.qtdSelecionada)} ${i.unidade}</div>
+            <div style="font-size:.8rem;font-weight:700;font-family:monospace;color:var(--purple)">
+              R$ ${fmt((i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitFinal||0))}
+            </div>
+          </div>`).join('')}
+
+        <!-- Checklist de status da OC -->
+        <div style="padding:12px 16px;background:var(--surface2);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="font-size:.72rem;color:var(--muted);font-weight:600">Status da OC:</div>
+          <div style="display:flex;gap:8px">
+            ${['pendente','enviada','confirmada'].map(s => {
+              const labels = {pendente:'Não enviada', enviada:'OC Enviada', confirmada:'Confirmada'};
+              const isActive = stOC === s;
+              const colors   = {pendente:'var(--muted)', enviada:'var(--yellow)', confirmada:'var(--green)'};
+              return `<button onclick="setStatusOC(${idx},'${s}')"
+                style="padding:5px 11px;border-radius:20px;font-size:.7rem;font-weight:600;cursor:pointer;
+                border:1.5px solid ${isActive?colors[s]:'var(--border)'};
+                background:${isActive?colors[s]+'22':'var(--surface)'};color:${isActive?colors[s]:'var(--muted)'};transition:all .15s">
+                ${lc(s==='confirmada'?'check-circle':s==='enviada'?'send':'clock',11,'currentColor')} ${labels[s]}
+              </button>`;
+            }).join('')}
           </div>
-          <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
-            <input type="text" placeholder="Local de compra (ex: Atacadão, Makro...)" value="${i.localCompra||''}"
-              style="padding:5px 9px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.74rem"
-              onchange="setSuperCampo(${i.id},'localCompra',this.value)">
-            <input type="text" placeholder="Responsável" value="${respDefault}"
-              style="padding:5px 9px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.74rem"
-              onchange="setSuperCampo(${i.id},'responsavelCompra',this.value)">
+        </div>
+      </div>`;
+    }).join('')}
+
+    <!-- Compra Presencial com valor real e checklist -->
+    ${itensPresencial.length ? `
+    <div class="card" style="margin-bottom:14px;overflow:hidden;border:1.5px solid ${itensPresencial.every(i=>i.compraPresRealizada)?'var(--green)':'var(--border)'}">
+      <div style="padding:12px 16px;background:${itensPresencial.every(i=>i.compraPresRealizada)?'var(--green-light)':'var(--orange-light)'};
+        border-bottom:1.5px solid ${itensPresencial.every(i=>i.compraPresRealizada)?'var(--green)':'var(--border)'};
+        display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:.88rem;font-weight:800;color:${itensPresencial.every(i=>i.compraPresRealizada)?'var(--green)':'var(--orange-dark)'}">
+            ${lc('shopping-cart',14,'currentColor')} Compra Presencial
+          </div>
+          <div style="font-size:.68rem;color:var(--muted)">Preencha o valor real e marque como comprado</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:.72rem;font-weight:700;color:${itensPresencial.every(i=>i.compraPresRealizada)?'var(--green)':'var(--orange-dark)'}">
+            ${itensPresencial.filter(i=>i.compraPresRealizada).length}/${itensPresencial.length} comprados
+          </span>
+          <button class="btn btn-outline btn-xs" onclick="imprimirListaPresencial()">${lc('printer',12)} Imprimir</button>
+        </div>
+      </div>
+
+      ${[...itensPresencial].sort((a,b)=>a.categoria.localeCompare(b.categoria)||a.nome.localeCompare(b.nome)).map((i,idx) => {
+        const u = typeof getCurrentUser==='function'?getCurrentUser():null;
+        const qtd = i.qtdAprovada ?? i.qtdSelecionada;
+        const teto = qtd * (i.precoUnitEstimado||0);
+        const realTotal = i.qtdComprada && i.precoRealUnit ? i.qtdComprada * i.precoRealUnit : null;
+        const comprado = !!i.compraPresRealizada;
+
+        return `<div style="padding:12px 16px;border-bottom:1px solid var(--border);
+          background:${comprado?'var(--green-light)':'var(--surface)'}">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <div style="width:4px;align-self:stretch;min-height:40px;background:${comprado?'var(--green)':'var(--border)'};border-radius:2px;flex-shrink:0"></div>
+            <div style="flex:1">
+              <div style="font-size:.84rem;font-weight:700">${i.nome}</div>
+              <div style="font-size:.62rem;color:var(--muted)">${i.categoria}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:.68rem;color:var(--muted)">Teto: <span style="font-weight:600;color:var(--orange-dark)">R$${fmt(teto)}</span></div>
+              ${realTotal!==null?`<div style="font-size:.76rem;font-weight:700;color:${realTotal>teto?'var(--red)':'var(--green)'}">Real: R$${fmt(realTotal)}</div>`:''}
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.76rem;font-weight:600;
+              padding:6px 12px;border-radius:var(--r8);border:1.5px solid ${comprado?'var(--green)':'var(--border)'};
+              background:${comprado?'var(--green)':'var(--surface)'};color:${comprado?'#fff':'var(--text2)'}">
+              <input type="checkbox" ${comprado?'checked':''} style="accent-color:var(--green);width:15px;height:15px"
+                onchange="marcarCompraPresRealizada(${i.id},this.checked)">
+              ${comprado?'Comprado':'Marcar comprado'}
+            </label>
+          </div>
+
+          <!-- Campos de valor real e local -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding-left:10px">
+            <div class="field" style="margin:0">
+              <label style="font-size:.64rem">Qtd real comprada</label>
+              <input type="number" value="${i.qtdComprada||qtd}" min="0" step="0.001"
+                style="padding:5px 8px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.74rem;width:100%"
+                onchange="setSuperCampo(${i.id},'qtdComprada',parseFloat(this.value)||0)">
+            </div>
+            <div class="field" style="margin:0">
+              <label style="font-size:.64rem">Preço unit. real (R$)</label>
+              <input type="number" value="${i.precoRealUnit||''}" min="0" step="0.01" placeholder="0,00"
+                style="padding:5px 8px;border:1.5px solid ${realTotal!==null&&realTotal>teto?'var(--red)':'var(--border)'};border-radius:var(--r6);font-size:.74rem;width:100%"
+                onchange="setPrecoRealPres(${i.id},this.value)">
+            </div>
+            <div class="field" style="margin:0">
+              <label style="font-size:.64rem">Local da compra</label>
+              <input type="text" value="${i.localCompra||''}" placeholder="Ex: Atacadão"
+                style="padding:5px 8px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.74rem;width:100%"
+                onchange="setSuperCampo(${i.id},'localCompra',this.value)">
+            </div>
           </div>
         </div>`;
       }).join('')}
-    </div>`:''}`;
+    </div>` : ''}`;
 
-  window._ocBySup=Object.entries(bySup).map(([supId,itens])=>({sup:parseInt(supId)?suppliers.find(s=>s.id===parseInt(supId)):null,itens}));
+  window._ocBySup = Object.entries(bySup).map(([supId,itens]) => ({
+    sup: parseInt(supId) ? suppliers.find(s => s.id === parseInt(supId)) : null, itens
+  }));
 }
 
-function marcarOCEnviada(idx) { const e=window._ocBySup?.[idx]; if(e) { e.itens.forEach(i=>{i.statusOC='enviada';}); saveListas(); } }
+
+function marcarOCEnviada(idx) {
+  const e = window._ocBySup?.[idx];
+  if (e) { e.itens.forEach(i => { i.statusOC = 'enviada'; }); saveListas(); }
+}
+
+function setStatusOC(idx, status) {
+  const e = window._ocBySup?.[idx];
+  if (e) {
+    e.itens.forEach(i => { i.statusOC = status; });
+    saveListas();
+    _renderEtapa3();
+  }
+}
+
+function marcarCompraPresRealizada(itemId, checked) {
+  const i = _listaAtual.itens.find(x => x.id === itemId);
+  if (!i) return;
+  i.compraPresRealizada = checked;
+  if (checked && !i.qtdComprada) i.qtdComprada = i.qtdAprovada ?? i.qtdSelecionada;
+  saveListas();
+  _renderEtapa3();
+}
+
+function setPrecoRealPres(itemId, val) {
+  const i = _listaAtual.itens.find(x => x.id === itemId);
+  if (!i) return;
+  i.precoRealUnit = parseFloat(val) || 0;
+  // Atualiza precoUnitFinal com valor real da compra presencial
+  if (i.precoRealUnit > 0) i.precoUnitFinal = i.precoRealUnit;
+  saveListas();
+}
 function _montaOCText(sup,itens,l) {
   const linhas=itens.map(i=>`• ${i.nome}: ${fmt(i.qtdAprovada??i.qtdSelecionada)} ${i.unidade} × R$${fmt(i.precoUnitFinal||i.precoUnitEstimado||0)} = R$${fmt((i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitFinal||i.precoUnitEstimado||0))}`).join('\n');
   const total=itens.reduce((s,i)=>s+(i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitFinal||i.precoUnitEstimado||0),0);
@@ -1091,161 +1256,180 @@ function avancarParaRecebimento() {
 // ETAPA 4 — RECEBIMENTO AGRUPADO POR FORNECEDOR
 // ══════════════════════════════════════════════════════════════
 function _renderEtapa4() {
-  const l=_listaAtual;
-  const total=l.itens.length;
-  const conferidos=l.itens.filter(i=>i.conferido).length;
-  const pct=total>0?Math.round(conferidos/total*100):0;
-  const tudo=conferidos===total;
-  const horas=Array.from({length:18},(_,i)=>`${String(i+6).padStart(2,'0')}:00`);
+  const l          = _listaAtual;
+  const total      = l.itens.length;
+  const conferidos = l.itens.filter(i => i.conferido).length;
+  const pct        = total > 0 ? Math.round(conferidos/total*100) : 0;
+  const tudo       = conferidos === total;
+  const horas      = Array.from({length:18},(_,i)=>`${String(i+6).padStart(2,'0')}:00`);
+  const u          = typeof getCurrentUser==='function' ? getCurrentUser() : null;
 
   // Agrupa por fornecedor
-  const bySup={};
-  l.itens.forEach(i=>{
-    const k=i.tipoCompra==='presencial'?'presencial':(i.fornecedorId||'0');
-    if(!bySup[k]) bySup[k]=[];
+  const bySup = {};
+  l.itens.forEach(i => {
+    const k = i.tipoCompra === 'presencial' ? 'presencial' : (i.fornecedorId || '0');
+    if (!bySup[k]) bySup[k] = [];
     bySup[k].push(i);
   });
 
-  document.getElementById('comprasContent').innerHTML=`
+  document.getElementById('comprasContent').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
         <h3 style="font-size:.96rem;font-weight:800;margin-bottom:3px">${lc('package',14,'var(--purple)')} Recebimento · ${l.codigo}</h3>
         <div style="font-size:.71rem;color:var(--muted)">${conferidos} de ${total} itens conferidos</div>
       </div>
-      <div style="display:flex;gap:7px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="_renderEtapa3()">${lc('arrow-left',13)} OC</button>
-        <button class="btn btn-sm" onclick="concluirLista()"
-          style="${tudo
-            ? 'background:var(--green);color:#fff;border:none;'
-            : 'background:var(--surface2);color:var(--muted);border:1.5px solid var(--border);cursor:not-allowed;'
-          }display:flex;align-items:center;gap:6px;padding:7px 16px;border-radius:var(--r8);font-size:.82rem;font-weight:700;transition:all .3s"
-          ${!tudo?'disabled':''}>
-          ${tudo ? lc('check-circle',14,'#fff') : lc('circle',14,'var(--muted)')}
-          ${tudo ? 'Concluir lista' : `Aguardando (${total-conferidos} restantes)`}
-        </button>
-      </div>
+      <button class="btn btn-outline btn-sm" onclick="_renderEtapa3()">${lc('arrow-left',13)} OC</button>
     </div>
 
     <!-- Progresso -->
-    <div style="margin-bottom:16px">
+    <div style="margin-bottom:20px">
       <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-        <span style="font-size:.72rem;color:var(--muted)">Progresso</span>
+        <span style="font-size:.72rem;color:var(--muted)">Progresso geral</span>
         <span style="font-size:.72rem;font-weight:700;color:${pct===100?'var(--green)':'var(--purple)'}">${pct}%</span>
       </div>
-      <div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden">
+      <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':'var(--purple)'};border-radius:4px;transition:width .4s"></div>
       </div>
     </div>
 
-    <!-- Dados globais -->
-    <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px;margin-bottom:16px">
-      <div style="font-size:.69rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">${lc('clipboard-list',12,'var(--muted)')} Dados do recebimento</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
-        <div class="field" style="margin:0"><label>Quem conferiu</label>
-          <input type="text" class="inp" placeholder="Nome do conferente" value="${l.conferidoPor||''}" onchange="_setRecGlobal('conferidoPor',this.value)">
-        </div>
-        <div class="field" style="margin:0"><label>Data</label>
-          <input type="date" class="inp" value="${l.dataRecebimento||new Date().toISOString().slice(0,10)}" onchange="_setRecGlobal('dataRecebimento',this.value)">
-        </div>
-        <div class="field" style="margin:0"><label>Horário</label>
-          <select class="inp" onchange="_setRecGlobal('horaRecebimento',this.value)">
-            ${horas.map(h=>`<option value="${h}" ${l.horaRecebimento===h?'selected':''}>${h}</option>`).join('')}
-          </select>
-        </div>
-      </div>
-    </div>
+    <!-- Itens agrupados por fornecedor — cada item com seus próprios dados -->
+    ${Object.entries(bySup).map(([supKey, itensGrupo]) => {
+      const isPresencial  = supKey === 'presencial';
+      const sup           = !isPresencial && parseInt(supKey) ? suppliers.find(s => s.id === parseInt(supKey)) : null;
+      const grupoConf     = itensGrupo.filter(i => i.conferido).length;
+      const grupoTotal    = itensGrupo.length;
+      const grupoOk       = grupoConf === grupoTotal;
 
-    <!-- Itens agrupados por fornecedor -->
-    ${Object.entries(bySup).map(([supKey, itensGrupo])=>{
-      const isPresencial = supKey==='presencial';
-      const sup = !isPresencial&&parseInt(supKey) ? suppliers.find(s=>s.id===parseInt(supKey)) : null;
-      const grupoConferidos = itensGrupo.filter(i=>i.conferido).length;
-      const grupoTotal = itensGrupo.length;
-      const grupoOk = grupoConferidos===grupoTotal;
-
-      return `<div class="card" style="margin-bottom:14px;overflow:hidden">
+      return `<div class="card" style="margin-bottom:14px;overflow:hidden;border:1.5px solid ${grupoOk?'var(--green)':'var(--border)'}">
         <!-- Cabeçalho do grupo -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;
-          background:${isPresencial?'var(--orange-light)':'var(--purple-xlight)'};
-          border-bottom:1.5px solid ${isPresencial?'var(--border)':'var(--purple-light)'};flex-wrap:wrap;gap:8px">
+          background:${grupoOk?'var(--green-light)':isPresencial?'var(--orange-light)':'var(--purple-xlight)'};
+          border-bottom:1.5px solid ${grupoOk?'var(--green)':isPresencial?'var(--border)':'var(--purple-light)'};flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:.86rem;font-weight:800;color:${isPresencial?'var(--orange-dark)':'var(--purple)'}">
-              ${isPresencial?`${lc('shopping-cart',13,'var(--orange-dark)')} Compra Presencial`:`${lc('building-2',13,'var(--purple)')} ${sup?.name||'Fornecedor'}`}
+            <div style="font-size:.86rem;font-weight:800;color:${grupoOk?'var(--green)':isPresencial?'var(--orange-dark)':'var(--purple)'}">
+              ${isPresencial
+                ? `${lc('shopping-cart',13,'currentColor')} Compra Presencial`
+                : `${lc('building-2',13,'currentColor')} ${sup?.name||'Fornecedor'}`}
             </div>
             ${sup?.seller?`<div style="font-size:.66rem;color:var(--muted)">${lc('user',10,'var(--muted)')} ${sup.seller}</div>`:''}
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:.7rem;font-weight:700;color:${grupoOk?'var(--green)':'var(--muted)'}">
-              ${lc(grupoOk?'check-circle':'clock',12,'currentColor')} ${grupoConferidos}/${grupoTotal} conferidos
+              ${lc(grupoOk?'check-circle':'clock',12,'currentColor')} ${grupoConf}/${grupoTotal}
             </span>
             <button onclick="_conferirTodoGrupo('${supKey}')"
-              style="padding:4px 10px;border-radius:var(--r6);border:1.5px solid var(--green);background:var(--green-light);color:var(--green);font-size:.68rem;font-weight:600;cursor:pointer">
+              style="padding:4px 10px;border-radius:var(--r6);border:1.5px solid var(--green);
+              background:var(--green-light);color:var(--green);font-size:.68rem;font-weight:600;cursor:pointer">
               ${lc('check-check',11,'currentColor')} Conferir todos
             </button>
           </div>
         </div>
-        <!-- Itens do grupo -->
-        ${itensGrupo.map(i=>{
-          const qtdS=i.qtdAprovada??i.qtdSelecionada;
-          const qtdR=i.qtdRecebida??null;
-          const diff=qtdR!==null?qtdR-qtdS:null;
-          const isOk=i.conferido&&!i.divergencia;
-          const isDivg=i.conferido&&i.divergencia;
-          // Pré-preenche com dados globais se não tiver individual
-          const iConf = i.conferidoPorItem || l.conferidoPor || '';
-          const iData = i.dataRecebimentoItem || l.dataRecebimento || new Date().toISOString().slice(0,10);
-          const iHora = i.horaRecebimentoItem || l.horaRecebimento || horas[0];
+
+        <!-- Cada item com seus dados individuais de recebimento -->
+        ${itensGrupo.map(i => {
+          const qtdS  = i.qtdAprovada ?? i.qtdSelecionada;
+          const qtdR  = i.qtdRecebida ?? null;
+          const diff  = qtdR !== null ? qtdR - qtdS : null;
+          const isOk  = i.conferido && !i.divergencia;
+          const isDivg= i.conferido && i.divergencia;
+
+          // Dados individuais de recebimento — sem fallback global
+          const iConf = i.conferidoPorItem || u?.name || '';
+          const iData = i.dataRecebimentoItem || new Date().toISOString().slice(0,10);
+          const iHora = i.horaRecebimentoItem || horas[4]; // default 10:00
+
           return `<div style="border-bottom:1px solid var(--border);background:${isOk?'var(--green-light)':isDivg?'var(--yellow-light)':'var(--surface)'}">
-            <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;flex-wrap:wrap">
+            <!-- Linha principal do item -->
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;flex-wrap:wrap">
               <div style="width:4px;align-self:stretch;background:${isOk?'var(--green)':isDivg?'var(--yellow)':'var(--border)'};border-radius:2px;flex-shrink:0"></div>
-              <div style="flex:1;min-width:120px">
+              <div style="flex:1;min-width:110px">
                 <div style="font-size:.84rem;font-weight:700">${i.nome}</div>
                 <div style="font-size:.62rem;color:var(--muted)">${i.categoria}</div>
               </div>
-              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                <div style="text-align:center">
-                  <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">Pedido</div>
-                  <div style="font-size:.82rem;font-weight:700;font-family:monospace">${fmt(qtdS)} ${i.unidade}</div>
-                </div>
-                <div style="text-align:center">
-                  <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">Recebido</div>
-                  <input type="number" value="${qtdR??''}" min="0" step="0.001" placeholder="${fmt(qtdS)}"
-                    style="width:72px;padding:4px 6px;border:1.5px solid ${diff!==null&&diff<0?'var(--red)':'var(--border)'};border-radius:var(--r6);font-size:.78rem;text-align:center;font-family:monospace"
-                    onchange="setQtdRecebida(${i.id},this.value)">
-                </div>
-                ${diff!==null?`<div style="text-align:center">
-                  <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase">Diferença</div>
-                  <div style="font-size:.82rem;font-weight:700;font-family:monospace;color:${diff<0?'var(--red)':diff>0?'var(--yellow)':'var(--green)'}">${diff>0?'+':''}${fmt(diff)}</div>
-                </div>`:''}
-                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:.76rem;font-weight:600;white-space:nowrap">
-                  <input type="checkbox" ${i.conferido?'checked':''} style="accent-color:var(--green);width:16px;height:16px" onchange="marcarConferido(${i.id},this.checked)">
-                  Conferido
-                </label>
+              <!-- Pedido -->
+              <div style="text-align:center">
+                <div style="font-size:.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Pedido</div>
+                <div style="font-size:.82rem;font-weight:700;font-family:monospace">${fmt(qtdS)} ${i.unidade}</div>
               </div>
+              <!-- Recebido -->
+              <div style="text-align:center">
+                <div style="font-size:.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Recebido</div>
+                <input type="number" value="${qtdR??''}" min="0" step="0.001" placeholder="${fmt(qtdS)}"
+                  style="width:72px;padding:4px 6px;border:1.5px solid ${diff!==null&&diff<0?'var(--red)':'var(--border)'};
+                  border-radius:var(--r6);font-size:.78rem;text-align:center;font-family:monospace"
+                  onchange="setQtdRecebida(${i.id},this.value)">
+              </div>
+              <!-- Diferença -->
+              ${diff!==null?`<div style="text-align:center">
+                <div style="font-size:.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">Dif.</div>
+                <div style="font-size:.82rem;font-weight:700;font-family:monospace;color:${diff<0?'var(--red)':diff>0?'var(--yellow)':'var(--green)'}">
+                  ${diff>0?'+':''}${fmt(diff)}
+                </div>
+              </div>`:''}
+              <!-- Checkbox conferido -->
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:.76rem;font-weight:600;
+                white-space:nowrap;padding:5px 10px;border-radius:var(--r8);
+                border:1.5px solid ${isOk?'var(--green)':'var(--border)'};
+                background:${isOk?'var(--green)':'var(--surface)'};color:${isOk?'#fff':'var(--text2)'}">
+                <input type="checkbox" ${i.conferido?'checked':''} style="accent-color:var(--green);width:15px;height:15px"
+                  onchange="marcarConferido(${i.id},this.checked)">
+                Conferido
+              </label>
             </div>
-            <!-- Dados individuais de recebimento -->
-            <div style="padding:6px 16px 10px 32px;background:${isOk?'rgba(0,0,0,.03)':'var(--surface2)'}">
-              <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px;margin-bottom:6px">
-                <input type="text" placeholder="Quem conferiu..." value="${iConf}"
-                  style="padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.71rem"
-                  onchange="setItemRecCampo(${i.id},'conferidoPorItem',this.value)">
-                <input type="date" value="${iData}"
-                  style="padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.71rem"
-                  onchange="setItemRecCampo(${i.id},'dataRecebimentoItem',this.value)">
-                <select style="padding:4px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.71rem"
-                  onchange="setItemRecCampo(${i.id},'horaRecebimentoItem',this.value)">
-                  ${horas.map(h=>`<option value="${h}" ${iHora===h?'selected':''}>${h}</option>`).join('')}
-                </select>
+
+            <!-- Dados de recebimento INDIVIDUAIS por item -->
+            <div style="padding:6px 16px 10px 32px;background:${isOk?'rgba(34,197,94,.06)':'var(--surface2)'}">
+              <div style="display:grid;grid-template-columns:2fr 1.2fr 1fr;gap:6px;margin-bottom:5px">
+                <div>
+                  <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Quem conferiu</div>
+                  <input type="text" placeholder="Nome..." value="${iConf}"
+                    style="width:100%;padding:4px 7px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.72rem"
+                    onchange="setItemRecCampo(${i.id},'conferidoPorItem',this.value)">
+                </div>
+                <div>
+                  <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Data</div>
+                  <input type="date" value="${iData}"
+                    style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.72rem"
+                    onchange="setItemRecCampo(${i.id},'dataRecebimentoItem',this.value)">
+                </div>
+                <div>
+                  <div style="font-size:.58rem;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Hora</div>
+                  <select style="width:100%;padding:4px 5px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.72rem"
+                    onchange="setItemRecCampo(${i.id},'horaRecebimentoItem',this.value)">
+                    ${horas.map(h=>`<option value="${h}" ${iHora===h?'selected':''}>${h}</option>`).join('')}
+                  </select>
+                </div>
               </div>
-              <input type="text" placeholder="Obs. de conferência..." value="${i.comentarioConferencia||''}"
-                style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.71rem;background:var(--surface)"
+              <input type="text" placeholder="Obs. de conferência (divergência, qualidade, etc)..." value="${i.comentarioConferencia||''}"
+                style="width:100%;padding:4px 7px;border:1.5px solid var(--border);border-radius:var(--r6);
+                font-size:.71rem;background:var(--surface)"
                 onchange="setComentarioConferencia(${i.id},this.value)">
             </div>
           </div>`;
         }).join('')}
       </div>`;
-    }).join('')}`;
+    }).join('')}
+
+    <!-- Botão Finalizar — fixo no rodapé, verde quando tudo conferido -->
+    <div style="position:sticky;bottom:0;background:var(--surface);border-top:1.5px solid var(--border);
+      padding:14px 0;margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="font-size:.78rem;color:var(--muted)">
+        ${tudo
+          ? `${lc('check-circle',14,'var(--green)')} <span style="color:var(--green);font-weight:700">Todos os itens conferidos!</span>`
+          : `${lc('clock',14,'var(--muted)')} Faltam <strong>${total-conferidos}</strong> item(s) para conferir`}
+      </div>
+      <button onclick="${tudo?'concluirLista()':'void(0)'}"
+        style="display:flex;align-items:center;gap:8px;padding:11px 28px;border-radius:var(--r10);
+        border:none;font-size:.9rem;font-weight:800;font-family:Inter,sans-serif;cursor:${tudo?'pointer':'not-allowed'};
+        transition:all .3s;
+        background:${tudo?'var(--green)':'var(--surface2)'};
+        color:${tudo?'#fff':'var(--muted)'}">
+        ${tudo ? lc('check-circle',18,'#fff') : lc('circle',18,'var(--muted)')}
+        Finalizar lista
+      </button>
+    </div>`;
 }
+
 
 function _conferirTodoGrupo(supKey) {
   const l=_listaAtual;
@@ -1261,13 +1445,8 @@ function _conferirTodoGrupo(supKey) {
 }
 
 function _setRecGlobal(campo,val) {
-  if (!_listaAtual) return;
-  _listaAtual[campo]=val;
-  // Propaga para itens que não têm valor individual definido
-  if (campo==='conferidoPor') {
-    _listaAtual.itens.forEach(i=>{ if(!i.conferidoPorItem) i.conferidoPorItem=val; });
-  }
-  saveListas();
+  // Mantido por compatibilidade — campos globais foram substituídos por campos por item
+  if (_listaAtual) { _listaAtual[campo] = val; saveListas(); }
 }
 
 function setItemRecCampo(itemId, campo, val) {
