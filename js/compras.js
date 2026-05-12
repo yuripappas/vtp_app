@@ -150,7 +150,7 @@ function _renderDashCompras() {
     <div id="comprasTabs" style="display:flex;border-bottom:1px solid var(--border);margin:-16px -24px 0;padding:0 24px;gap:4px"></div>
     ${la ? `
     <div style="margin-top:14px;display:flex;gap:3px">
-      ${[{n:1,label:'Lista',icon:'clipboard-list'},{n:2,label:'Aprovação',icon:'check-circle'},{n:3,label:'Ordem',icon:'shopping-bag'},{n:4,label:'Recebimento',icon:'package'}].map(s => {
+      ${[{n:1,label:'Carrinho',icon:'shopping-cart'},{n:2,label:'Cotação',icon:'tag'},{n:3,label:'Aprovação',icon:'check-circle'},{n:4,label:'OC',icon:'shopping-bag'},{n:5,label:'Recebimento',icon:'package'}].map(s => {
         const done = la.etapa > s.n, cur = la.etapa === s.n;
         return `<div style="flex:1;text-align:center;cursor:${done?'pointer':'default'}" ${done?`onclick="_renderEtapa(${s.n})"`:''}>
           <div style="height:3px;border-radius:2px;background:${done?'var(--green)':cur?'var(--purple)':'var(--border)'};margin-bottom:5px"></div>
@@ -167,116 +167,343 @@ function _renderDashCompras() {
 function _renderEtapa(n) {
   _comprasTab = 'lista';
   if (!_listaAtual) { _renderSemLista(); return; }
-  if (n === 1) _renderEtapa1();
-  else if (n === 2) _renderEtapa2();
-  else if (n === 3) _renderEtapa3();
-  else if (n === 4) _renderEtapa4();
+  if (n === 1) _renderEtapa1();        // Seleção / Carrinho
+  else if (n === 2) _renderEtapa2Cotacao(); // Cotações
+  else if (n === 3) _renderEtapa3Aprovacao(); // Aprovação
+  else if (n === 4) _renderEtapa4OC(); // Ordem de Compra
+  else if (n === 5) _renderEtapa5();   // Recebimento
 }
+
+// Alias para compatibilidade
+function _renderEtapa2() { _renderEtapa2Cotacao(); }
+function _renderEtapa3() { _renderEtapa3Aprovacao(); }
 
 // ══════════════════════════════════════════════════════════════
 // ETAPA 1 — LISTA COM AUTO-FORNECEDORES
 // ══════════════════════════════════════════════════════════════
 function _renderEtapa1() {
   const l = _listaAtual;
-  l.etapa = 1;
+
+  // Etapa 1 agora é a SELEÇÃO DE ITENS COM CARRINHO
+  // O usuário vê os insumos do estoque e decide o que comprar
+  _listaAtual.etapa = 1;
   saveListas();
 
-  // AUTO-POPULATE: para cada item, adiciona cotação de TODOS os fornecedores cadastrados
-  l.itens.forEach(i => {
+  const insumos   = items.filter(i => !i.isProd);
+  const cats      = [...new Set(insumos.map(i => i.cat))].sort();
+  const carrinho  = l.itens; // itens já no carrinho desta lista
+
+  // Filtros da etapa 1
+  if (!window._e1Filtro) window._e1Filtro = { search:'', cat:'', status:'need' };
+  const f = window._e1Filtro;
+
+  let filt = insumos.filter(i => {
+    if (f.cat && i.cat !== f.cat) return false;
+    if (f.search && !i.name.toLowerCase().includes(f.search.toLowerCase())) return false;
+    if (f.status === 'crit') return gst(i) === 'crit';
+    if (f.status === 'warn') return gst(i) === 'warn';
+    if (f.status === 'ok')   return gst(i) === 'ok';
+    if (f.status === 'need') return gneed(i) > 0;
+    return true;
+  }).sort((a,b) => {
+    const order = {crit:0,warn:1,ok:2};
+    return (order[gst(a)]||2)-(order[gst(b)]||2)||a.name.localeCompare(b.name);
+  });
+
+  const byCat = {};
+  filt.forEach(i => { if(!byCat[i.cat]) byCat[i.cat]=[]; byCat[i.cat].push(i); });
+
+  const stColors = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' };
+  const stLabels = { crit:'CRÍTICO', warn:'BAIXO', ok:'OK' };
+
+  const totalEstCarrinho = carrinho.reduce((s,ci) => s + ci.qtdSelecionada*(ci.precoUnitEstimado||0), 0);
+
+  document.getElementById('comprasContent').innerHTML = `
+    <div style="display:flex;gap:20px;align-items:flex-start">
+
+      <!-- Lista de insumos -->
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div>
+            <h3 style="font-size:.96rem;font-weight:800;margin-bottom:3px">
+              ${lc('list',14,'var(--purple)')} Selecionar itens para compra
+            </h3>
+            <div style="font-size:.71rem;color:var(--muted)">
+              Adicione itens ao carrinho. Itens com necessidade aparecem primeiro.
+            </div>
+          </div>
+          <button onclick="abrirAddItemManual()"
+            style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r8);
+            border:1.5px solid var(--purple);background:var(--purple);color:#fff;font-size:.78rem;font-weight:700;cursor:pointer">
+            ${lc('plus',13,'#fff')} Item avulso
+          </button>
+        </div>
+
+        <!-- Filtros -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+          <input class="inp" style="max-width:200px;padding:6px 10px;font-size:.78rem" placeholder="Buscar insumo..."
+            value="${f.search}" oninput="window._e1Filtro.search=this.value;_renderEtapa1()">
+          <select class="inp" style="max-width:170px;padding:6px 8px;font-size:.78rem"
+            onchange="window._e1Filtro.cat=this.value;_renderEtapa1()">
+            <option value="">Todas categorias</option>
+            ${cats.map(c=>`<option value="${c}" ${f.cat===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${[
+              {id:'all',  label:'Todos',    icon:'package'},
+              {id:'need', label:'Necessidade', icon:'arrow-up'},
+              {id:'crit', label:'Críticos', icon:'alert-circle'},
+              {id:'warn', label:'Baixo',    icon:'alert-triangle'},
+            ].map(b => `<button class="filter-btn ${f.status===b.id?'active':''}" onclick="window._e1Filtro.status='${b.id}';_renderEtapa1()">
+              ${lc(b.icon,11,'currentColor')} ${b.label}
+            </button>`).join('')}
+          </div>
+        </div>
+
+        <!-- Tabela de insumos -->
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Insumo</th>
+              <th class="c" style="width:48px">Un.</th>
+              <th class="c" style="width:80px">Digital</th>
+              <th class="c" style="width:70px">Mínimo</th>
+              <th class="c" style="width:70px">Ideal</th>
+              <th style="width:110px">Nível</th>
+              <th class="c" style="width:72px">Status</th>
+              <th style="width:200px;text-align:right">Adicionar</th>
+            </tr></thead>
+            <tbody>
+              ${filt.length === 0 ? `<tr><td colspan="8" style="text-align:center;padding:30px">
+                <div style="font-size:.8rem;color:var(--muted)">Nenhum item encontrado</div>
+              </td></tr>` :
+              Object.entries(byCat).map(([cat,catItems]) => {
+                const catRow = `<tr>
+                  <td colspan="8" style="padding:6px 14px 4px;background:var(--surface2);border-top:2px solid var(--border)">
+                    <span style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--purple)">${cat}</span>
+                  </td>
+                </tr>`;
+
+                const rows = catItems.map(i => {
+                  const s      = gst(i);
+                  const need   = gneed(i);
+                  const pct    = i.ideal > 0 ? Math.min(100, Math.round(i.qty/i.ideal*100)) : 0;
+                  const inCart = carrinho.find(ci => ci.itemId === i.id);
+                  const rowBgC = s==='crit'?'#FFF1F1':s==='warn'?'#FFFBEB':'var(--surface)';
+
+                  return `<tr style="background:${inCart?'var(--purple-xlight)':rowBgC};border-bottom:1px solid var(--border)">
+                    <td style="padding:9px 14px">
+                      <div style="font-size:.82rem;font-weight:600">${i.name}</div>
+                      ${i.code?`<div style="font-size:.58rem;color:var(--muted);font-family:monospace">#${i.code}</div>`:''}
+                    </td>
+                    <td class="c" style="font-size:.74rem;color:var(--muted)">${i.unit}</td>
+                    <td class="c" style="font-size:.82rem;font-weight:600;font-family:monospace">${fmt(i.qty)}</td>
+                    <td class="c" style="font-size:.72rem;color:var(--muted)">${fmt(i.min)}</td>
+                    <td class="c" style="font-size:.72rem;color:var(--muted)">${fmt(i.ideal)}</td>
+                    <td style="padding:7px 12px">
+                      <div style="display:flex;align-items:center;gap:6px">
+                        <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+                          <div style="height:100%;width:${pct}%;background:${stColors[s]};border-radius:3px"></div>
+                        </div>
+                        <span style="font-size:.62rem;color:${stColors[s]};font-weight:700;min-width:28px">${pct}%</span>
+                      </div>
+                    </td>
+                    <td class="c">
+                      <span class="chip chip-${s==='crit'?'red':s==='warn'?'yellow':'green'}" style="font-size:.62rem">
+                        ${stLabels[s]}
+                      </span>
+                    </td>
+                    <td style="padding:7px 14px;text-align:right">
+                      ${inCart ? `
+                        <div style="display:inline-flex;align-items:center;gap:4px;background:var(--purple);border-radius:var(--r8);padding:4px 8px">
+                          <button onclick="e1AjustarQtd(${i.id},-1)"
+                            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center">−</button>
+                          <input type="number" value="${inCart.qtdSelecionada}" min="0.001" step="0.001"
+                            style="width:52px;border:none;background:transparent;font-size:.8rem;font-weight:800;text-align:center;color:#fff;font-family:monospace"
+                            onchange="e1SetQtd(${i.id},this.value)">
+                          <span style="font-size:.62rem;color:rgba(255,255,255,.8)">${i.unit}</span>
+                          <button onclick="e1AjustarQtd(${i.id},1)"
+                            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>
+                          <button onclick="e1RemoverItem(${i.id})"
+                            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center">
+                            ${lc('x',10,'#fff')}
+                          </button>
+                        </div>
+                      ` : `
+                        <div style="display:inline-flex;align-items:center;gap:8px">
+                          ${need > 0 ? `<div style="text-align:right">
+                            <div style="font-size:.9rem;font-weight:800;color:var(--purple);font-family:monospace">${fmt(need)}</div>
+                            <div style="font-size:.58rem;color:var(--muted)">${i.unit} sugerido</div>
+                          </div>` : ''}
+                          <button onclick="e1AddItem(${i.id})"
+                            style="width:30px;height:30px;border-radius:50%;border:none;background:var(--purple);
+                            color:#fff;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;
+                            justify-content:center;box-shadow:0 2px 8px rgba(107,33,212,.3);transition:transform .15s"
+                            onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
+                        </div>
+                      `}
+                    </td>
+                  </tr>`;
+                }).join('');
+
+                return catRow + rows;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Carrinho lateral -->
+      <div style="width:268px;flex-shrink:0;position:sticky;top:20px" id="e1CarrinhoWrap">
+        <div class="card" style="overflow:hidden">
+          <div style="padding:12px 16px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight)">
+            <div style="font-size:.84rem;font-weight:800;color:var(--purple)">${lc('shopping-cart',14,'var(--purple)')} Carrinho</div>
+            <div style="font-size:.66rem;color:var(--muted);margin-top:1px">${carrinho.length} item(s) · R$ ${fmt(totalEstCarrinho)}</div>
+          </div>
+          <div style="padding:10px;max-height:340px;overflow-y:auto">
+            ${carrinho.length === 0 ? `
+              <div style="text-align:center;padding:20px 10px">
+                ${lc('shopping-cart',28,'var(--border)')}
+                <div style="font-size:.74rem;color:var(--muted);margin-top:8px">Carrinho vazio</div>
+                <div style="font-size:.66rem;color:var(--muted)">Adicione itens com +</div>
+              </div>
+            ` : carrinho.map(ci => {
+              const item = items.find(x => x.id === ci.itemId) || {name:ci.nome,unit:ci.unidade};
+              const nome = item?.name || ci.nome || '?';
+              const unid = item?.unit || ci.unidade || '';
+              return `<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6);margin-bottom:4px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:.74rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</div>
+                  <div style="font-size:.62rem;color:var(--purple);font-family:monospace;font-weight:700">${fmt(ci.qtdSelecionada)} ${unid}</div>
+                </div>
+                <button onclick="e1RemoverItem(${ci.itemId})"
+                  style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px;flex-shrink:0">
+                  ${lc('x',12,'var(--muted)')}
+                </button>
+              </div>`;
+            }).join('')}
+          </div>
+          ${carrinho.length > 0 ? `
+            <div style="padding:10px;border-top:1.5px solid var(--border)">
+              <button onclick="e1IrParaCotacao()"
+                style="width:100%;padding:10px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
+                font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
+                ${lc('tag',14,'#fff')} Ir para Cotação
+              </button>
+              <button onclick="e1LimparCarrinho()"
+                style="width:100%;margin-top:6px;padding:7px;background:none;color:var(--muted);
+                border:1px solid var(--border);border-radius:var(--r8);font-size:.72rem;cursor:pointer;
+                display:flex;align-items:center;justify-content:center;gap:5px">
+                ${lc('trash',11,'var(--muted)')} Limpar carrinho
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Ações do carrinho na etapa 1
+function e1AddItem(itemId) {
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  if (_listaAtual.itens.find(ci => ci.itemId === itemId)) return;
+  const need = gneed(item);
+  const qty  = need > 0 ? parseFloat(need.toFixed(3)) : parseFloat(item.min.toFixed(3)) || 1;
+  const newId = Math.max(0, ..._listaAtual.itens.map(x=>x.id||0)) + 1;
+  _listaAtual.itens.push({
+    id: newId, itemId: item.id, nome: item.name,
+    categoria: item.cat, unidade: item.unit,
+    qtdSugerida: qty, qtdSelecionada: qty,
+    qtdAprovada: null, qtdComprada: null, qtdRecebida: null,
+    estoqueAtual: item.qty, estoqueMinimo: item.min, estoqueIdeal: item.ideal,
+    origem: 'estoque', tipoCompra: 'fornecedor',
+    fornecedorId: null, localCompra: '', responsavelCompra: '',
+    precoUnitEstimado: item.cost || 0, precoUnitFinal: null,
+    cotacoes: [], aprovado: null, comentarioAprovador: '',
+    conferido: false, divergencia: false, comentarioConferencia: '',
+    conferidoPorItem: '', dataRecebimentoItem: '', horaRecebimentoItem: '',
+  });
+  _recalcEstimativa();
+  saveListas();
+  _renderEtapa1();
+  toast(`${item.name} adicionado!`, 'ok');
+}
+
+function e1AjustarQtd(itemId, delta) {
+  const ci = _listaAtual.itens.find(x => x.itemId === itemId);
+  if (!ci) return;
+  const item = items.find(i => i.id === itemId);
+  const suger = gneed(item)||item?.min||1;
+  const nova  = Math.max(0.001, parseFloat((ci.qtdSelecionada + delta * (suger > 0 ? Math.max(0.5, Math.round(suger*0.1*10)/10) : 0.5)).toFixed(3)));
+  // Sinaliza se muito diferente do sugerido
+  if (suger > 0 && Math.abs(nova - suger) / suger > 0.5) {
+    ci._qtdAlerta = true;
+  } else {
+    ci._qtdAlerta = false;
+  }
+  ci.qtdSelecionada = nova;
+  _recalcEstimativa();
+  saveListas();
+  _renderEtapa1();
+}
+
+function e1SetQtd(itemId, val) {
+  const ci   = _listaAtual.itens.find(x => x.itemId === itemId);
+  if (!ci) return;
+  const item  = items.find(i => i.id === itemId);
+  const v     = parseFloat(val);
+  if (isNaN(v) || v <= 0) return;
+  ci.qtdSelecionada = parseFloat(v.toFixed(3));
+  const suger = gneed(item)||0;
+  ci._qtdAlerta = suger > 0 && Math.abs(v - suger)/suger > 0.5;
+  _recalcEstimativa();
+  saveListas();
+}
+
+function e1RemoverItem(itemId) {
+  _listaAtual.itens = _listaAtual.itens.filter(x => x.itemId !== itemId);
+  // Para itens manuais sem itemId
+  if (_listaAtual.itens.find(x => x.id === itemId)) {
+    _listaAtual.itens = _listaAtual.itens.filter(x => x.id !== itemId);
+  }
+  _recalcEstimativa();
+  saveListas();
+  _renderEtapa1();
+}
+
+function e1LimparCarrinho() {
+  if (!confirm('Limpar o carrinho?')) return;
+  _listaAtual.itens = [];
+  _recalcEstimativa();
+  saveListas();
+  _renderEtapa1();
+}
+
+function e1IrParaCotacao() {
+  if (_listaAtual.itens.length === 0) { toast('Carrinho vazio', 'err'); return; }
+  // Popula cotações automáticas antes de ir para etapa 2 (cotação)
+  _listaAtual.itens.forEach(i => {
     if (!i.cotacoes) i.cotacoes = [];
     const itemCad = items.find(x => x.id === i.itemId);
     if (itemCad) {
-      // Suporta supIds (array novo) e supId (legado)
-      const supIds = itemCad.supIds?.length
-        ? [...itemCad.supIds]
-        : (itemCad.supId ? [itemCad.supId] : []);
+      const supIds = itemCad.supIds?.length ? [...itemCad.supIds] : (itemCad.supId ? [itemCad.supId] : []);
       supIds.forEach(supId => {
         if (supId && !i.cotacoes.some(c => c.supId === supId)) {
           i.cotacoes.push({ supId, precoUnit: null, respondido: false, prazo: '', pagamento: '', emFalta: false });
         }
       });
     }
-    // Item manual com local preenchido → presencial (sem cotação)
     if (i.origem === 'manual' && i.localCompra) i.tipoCompra = 'presencial';
   });
+  _listaAtual.etapa  = 2;
+  _listaAtual.status = 'cotacao';
   saveListas();
-
-  const prazoHtml = l.prazoCotacao ? `
-    <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--yellow-light);
-      border:1.5px solid var(--yellow);border-radius:var(--r8);font-size:.76rem;margin-bottom:14px">
-      ${lc('clock', 14, 'var(--orange-dark)')}
-      <span>Prazo: <strong>${fmtDT(l.prazoCotacao)}</strong></span>
-      <span id="timer1" style="font-weight:800;color:var(--orange-dark);margin-left:4px"></span>
-      <button onclick="abrirPrazoCotacao()"
-        style="margin-left:auto;background:none;border:1px solid var(--yellow);border-radius:var(--r6);
-        padding:2px 8px;font-size:.68rem;color:var(--orange-dark);cursor:pointer">
-        ${lc('edit-2', 11, 'currentColor')} Alterar
-      </button>
-    </div>` : '';
-
-  document.getElementById('comprasContent').innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-      <div>
-        <h3 style="font-size:.96rem;font-weight:800;margin-bottom:3px">${lc('clipboard-list', 14, 'var(--purple)')} Lista · ${l.codigo}</h3>
-        <div style="font-size:.71rem;color:var(--muted)">${l.itens.length} itens · R$${fmt(l.valorEstimado)} estimado</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-        ${['montagem','cotacao','cotacao_encerrada'].map(s => {
-          const st = STATUS_ETAPA[s]; const isActive = l.status === s;
-          return `<button onclick="setStatusLista('${s}')"
-            style="padding:4px 10px;border-radius:20px;font-size:.68rem;font-weight:600;
-            border:1.5px solid ${isActive?st.color:'var(--border)'};
-            background:${isActive?st.bg:'var(--surface)'};color:${isActive?st.color:'var(--muted)'};cursor:pointer">${st.label}</button>`;
-        }).join('')}
-        <div style="width:1px;height:20px;background:var(--border)"></div>
-        <button class="btn btn-outline btn-sm" onclick="abrirPrazoCotacao()">${lc('clock', 13, 'currentColor')} Prazo</button>
-        <button class="btn btn-wa btn-sm" onclick="enviarTodasCotacoesWA()">${lc('message-circle', 13, '#fff')} Cotar WA</button>
-      </div>
-    </div>
-    ${prazoHtml}
-    <div class="card" style="margin-bottom:16px;overflow:hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-        <button onclick="abrirAddItemManual()"
-          style="display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:var(--r8);
-          border:1.5px solid var(--purple);background:var(--purple);color:#fff;font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s"
-          onmouseover="this.style.background='var(--purple-dark,#5B21B6)'" onmouseout="this.style.background='var(--purple)'">
-          ${lc('plus', 14, '#fff')} Adicionar item
-        </button>
-        <div style="font-size:.67rem;color:var(--muted)">${lc('info', 12, 'var(--muted)')} Fornecedores cadastrados já foram adicionados automaticamente</div>
-      </div>
-      <div class="tbl-wrap" style="border:none">
-        <table>
-          <thead><tr>
-            <th style="min-width:180px">Item</th>
-            <th class="c" style="width:88px">Qtd</th>
-            <th class="c" style="width:48px">Un.</th>
-            <th class="r" style="width:110px">Estimado</th>
-            <th style="min-width:210px">Fornecedores / Cotações</th>
-            <th class="c" style="width:32px"></th>
-          </tr></thead>
-          <tbody>${l.itens.map(i => _rowsItem(i)).join('')}</tbody>
-          <tfoot>
-            <tr style="background:var(--purple-xlight)">
-              <td colspan="3" style="padding:10px 14px;font-weight:700;font-size:.82rem">Total estimado</td>
-              <td class="r" style="padding:10px 14px;font-weight:800;font-size:.9rem;color:var(--purple)" id="totalEstimado">R$ ${fmt(l.valorEstimado)}</td>
-              <td colspan="2"></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>
-    <div class="field" style="margin-bottom:20px">
-      <label>Observações gerais</label>
-      <textarea class="inp" rows="2" placeholder="Condições de pagamento, urgência..." onchange="setObsLista(this.value)">${l.observacoes||''}</textarea>
-    </div>
-    <div style="display:flex;justify-content:flex-end">
-      <button class="btn btn-primary" onclick="avancarParaAprovacao()" style="padding:11px 28px;font-size:.86rem">
-        Enviar para aprovação ${lc('arrow-right', 14, '#fff')}
-      </button>
-    </div>`;
-
-  if (l.prazoCotacao) _startTimer('timer1', l.prazoCotacao);
+  _renderDashCompras();
+  _renderEtapa2Cotacao();
+  toast('Carrinho confirmado. Agora faça as cotações!');
 }
+
 
 function _rowsItem(i) {
   const cotacoes = i.cotacoes || [];
@@ -718,14 +945,14 @@ function avancarParaAprovacao() {
       if (melhor) { i.precoUnitFinal = melhor.precoUnit; i.fornecedorId = melhor.supId; i.tipoCompra = 'fornecedor'; }
     }
   });
-  _listaAtual.etapa = 2; _listaAtual.status = 'aguard_aprovacao'; saveListas();
-  _renderDashCompras(); _renderEtapa2(); toast('Lista enviada para aprovação!');
+  _listaAtual.etapa = 3; _listaAtual.status = 'aguard_aprovacao'; saveListas();
+  _renderDashCompras(); _renderEtapa3Aprovacao(); toast('Lista enviada para aprovação!');
 }
 
 // ══════════════════════════════════════════════════════════════
 // ETAPA 2 — APROVAÇÃO
 // ══════════════════════════════════════════════════════════════
-function _renderEtapa2() {
+function _renderEtapa2Cotacao() {
   const l = _listaAtual;
   const itensForn       = l.itens.filter(i => i.tipoCompra!=='presencial');
   const itensPresencial = l.itens.filter(i => i.tipoCompra==='presencial');
@@ -909,18 +1136,18 @@ function aprovarLista() {
   const u = typeof getCurrentUser==='function' ? getCurrentUser() : null;
   _listaAtual.itens.forEach(i=>{if(i.aprovado===null)i.aprovado=true;});
   _listaAtual.itens=_listaAtual.itens.filter(i=>i.aprovado!==false);
-  _listaAtual.status='aprovada'; _listaAtual.etapa=3;
+  _listaAtual.status='aprovada'; _listaAtual.etapa=4;
   _listaAtual.dataAprovacao=new Date().toISOString();
   // Salva quem aprovou: aprovador configurado manualmente ou usuário logado
   _listaAtual.aprovadoPor = _listaAtual.aprovadorNome || u?.name || '';
   _listaAtual.valorAprovado=_listaAtual.itens.reduce((s,i)=>s+(i.qtdAprovada??i.qtdSelecionada)*(i.precoUnitFinal||i.precoUnitEstimado||0),0);
-  saveListas(); _renderDashCompras(); _renderEtapa3(); toast('Lista aprovada!');
+  saveListas(); _renderDashCompras(); _renderEtapa4OC(); toast('Lista aprovada!');
 }
 
 function reprovarLista() {
   if(!confirm('Reprovar toda a lista? Ela voltará para montagem.')) return;
-  _listaAtual.status='reprovada'; _listaAtual.etapa=1; saveListas();
-  _renderDashCompras(); _renderEtapa1(); toast('Lista reprovada. Revise e reenvie.');
+  _listaAtual.status='reprovada'; _listaAtual.etapa=2; saveListas();
+  _renderDashCompras(); _renderEtapa2Cotacao(); toast('Lista reprovada. Revise e reenvie.');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -949,7 +1176,7 @@ function _renderEtapa3() {
         <div style="font-size:.71rem;color:var(--muted)">Total aprovado: <strong style="color:var(--purple)">R$ ${fmt(l.valorAprovado)}</strong></div>
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="_renderEtapa2()">${lc('arrow-left',13)} Aprovação</button>
+        <button class="btn btn-outline btn-sm" onclick="_renderEtapa3Aprovacao()">${lc('arrow-left',13)} Aprovação</button>
         <button class="btn btn-sm" onclick="avancarParaRecebimento()"
           style="${tudoPronto
             ? 'background:var(--purple);color:#fff;border:none;'
@@ -1232,7 +1459,7 @@ function imprimirListaPresencial() {
 }
 
 function avancarParaRecebimento() {
-  _listaAtual.etapa=4; _listaAtual.status='recebimento';
+  _listaAtual.etapa=5; _listaAtual.status='recebimento';
   if (!_listaAtual.dataRecebimento) _listaAtual.dataRecebimento=new Date().toISOString().slice(0,10);
   // Pré-preenche conferente com nome do usuário logado
   const u = typeof getCurrentUser==='function' ? getCurrentUser() : null;
@@ -1255,7 +1482,7 @@ function avancarParaRecebimento() {
 // ══════════════════════════════════════════════════════════════
 // ETAPA 4 — RECEBIMENTO AGRUPADO POR FORNECEDOR
 // ══════════════════════════════════════════════════════════════
-function _renderEtapa4() {
+function _renderEtapa4OC() {
   const l          = _listaAtual;
   const total      = l.itens.length;
   const conferidos = l.itens.filter(i => i.conferido).length;
@@ -1278,7 +1505,7 @@ function _renderEtapa4() {
         <h3 style="font-size:.96rem;font-weight:800;margin-bottom:3px">${lc('package',14,'var(--purple)')} Recebimento · ${l.codigo}</h3>
         <div style="font-size:.71rem;color:var(--muted)">${conferidos} de ${total} itens conferidos</div>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="_renderEtapa3()">${lc('arrow-left',13)} OC</button>
+      <button class="btn btn-outline btn-sm" onclick="_renderEtapa4OC()">${lc('arrow-left',13)} OC</button>
     </div>
 
     <!-- Progresso -->
@@ -1431,6 +1658,10 @@ function _renderEtapa4() {
 }
 
 
+function _renderEtapa5() { _renderEtapa4OC_Recebimento(); }
+function _renderEtapa4OC_Recebimento() {
+  return _renderEtapa4OC();
+}
 function _conferirTodoGrupo(supKey) {
   const l=_listaAtual;
   l.itens.forEach(i=>{
