@@ -176,12 +176,11 @@
           <div style="flex:1;min-width:0">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
               <div>
-                <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Contagem de Estoque</h2>
-                <div style="font-size:.72rem;color:var(--muted)">Atualize quantidades e decida o que comprar · <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastros</a></div>
+                <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Estoque</h2>
+                <div style="font-size:.72rem;color:var(--muted)">Contagem física · Compare digital vs físico · <a href="#" onclick="goModule('configuracoes');setCfgTab('cadastros')" style="color:var(--purple)">Cadastros</a></div>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn btn-outline btn-sm" onclick="openImportModal()">Importar CSV</button>
-                <button id="saveStockBtn" class="btn btn-primary btn-sm" onclick="saveStock()" style="display:none">Salvar estoque</button>
+                <button class="btn btn-outline btn-sm" onclick="openImportModal()">${lc('upload',13,'currentColor')} Importar CSV</button>
               </div>
             </div>
 
@@ -203,29 +202,22 @@
                 <thead><tr>
                   <th>Insumo</th>
                   <th class="c">Un.</th>
-                  <th class="c">Qtd. atual</th>
+                  <th class="c">Digital</th>
+                  <th class="c">Físico</th>
+                  <th class="c">Divergência</th>
                   <th class="c">Mínimo</th>
                   <th class="c">Ideal</th>
                   <th>Nível</th>
                   <th class="c">Status</th>
-                  <th style="text-align:right;width:190px">Comprar</th>
                 </tr></thead>
                 <tbody id="estTableBody"></tbody>
               </table>
             </div>
           </div>
 
-          <!-- Carrinho lateral -->
-          <div style="width:280px;flex-shrink:0;position:sticky;top:20px">
-            <div class="card">
-              <div style="padding:14px 16px;border-bottom:1.5px solid var(--border)">
-                <div style="font-size:.84rem;font-weight:800"> Carrinho de compras</div>
-                <div style="font-size:.68rem;color:var(--muted);margin-top:2px">Itens selecionados para compra</div>
-              </div>
-              <div style="padding:12px" id="carrinhoSumario">
-                <div style="font-size:.8rem;color:var(--muted);text-align:center;padding:16px">Carrinho vazio.<br>Adicione itens acima.</div>
-              </div>
-            </div>
+          <!-- Painel lateral de contagem -->
+          <div style="width:256px;flex-shrink:0;position:sticky;top:20px">
+            <div class="card" id="estPainelContagem" style="overflow:hidden"></div>
           </div>
 
         </div>
