@@ -181,47 +181,35 @@ function _renderEtapa3() { _renderEtapa3Aprovacao(); }
 // ══════════════════════════════════════════════════════════════
 // ETAPA 1 — LISTA COM AUTO-FORNECEDORES
 // ══════════════════════════════════════════════════════════════
-function _renderEtapa1() {
-  const l = _listaAtual;
 
-  // Etapa 1 agora é a SELEÇÃO DE ITENS COM CARRINHO
-  // O usuário vê os insumos do estoque e decide o que comprar
+// ══════════════════════════════════════════════════════════════
+// ETAPA 1 — CARRINHO DE COMPRAS
+// Arquitetura: render completo na 1ª vez, updates parciais depois
+// ══════════════════════════════════════════════════════════════
+
+if (!window._e1Filtro) window._e1Filtro = { search:'', cat:'', status:'need' };
+
+function _renderEtapa1() {
   _listaAtual.etapa = 1;
   saveListas();
 
-  const insumos   = items.filter(i => !i.isProd);
-  const cats      = [...new Set(insumos.map(i => i.cat))].sort();
-  const carrinho  = l.itens; // itens já no carrinho desta lista
+  // Render estrutural completo (esqueleto da página)
+  _e1RenderEstrutura();
+  // Renderiza tabela e carrinho como partes independentes
+  _e1RenderTabela();
+  _e1RenderCarrinho();
+}
 
-  // Filtros da etapa 1
-  if (!window._e1Filtro) window._e1Filtro = { search:'', cat:'', status:'need' };
-  const f = window._e1Filtro;
-
-  let filt = insumos.filter(i => {
-    if (f.cat && i.cat !== f.cat) return false;
-    if (f.search && !i.name.toLowerCase().includes(f.search.toLowerCase())) return false;
-    if (f.status === 'crit') return gst(i) === 'crit';
-    if (f.status === 'warn') return gst(i) === 'warn';
-    if (f.status === 'ok')   return gst(i) === 'ok';
-    if (f.status === 'need') return gneed(i) > 0;
-    return true;
-  }).sort((a,b) => {
-    const order = {crit:0,warn:1,ok:2};
-    return (order[gst(a)]||2)-(order[gst(b)]||2)||a.name.localeCompare(b.name);
-  });
-
-  const byCat = {};
-  filt.forEach(i => { if(!byCat[i.cat]) byCat[i.cat]=[]; byCat[i.cat].push(i); });
-
-  const stColors = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' };
-  const stLabels = { crit:'CRÍTICO', warn:'BAIXO', ok:'OK' };
-
-  const totalEstCarrinho = carrinho.reduce((s,ci) => s + ci.qtdSelecionada*(ci.precoUnitEstimado||0), 0);
+// Renderiza o esqueleto HTML — só chamado 1 vez ou ao trocar de módulo
+function _e1RenderEstrutura() {
+  const l     = _listaAtual;
+  const cats  = [...new Set(items.filter(i=>!i.isProd).map(i=>i.cat))].sort();
+  const f     = window._e1Filtro;
 
   document.getElementById('comprasContent').innerHTML = `
     <div style="display:flex;gap:20px;align-items:flex-start">
 
-      <!-- Lista de insumos -->
+      <!-- Coluna principal -->
       <div style="flex:1;min-width:0">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px">
           <div>
@@ -232,35 +220,32 @@ function _renderEtapa1() {
               Adicione itens ao carrinho. Itens com necessidade aparecem primeiro.
             </div>
           </div>
-          <button onclick="abrirAddItemManual()"
-            style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r8);
-            border:1.5px solid var(--purple);background:var(--purple);color:#fff;font-size:.78rem;font-weight:700;cursor:pointer">
-            ${lc('plus',13,'#fff')} Item avulso
-          </button>
-        </div>
-
-        <!-- Filtros -->
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-          <input class="inp" style="max-width:200px;padding:6px 10px;font-size:.78rem" placeholder="Buscar insumo..."
-            value="${f.search}" oninput="window._e1Filtro.search=this.value;_renderEtapa1()">
-          <select class="inp" style="max-width:170px;padding:6px 8px;font-size:.78rem"
-            onchange="window._e1Filtro.cat=this.value;_renderEtapa1()">
-            <option value="">Todas categorias</option>
-            ${cats.map(c=>`<option value="${c}" ${f.cat===c?'selected':''}>${c}</option>`).join('')}
-          </select>
-          <div style="display:flex;gap:4px;flex-wrap:wrap">
-            ${[
-              {id:'all',  label:'Todos',    icon:'package'},
-              {id:'need', label:'Necessidade', icon:'arrow-up'},
-              {id:'crit', label:'Críticos', icon:'alert-circle'},
-              {id:'warn', label:'Baixo',    icon:'alert-triangle'},
-            ].map(b => `<button class="filter-btn ${f.status===b.id?'active':''}" onclick="window._e1Filtro.status='${b.id}';_renderEtapa1()">
-              ${lc(b.icon,11,'currentColor')} ${b.label}
-            </button>`).join('')}
+          <div style="display:flex;gap:8px">
+            <button onclick="imprimirCarrinho()"
+              style="display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:var(--r8);
+              border:1.5px solid var(--border);background:var(--surface);color:var(--text2);font-size:.78rem;font-weight:600;cursor:pointer">
+              ${lc('printer',13,'currentColor')} Imprimir lista
+            </button>
+            <button onclick="abrirAddItemManual()"
+              style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r8);
+              border:1.5px solid var(--purple);background:var(--purple);color:#fff;font-size:.78rem;font-weight:700;cursor:pointer">
+              ${lc('plus',13,'#fff')} Item avulso
+            </button>
           </div>
         </div>
 
-        <!-- Tabela de insumos -->
+        <!-- Filtros — inputs com IDs fixos, não são recriados -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+          <input id="e1Search" class="inp" style="max-width:200px;padding:6px 10px;font-size:.78rem" placeholder="Buscar insumo..."
+            value="${f.search}">
+          <select id="e1Cat" class="inp" style="max-width:170px;padding:6px 8px;font-size:.78rem">
+            <option value="">Todas categorias</option>
+            ${cats.map(c=>`<option value="${c}" ${f.cat===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+          <div id="e1FiltrosBtns" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+        </div>
+
+        <!-- Tabela — atualizada independentemente -->
         <div class="tbl-wrap">
           <table>
             <thead><tr>
@@ -273,144 +258,256 @@ function _renderEtapa1() {
               <th class="c" style="width:72px">Status</th>
               <th style="width:200px;text-align:right">Adicionar</th>
             </tr></thead>
-            <tbody>
-              ${filt.length === 0 ? `<tr><td colspan="8" style="text-align:center;padding:30px">
-                <div style="font-size:.8rem;color:var(--muted)">Nenhum item encontrado</div>
-              </td></tr>` :
-              Object.entries(byCat).map(([cat,catItems]) => {
-                const catRow = `<tr>
-                  <td colspan="8" style="padding:6px 14px 4px;background:var(--surface2);border-top:2px solid var(--border)">
-                    <span style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--purple)">${cat}</span>
-                  </td>
-                </tr>`;
-
-                const rows = catItems.map(i => {
-                  const s      = gst(i);
-                  const need   = gneed(i);
-                  const pct    = i.ideal > 0 ? Math.min(100, Math.round(i.qty/i.ideal*100)) : 0;
-                  const inCart = carrinho.find(ci => ci.itemId === i.id);
-                  const rowBgC = s==='crit'?'#FFF1F1':s==='warn'?'#FFFBEB':'var(--surface)';
-
-                  return `<tr style="background:${inCart?'var(--purple-xlight)':rowBgC};border-bottom:1px solid var(--border)">
-                    <td style="padding:9px 14px">
-                      <div style="font-size:.82rem;font-weight:600">${i.name}</div>
-                      ${i.code?`<div style="font-size:.58rem;color:var(--muted);font-family:monospace">#${i.code}</div>`:''}
-                    </td>
-                    <td class="c" style="font-size:.74rem;color:var(--muted)">${i.unit}</td>
-                    <td class="c" style="font-size:.82rem;font-weight:600;font-family:monospace">${fmt(i.qty)}</td>
-                    <td class="c" style="font-size:.72rem;color:var(--muted)">${fmt(i.min)}</td>
-                    <td class="c" style="font-size:.72rem;color:var(--muted)">${fmt(i.ideal)}</td>
-                    <td style="padding:7px 12px">
-                      <div style="display:flex;align-items:center;gap:6px">
-                        <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
-                          <div style="height:100%;width:${pct}%;background:${stColors[s]};border-radius:3px"></div>
-                        </div>
-                        <span style="font-size:.62rem;color:${stColors[s]};font-weight:700;min-width:28px">${pct}%</span>
-                      </div>
-                    </td>
-                    <td class="c">
-                      <span class="chip chip-${s==='crit'?'red':s==='warn'?'yellow':'green'}" style="font-size:.62rem">
-                        ${stLabels[s]}
-                      </span>
-                    </td>
-                    <td style="padding:7px 14px;text-align:right">
-                      ${inCart ? `
-                        <div style="display:inline-flex;align-items:center;gap:4px;background:var(--purple);border-radius:var(--r8);padding:4px 8px">
-                          <button onclick="e1AjustarQtd(${i.id},-1)"
-                            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center">−</button>
-                          <input type="number" value="${inCart.qtdSelecionada}" min="0.001" step="0.001"
-                            style="width:52px;border:none;background:transparent;font-size:.8rem;font-weight:800;text-align:center;color:#fff;font-family:monospace"
-                            onchange="e1SetQtd(${i.id},this.value)">
-                          <span style="font-size:.62rem;color:rgba(255,255,255,.8)">${i.unit}</span>
-                          <button onclick="e1AjustarQtd(${i.id},1)"
-                            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center">+</button>
-                          <button onclick="e1RemoverItem(${i.id})"
-                            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center">
-                            ${lc('x',10,'#fff')}
-                          </button>
-                        </div>
-                      ` : `
-                        <div style="display:inline-flex;align-items:center;gap:8px">
-                          ${need > 0 ? `<div style="text-align:right">
-                            <div style="font-size:.9rem;font-weight:800;color:var(--purple);font-family:monospace">${fmt(need)}</div>
-                            <div style="font-size:.58rem;color:var(--muted)">${i.unit} sugerido</div>
-                          </div>` : ''}
-                          <button onclick="e1AddItem(${i.id})"
-                            style="width:30px;height:30px;border-radius:50%;border:none;background:var(--purple);
-                            color:#fff;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;
-                            justify-content:center;box-shadow:0 2px 8px rgba(107,33,212,.3);transition:transform .15s"
-                            onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
-                        </div>
-                      `}
-                    </td>
-                  </tr>`;
-                }).join('');
-
-                return catRow + rows;
-              }).join('')}
-            </tbody>
+            <tbody id="e1TableBody"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- Carrinho lateral -->
+      <!-- Carrinho lateral — atualizado independentemente -->
       <div style="width:268px;flex-shrink:0;position:sticky;top:20px" id="e1CarrinhoWrap">
-        <div class="card" style="overflow:hidden">
-          <div style="padding:12px 16px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight)">
-            <div style="font-size:.84rem;font-weight:800;color:var(--purple)">${lc('shopping-cart',14,'var(--purple)')} Carrinho</div>
-            <div style="font-size:.66rem;color:var(--muted);margin-top:1px">${carrinho.length} item(s) · R$ ${fmt(totalEstCarrinho)}</div>
-          </div>
-          <div style="padding:10px;max-height:340px;overflow-y:auto">
-            ${carrinho.length === 0 ? `
-              <div style="text-align:center;padding:20px 10px">
-                ${lc('shopping-cart',28,'var(--border)')}
-                <div style="font-size:.74rem;color:var(--muted);margin-top:8px">Carrinho vazio</div>
-                <div style="font-size:.66rem;color:var(--muted)">Adicione itens com +</div>
-              </div>
-            ` : carrinho.map(ci => {
-              const item = items.find(x => x.id === ci.itemId) || {name:ci.nome,unit:ci.unidade};
-              const nome = item?.name || ci.nome || '?';
-              const unid = item?.unit || ci.unidade || '';
-              return `<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6);margin-bottom:4px">
-                <div style="flex:1;min-width:0">
-                  <div style="font-size:.74rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</div>
-                  <div style="font-size:.62rem;color:var(--purple);font-family:monospace;font-weight:700">${fmt(ci.qtdSelecionada)} ${unid}</div>
-                </div>
-                <button onclick="e1RemoverItem(${ci.itemId})"
-                  style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px;flex-shrink:0">
-                  ${lc('x',12,'var(--muted)')}
-                </button>
-              </div>`;
-            }).join('')}
-          </div>
-          ${carrinho.length > 0 ? `
-            <div style="padding:10px;border-top:1.5px solid var(--border)">
-              <button onclick="e1IrParaCotacao()"
-                style="width:100%;padding:10px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
-                font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
-                ${lc('tag',14,'#fff')} Ir para Cotação
-              </button>
-              <button onclick="e1LimparCarrinho()"
-                style="width:100%;margin-top:6px;padding:7px;background:none;color:var(--muted);
-                border:1px solid var(--border);border-radius:var(--r8);font-size:.72rem;cursor:pointer;
-                display:flex;align-items:center;justify-content:center;gap:5px">
-                ${lc('trash',11,'var(--muted)')} Limpar carrinho
-              </button>
-            </div>
-          ` : ''}
-        </div>
+        <!-- preenchido por _e1RenderCarrinho -->
       </div>
+
+    </div>`;
+
+  // Bind eventos dos filtros APÓS inserir no DOM
+  _e1BindFiltros();
+}
+
+function _e1BindFiltros() {
+  // Search — usa input event com debounce leve, sem re-render completo
+  const searchEl = document.getElementById('e1Search');
+  if (searchEl) {
+    searchEl.oninput = function() {
+      window._e1Filtro.search = this.value;
+      _e1RenderTabela(); // só tabela, não mexe no input
+    };
+  }
+
+  // Category select
+  const catEl = document.getElementById('e1Cat');
+  if (catEl) {
+    catEl.onchange = function() {
+      window._e1Filtro.cat = this.value;
+      _e1RenderTabela();
+    };
+  }
+
+  // Botões de filtro
+  _e1RenderFiltrosBtns();
+}
+
+function _e1RenderFiltrosBtns() {
+  const el = document.getElementById('e1FiltrosBtns');
+  if (!el) return;
+  const f = window._e1Filtro;
+  const btns = [
+    {id:'all',  label:'Todos',       icon:'package'},
+    {id:'need', label:'Necessidade', icon:'arrow-up'},
+    {id:'crit', label:'Críticos',    icon:'alert-circle'},
+    {id:'warn', label:'Baixo',       icon:'alert-triangle'},
+  ];
+  el.innerHTML = btns.map(b =>
+    `<button class="filter-btn ${f.status===b.id?'active':''}"
+      onclick="window._e1Filtro.status='${b.id}';_e1RenderFiltrosBtns();_e1RenderTabela()">
+      ${lc(b.icon,11,'currentColor')} ${b.label}
+    </button>`
+  ).join('');
+}
+
+// Renderiza APENAS a tabela de insumos — sem tocar nos inputs de filtro
+function _e1RenderTabela() {
+  const tbody = document.getElementById('e1TableBody');
+  if (!tbody) return;
+
+  const l       = _listaAtual;
+  const carrinho= l.itens;
+  const f       = window._e1Filtro;
+  const insumos = items.filter(i => !i.isProd);
+
+  const stColors = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' };
+  const stLabels = { crit:'CRÍTICO', warn:'BAIXO', ok:'OK' };
+  const rowBg    = { crit:'#FFF1F1', warn:'#FFFBEB', ok:'var(--surface)' };
+
+  let filt = insumos.filter(i => {
+    if (f.cat && i.cat !== f.cat) return false;
+    if (f.search && !i.name.toLowerCase().includes(f.search.toLowerCase())) return false;
+    if (f.status === 'crit') return gst(i) === 'crit';
+    if (f.status === 'warn') return gst(i) === 'warn';
+    if (f.status === 'ok')   return gst(i) === 'ok';
+    if (f.status === 'need') return gneed(i) > 0;
+    return true;
+  }).sort((a,b) => {
+    const order = {crit:0,warn:1,ok:2};
+    return (order[gst(a)]||2)-(order[gst(b)]||2) || a.name.localeCompare(b.name);
+  });
+
+  if (!filt.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px">
+      <div style="font-size:.8rem;color:var(--muted)">Nenhum item encontrado</div>
+    </td></tr>`;
+    return;
+  }
+
+  const byCat = {};
+  filt.forEach(i => { if(!byCat[i.cat]) byCat[i.cat]=[]; byCat[i.cat].push(i); });
+
+  tbody.innerHTML = Object.entries(byCat).map(([cat, catItems]) => {
+    const catRow = `<tr>
+      <td colspan="8" style="padding:6px 14px 4px;background:var(--surface2);border-top:2px solid var(--border)">
+        <span style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--purple)">${cat}</span>
+      </td>
+    </tr>`;
+
+    const rows = catItems.map(i => {
+      const s      = gst(i);
+      const need   = gneed(i);
+      const pct    = i.ideal > 0 ? Math.min(100, Math.round(i.qty/i.ideal*100)) : 0;
+      const inCart = carrinho.find(ci => ci.itemId === i.id);
+      const bg     = inCart ? 'var(--purple-xlight)' : (rowBg[s]||'var(--surface)');
+      const suger  = need > 0 ? need : (i.min || 1);
+
+      // Coluna "Adicionar" — input direto com onchange que não re-renderiza a página
+      const addCol = inCart ? `
+        <div style="display:inline-flex;align-items:center;gap:4px;background:var(--purple);border-radius:var(--r8);padding:4px 8px">
+          <button onclick="e1AjustarQtd(${i.id},-1)"
+            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">−</button>
+          <input type="number" id="e1qty_${i.id}" value="${inCart.qtdSelecionada}" min="0.001" step="0.001"
+            style="width:56px;border:none;background:transparent;font-size:.82rem;font-weight:800;text-align:center;color:#fff;font-family:monospace"
+            onchange="e1SetQtd(${i.id},this.value)"
+            onblur="e1SetQtd(${i.id},this.value)">
+          <span style="font-size:.62rem;color:rgba(255,255,255,.8);white-space:nowrap">${i.unit}</span>
+          <button onclick="e1AjustarQtd(${i.id},1)"
+            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
+          <button onclick="e1RemoverItem(${i.id})"
+            style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc('x',10,'#fff')}
+          </button>
+        </div>
+      ` : `
+        <div style="display:inline-flex;align-items:center;gap:8px">
+          ${need > 0 ? `<div style="text-align:right">
+            <div style="font-size:.9rem;font-weight:800;color:var(--purple);font-family:monospace">${fmt(need)}</div>
+            <div style="font-size:.58rem;color:var(--muted)">${i.unit} sugerido</div>
+          </div>` : ''}
+          <button onclick="e1AddItem(${i.id})"
+            style="width:30px;height:30px;border-radius:50%;border:none;background:var(--purple);
+            color:#fff;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;
+            justify-content:center;box-shadow:0 2px 8px rgba(107,33,212,.3);transition:transform .15s"
+            onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
+        </div>
+      `;
+
+      return `<tr id="e1row_${i.id}" style="background:${bg};border-bottom:1px solid var(--border)">
+        <td style="padding:9px 14px">
+          <div style="font-size:.82rem;font-weight:600">${i.name}</div>
+          ${i.code?`<div style="font-size:.58rem;color:var(--muted);font-family:monospace">#${i.code}</div>`:''}
+        </td>
+        <td class="c" style="font-size:.74rem;color:var(--muted)">${i.unit}</td>
+        <td class="c" style="font-size:.82rem;font-weight:600;font-family:monospace">${fmt(i.qty)}</td>
+        <td class="c" style="font-size:.72rem;color:var(--muted)">${fmt(i.min)}</td>
+        <td class="c" style="font-size:.72rem;color:var(--muted)">${fmt(i.ideal)}</td>
+        <td style="padding:7px 12px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${stColors[s]};border-radius:3px"></div>
+            </div>
+            <span style="font-size:.62rem;color:${stColors[s]};font-weight:700;min-width:28px">${pct}%</span>
+          </div>
+        </td>
+        <td class="c">
+          <span class="chip chip-${s==='crit'?'red':s==='warn'?'yellow':'green'}" style="font-size:.62rem">
+            ${stLabels[s]}
+          </span>
+        </td>
+        <td style="padding:7px 14px;text-align:right">${addCol}</td>
+      </tr>`;
+    }).join('');
+
+    return catRow + rows;
+  }).join('');
+}
+
+// Renderiza APENAS o carrinho lateral — sem tocar na tabela
+function _e1RenderCarrinho() {
+  const wrap = document.getElementById('e1CarrinhoWrap');
+  if (!wrap) return;
+
+  const l        = _listaAtual;
+  const carrinho = l.itens;
+  const totalEst = carrinho.reduce((s,ci) => s + ci.qtdSelecionada*(ci.precoUnitEstimado||0), 0);
+
+  wrap.innerHTML = `
+    <div class="card" style="overflow:hidden">
+      <div style="padding:12px 16px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight)">
+        <div style="font-size:.84rem;font-weight:800;color:var(--purple)">${lc('shopping-cart',14,'var(--purple)')} Carrinho</div>
+        <div style="font-size:.66rem;color:var(--muted);margin-top:1px">${carrinho.length} item(s)</div>
+      </div>
+
+      <!-- Valor estimado — DESTAQUE (fix item 1) -->
+      <div style="padding:10px 14px;border-bottom:1.5px solid var(--purple-light);background:var(--purple-xlight)">
+        <div style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--purple);margin-bottom:2px">
+          Estimativa de custo
+        </div>
+        <div style="font-size:1.3rem;font-weight:800;color:var(--purple);font-family:monospace">R$ ${fmt(totalEst)}</div>
+        ${totalEst === 0 && carrinho.length > 0 ? `<div style="font-size:.6rem;color:var(--muted)">Cadastre custos nos insumos para ver o estimado</div>` : ''}
+      </div>
+
+      <div style="padding:10px;max-height:320px;overflow-y:auto">
+        ${carrinho.length === 0 ? `
+          <div style="text-align:center;padding:20px 10px">
+            ${lc('shopping-cart',28,'var(--border)')}
+            <div style="font-size:.74rem;color:var(--muted);margin-top:8px">Carrinho vazio</div>
+            <div style="font-size:.66rem;color:var(--muted)">Use + para adicionar</div>
+          </div>
+        ` : carrinho.map(ci => {
+          const item  = items.find(x => x.id === ci.itemId);
+          const nome  = item?.name || ci.nome || '?';
+          const unid  = item?.unit || ci.unidade || '';
+          const custo = ci.qtdSelecionada * (ci.precoUnitEstimado||0);
+          return `<div style="display:flex;align-items:center;gap:7px;padding:6px 8px;
+            background:var(--surface);border:1px solid var(--border);border-radius:var(--r6);margin-bottom:4px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.73rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1px">
+                <span style="font-size:.62rem;color:var(--purple);font-family:monospace;font-weight:700">${fmt(ci.qtdSelecionada)} ${unid}</span>
+                ${custo > 0 ? `<span style="font-size:.6rem;color:var(--muted);font-family:monospace">R$${fmt(custo)}</span>` : ''}
+              </div>
+            </div>
+            <button onclick="e1RemoverItem(${ci.itemId || ci.id})"
+              style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px;flex-shrink:0">
+              ${lc('x',12,'var(--muted)')}
+            </button>
+          </div>`;
+        }).join('')}
+      </div>
+
+      ${carrinho.length > 0 ? `
+        <div style="padding:10px;border-top:1.5px solid var(--border)">
+          <button onclick="e1IrParaCotacao()"
+            style="width:100%;padding:10px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
+            font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
+            ${lc('tag',14,'#fff')} Ir para Cotação
+          </button>
+          <button onclick="e1LimparCarrinho()"
+            style="width:100%;margin-top:6px;padding:7px;background:none;color:var(--muted);
+            border:1px solid var(--border);border-radius:var(--r8);font-size:.72rem;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:5px">
+            ${lc('trash',11,'var(--muted)')} Limpar carrinho
+          </button>
+        </div>
+      ` : ''}
     </div>`;
 }
 
-// Ações do carrinho na etapa 1
+// ── Ações do carrinho — atualizações cirúrgicas sem re-render completo ──
 function e1AddItem(itemId) {
   const item = items.find(i => i.id === itemId);
   if (!item) return;
   if (_listaAtual.itens.find(ci => ci.itemId === itemId)) return;
   const need = gneed(item);
-  const qty  = need > 0 ? parseFloat(need.toFixed(3)) : parseFloat(item.min.toFixed(3)) || 1;
-  const newId = Math.max(0, ..._listaAtual.itens.map(x=>x.id||0)) + 1;
+  const qty  = need > 0 ? parseFloat(need.toFixed(3)) : parseFloat((item.min||1).toFixed(3));
+  const newId = Math.max(0, ..._listaAtual.itens.map(x => x.id||0)) + 1;
   _listaAtual.itens.push({
     id: newId, itemId: item.id, nome: item.name,
     categoria: item.cat, unidade: item.unit,
@@ -419,57 +516,54 @@ function e1AddItem(itemId) {
     estoqueAtual: item.qty, estoqueMinimo: item.min, estoqueIdeal: item.ideal,
     origem: 'estoque', tipoCompra: 'fornecedor',
     fornecedorId: null, localCompra: '', responsavelCompra: '',
-    precoUnitEstimado: item.cost || 0, precoUnitFinal: null,
+    precoUnitEstimado: item.cost||0, precoUnitFinal: null,
     cotacoes: [], aprovado: null, comentarioAprovador: '',
     conferido: false, divergencia: false, comentarioConferencia: '',
     conferidoPorItem: '', dataRecebimentoItem: '', horaRecebimentoItem: '',
   });
   _recalcEstimativa();
   saveListas();
-  _renderEtapa1();
-  toast(`${item.name} adicionado!`, 'ok');
+  // Atualiza só a linha e o carrinho — sem re-render completo
+  _e1AtualizarLinha(itemId);
+  _e1RenderCarrinho();
 }
 
 function e1AjustarQtd(itemId, delta) {
-  const ci = _listaAtual.itens.find(x => x.itemId === itemId);
-  if (!ci) return;
+  const ci   = _listaAtual.itens.find(x => x.itemId === itemId);
   const item = items.find(i => i.id === itemId);
-  const suger = gneed(item)||item?.min||1;
-  const nova  = Math.max(0.001, parseFloat((ci.qtdSelecionada + delta * (suger > 0 ? Math.max(0.5, Math.round(suger*0.1*10)/10) : 0.5)).toFixed(3)));
-  // Sinaliza se muito diferente do sugerido
-  if (suger > 0 && Math.abs(nova - suger) / suger > 0.5) {
-    ci._qtdAlerta = true;
-  } else {
-    ci._qtdAlerta = false;
-  }
-  ci.qtdSelecionada = nova;
+  if (!ci || !item) return;
+  const step = Math.max(0.1, Math.round((item.min||1) * 0.1 * 10) / 10);
+  ci.qtdSelecionada = Math.max(0.001, parseFloat((ci.qtdSelecionada + delta * step).toFixed(3)));
   _recalcEstimativa();
   saveListas();
-  _renderEtapa1();
+  // Atualiza só o input de quantidade e o carrinho
+  const inp = document.getElementById(`e1qty_${itemId}`);
+  if (inp) inp.value = ci.qtdSelecionada;
+  _e1RenderCarrinho();
 }
 
 function e1SetQtd(itemId, val) {
-  const ci   = _listaAtual.itens.find(x => x.itemId === itemId);
+  const ci = _listaAtual.itens.find(x => x.itemId === itemId);
   if (!ci) return;
-  const item  = items.find(i => i.id === itemId);
-  const v     = parseFloat(val);
+  const v = parseFloat(val);
   if (isNaN(v) || v <= 0) return;
   ci.qtdSelecionada = parseFloat(v.toFixed(3));
-  const suger = gneed(item)||0;
-  ci._qtdAlerta = suger > 0 && Math.abs(v - suger)/suger > 0.5;
   _recalcEstimativa();
   saveListas();
+  // Só atualiza o carrinho — o input já tem o valor correto
+  _e1RenderCarrinho();
 }
 
 function e1RemoverItem(itemId) {
-  _listaAtual.itens = _listaAtual.itens.filter(x => x.itemId !== itemId);
-  // Para itens manuais sem itemId
-  if (_listaAtual.itens.find(x => x.id === itemId)) {
-    _listaAtual.itens = _listaAtual.itens.filter(x => x.id !== itemId);
-  }
+  // Suporta itemId (do estoque) e id direto (item avulso)
+  const before = _listaAtual.itens.length;
+  _listaAtual.itens = _listaAtual.itens.filter(x => x.itemId !== itemId && x.id !== itemId);
+  if (_listaAtual.itens.length === before) return;
   _recalcEstimativa();
   saveListas();
-  _renderEtapa1();
+  // Atualiza linha e carrinho
+  _e1AtualizarLinha(itemId);
+  _e1RenderCarrinho();
 }
 
 function e1LimparCarrinho() {
@@ -477,12 +571,63 @@ function e1LimparCarrinho() {
   _listaAtual.itens = [];
   _recalcEstimativa();
   saveListas();
-  _renderEtapa1();
+  _e1RenderTabela(); // re-render tabela para remover destaques
+  _e1RenderCarrinho();
+}
+
+// Atualiza visual de uma linha específica sem re-renderizar a tabela inteira
+function _e1AtualizarLinha(itemId) {
+  const item    = items.find(i => i.id === itemId);
+  if (!item) { _e1RenderTabela(); return; } // item manual — re-render completo
+  const inCart  = _listaAtual.itens.find(ci => ci.itemId === itemId);
+  const row     = document.getElementById(`e1row_${itemId}`);
+  if (!row) { _e1RenderTabela(); return; }
+
+  const s    = gst(item);
+  const need = gneed(item);
+  const rowBg= { crit:'#FFF1F1', warn:'#FFFBEB', ok:'var(--surface)' };
+  row.style.background = inCart ? 'var(--purple-xlight)' : (rowBg[s]||'var(--surface)');
+
+  // Re-renderiza só a célula da coluna "Adicionar" (última td)
+  const lastTd = row.querySelector('td:last-child');
+  if (!lastTd) return;
+
+  if (inCart) {
+    lastTd.innerHTML = `
+      <div style="display:inline-flex;align-items:center;gap:4px;background:var(--purple);border-radius:var(--r8);padding:4px 8px">
+        <button onclick="e1AjustarQtd(${item.id},-1)"
+          style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">−</button>
+        <input type="number" id="e1qty_${item.id}" value="${inCart.qtdSelecionada}" min="0.001" step="0.001"
+          style="width:56px;border:none;background:transparent;font-size:.82rem;font-weight:800;text-align:center;color:#fff;font-family:monospace"
+          onchange="e1SetQtd(${item.id},this.value)"
+          onblur="e1SetQtd(${item.id},this.value)">
+        <span style="font-size:.62rem;color:rgba(255,255,255,.8);white-space:nowrap">${item.unit}</span>
+        <button onclick="e1AjustarQtd(${item.id},1)"
+          style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.25);color:#fff;font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</button>
+        <button onclick="e1RemoverItem(${item.id})"
+          style="width:20px;height:20px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          ${lc('x',10,'#fff')}
+        </button>
+      </div>`;
+  } else {
+    lastTd.innerHTML = `
+      <div style="display:inline-flex;align-items:center;gap:8px">
+        ${need > 0 ? `<div style="text-align:right">
+          <div style="font-size:.9rem;font-weight:800;color:var(--purple);font-family:monospace">${fmt(need)}</div>
+          <div style="font-size:.58rem;color:var(--muted)">${item.unit} sugerido</div>
+        </div>` : ''}
+        <button onclick="e1AddItem(${item.id})"
+          style="width:30px;height:30px;border-radius:50%;border:none;background:var(--purple);
+          color:#fff;font-size:1.2rem;font-weight:700;cursor:pointer;display:flex;align-items:center;
+          justify-content:center;box-shadow:0 2px 8px rgba(107,33,212,.3);transition:transform .15s"
+          onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">+</button>
+      </div>`;
+  }
 }
 
 function e1IrParaCotacao() {
   if (_listaAtual.itens.length === 0) { toast('Carrinho vazio', 'err'); return; }
-  // Popula cotações automáticas antes de ir para etapa 2 (cotação)
+  // Popula cotações automáticas
   _listaAtual.itens.forEach(i => {
     if (!i.cotacoes) i.cotacoes = [];
     const itemCad = items.find(x => x.id === i.itemId);
@@ -490,7 +635,7 @@ function e1IrParaCotacao() {
       const supIds = itemCad.supIds?.length ? [...itemCad.supIds] : (itemCad.supId ? [itemCad.supId] : []);
       supIds.forEach(supId => {
         if (supId && !i.cotacoes.some(c => c.supId === supId)) {
-          i.cotacoes.push({ supId, precoUnit: null, respondido: false, prazo: '', pagamento: '', emFalta: false });
+          i.cotacoes.push({ supId, precoUnit:null, respondido:false, prazo:'', pagamento:'', emFalta:false });
         }
       });
     }
@@ -503,6 +648,110 @@ function e1IrParaCotacao() {
   _renderEtapa2Cotacao();
   toast('Carrinho confirmado. Agora faça as cotações!');
 }
+
+// Item 4 — Imprimir lista do carrinho
+function imprimirCarrinho() {
+  const l        = _listaAtual;
+  const carrinho = l.itens;
+  const cfg      = getConfig();
+  const u        = typeof getCurrentUser==='function' ? getCurrentUser() : null;
+  const empresa  = cfg.empresa || 'Vai Ter Pizza!';
+  const totalEst = carrinho.reduce((s,ci) => s+ci.qtdSelecionada*(ci.precoUnitEstimado||0),0);
+
+  if (!carrinho.length) { toast('Carrinho vazio', 'err'); return; }
+
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Lista de Compras ${l.codigo}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',Arial,sans-serif;font-size:11px;background:#fff;color:#1a1a2e;padding:24px}
+    .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;border-bottom:3px solid #6B21D4;margin-bottom:16px}
+    .empresa{font-size:17px;font-weight:800;color:#6B21D4}
+    .sub{font-size:10px;color:#888;margin-top:2px}
+    .meta{text-align:right;font-size:10px;color:#555;line-height:1.9}
+    .meta strong{color:#1a1a2e}
+    .kpis{display:flex;gap:10px;margin-bottom:16px}
+    .kpi{flex:1;background:#f5f0ff;border:1px solid #d8b4fe;border-radius:6px;padding:8px 12px;text-align:center}
+    .kpi-v{font-size:14px;font-weight:800;color:#6B21D4}
+    .kpi-l{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.4px;margin-top:1px}
+    .cat{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#6B21D4;background:#f5f0ff;padding:5px 10px;border-radius:4px;margin:14px 0 5px}
+    table{width:100%;border-collapse:collapse}
+    thead th{background:#6B21D4;color:#fff;padding:6px 9px;font-size:9.5px;font-weight:700;text-transform:uppercase}
+    thead th.r{text-align:right} thead th.c{text-align:center}
+    td{padding:6px 9px;font-size:10.5px;border-bottom:1px solid #f0f0f0}
+    tr:nth-child(even) td{background:#fafafa}
+    .nm{font-weight:600} .ct{font-size:9px;color:#bbb}
+    .r{text-align:right} .c{text-align:center}
+    .chk{width:13px;height:13px;border:1.5px solid #6B21D4;border-radius:3px;display:inline-block}
+    .tot td{background:#f5f0ff!important;font-weight:700;color:#6B21D4;border-top:2px solid #6B21D4;padding:7px 9px}
+    .footer{margin-top:20px;padding-top:12px;border-top:1px dashed #ccc;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
+    .ass{display:flex;flex-direction:column;align-items:center;gap:3px}
+    .ass-linha{border-bottom:1px solid #aaa;width:180px}
+    .ass-lbl{font-size:9px;color:#888}
+    @media print{body{padding:8px}}
+  </style></head><body>`);
+
+  win.document.write(`<div class="hdr">
+    <div><div class="empresa">${empresa}</div><div class="sub">Lista de Compras — Carrinho</div></div>
+    <div class="meta">
+      <div><strong>Lista:</strong> ${l.codigo}</div>
+      <div><strong>Data:</strong> ${fmtD(new Date().toISOString())}</div>
+      <div><strong>Responsável:</strong> ${u?.name||'___________'}</div>
+    </div>
+  </div>`);
+
+  win.document.write(`<div class="kpis">
+    <div class="kpi"><div class="kpi-v">${carrinho.length}</div><div class="kpi-l">Itens</div></div>
+    <div class="kpi"><div class="kpi-v">R$ ${fmt(totalEst)}</div><div class="kpi-l">Estimado</div></div>
+  </div>`);
+
+  // Agrupa por categoria
+  const porCat = {};
+  carrinho.forEach(ci => {
+    const cat = ci.categoria || 'Geral';
+    if (!porCat[cat]) porCat[cat] = [];
+    porCat[cat].push(ci);
+  });
+
+  Object.entries(porCat).forEach(([cat, citens]) => {
+    const subTot = citens.reduce((s,ci)=>s+ci.qtdSelecionada*(ci.precoUnitEstimado||0),0);
+    win.document.write(`<div class="cat">${cat}</div>`);
+    win.document.write(`<table><thead><tr>
+      <th class="c" style="width:20px"></th>
+      <th>Item</th>
+      <th class="c" style="width:55px">Qtd</th>
+      <th class="c" style="width:32px">Un.</th>
+      <th class="r" style="width:80px">Est. unit.</th>
+      <th class="r" style="width:80px">Total est.</th>
+    </tr></thead><tbody>`);
+    citens.forEach(ci => {
+      const total = ci.qtdSelecionada*(ci.precoUnitEstimado||0);
+      win.document.write(`<tr>
+        <td class="c"><span class="chk"></span></td>
+        <td><div class="nm">${ci.nome}</div></td>
+        <td class="c" style="font-family:monospace;font-weight:600">${fmt(ci.qtdSelecionada)}</td>
+        <td class="c" style="color:#aaa">${ci.unidade}</td>
+        <td class="r">${ci.precoUnitEstimado>0?'R$ '+fmt(ci.precoUnitEstimado):'—'}</td>
+        <td class="r" style="font-weight:600">${total>0?'R$ '+fmt(total):'—'}</td>
+      </tr>`);
+    });
+    win.document.write(`<tr class="tot"><td colspan="4">Subtotal ${cat}</td>
+      <td></td><td class="r">R$ ${fmt(subTot)}</td></tr>`);
+    win.document.write('</tbody></table>');
+  });
+
+  win.document.write(`<div class="footer">
+    <div class="ass"><div class="ass-linha"></div><div class="ass-lbl">${u?.name||'Responsável'}</div></div>
+    <div style="font-size:10px;color:#999">Total estimado: <strong style="color:#6B21D4">R$ ${fmt(totalEst)}</strong></div>
+    <div class="ass"><div class="ass-linha"></div><div class="ass-lbl">Aprovação</div></div>
+  </div>`);
+
+  win.document.write('<script>window.onload=()=>window.print();<\/script></body></html>');
+  win.document.close();
+}
+
 
 
 function _rowsItem(i) {
