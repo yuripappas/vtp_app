@@ -88,6 +88,13 @@
           <span class="sb-label">Relatórios</span>
         </button>
 
+        <div class="sb-section">Operações</div>
+        <button class="sb-item" id="nav-checklist" onclick="goModule('checklist')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+          <span class="sb-label">Checklist</span>
+          <span id="badge-checklist" class="badge-dot" style="display:none"></span>
+        </button>
+
       </nav>
       <div class="sb-bottom">
         <!-- Configurações isolada acima do perfil — padrão UI profissional -->
@@ -169,56 +176,74 @@
       </div>
 
       <!-- ESTOQUE -->
-      <div class="page" id="page-estoque">
-        <div style="display:flex;gap:20px;align-items:flex-start">
+      <div class="page" id="page-estoque" style="padding:0">
+        <!-- Tab bar do estoque -->
+        <div id="estTabBar" style="background:var(--surface);border-bottom:1.5px solid var(--border);padding:0 24px;display:flex;gap:0;align-items:center;justify-content:space-between">
+          <div style="display:flex;gap:0">
+            <button onclick="setEstTab('contagem')" id="estTab-contagem"
+              style="display:flex;align-items:center;gap:6px;padding:12px 16px;border:none;border-bottom:2.5px solid var(--purple);background:none;color:var(--purple);font-size:.8rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              Contagem
+            </button>
+            <button onclick="setEstTab('movimentacoes')" id="estTab-movimentacoes"
+              style="display:flex;align-items:center;gap:6px;padding:12px 16px;border:none;border-bottom:2.5px solid transparent;background:none;color:var(--muted);font-size:.8rem;font-weight:500;cursor:pointer;font-family:Inter,sans-serif">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              Movimentações
+            </button>
+          </div>
+          <div style="display:flex;gap:8px;padding:8px 0">
+            <button onclick="openImportModal()" id="estBtnImport"
+              style="display:flex;align-items:center;gap:6px;padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);color:var(--text2);font-size:.76rem;font-weight:600;cursor:pointer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Importar CSV
+            </button>
+          </div>
+        </div>
 
-          <!-- Coluna principal -->
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-              <div>
-                <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Estoque</h2>
-                <div style="font-size:.72rem;color:var(--muted)">Contagem física · Compare digital vs físico · <a href="#" onclick="goModule('configuracoes');setCfgTab('cadastros')" style="color:var(--purple)">Cadastros</a></div>
+        <!-- Conteúdo dinâmico das tabs -->
+        <div id="estConteudo" style="padding:24px">
+
+          <!-- ABA: CONTAGEM -->
+          <div id="estPanelContagem">
+            <div style="display:flex;gap:20px;align-items:flex-start">
+              <div style="flex:1;min-width:0">
+                <div style="margin-bottom:4px">
+                  <h2 style="font-size:1rem;font-weight:800;margin-bottom:2px">Contagem de Estoque</h2>
+                  <div style="font-size:.72rem;color:var(--muted)">Compare digital vs físico · <a href="#" onclick="goModule('configuracoes')" style="color:var(--purple)">Cadastros</a></div>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;margin-top:14px" id="estKpis"></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+                  <input class="inp" style="max-width:220px;padding:7px 12px" placeholder="Buscar insumo..." oninput="setEstSearch(this.value)">
+                  <select class="inp" id="estCatFil" style="max-width:200px;padding:7px 10px" onchange="setEstCat(this.value)">
+                    <option value="">Todas categorias</option>
+                  </select>
+                  <div class="filter-bar" id="estFiltrosBtns"></div>
+                </div>
+                <div class="tbl-wrap">
+                  <table>
+                    <thead><tr>
+                      <th>Insumo</th>
+                      <th class="c">Un.</th>
+                      <th class="c">Digital</th>
+                      <th class="c">Físico</th>
+                      <th class="c">Divergência</th>
+                      <th class="c">Mínimo</th>
+                      <th class="c">Ideal</th>
+                      <th>Nível</th>
+                      <th class="c">Status</th>
+                    </tr></thead>
+                    <tbody id="estTableBody"></tbody>
+                  </table>
+                </div>
               </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn btn-outline btn-sm" onclick="openImportModal()">${lc('upload',13,'currentColor')} Importar CSV</button>
+              <div style="width:256px;flex-shrink:0;position:sticky;top:20px">
+                <div class="card" id="estPainelContagem" style="overflow:hidden"></div>
               </div>
-            </div>
-
-            <!-- KPIs -->
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px" id="estKpis"></div>
-
-            <!-- Filtros -->
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-              <input class="inp" style="max-width:220px;padding:7px 12px" placeholder="Buscar insumo..." oninput="setEstSearch(this.value)">
-              <select class="inp" id="estCatFil" style="max-width:200px;padding:7px 10px" onchange="setEstCat(this.value)">
-                <option value="">Todas categorias</option>
-              </select>
-              <div class="filter-bar" id="estFiltrosBtns"></div>
-            </div>
-
-            <!-- Tabela -->
-            <div class="tbl-wrap">
-              <table>
-                <thead><tr>
-                  <th>Insumo</th>
-                  <th class="c">Un.</th>
-                  <th class="c">Digital</th>
-                  <th class="c">Físico</th>
-                  <th class="c">Divergência</th>
-                  <th class="c">Mínimo</th>
-                  <th class="c">Ideal</th>
-                  <th>Nível</th>
-                  <th class="c">Status</th>
-                </tr></thead>
-                <tbody id="estTableBody"></tbody>
-              </table>
             </div>
           </div>
 
-          <!-- Painel lateral de contagem -->
-          <div style="width:256px;flex-shrink:0;position:sticky;top:20px">
-            <div class="card" id="estPainelContagem" style="overflow:hidden"></div>
-          </div>
+          <!-- ABA: MOVIMENTAÇÕES -->
+          <div id="estPanelMovimentacoes" style="display:none"></div>
 
         </div>
       </div><!-- /page-estoque -->
@@ -460,6 +485,11 @@
             <!-- USUÁRIOS (integrado em Configurações) -->
       <div class="page" id="page-usuarios" style="display:none"></div>
 
+      <!-- CHECKLIST -->
+      <div class="page" id="page-checklist" style="padding:0">
+        <div id="checklistContent"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -507,6 +537,26 @@
         <div class="field"><label>Qtd. mínima</label><input class="inp" type="number" id="fMin" placeholder="0" min="0" step="0.1"></div>
         <div class="field"><label>Qtd. ideal</label><input class="inp" type="number" id="fIdeal" placeholder="0" min="0" step="0.1"></div>
         <div class="field"><label>Custo ref. (R$)</label><input class="inp" type="number" id="fCost" placeholder="0.00" step="0.01"></div>
+      </div>
+
+      <hr class="sdiv"><div class="slbl">Unidade de Compra <span style="font-weight:400;color:var(--muted);font-size:.72rem">(opcional)</span></div>
+      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px;margin-bottom:4px">
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px;line-height:1.5">
+          Configure como o fornecedor vende este insumo. O sistema converte automaticamente da unidade base para embalagens na lista de compra.
+          <br><span style="color:var(--purple);font-weight:600">Ex: base = kg · embalagem = Barra (25 kg) → preciso 50 kg = 2 barras</span>
+        </div>
+        <div class="f2" style="margin-bottom:0">
+          <div class="field" style="margin:0">
+            <label>Nome da embalagem</label>
+            <input class="inp" id="fUnidCompra" placeholder="Ex: Barra, Pacote, Caixa, Fardo...">
+          </div>
+          <div class="field" style="margin:0">
+            <label id="fQtdEmbLabel">Qtd base por embalagem</label>
+            <input class="inp" type="number" id="fQtdEmb" placeholder="Ex: 25" min="0.001" step="0.001"
+              oninput="atualizarLabelEmb()">
+          </div>
+        </div>
+        <div id="fEmbPreview" style="margin-top:8px;font-size:.7rem;color:var(--purple);font-weight:600;min-height:18px"></div>
       </div>
     </div>
     <div class="mf">
@@ -910,6 +960,7 @@
   <script src="js/cadastros.js"></script>
 <script src="js/configuracoes.js"></script>
 <script src="js/desperdicio.js"></script>
+<script src="js/checklist.js"></script>
 <script src="js/login.js"></script>
 <script>
   // Seta datas padrão dos filtros
