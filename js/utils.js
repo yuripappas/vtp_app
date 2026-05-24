@@ -13,7 +13,7 @@ const genToken = () => Math.random().toString(36).slice(2, 10).toUpperCase();
 
 function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
-  el.textContent = msg;
+  el.innerHTML = msg;
   el.className = `toast ${type} show`;
   setTimeout(() => el.className = 'toast', 3000);
 }
@@ -51,6 +51,11 @@ const modInfo = {
   relatorios:     { title: 'Relatórios',            sub: 'Histórico, análises e inteligência' },
   usuarios:       { title: 'Usuários & Permissões', sub: 'Gestão de acesso à plataforma' },
   checklist:      { title: 'Checklist',             sub: 'Tarefas diárias · Controle de equipe' },
+  manutencao:     { title: 'Manutenção',             sub: 'Equipamentos · Preventiva · Documentos · Histórico' },
+  inventario:     { title: 'Inventário',             sub: 'Ativos · Utensílios · Contagem mensal' },
+  alertas:        { title: 'Alertas',                sub: 'Notificações de movimentações e eventos do sistema' },
+  rh:             { title: 'RH',                     sub: 'Escala · Presença · Horas Extras · Materiais · Indicadores' },
+  auditoria:      { title: 'Auditoria',              sub: 'Log de ações · Rastreabilidade · Histórico do sistema' },
 };
 
 function goModule(mod) {
@@ -81,8 +86,23 @@ function goModule(mod) {
   else if (mod === 'previsao')      renderPrevisao();
   else if (mod === 'configuracoes') renderConfiguracoes();
   else if (mod === 'relatorios') renderRelatorios();
-  else if (mod === 'usuarios')   { setCfgTab('usuarios'); }
+  else if (mod === 'usuarios') {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-configuracoes')?.classList.add('active');
+    _cfgSection = 'usuarios';
+    renderConfiguracoes();
+  }
   else if (mod === 'checklist')  renderChecklist();
+  else if (mod === 'manutencao') renderManutencao();
+  else if (mod === 'inventario') {
+    if (typeof renderInventario !== 'function') {
+      document.getElementById('page-inventario').innerHTML =
+        '<div style="padding:32px 24px;color:var(--red);font-size:var(--text-sm);font-weight:700">inventario.js não carregou — verifique o console (F12)</div>';
+    } else { renderInventario(); }
+  }
+  else if (mod === 'alertas')    renderAlertas();
+  else if (mod === 'rh')         renderRh();
+  else if (mod === 'auditoria')  renderAuditoria();
 }
 
 function calcScore(price, delivery, payTerm, minP, maxP, minD, maxD) {
@@ -94,4 +114,35 @@ function calcScore(price, delivery, payTerm, minP, maxP, minD, maxD) {
 
 function calcEconomia() {
   return cycleHistory.reduce((s, c) => s + c.economia, 0);
+}
+
+let _vtpConfirmCallback = null;
+
+function vtpConfirm({ title, message, confirmLabel = 'Confirmar', onConfirm, danger = true } = {}) {
+  _vtpConfirmCallback = onConfirm || null;
+  document.getElementById('vtpConfirmTitle').textContent = title || 'Confirmar ação';
+  document.getElementById('vtpConfirmMsg').textContent   = message || '';
+  document.getElementById('vtpConfirmBtn').textContent   = confirmLabel;
+
+  const btn  = document.getElementById('vtpConfirmBtn');
+  const icon = document.getElementById('vtpConfirmIcon');
+
+  btn.className  = danger ? 'btn btn-red' : 'btn btn-primary';
+  icon.className = danger ? 'confirm-icon danger' : 'confirm-icon info';
+  icon.innerHTML = danger
+    ? lc('trash-2', 20, 'var(--danger-fg)')
+    : lc('help-circle', 20, 'var(--accent)');
+
+  document.getElementById('vtpConfirmOverlay').classList.add('open');
+}
+
+function vtpConfirmClose() {
+  document.getElementById('vtpConfirmOverlay').classList.remove('open');
+  _vtpConfirmCallback = null;
+}
+
+function vtpConfirmExec() {
+  const cb = _vtpConfirmCallback;
+  vtpConfirmClose();
+  if (typeof cb === 'function') cb();
 }

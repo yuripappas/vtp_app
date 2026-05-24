@@ -33,13 +33,13 @@ const CFG_PREV_DEFAULT = {
   diasHistorico:      90,
 };
 
-let cfgPrev = JSON.parse(localStorage.getItem('vtp_cfg_prev2') || 'null') || { ...CFG_PREV_DEFAULT };
-let historicoAPI = JSON.parse(localStorage.getItem('vtp_hist_api') || '[]');
-let planejamentos = JSON.parse(localStorage.getItem('vtp_planejamentos') || '[]');
+let cfgPrev = db._get('vtp_cfg_prev2', null) || { ...CFG_PREV_DEFAULT };
+let historicoAPI = db._get('vtp_hist_api', []);
+let planejamentos = db._get('vtp_planejamentos', []);
 
-const saveCfgPrev    = () => localStorage.setItem('vtp_cfg_prev2',      JSON.stringify(cfgPrev));
-const saveHistorico  = () => localStorage.setItem('vtp_hist_api',       JSON.stringify(historicoAPI));
-const savePlanej     = () => localStorage.setItem('vtp_planejamentos',  JSON.stringify(planejamentos));
+const saveCfgPrev    = () => db._set('vtp_cfg_prev2',     cfgPrev);
+const saveHistorico  = () => db._set('vtp_hist_api',      historicoAPI);
+const savePlanej     = () => db._set('vtp_planejamentos', planejamentos);
 
 const DIAS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
@@ -47,6 +47,7 @@ const DIAS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 let _fatores = { chuva: false, feriado: false, evento: false, temperatura: 28, obs: '' };
 let _ajustes = { pedidos: null, grandesFinal: null, pequenasFinal: null, motoboys: null };
 let _resultado = null;
+let _sobraOntem = { gr: 0, pq: 0 };
 
 // ══════════════════════════════════════════════════════════════
 // RENDER PRINCIPAL
@@ -55,7 +56,13 @@ function renderPrevisao() {
   const hoje      = new Date();
   const diaSem    = hoje.getDay();
   const hist      = _getHistoricoDia(diaSem);
-  const mediaHist = hist.length ? Math.round(hist.reduce((s,h) => s + h.pedidos, 0) / hist.length) : null;
+  const mediaHist = hist.length ? Math.round(_calcMediaFiltrada(hist) || 0) : null;
+
+  // Carrega sobra do dia anterior
+  const ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
+  const ontemStr = ontem.toISOString().slice(0, 10);
+  const planejOntem = planejamentos.find(p => p.data === ontemStr);
+  _sobraOntem = { gr: planejOntem?.sobraGr || 0, pq: planejOntem?.sobraPq || 0 };
 
   document.getElementById('previsaoContent').innerHTML = `
     <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
@@ -102,7 +109,7 @@ function _renderSecao1(hoje, diaSem, hist, media) {
   const temHistorico = hist.length > 0;
   return `
     <div style="background:linear-gradient(135deg,#6B21D4,#9333EA);border-radius:var(--r12);padding:20px 22px;color:#fff">
-      <div style="font-size:.65rem;opacity:.7;text-transform:uppercase;letter-spacing:.9px;margin-bottom:6px">
+      <div style="font-size:var(--text-xs);opacity:.7;text-transform:uppercase;letter-spacing:.9px;margin-bottom:6px">
         Planejamento de hoje
       </div>
       <div style="font-size:1.5rem;font-weight:800;margin-bottom:4px">
@@ -111,30 +118,33 @@ function _renderSecao1(hoje, diaSem, hist, media) {
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:10px">
         <div style="background:rgba(255,255,255,.15);border-radius:var(--r8);padding:8px 14px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800">${hist.length}</div>
-          <div style="font-size:.62rem;opacity:.8;text-transform:uppercase">${DIAS[diaSem]}s analisadas</div>
+          <div style="font-size:var(--text-2xs);opacity:.8;text-transform:uppercase">${DIAS[diaSem]}s analisadas</div>
         </div>
         <div style="background:rgba(255,255,255,.15);border-radius:var(--r8);padding:8px 14px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800">${media ?? '—'}</div>
-          <div style="font-size:.62rem;opacity:.8;text-transform:uppercase">Pedidos médios</div>
+          <div style="font-size:var(--text-2xs);opacity:.8;text-transform:uppercase">Pedidos médios</div>
         </div>
         <div style="background:rgba(255,255,255,.15);border-radius:var(--r8);padding:8px 14px;text-align:center">
           <div style="font-size:1.4rem;font-weight:800">${cfgPrev.diasHistorico}</div>
-          <div style="font-size:.62rem;opacity:.8;text-transform:uppercase">Dias de histórico</div>
+          <div style="font-size:var(--text-2xs);opacity:.8;text-transform:uppercase">Dias de histórico</div>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px">
           ${temHistorico
-            ? `<button onclick="abrirModalHistorico()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 12px;border-radius:var(--r8);font-size:.72rem;cursor:pointer;font-weight:600">
+            ? `<button onclick="abrirModalHistorico()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 12px;border-radius:var(--r8);font-size:var(--text-xs);cursor:pointer;font-weight:600">
                 Ver histórico
                </button>`
             : ''}
-          <button onclick="importarDadosManual()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 12px;border-radius:var(--r8);font-size:.72rem;cursor:pointer;font-weight:600">
+          <button onclick="importarDadosManual()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 12px;border-radius:var(--r8);font-size:var(--text-xs);cursor:pointer;font-weight:600">
             ${lc('upload',13,'#fff')} Importar dados
           </button>
         </div>
       </div>
       ${!temHistorico ? `
-        <div style="margin-top:12px;background:rgba(255,200,50,.2);border:1px solid rgba(255,200,50,.4);border-radius:var(--r8);padding:8px 12px;font-size:.72rem;opacity:.9">
+        <div style="margin-top:12px;background:rgba(255,200,50,.2);border:1px solid rgba(255,200,50,.4);border-radius:var(--r8);padding:8px 12px;font-size:var(--text-xs);opacity:.9">
           ${lc('alert-triangle',13,'#FFD700')} Sem histórico. Use "Importar dados" para registrar pedidos manualmente ou conecte a API do Cardápio Web nas configurações.
+        </div>` : hist.length < 8 ? `
+        <div style="margin-top:12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.4);border-radius:var(--r8);padding:8px 12px;font-size:var(--text-xs);opacity:.9">
+          ${lc('alert-triangle',13,'#FFD700')} Apenas ${hist.length} registros para ${DIAS[diaSem]}s. O ideal são pelo menos 8 para uma média confiável.
         </div>` : ''}
     </div>`;
 }
@@ -145,12 +155,12 @@ function _renderSecao2(mediaHist) {
     <div class="card" id="secao2">
       <div style="padding:16px 18px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:.88rem;font-weight:800">${lc('trending-up',16,'var(--purple)')} Previsão de pedidos e pizzas</div>
-          <div style="font-size:.68rem;color:var(--muted);margin-top:2px">Baseada no histórico · ajuste os fatores ao lado</div>
+          <div style="font-size:var(--text-md);font-weight:800">${lc('trending-up',16,'var(--purple)')} Previsão de pedidos e pizzas</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Baseada no histórico · ajuste os fatores ao lado</div>
         </div>
       </div>
       <div style="padding:16px 18px" id="resultado2">
-        <div style="color:var(--muted);font-size:.8rem;text-align:center;padding:20px">
+        <div style="color:var(--muted);font-size:var(--text-sm);text-align:center;padding:20px">
           Calculando...
         </div>
       </div>
@@ -162,11 +172,11 @@ function _renderSecao3() {
   return `
     <div class="card" id="secao3">
       <div style="padding:16px 18px;border-bottom:1.5px solid var(--border)">
-        <div style="font-size:.88rem;font-weight:800">${lc('chef-hat',16,'var(--purple)')} Plano de massas e batidas</div>
-        <div style="font-size:.68rem;color:var(--muted);margin-top:2px">Sugestão operacional · você pode ajustar antes de confirmar</div>
+        <div style="font-size:var(--text-md);font-weight:800">${lc('chef-hat',16,'var(--purple)')} Plano de massas e batidas</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Sugestão operacional · você pode ajustar antes de confirmar</div>
       </div>
       <div style="padding:16px 18px" id="resultado3">
-        <div style="color:var(--muted);font-size:.8rem;text-align:center;padding:20px">Calculando...</div>
+        <div style="color:var(--muted);font-size:var(--text-sm);text-align:center;padding:20px">Calculando...</div>
       </div>
     </div>`;
 }
@@ -176,11 +186,11 @@ function _renderSecao4() {
   return `
     <div class="card" id="secao4">
       <div style="padding:16px 18px;border-bottom:1.5px solid var(--border)">
-        <div style="font-size:.88rem;font-weight:800">${lc('truck',16,'var(--purple)')} Previsão de motoboys</div>
-        <div style="font-size:.68rem;color:var(--muted);margin-top:2px">Fixos + diaristas conforme demanda de delivery</div>
+        <div style="font-size:var(--text-md);font-weight:800">${lc('truck',16,'var(--purple)')} Previsão de motoboys</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Fixos + diaristas conforme demanda de delivery</div>
       </div>
       <div style="padding:16px 18px" id="resultado4">
-        <div style="color:var(--muted);font-size:.8rem;text-align:center;padding:20px">Calculando...</div>
+        <div style="color:var(--muted);font-size:var(--text-sm);text-align:center;padding:20px">Calculando...</div>
       </div>
     </div>`;
 }
@@ -190,11 +200,11 @@ function _renderRodape() {
   return `
     <div style="display:flex;gap:10px;flex-wrap:wrap" id="rodapePrev">
       <button onclick="confirmarPlanejamento()"
-        style="flex:1;padding:13px;background:var(--purple);color:#fff;border:none;border-radius:var(--r10);font-size:.88rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        style="flex:1;padding:13px;background:var(--purple);color:#fff;border:none;border-radius:var(--r10);font-size:var(--text-md);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
         ${lc('check-circle',16,'#fff')} Confirmar planejamento
       </button>
       <button onclick="enviarWATime()"
-        style="padding:13px 18px;background:#25D366;color:#fff;border:none;border-radius:var(--r10);font-size:.88rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        style="padding:13px 18px;background:#25D366;color:#fff;border:none;border-radius:var(--r10);font-size:var(--text-md);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
         ${lc('message-circle',16,'#fff')} Enviar WA
       </button>
     </div>`;
@@ -203,35 +213,35 @@ function _renderRodape() {
 // ── Painel lateral: fatores ───────────────────────────────────
 function _renderPainelFatores() {
   const btnStyle = (ativo, cor='var(--purple)') =>
-    `padding:6px 14px;border-radius:20px;font-size:.75rem;font-weight:700;border:1.5px solid ${ativo ? cor : 'var(--border)'};background:${ativo ? cor : 'var(--surface)'};color:${ativo ? '#fff' : 'var(--muted)'};cursor:pointer;transition:all .2s`;
+    `padding:6px 14px;border-radius:20px;font-size:var(--text-sm);font-weight:700;border:1.5px solid ${ativo ? cor : 'var(--border)'};background:${ativo ? cor : 'var(--surface)'};color:${ativo ? '#fff' : 'var(--muted)'};cursor:pointer;transition:all .2s`;
 
   return `
     <div class="card">
       <div style="padding:13px 15px;border-bottom:1.5px solid var(--border)">
-        <div style="font-size:.82rem;font-weight:800">${lc('zap',14,'var(--purple)')} Fatores do dia</div>
-        <div style="font-size:.66rem;color:var(--muted)">Ajustam a previsão automaticamente</div>
+        <div style="font-size:var(--text-sm);font-weight:800">${lc('zap',14,'var(--purple)')} Fatores do dia</div>
+        <div style="font-size:var(--text-xs);color:var(--muted)">Ajustam a previsão automaticamente</div>
       </div>
       <div style="padding:13px 15px;display:flex;flex-direction:column;gap:13px">
 
         <!-- Temperatura -->
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-            <div style="font-size:.78rem;font-weight:600">${lc('thermometer',14,'var(--purple)')} Temperatura da cozinha</div>
+            <div style="font-size:var(--text-sm);font-weight:600">${lc('thermometer',14,'var(--purple)')} Temperatura da cozinha</div>
             <div style="display:flex;align-items:center;gap:5px">
               <input type="number" id="fTemp" value="${_fatores.temperatura}" min="15" max="45"
-                style="width:52px;padding:4px 6px;border:1.5px solid var(--purple);border-radius:var(--r6);font-size:.86rem;font-weight:700;text-align:center;color:var(--purple)"
+                style="width:52px;padding:4px 6px;border:1.5px solid var(--purple);border-radius:var(--r6);font-size:var(--text-md);font-weight:700;text-align:center;color:var(--purple)"
                 oninput="_fatores.temperatura=+this.value;recalcularPrevisao()">
-              <span style="font-size:.74rem;color:var(--muted)">°C</span>
+              <span style="font-size:var(--text-sm);color:var(--muted)">°C</span>
             </div>
           </div>
-          <div id="tempHint" style="font-size:.67rem;color:var(--muted);background:var(--surface2);border-radius:var(--r6);padding:4px 8px"></div>
+          <div id="tempHint" style="font-size:var(--text-xs);color:var(--muted);background:var(--surface2);border-radius:var(--r6);padding:4px 8px"></div>
         </div>
 
         <!-- Chuva -->
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-size:.78rem;font-weight:600">${lc('cloud-rain',14,'var(--purple)')} Vai chover hoje?</div>
-            <div style="font-size:.65rem;color:var(--muted)">Aumenta delivery (~+${Math.round((1.20-1)*100)}%)</div>
+            <div style="font-size:var(--text-sm);font-weight:600">${lc('cloud-rain',14,'var(--purple)')} Vai chover hoje?</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">Aumenta delivery (~+${Math.round((1.20-1)*100)}%)</div>
           </div>
           <button id="btnChuva" onclick="toggleFatorPrev('chuva')" style="${btnStyle(_fatores.chuva)}">
             ${_fatores.chuva ? 'Sim' : 'Não'}
@@ -241,8 +251,8 @@ function _renderPainelFatores() {
         <!-- Feriado -->
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-size:.78rem;font-weight:600">${lc('star',14,'var(--purple)')} Feriado / data especial?</div>
-            <div style="font-size:.65rem;color:var(--muted)">Aumenta movimento (~+35%)</div>
+            <div style="font-size:var(--text-sm);font-weight:600">${lc('star',14,'var(--purple)')} Feriado / data especial?</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">Aumenta movimento (~+35%)</div>
           </div>
           <button id="btnFeriado" onclick="toggleFatorPrev('feriado')" style="${btnStyle(_fatores.feriado)}">
             ${_fatores.feriado ? 'Sim' : 'Não'}
@@ -252,8 +262,8 @@ function _renderPainelFatores() {
         <!-- Evento -->
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-size:.78rem;font-weight:600">${lc('zap',14,'var(--purple)')} Evento próximo?</div>
-            <div style="font-size:.65rem;color:var(--muted)">Show, jogo, evento local (~+20%)</div>
+            <div style="font-size:var(--text-sm);font-weight:600">${lc('zap',14,'var(--purple)')} Evento próximo?</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">Show, jogo, evento local (~+20%)</div>
           </div>
           <button id="btnEvento" onclick="toggleFatorPrev('evento')" style="${btnStyle(_fatores.evento)}">
             ${_fatores.evento ? 'Sim' : 'Não'}
@@ -262,10 +272,10 @@ function _renderPainelFatores() {
 
         <!-- Observação -->
         <div>
-          <div style="font-size:.75rem;font-weight:600;margin-bottom:4px">${lc('edit-2',13,'var(--muted)')} Observação</div>
+          <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:4px">${lc('edit-2',13,'var(--muted)')} Observação</div>
           <input class="inp" id="fObs" value="${_fatores.obs}"
             placeholder="ex: Copa do Mundo, Dia das Mães..."
-            style="font-size:.76rem;padding:6px 9px"
+            style="font-size:var(--text-sm);padding:6px 9px"
             oninput="_fatores.obs=this.value">
         </div>
       </div>
@@ -274,30 +284,42 @@ function _renderPainelFatores() {
 
 // ── Painel lateral: histórico ─────────────────────────────────
 function _renderPainelHistorico(hist, diaSem) {
+  const media = _calcMediaFiltrada(hist);
+  const excluidos = hist.filter(h => h.excluir).length;
   return `
     <div class="card">
       <div style="padding:13px 15px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:.82rem;font-weight:800">${lc('activity',14,'var(--purple)')} Histórico — ${DIAS[diaSem]}s</div>
-        <span style="font-size:.66rem;color:var(--muted)">${hist.length} reg.</span>
+        <div style="font-size:var(--text-sm);font-weight:800">${lc('activity',14,'var(--purple)')} Histórico — ${DIAS[diaSem]}s</div>
+        <span style="font-size:var(--text-xs);color:var(--muted)">${hist.length} reg.${excluidos ? ' · '+excluidos+' excluído'+(excluidos>1?'s':'') : ''}</span>
       </div>
-      <div style="max-height:220px;overflow-y:auto">
+      <div style="max-height:260px;overflow-y:auto">
         ${hist.length === 0
-          ? `<div style="padding:16px;text-align:center;font-size:.76rem;color:var(--muted)">Nenhum dado ainda</div>`
-          : hist.slice(0, 8).map(h => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 15px;border-bottom:1px solid var(--border)">
-              <div>
-                <div style="font-size:.75rem;font-weight:600">${new Date(h.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</div>
-                ${h.obs ? `<div style="font-size:.62rem;color:var(--muted);font-style:italic">${h.obs}</div>` : ''}
+          ? `<div style="padding:16px;text-align:center;font-size:var(--text-sm);color:var(--muted)">Nenhum dado ainda</div>`
+          : hist.map(h => {
+              const desvio  = media ? Math.round((h.pedidos - media) / media * 100) : null;
+              const outlier = desvio !== null && Math.abs(desvio) >= 25;
+              const corDesvio = desvio > 0 ? 'var(--green)' : 'var(--red)';
+              return `
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:7px 15px;border-bottom:1px solid var(--border);${h.excluir?'opacity:.45':''}${outlier&&!h.excluir?';background:var(--yellow-light)':''}" onclick="_editarHistorico('${h.data}')" style="cursor:pointer">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                  <span style="font-size:var(--text-sm);font-weight:600">${new Date(h.data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}</span>
+                  ${h.feriado ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 5px;border-radius:8px;background:var(--yellow-light);color:#92400E">${lc('star',8,'currentColor')} Feriado</span>` : ''}
+                  ${h.evento  ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 5px;border-radius:8px;background:var(--purple-xlight);color:var(--purple)">${lc('zap',8,'currentColor')} Evento</span>` : ''}
+                  ${h.excluir ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 5px;border-radius:8px;background:var(--surface2);color:var(--muted)">${lc('minus-circle',8,'currentColor')} Excluído</span>` : ''}
+                </div>
+                ${h.obs||h.evento ? `<div style="font-size:var(--text-2xs);color:var(--muted);font-style:italic;margin-top:1px">${h.evento||h.obs}</div>` : ''}
               </div>
-              <div style="text-align:right">
-                <div style="font-size:.9rem;font-weight:800;color:var(--purple)">${h.pedidos}</div>
-                <div style="font-size:.6rem;color:var(--muted)">pedidos</div>
+              <div style="text-align:right;flex-shrink:0;margin-left:8px">
+                <div style="font-size:var(--text-md);font-weight:800;color:${h.excluir?'var(--muted)':'var(--purple)'}">${h.pedidos}</div>
+                ${desvio !== null && !h.excluir ? `<div style="font-size:var(--text-2xs);font-weight:700;color:${corDesvio}">${desvio>0?'+':''}${desvio}%</div>` : ''}
               </div>
-            </div>`).join('')}
+            </div>`;
+            }).join('')}
       </div>
       <div style="padding:10px 15px;border-top:1px solid var(--border)">
-        <button onclick="abrirImportarPedidos()" style="width:100%;padding:7px;background:none;border:1.5px dashed var(--border);border-radius:var(--r8);font-size:.74rem;color:var(--muted);cursor:pointer">
-          ${lc('plus',13,'var(--muted)')} Adicionar pedidos manualmente
+        <button onclick="abrirImportarPedidos()" style="width:100%;padding:7px;background:none;border:1.5px dashed var(--border);border-radius:var(--r8);font-size:var(--text-sm);color:var(--muted);cursor:pointer">
+          ${lc('plus',13,'var(--muted)')} Adicionar / editar registros
         </button>
       </div>
     </div>`;
@@ -308,12 +330,12 @@ function _renderPainelAcoes() {
   return `
     <div style="display:flex;flex-direction:column;gap:8px">
       <button onclick="abrirCfgPrev2()"
-        style="width:100%;padding:9px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r8);font-size:.76rem;font-weight:600;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
+        style="width:100%;padding:9px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r8);font-size:var(--text-sm);font-weight:600;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
         ${lc('settings',14,'var(--muted)')} Parâmetros e configurações
       </button>
       ${planejamentos.length > 0 ? `
         <button onclick="verHistoricoPlanej()"
-          style="width:100%;padding:9px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r8);font-size:.76rem;font-weight:600;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
+          style="width:100%;padding:9px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r8);font-size:var(--text-sm);font-weight:600;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
           ${lc('clipboard-list',14,'var(--muted)')} Ver planejamentos anteriores
         </button>` : ''}
     </div>`;
@@ -325,7 +347,7 @@ function _renderPainelAcoes() {
 function recalcularPrevisao() {
   const diaSem = new Date().getDay();
   const hist   = _getHistoricoDia(diaSem);
-  const media  = hist.length ? hist.reduce((s,h) => s + h.pedidos, 0) / hist.length : null;
+  const media  = _calcMediaFiltrada(hist);
 
   // Hint temperatura
   const temp = _fatores.temperatura;
@@ -340,7 +362,7 @@ function recalcularPrevisao() {
   if (!media) {
     ['resultado2','resultado3','resultado4'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted);font-size:.8rem">${lc('alert-triangle',16,'var(--muted)')} Sem histórico — adicione dados para ver a previsão</div>`;
+      if (el) el.innerHTML = `<div style="text-align:center;padding:24px;color:var(--muted);font-size:var(--text-sm)">${lc('alert-triangle',16,'var(--muted)')} Sem histórico — adicione dados para ver a previsão</div>`;
     });
     return;
   }
@@ -365,11 +387,13 @@ function recalcularPrevisao() {
   const totPz = totGr + totPq;
 
   // ── Massas ──
-  const marg     = cfgPrev.margemSeguranca / 100;
+  const marg      = cfgPrev.margemSeguranca / 100;
   const masGrBase = totGr;
   const masPqBase = totPq;
-  const masGrFin  = _ajustes.grandesFinal  ?? Math.ceil(masGrBase * (1 + marg));
-  const masPqFin  = _ajustes.pequenasFinal ?? Math.ceil(masPqBase * (1 + marg));
+  const masGrBruto = Math.ceil(masGrBase * (1 + marg));
+  const masPqBruto = Math.ceil(masPqBase * (1 + marg));
+  const masGrFin  = _ajustes.grandesFinal  ?? Math.max(0, masGrBruto - _sobraOntem.gr);
+  const masPqFin  = _ajustes.pequenasFinal ?? Math.max(0, masPqBruto - _sobraOntem.pq);
 
   // ── Batidas ──
   const batGr  = Math.ceil(masGrFin / cfgPrev.capGrandesBatida);
@@ -396,7 +420,7 @@ function recalcularPrevisao() {
   const motFinal  = _ajustes.motoboys ?? motNec;
 
   // Salva resultado global
-  _resultado = { pedidos, pedidosCalc, media, coef, grSal, pqSal, grDoc, pqDoc, totGr, totPq, totPz, masGrFin, masPqFin, batidas, totBat, pedDel, motNec, motFix, diaristas, motFinal, ferAj, temp };
+  _resultado = { pedidos, pedidosCalc, media, coef, grSal, pqSal, grDoc, pqDoc, totGr, totPq, totPz, masGrFin, masPqFin, masGrBruto, masPqBruto, batidas, totBat, pedDel, motNec, motFix, diaristas, motFinal, ferAj, temp };
 
   _renderResultado2(pedidos, pedidosCalc, media, coef, grSal, pqSal, grDoc, pqDoc, totGr, totPq, totPz);
   _renderResultado3(masGrFin, masPqFin, masGrBase, masPqBase, batidas, totBat, ferAj, temp);
@@ -415,27 +439,27 @@ function _renderResultado2(pedidos, pedidosCalc, media, coef, grSal, pqSal, grDo
   el.innerHTML = `
     <!-- Pedidos -->
     <div style="margin-bottom:18px">
-      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Pedidos previstos</div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Pedidos previstos</div>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r12);padding:16px 22px;text-align:center">
           <div style="font-size:2.4rem;font-weight:800;color:var(--purple);line-height:1">${pedidos}</div>
-          <div style="font-size:.65rem;color:var(--muted);margin-top:4px;text-transform:uppercase">pedidos</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px;text-transform:uppercase">pedidos</div>
         </div>
         <div style="flex:1">
-          <div style="font-size:.78rem;color:var(--text2);margin-bottom:5px">
+          <div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:5px">
             Média histórica: <strong>${Math.round(media)}</strong>
             ${coef !== 1 ? ` × <span style="color:var(--purple);font-weight:700">${coef.toFixed(2)}</span> = <strong style="color:var(--purple)">${pedidosCalc}</strong>` : ''}
           </div>
           ${coefAtivos.length ? `
             <div style="display:flex;gap:5px;flex-wrap:wrap">
-              ${coefAtivos.map(f => `<span style="padding:2px 8px;border-radius:10px;font-size:.65rem;font-weight:600;background:var(--purple-xlight);color:var(--purple)">${f}</span>`).join('')}
-            </div>` : `<div style="font-size:.72rem;color:var(--muted)">Sem ajuste de fatores</div>`}
+              ${coefAtivos.map(f => `<span style="padding:2px 8px;border-radius:10px;font-size:var(--text-xs);font-weight:600;background:var(--purple-xlight);color:var(--purple)">${f}</span>`).join('')}
+            </div>` : `<div style="font-size:var(--text-xs);color:var(--muted)">Sem ajuste de fatores</div>`}
           <div style="margin-top:8px">
-            <label style="font-size:.7rem;color:var(--muted)">Ajustar manualmente:</label>
+            <label style="font-size:var(--text-xs);color:var(--muted)">Ajustar manualmente:</label>
             <input type="number" value="${pedidos}" min="1"
-              style="margin-left:6px;width:64px;padding:3px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.82rem;font-weight:700;text-align:center"
+              style="margin-left:6px;width:64px;padding:3px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:var(--text-sm);font-weight:700;text-align:center"
               onchange="_ajustes.pedidos=+this.value;recalcularPrevisao()">
-            ${_ajustes.pedidos ? `<button onclick="_ajustes.pedidos=null;recalcularPrevisao()" style="margin-left:5px;font-size:.65rem;color:var(--purple);background:none;border:none;cursor:pointer">Resetar</button>` : ''}
+            ${_ajustes.pedidos ? `<button onclick="_ajustes.pedidos=null;recalcularPrevisao()" style="margin-left:5px;font-size:var(--text-xs);color:var(--purple);background:none;border:none;cursor:pointer">Resetar</button>` : ''}
           </div>
         </div>
       </div>
@@ -443,7 +467,7 @@ function _renderResultado2(pedidos, pedidosCalc, media, coef, grSal, pqSal, grDo
 
     <!-- Pizzas -->
     <div style="border-top:1.5px solid var(--border);padding-top:16px">
-      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Distribuição de pizzas</div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Distribuição de pizzas</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         ${_kpiPizza('Grandes Salgadas', grSal, '#6B21D4')}
         ${_kpiPizza('Pequenas Salgadas', pqSal, '#6B21D4')}
@@ -460,7 +484,7 @@ function _renderResultado2(pedidos, pedidosCalc, media, coef, grSal, pqSal, grDo
 
 function _kpiPizza(label, val, cor) {
   return `<div style="border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 12px;display:flex;align-items:center;justify-content:space-between">
-    <span style="font-size:.72rem;color:var(--text2)">${label}</span>
+    <span style="font-size:var(--text-xs);color:var(--text2)">${label}</span>
     <span style="font-size:1.1rem;font-weight:800;color:${cor}">${val}</span>
   </div>`;
 }
@@ -468,7 +492,7 @@ function _kpiPizza(label, val, cor) {
 function _kpiPizzaTotal(label, val, cor) {
   return `<div style="background:var(--surface2);border-radius:var(--r8);padding:10px;text-align:center">
     <div style="font-size:1.3rem;font-weight:800;color:${cor}">${val}</div>
-    <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;margin-top:2px">${label}</div>
+    <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:2px">${label}</div>
   </div>`;
 }
 
@@ -477,122 +501,273 @@ function _renderResultado3(masGrFin, masPqFin, masGrBase, masPqBase, batidas, to
   const el = document.getElementById('resultado3');
   if (!el) return;
   el.innerHTML = `
+    ${(_sobraOntem.gr > 0 || _sobraOntem.pq > 0) ? `
+    <div style="margin-bottom:14px;padding:9px 12px;background:var(--green-light);border:1px solid var(--green);border-radius:var(--r8);font-size:var(--text-sm);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      ${lc('package',13,'var(--green)')} <strong>Sobra de ontem:</strong> ${_sobraOntem.gr > 0 ? _sobraOntem.gr+' grandes' : ''} ${_sobraOntem.pq > 0 ? _sobraOntem.pq+' pequenas' : ''} — já descontado da produção de hoje.
+      <button onclick="_sobraOntem={gr:0,pq:0};recalcularPrevisao()" style="margin-left:auto;font-size:var(--text-xs);color:var(--muted);background:none;border:none;cursor:pointer">Ignorar</button>
+    </div>` : ''}
     <!-- Massas -->
     <div style="margin-bottom:18px">
-      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Massas recomendadas (com ${cfgPrev.margemSeguranca}% de margem)</div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Massas recomendadas (com ${cfgPrev.margemSeguranca}% de margem)</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         ${_kpiMassa('Massas grandes', masGrFin, masGrBase, 'var(--purple)', 'grandesFinal')}
         ${_kpiMassa('Massas pequenas', masPqFin, masPqBase, '#D97706', 'pequenasFinal')}
       </div>
-      <div style="background:var(--green-light);border:1px solid var(--green);border-radius:var(--r8);padding:9px 12px;font-size:.72rem;color:#166534;display:flex;align-items:center;gap:8px">
+      <div style="background:var(--green-light);border:1px solid var(--green);border-radius:var(--r8);padding:9px 12px;font-size:var(--text-xs);color:#166534;display:flex;align-items:center;gap:8px">
         ${lc('info',14,'#166534')} Margem de ${cfgPrev.margemSeguranca}% incluída. Total recomendado: <strong>${masGrFin + masPqFin} massas</strong>
       </div>
     </div>
 
     <!-- Batidas -->
     <div style="border-top:1.5px solid var(--border);padding-top:16px">
-      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">
         Plano de batidas — ${totBat} batida${totBat > 1 ? 's' : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${batidas.map(b => `
           <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden">
             <div style="display:flex;align-items:center;gap:0;background:var(--surface2)">
-              <div style="width:40px;height:40px;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;flex-shrink:0">${b.num}</div>
+              <div style="width:40px;height:40px;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-size:var(--text-sm);font-weight:800;flex-shrink:0">${b.num}</div>
               <div style="flex:1;padding:0 12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
                 <div style="text-align:center;padding:8px 0">
-                  <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase">Grandes</div>
+                  <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Grandes</div>
                   <div style="font-size:1rem;font-weight:800;color:var(--purple)">${b.grBol}</div>
                 </div>
                 <div style="text-align:center;padding:8px 0">
-                  <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase">Pequenas</div>
+                  <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Pequenas</div>
                   <div style="font-size:1rem;font-weight:800;color:#D97706">${b.pqBol}</div>
                 </div>
                 <div style="text-align:center;padding:8px 0">
-                  <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase">Farinha</div>
+                  <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Farinha</div>
                   <div style="font-size:1rem;font-weight:800">${b.kgFar}kg</div>
                 </div>
                 <div style="text-align:center;padding:8px 0;background:var(--yellow-light);border-radius:var(--r6);padding:6px 10px;margin:6px 0">
-                  <div style="font-size:.62rem;color:#92400e;text-transform:uppercase">Fermento</div>
+                  <div style="font-size:var(--text-2xs);color:#92400e;text-transform:uppercase">Fermento</div>
                   <div style="font-size:1rem;font-weight:800;color:#92400e">${b.fermG}g</div>
                 </div>
                 <div style="text-align:center;padding:8px 0;background:var(--purple-xlight);border-radius:var(--r6);padding:6px 12px;margin:6px 0">
-                  <div style="font-size:.62rem;color:var(--purple);text-transform:uppercase">Horário</div>
+                  <div style="font-size:var(--text-2xs);color:var(--purple);text-transform:uppercase">Horário</div>
                   <div style="font-size:1rem;font-weight:800;color:var(--purple)">${b.horario}</div>
                 </div>
               </div>
             </div>
           </div>`).join('')}
       </div>
-      <div style="margin-top:10px;background:var(--surface2);border-radius:var(--r8);padding:9px 12px;font-size:.7rem;color:var(--muted)">
+      <div style="margin-top:10px;background:var(--surface2);border-radius:var(--r8);padding:9px 12px;font-size:var(--text-xs);color:var(--muted)">
         ${lc('thermometer',13,'var(--muted)')} ${temp}°C → ${ferAj}g de fermento fresco por kg de farinha (ajustado pela temperatura)
       </div>
+    </div>
+    <div style="margin-top:14px;border-top:1.5px solid var(--border);padding-top:12px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:var(--text-xs);color:var(--muted)">${lc('moon',12,'currentColor')} Ao final do dia, registre o realizado para calibrar amanhã</div>
+      <button onclick="_abrirFechamentoDia()" style="padding:6px 12px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);font-size:var(--text-sm);font-weight:600;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:5px">
+        ${lc('clipboard-check',13,'currentColor')} Fechar dia
+      </button>
     </div>`;
 }
 
 function _kpiMassa(label, valFin, valBase, cor, campo) {
   return `<div style="border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 14px">
-    <div style="font-size:.72rem;color:var(--text2);margin-bottom:6px">${label}</div>
+    <div style="font-size:var(--text-xs);color:var(--text2);margin-bottom:6px">${label}</div>
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="font-size:1.8rem;font-weight:800;color:${cor}">${valFin}</div>
       <div style="text-align:right">
-        <div style="font-size:.62rem;color:var(--muted)">base: ${valBase}</div>
-        <div style="font-size:.62rem;color:var(--muted)">+${cfgPrev.margemSeguranca}%</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted)">base: ${valBase}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted)">+${cfgPrev.margemSeguranca}%</div>
       </div>
     </div>
     <div style="margin-top:6px;display:flex;align-items:center;gap:5px">
-      <span style="font-size:.65rem;color:var(--muted)">Ajustar:</span>
+      <span style="font-size:var(--text-xs);color:var(--muted)">Ajustar:</span>
       <input type="number" value="${valFin}" min="1"
-        style="width:58px;padding:2px 5px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.8rem;font-weight:700;text-align:center"
+        style="width:58px;padding:2px 5px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:var(--text-sm);font-weight:700;text-align:center"
         onchange="_ajustes.${campo}=+this.value;recalcularPrevisao()">
-      ${_ajustes[campo] ? `<button onclick="_ajustes.${campo}=null;recalcularPrevisao()" style="font-size:.62rem;color:var(--purple);background:none;border:none;cursor:pointer">reset</button>` : ''}
+      ${_ajustes[campo] ? `<button onclick="_ajustes.${campo}=null;recalcularPrevisao()" style="font-size:var(--text-2xs);color:var(--purple);background:none;border:none;cursor:pointer">reset</button>` : ''}
     </div>
   </div>`;
 }
+
+function _abrirFechamentoDia() {
+  const hoje = new Date().toISOString().slice(0,10);
+  const planj = planejamentos.find(p => p.data === hoje);
+  const popup = document.createElement('div');
+  popup.id = 'popupFechamento';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:600;display:flex;align-items:center;justify-content:center';
+  popup.innerHTML = `
+    <div style="background:white;border-radius:var(--r12);padding:22px;min-width:340px;max-width:460px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="font-size:var(--text-md);font-weight:700;margin-bottom:4px">${lc('clipboard-check',16,'var(--purple)')} Fechamento do dia</div>
+      <div style="font-size:var(--text-sm);color:var(--muted);margin-bottom:16px">Informe o realizado para calibrar a previsão de amanhã</div>
+      ${planj ? `
+      <div style="background:var(--purple-xlight);border-radius:var(--r8);padding:10px 12px;font-size:var(--text-sm);margin-bottom:14px">
+        <strong>Planejado hoje:</strong> ${planj.massas?.grandesFinal||'—'} grandes · ${planj.massas?.pequenasFinal||'—'} pequenas
+      </div>` : ''}
+      <div class="f2">
+        <div class="field"><label>Pizzas grandes vendidas</label><input class="inp" type="number" id="fcGrVend" placeholder="ex: 85" min="0" value="${planj?.realGr||''}"></div>
+        <div class="field"><label>Pizzas pequenas vendidas</label><input class="inp" type="number" id="fcPqVend" placeholder="ex: 12" min="0" value="${planj?.realPq||''}"></div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Sobra de massa grande</label><input class="inp" type="number" id="fcSobraGr" placeholder="ex: 5" min="0" value="${planj?.sobraGr||''}"></div>
+        <div class="field"><label>Sobra de massa pequena</label><input class="inp" type="number" id="fcSobraPq" placeholder="ex: 2" min="0" value="${planj?.sobraPq||''}"></div>
+      </div>
+      <div class="field"><label>Observação (opcional)</label><input class="inp" id="fcObs" placeholder="ex: Forno parou às 21h..." value="${planj?.obsReal||''}"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-outline" onclick="document.getElementById('popupFechamento').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="_salvarFechamentoDia()">Salvar fechamento</button>
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+}
+
+function _salvarFechamentoDia() {
+  const hoje     = new Date().toISOString().slice(0,10);
+  const realGr   = parseInt(document.getElementById('fcGrVend')?.value)  || 0;
+  const realPq   = parseInt(document.getElementById('fcPqVend')?.value)  || 0;
+  const sobraGr  = parseInt(document.getElementById('fcSobraGr')?.value) || 0;
+  const sobraPq  = parseInt(document.getElementById('fcSobraPq')?.value) || 0;
+  const obsReal  = document.getElementById('fcObs')?.value.trim() || '';
+
+  let p = planejamentos.find(x => x.data === hoje);
+  if (!p) {
+    p = { id: 'prev_' + hoje, data: hoje, diaSemana: new Date().getDay() };
+    planejamentos.push(p);
+  }
+  Object.assign(p, { realGr, realPq, sobraGr, sobraPq, obsReal, fechadoEm: new Date().toISOString() });
+  savePlanej();
+  document.getElementById('popupFechamento')?.remove();
+  toast('Fechamento registrado! Sobra carregada amanhã automaticamente.', 'ok');
+}
+
+// Curva padrão de distribuição horária de delivery (17h–23h)
+const _CURVA_HORARIA = [
+  { h:17, pct:0.05 }, { h:18, pct:0.15 }, { h:19, pct:0.25 },
+  { h:20, pct:0.25 }, { h:21, pct:0.18 }, { h:22, pct:0.09 }, { h:23, pct:0.03 },
+];
 
 // ── Resultado: motoboys ──────────────────────────────────────
 function _renderResultado4(pedDel, motNec, motFix, diaristas, motFinal) {
   const el = document.getElementById('resultado4');
   if (!el) return;
 
+  if (!window._motoboySelecionados) window._motoboySelecionados = [];
+
+  // Fixos: funcionários internos com cargo entregador
+  const fixosDisp = (typeof funcionarios !== 'undefined' ? funcionarios : [])
+    .filter(f => f.ativo !== false && f.cargo === 'entregador');
+
+  // Diaristas: terceirizados com função motoboy
+  const diaristasDisp = (typeof terceirizados !== 'undefined' ? terceirizados : [])
+    .filter(t => t.funcao === 'motoboy' && t.status === 'ativo');
+
+  const todosDisp = [
+    ...fixosDisp.map(f => ({ ...f, _tipo: 'fixo' })),
+    ...diaristasDisp.map(t => ({ ...t, nome: t.nome, _tipo: 'diarista' })),
+  ];
+
+  const selecionados = window._motoboySelecionados;
   const justificativa = diaristas > 0
-    ? `Demanda de ${pedDel} pedidos delivery exige ${motNec} motoboys. Os ${motFix} fixos não são suficientes — chamar ${diaristas} diarista${diaristas > 1 ? 's' : ''}.`
+    ? `Demanda de ${pedDel} pedidos delivery exige ${motNec} motoboys. Os ${motFix} fixos não são suficientes.`
     : `Os ${motFix} motoboys fixos são suficientes para os ${pedDel} pedidos delivery previstos.`;
+
+  const maxPedHora = Math.max(..._CURVA_HORARIA.map(c => Math.ceil(pedDel * c.pct)));
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
       <div style="background:var(--surface2);border-radius:var(--r10);padding:14px;text-align:center">
         <div style="font-size:1.8rem;font-weight:800;color:var(--purple)">${pedDel}</div>
-        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;margin-top:3px">Pedidos delivery</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:3px">Pedidos delivery</div>
       </div>
       <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r10);padding:14px;text-align:center">
         <div style="font-size:1.8rem;font-weight:800;color:var(--green)">${motFix}</div>
-        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;margin-top:3px">Fixos disponíveis</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:3px">Fixos</div>
       </div>
       <div style="background:${diaristas > 0 ? 'var(--yellow-light)' : 'var(--surface2)'};border:1.5px solid ${diaristas > 0 ? 'var(--yellow)' : 'var(--border)'};border-radius:var(--r10);padding:14px;text-align:center">
         <div style="font-size:1.8rem;font-weight:800;color:${diaristas > 0 ? '#92400e' : 'var(--muted)'}">${diaristas}</div>
-        <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase;margin-top:3px">Diaristas</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:3px">Diaristas</div>
       </div>
     </div>
 
     <!-- Total recomendado -->
-    <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r10);padding:13px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r10);padding:13px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:.7rem;color:var(--muted)">Total recomendado</div>
+        <div style="font-size:var(--text-xs);color:var(--muted)">Total recomendado</div>
         <div style="font-size:1.4rem;font-weight:800;color:var(--purple)">${motFinal} motoboy${motFinal > 1 ? 's' : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
-        <span style="font-size:.72rem;color:var(--muted)">Ajustar:</span>
+        <span style="font-size:var(--text-xs);color:var(--muted)">Ajustar:</span>
         <input type="number" value="${motFinal}" min="0"
-          style="width:52px;padding:4px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:.88rem;font-weight:700;text-align:center"
+          style="width:52px;padding:4px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:var(--text-md);font-weight:700;text-align:center"
           onchange="_ajustes.motoboys=+this.value;recalcularPrevisao()">
-        ${_ajustes.motoboys !== null ? `<button onclick="_ajustes.motoboys=null;recalcularPrevisao()" style="font-size:.65rem;color:var(--purple);background:none;border:none;cursor:pointer">reset</button>` : ''}
+        ${_ajustes.motoboys !== null ? `<button onclick="_ajustes.motoboys=null;recalcularPrevisao()" style="font-size:var(--text-xs);color:var(--purple);background:none;border:none;cursor:pointer">reset</button>` : ''}
       </div>
     </div>
 
-    <div style="background:var(--surface2);border-radius:var(--r8);padding:9px 12px;font-size:.73rem;color:var(--text2)">
+    <!-- Lista de motoboys -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">
+        ${lc('bike',12,'var(--orange-dark)')} Motoboys para hoje
+      </div>
+      ${todosDisp.length === 0
+        ? `<div style="font-size:var(--text-sm);color:var(--muted);padding:10px 12px;background:var(--surface2);border-radius:var(--r8);display:flex;flex-direction:column;gap:4px">
+            <div>${lc('info',12,'currentColor')} Nenhum motoboy cadastrado.</div>
+            <div style="font-size:var(--text-xs)">Fixos: cadastre em <strong>Cadastros → Funcionários</strong> com cargo <strong>Entregador</strong></div>
+            <div style="font-size:var(--text-xs)">Diaristas: cadastre em <strong>Cadastros → Terceirizados</strong> com função <strong>Motoboy</strong></div>
+           </div>`
+        : `<div style="display:flex;flex-direction:column;gap:5px">
+            ${todosDisp.map(mb => {
+              const sel = selecionados.includes(mb.id);
+              const isFixo = mb._tipo === 'fixo';
+              return `<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r8);cursor:pointer;
+                border:1.5px solid ${sel ? 'var(--orange-dark)' : 'var(--border)'};
+                background:${sel ? 'var(--orange-light)' : 'var(--surface)'};transition:all .15s"
+                onclick="_toggleMotoboyPrev('${mb.id}');event.preventDefault()">
+                <input type="checkbox" ${sel?'checked':''} style="accent-color:var(--orange-dark)" onclick="event.stopPropagation();_toggleMotoboyPrev('${mb.id}')">
+                <span style="font-size:var(--text-sm);font-weight:${sel?'700':'500'}">${mb.nome}</span>
+                <span style="font-size:var(--text-2xs);padding:1px 6px;border-radius:8px;background:${isFixo?'var(--green-light)':'var(--orange-light)'};color:${isFixo?'var(--green)':'var(--orange-dark)'};">${isFixo?'Fixo':'Diarista'}</span>
+                ${mb.valorHora ? `<span style="font-size:var(--text-xs);color:var(--muted);margin-left:auto">R$${fmt(mb.valorHora)}/h</span>` : ''}
+                ${mb.phone ? `<span style="font-size:var(--text-xs);color:var(--muted)">${lc('phone',9,'currentColor')} ${mb.phone}</span>` : ''}
+              </label>`;
+            }).join('')}
+           </div>
+           ${selecionados.length ? `
+             <div style="margin-top:8px;font-size:var(--text-xs);color:var(--orange-dark);font-weight:600">
+               ${lc('check-circle',11,'currentColor')} ${selecionados.length} motoboy${selecionados.length>1?'s':''} selecionado${selecionados.length>1?'s':''} para hoje
+             </div>` : ''}`}
+    </div>
+
+    <!-- Curva horária de pedidos -->
+    <div style="border-top:1.5px solid var(--border);padding-top:14px">
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">
+        ${lc('bar-chart-2',12,'var(--purple)')} Previsão de pedidos por hora
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        ${_CURVA_HORARIA.map(c => {
+          const ped = Math.ceil(pedDel * c.pct);
+          const barPct = maxPedHora > 0 ? Math.round(ped / maxPedHora * 100) : 0;
+          const isPico = c.pct >= 0.22;
+          return `<div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:var(--text-xs);font-weight:700;color:var(--muted);min-width:46px">${c.h}h–${c.h+1}h</span>
+            <div style="flex:1;height:20px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative">
+              <div style="height:100%;width:${barPct}%;background:${isPico?'var(--purple)':'var(--purple-light)'};border-radius:4px;transition:width .4s"></div>
+            </div>
+            <span style="font-size:var(--text-sm);font-weight:800;color:${isPico?'var(--purple)':'var(--text2)'};min-width:28px;text-align:right">${ped}</span>
+            ${isPico ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:1px 5px;border-radius:5px">PICO</span>` : '<span style="min-width:36px"></span>'}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div style="margin-top:12px;background:var(--surface2);border-radius:var(--r8);padding:9px 12px;font-size:var(--text-xs);color:var(--text2)">
       ${lc('info',13,'var(--muted)')} ${justificativa}
     </div>`;
+}
+
+function _toggleMotoboyPrev(id) {
+  if (!window._motoboySelecionados) window._motoboySelecionados = [];
+  const idx = window._motoboySelecionados.indexOf(id);
+  if (idx >= 0) window._motoboySelecionados.splice(idx, 1);
+  else window._motoboySelecionados.push(id);
+  if (_resultado) {
+    const { pedDel, motNec, motFix, diaristas, motFinal } = _resultado;
+    _renderResultado4(pedDel, motNec, motFix, diaristas, motFinal);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -634,6 +809,12 @@ function confirmarPlanejamento() {
     batidas:          r.batidas,
     motoboys:         { pedidosDelivery: r.pedDel, necessarios: r.motNec, fixos: r.motFix, diaristas: r.diaristas, total: r.motFinal },
     ajustesManualAplicados: Object.values(_ajustes).some(v => v !== null),
+    sobraGr: 0,
+    sobraPq: 0,
+    realGr:  null,
+    realPq:  null,
+    obsReal: '',
+    fechadoEm: null,
     confirmado:       true,
   };
 
@@ -647,45 +828,23 @@ function confirmarPlanejamento() {
 }
 
 function _mostrarPlanejSalvo(reg) {
-  const r = reg;
-  const waMsg = _montaMsgWA(r);
+  window._prevWaMsg = _montaMsgWA(reg);
   const box = document.getElementById('planejSalvoBox');
   if (!box) return;
   box.innerHTML = `
     <div class="mh">
-      <div class="mt">${lc('check-circle',16,'var(--green)')} Planejamento de ${new Date(r.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'})}</div>
-      <button class="mc" onclick="closeModal('ovPlanejSalvo')">${lc("x",13,"currentColor")}</button>
+      <div class="mt">${lc('check-circle',16,'var(--green)')} Planejamento confirmado!</div>
+      <button class="mc" onclick="closeModal('ovPlanejSalvo')">${lc('x',13,'currentColor')}</button>
     </div>
-    <div class="mb" style="display:flex;flex-direction:column;gap:14px">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        <div style="background:var(--purple-xlight);border-radius:var(--r8);padding:12px;text-align:center">
-          <div style="font-size:1.6rem;font-weight:800;color:var(--purple)">${r.previsaoPedidos}</div>
-          <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase">Pedidos</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:var(--r8);padding:12px;text-align:center">
-          <div style="font-size:1.6rem;font-weight:800">${r.previsaoPizzas.totGr} + ${r.previsaoPizzas.totPq}</div>
-          <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase">Gr + Pq pizzas</div>
-        </div>
-        <div style="background:${r.motoboys.diaristas > 0 ? 'var(--yellow-light)' : 'var(--green-light)'};border-radius:var(--r8);padding:12px;text-align:center">
-          <div style="font-size:1.6rem;font-weight:800;color:${r.motoboys.diaristas > 0 ? '#92400e' : 'var(--green)'}">${r.motoboys.total}</div>
-          <div style="font-size:.62rem;color:var(--muted);text-transform:uppercase">Motoboys</div>
-        </div>
-      </div>
-      <div style="background:var(--surface2);border-radius:var(--r8);padding:12px;font-size:.78rem;line-height:1.7">
-        <strong>Batidas:</strong> ${r.batidas.length} batida${r.batidas.length > 1 ? 's' : ''} —
-        ${r.batidas.map(b => `${b.horario} (${b.grBol}gr + ${b.pqBol}pq, ${b.fermG}g ferm)`).join(' · ')}
-      </div>
-      <div style="border:1px solid var(--border);border-radius:var(--r8);padding:12px;background:var(--surface2)">
-        <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:8px">Mensagem WhatsApp</div>
-        <pre style="font-size:.72rem;white-space:pre-wrap;font-family:monospace;margin:0;color:var(--text)">${waMsg}</pre>
-      </div>
+    <div class="mb">
+      <div style="font-size:var(--text-sm);color:var(--muted)">Envie o resumo do dia para o time pelo WhatsApp.</div>
     </div>
     <div class="mf">
       <button class="btn btn-outline" onclick="closeModal('ovPlanejSalvo')">Fechar</button>
-      <button class="btn btn-wa" onclick="navigator.clipboard.writeText(${JSON.stringify(waMsg)}).then(()=>toast('Copiado!'))">
+      <button class="btn btn-wa" onclick="navigator.clipboard.writeText(window._prevWaMsg).then(()=>toast('Copiado!','ok'))">
         ${lc('copy',14,'#fff')} Copiar mensagem
       </button>
-      <button class="btn btn-wa" onclick="window.open('https://wa.me/?text='+encodeURIComponent(${JSON.stringify(waMsg)}),'_blank')">
+      <button class="btn btn-wa" onclick="window.open('https://wa.me/?text='+encodeURIComponent(window._prevWaMsg),'_blank')">
         ${lc('message-circle',14,'#fff')} Abrir WA
       </button>
     </div>`;
@@ -707,27 +866,25 @@ function _montaMsgWA(r) {
     `  Batida ${b.num} — ${b.horario}: ${b.grBol} grandes + ${b.pqBol} pequenas | ${b.kgFar}kg farinha | ${b.fermG}g fermento`
   ).join('\n');
 
-  return `${lc("tag",13,"currentColor")} PLANEJAMENTO DO DIA — ${data.toUpperCase()}
+  return `🍕 PLANEJAMENTO DO DIA — ${data.toUpperCase()}
 
-${lc("bar-chart-2",14,"currentColor")} Previsão de pedidos: ${r.previsaoPedidos}
+📊 Previsão de pedidos: ${r.previsaoPedidos}
 
-${lc("tag",13,"currentColor")} Produção recomendada:
+🫓 Produção recomendada:
   Massas grandes: ${r.massas.grandesFinal}
   Massas pequenas: ${r.massas.pequenasFinal}
   Total: ${r.massas.grandesFinal + r.massas.pequenasFinal} massas
 
-${lc("layers",14,"currentColor")} Batidas de massa:
-  Total de batidas: ${r.batidas.length}
+⚙️ Batidas de massa (${r.batidas.length} batida${r.batidas.length > 1 ? 's' : ''}):
 ${batidasLinha}
 
-${lc("truck",14,"currentColor")} Motoboys:
+🏍️ Motoboys:
   Fixos: ${r.motoboys.fixos}
   Diaristas: ${r.motoboys.diaristas}
   Total escalado: ${r.motoboys.total}
 
-${lc("zap",13,"currentColor")} Fatores considerados:
-${fatoresLinha}
-${r.fatores.obs ? `\n${lc("edit-2",14,"currentColor")} Obs: ${r.fatores.obs}` : ''}
+⚡ Fatores considerados:
+${fatoresLinha}${r.fatores.obs ? '\n📝 Obs: ' + r.fatores.obs : ''}
 
 _Gerado pelo VTP Compras_`;
 }
@@ -759,39 +916,63 @@ function _getHistoricoDia(diaSem) {
   return historicoAPI
     .filter(h => new Date(h.data + 'T12:00:00').getDay() === diaSem)
     .sort((a,b) => b.data.localeCompare(a.data))
-    .slice(0, Math.ceil(cfgPrev.diasHistorico / 7));
+    .slice(0, Math.max(8, Math.ceil(cfgPrev.diasHistorico / 7)));
 }
 
-function abrirImportarPedidos() {
+function _calcMediaFiltrada(hist) {
+  const validos = hist.filter(h => !h.excluir);
+  if (!validos.length) return null;
+  return validos.reduce((s, h) => s + h.pedidos, 0) / validos.length;
+}
+
+function abrirImportarPedidos(dataEditar) {
   const hoje = new Date().toISOString().slice(0,10);
+  const ex   = dataEditar ? historicoAPI.find(h => h.data === dataEditar) : null;
   const popup = document.createElement('div');
   popup.id = 'popupImport';
   popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:600;display:flex;align-items:center;justify-content:center';
   popup.innerHTML = `
     <div style="background:white;border-radius:var(--r12);padding:22px;min-width:340px;max-width:480px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-      <div style="font-size:.9rem;font-weight:700;margin-bottom:14px">Adicionar registro de pedidos</div>
-      <div class="field"><label>Data</label><input class="inp" type="date" id="impData" value="${hoje}"></div>
-      <div class="field"><label>Total de pedidos nesse dia</label><input class="inp" type="number" id="impPedidos" placeholder="ex: 42" min="0"></div>
-      <div class="field"><label>Observação (opcional)</label><input class="inp" id="impObs" placeholder="ex: Choveu, feriado, evento..."></div>
+      <div style="font-size:var(--text-md);font-weight:700;margin-bottom:14px">${ex ? 'Editar' : 'Adicionar'} registro de pedidos</div>
+      <div class="field"><label>Data</label><input class="inp" type="date" id="impData" value="${ex?.data || hoje}" ${ex?'readonly':''}></div>
+      <div class="field"><label>Total de pedidos nesse dia</label><input class="inp" type="number" id="impPedidos" placeholder="ex: 42" min="0" value="${ex?.pedidos||''}"></div>
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--text-sm)">
+          <input type="checkbox" id="impFeriado" ${ex?.feriado?'checked':''} style="accent-color:var(--purple)"> Feriado / data especial
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--text-sm)">
+          <input type="checkbox" id="impExcluir" ${ex?.excluir?'checked':''} style="accent-color:var(--purple)"> Excluir da média
+        </label>
+      </div>
+      <div class="field"><label>Evento (se houver)</label><input class="inp" id="impEvento" placeholder="ex: Show, jogo, festa local..." value="${ex?.evento||''}"></div>
+      <div class="field"><label>Observação (opcional)</label><input class="inp" id="impObs" placeholder="ex: Choveu muito, forno quebrou..." value="${ex?.obs||''}"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        ${ex ? `<button class="btn btn-red btn-sm" onclick="_removerHistorico('${ex.data}');document.getElementById('popupImport').remove()">Excluir</button>` : ''}
         <button class="btn btn-outline" onclick="document.getElementById('popupImport').remove()">Cancelar</button>
-        <button class="btn btn-primary" onclick="_salvarRegistroPedidos()">Salvar</button>
+        <button class="btn btn-primary" onclick="_salvarRegistroPedidos('${ex?.data||''}')">Salvar</button>
       </div>
     </div>`;
   document.body.appendChild(popup);
 }
 
-function _salvarRegistroPedidos() {
-  const data    = document.getElementById('impData')?.value;
+function _salvarRegistroPedidos(dataOriginal) {
+  const data    = dataOriginal || document.getElementById('impData')?.value;
   const pedidos = parseInt(document.getElementById('impPedidos')?.value);
-  const obs     = document.getElementById('impObs')?.value.trim() || '';
+  const obs     = document.getElementById('impObs')?.value.trim()    || '';
+  const evento  = document.getElementById('impEvento')?.value.trim() || '';
+  const feriado = document.getElementById('impFeriado')?.checked     || false;
+  const excluir = document.getElementById('impExcluir')?.checked     || false;
   if (!data || isNaN(pedidos) || pedidos < 0) { toast('Preencha data e pedidos', 'err'); return; }
   historicoAPI = historicoAPI.filter(h => h.data !== data);
-  historicoAPI.push({ data, pedidos, obs });
+  historicoAPI.push({ data, pedidos, obs, evento, feriado, excluir });
   saveHistorico();
   document.getElementById('popupImport')?.remove();
-  toast('${lc("check-circle",14,"var(--green)")} Registro salvo!');
+  toast('Registro salvo!', 'ok');
   renderPrevisao();
+}
+
+function _editarHistorico(data) {
+  abrirImportarPedidos(data);
 }
 
 function importarDadosManual() { abrirImportarPedidos(); }
@@ -808,7 +989,7 @@ function abrirModalHistorico() {
     </div>
     <div class="mb">
       <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:.78rem;color:var(--muted)">${hist.length} registros encontrados</span>
+        <span style="font-size:var(--text-sm);color:var(--muted)">${hist.length} registros encontrados</span>
         <button onclick="abrirImportarPedidos()" class="btn btn-outline btn-sm">${lc('plus',13,'var(--purple)')} Adicionar</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;max-height:380px;overflow-y:auto">
@@ -817,12 +998,18 @@ function abrirModalHistorico() {
           : hist.map(h => `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r8)">
               <div>
-                <div style="font-size:.8rem;font-weight:700">${new Date(h.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div>
-                ${h.obs ? `<div style="font-size:.68rem;color:var(--muted);font-style:italic">${h.obs}</div>` : ''}
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                  <span style="font-size:var(--text-sm);font-weight:700">${new Date(h.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</span>
+                  ${h.feriado ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 5px;border-radius:8px;background:var(--yellow-light);color:#92400E">${lc('star',8,'currentColor')} Feriado</span>` : ''}
+                  ${h.evento  ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 5px;border-radius:8px;background:var(--purple-xlight);color:var(--purple)">${lc('zap',8,'currentColor')} Evento</span>` : ''}
+                  ${h.excluir ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 5px;border-radius:8px;background:var(--surface2);color:var(--muted)">${lc('minus-circle',8,'currentColor')} Excluído</span>` : ''}
+                </div>
+                ${h.obs||h.evento ? `<div style="font-size:var(--text-xs);color:var(--muted);font-style:italic">${h.evento||h.obs}</div>` : ''}
               </div>
               <div style="display:flex;align-items:center;gap:10px">
-                <div style="font-size:1.1rem;font-weight:800;color:var(--purple)">${h.pedidos} <span style="font-size:.68rem;font-weight:400;color:var(--muted)">pedidos</span></div>
-                <button onclick="_removerHistorico('${h.data}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:.8rem">${lc('trash',14,'var(--muted)')}</button>
+                <div style="font-size:1.1rem;font-weight:800;color:var(--purple)">${h.pedidos} <span style="font-size:var(--text-xs);font-weight:400;color:var(--muted)">pedidos</span></div>
+                <button onclick="closeModal('ovHistorico');_editarHistorico('${h.data}')" style="background:none;border:none;color:var(--muted);cursor:pointer">${lc('edit-2',14,'var(--muted)')}</button>
+                <button onclick="_removerHistorico('${h.data}')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:var(--text-sm)">${lc('trash',14,'var(--muted)')}</button>
               </div>
             </div>`).join('')}
       </div>
@@ -854,17 +1041,17 @@ function _renderModalCfg() {
       <div class="mh"><div class="mt">${lc('settings',15,'var(--purple)')} Parâmetros de previsão</div><button class="mc" onclick="closeModal('ovCfgPrev2')">${lc("x",13,"currentColor")}</button></div>
       <div class="mb" style="display:flex;flex-direction:column;gap:0">
 
-        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:4px 0 10px">${lc("tag",13,"currentColor")} Distribuição de pizzas por pedido</div>
+        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:4px 0 10px">${lc("tag",13,"currentColor")} Distribuição de pizzas por pedido</div>
         <div class="f2">
-          <div class="field"><label>Grandes salgadas/pedido</label><input class="inp" type="number" id="cDistGrSal" value="${c.distGrSalgada}" step="0.01" min="0"><span style="font-size:.65rem;color:var(--muted)">padrão: 1.04</span></div>
-          <div class="field"><label>Pequenas salgadas/pedido</label><input class="inp" type="number" id="cDistPqSal" value="${c.distPqSalgada}" step="0.01" min="0"><span style="font-size:.65rem;color:var(--muted)">padrão: 0.06</span></div>
+          <div class="field"><label>Grandes salgadas/pedido</label><input class="inp" type="number" id="cDistGrSal" value="${c.distGrSalgada}" step="0.01" min="0"><span style="font-size:var(--text-xs);color:var(--muted)">padrão: 1.04</span></div>
+          <div class="field"><label>Pequenas salgadas/pedido</label><input class="inp" type="number" id="cDistPqSal" value="${c.distPqSalgada}" step="0.01" min="0"><span style="font-size:var(--text-xs);color:var(--muted)">padrão: 0.06</span></div>
         </div>
         <div class="f2">
-          <div class="field"><label>Grandes doces/pedido</label><input class="inp" type="number" id="cDistGrDoc" value="${c.distGrDoce}" step="0.01" min="0"><span style="font-size:.65rem;color:var(--muted)">padrão: 0.07</span></div>
-          <div class="field"><label>Pequenas doces/pedido</label><input class="inp" type="number" id="cDistPqDoc" value="${c.distPqDoce}" step="0.01" min="0"><span style="font-size:.65rem;color:var(--muted)">padrão: 0.34</span></div>
+          <div class="field"><label>Grandes doces/pedido</label><input class="inp" type="number" id="cDistGrDoc" value="${c.distGrDoce}" step="0.01" min="0"><span style="font-size:var(--text-xs);color:var(--muted)">padrão: 0.07</span></div>
+          <div class="field"><label>Pequenas doces/pedido</label><input class="inp" type="number" id="cDistPqDoc" value="${c.distPqDoce}" step="0.01" min="0"><span style="font-size:var(--text-xs);color:var(--muted)">padrão: 0.34</span></div>
         </div>
 
-        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("layers",14,"currentColor")} Massas e batidas</div>
+        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("layers",14,"currentColor")} Massas e batidas</div>
         <div class="f2">
           <div class="field"><label>Margem de segurança (%)</label><input class="inp" type="number" id="cMargem" value="${c.margemSeguranca}" min="0" max="50"></div>
           <div class="field"><label>Capacidade grandes/batida</label><input class="inp" type="number" id="cCapGr" value="${c.capGrandesBatida}" min="1"></div>
@@ -878,13 +1065,13 @@ function _renderModalCfg() {
           <div class="field"><label>Tempo mínimo antes de usar (min)</label><input class="inp" type="number" id="cTempoMin" value="${c.tempoMinAntes}" min="0"></div>
         </div>
 
-        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("beaker",14,"currentColor")} Fermento</div>
+        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("beaker",14,"currentColor")} Fermento</div>
         <div class="f2">
-          <div class="field"><label>Fermento base (g/kg de farinha)</label><input class="inp" type="number" id="cFermBase" value="${c.fermentoBasePorKg}" step="0.5" min="1"><span style="font-size:.65rem;color:var(--muted)">na temp. de referência</span></div>
+          <div class="field"><label>Fermento base (g/kg de farinha)</label><input class="inp" type="number" id="cFermBase" value="${c.fermentoBasePorKg}" step="0.5" min="1"><span style="font-size:var(--text-xs);color:var(--muted)">na temp. de referência</span></div>
           <div class="field"><label>Temperatura de referência (°C)</label><input class="inp" type="number" id="cTempRef" value="${c.tempReferencia}" min="10" max="40"></div>
         </div>
 
-        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("truck",14,"currentColor")} Motoboys</div>
+        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("truck",14,"currentColor")} Motoboys</div>
         <div class="f2">
           <div class="field"><label>% pedidos delivery</label><input class="inp" type="number" id="cPctDel" value="${c.pctDelivery}" min="0" max="100"></div>
           <div class="field"><label>Entregas/motoboy/hora</label><input class="inp" type="number" id="cEntHora" value="${c.entregasPorHora}" min="1"></div>
@@ -898,18 +1085,18 @@ function _renderModalCfg() {
           <input class="inp" type="number" id="cMargemMoto" value="${c.margemMoto}" min="0" max="50">
         </div>
 
-        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("message-circle",14,"currentColor")} WhatsApp do time</div>
+        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("message-circle",14,"currentColor")} WhatsApp do time</div>
         <div class="field">
           <label>Número do grupo WA (com DDI)</label>
           <input class="inp" id="cWaGrupo" value="${c.waGrupo||''}" placeholder="5511999887766">
-          <span style="font-size:.65rem;color:var(--muted)">ex: 5582999887766 · sem espaços</span>
+          <span style="font-size:var(--text-xs);color:var(--muted)">ex: 5582999887766 · sem espaços</span>
         </div>
 
-        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("hash",14,"currentColor")} Histórico</div>
+        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("hash",14,"currentColor")} Histórico</div>
         <div class="field">
           <label>Dias de histórico a considerar</label>
           <input class="inp" type="number" id="cDiasHist" value="${c.diasHistorico}" min="7" max="365">
-          <span style="font-size:.65rem;color:var(--muted)">ex: 90 = últimos 90 dias</span>
+          <span style="font-size:var(--text-xs);color:var(--muted)">ex: 90 = últimos 90 dias</span>
         </div>
       </div>
       <div class="mf">
@@ -951,10 +1138,16 @@ function _salvarCfgPrev() {
 }
 
 function _resetCfgPrev() {
-  if (!confirm('Restaurar todos os parâmetros para o padrão?')) return;
-  cfgPrev = { ...CFG_PREV_DEFAULT };
-  saveCfgPrev();
-  closeModal('ovCfgPrev2');
-  toast('Parâmetros restaurados!');
-  renderPrevisao();
+  vtpConfirm({
+    title: 'Restaurar parâmetros',
+    message: 'As configurações personalizadas serão substituídas pelos valores padrão.',
+    confirmLabel: 'Restaurar',
+    onConfirm: () => {
+      cfgPrev = { ...CFG_PREV_DEFAULT };
+      saveCfgPrev();
+      closeModal('ovCfgPrev2');
+      toast('Parâmetros restaurados!');
+      renderPrevisao();
+    }
+  });
 }

@@ -1,0 +1,431 @@
+/* ============================================================
+   VTP Compras — Design Tokens
+   Vai Ter Pizza! · Sistema de Operação
+   Arquitetura de 7 camadas inspirada no TNG Design System
+   ============================================================ */
+
+:root {
+
+  /* ============================================================
+     01 — PRIMITIVAS
+     Paleta bruta. Sem significado semântico.
+     Usar APENAS através dos tokens de camadas 2–6.
+     ============================================================ */
+
+  /* Neutros */
+  --p-neutral-50:  #FFFFFF;
+  --p-neutral-100: #FAFAFA;
+  --p-neutral-200: #F4F4F5;
+  --p-neutral-300: #E4E4E7;
+  --p-neutral-400: #D4D4D8;
+  --p-neutral-500: #A1A1A9;
+  --p-neutral-600: #71717A;
+  --p-neutral-700: #52525A;
+  --p-neutral-800: #3F3F45;
+  --p-neutral-900: #27272A;
+  --p-neutral-950: #18181B;
+
+  /* Roxo VTP (escala de marca) */
+  --p-purple-50:   #F5F3FF;
+  --p-purple-100:  #EDE9FE;
+  --p-purple-200:  #DDD6FE;
+  --p-purple-300:  #C4B5FD;
+  --p-purple-400:  #A78BFA;
+  --p-purple-500:  #8B5CF6;
+  --p-purple-600:  #7C3AED;
+  --p-purple-700:  #6B21D4;
+  --p-purple-800:  #5B1BB4;
+  --p-purple-900:  #4C1D95;
+  --p-purple-950:  #1A0A2E;
+
+  /* Roxo muted (texto, bordas — warm-purple gray) */
+  --p-pm-50:  #F8F5FF;
+  --p-pm-100: #F4F0FF;
+  --p-pm-200: #E5DEFF;
+  --p-pm-300: #D4C8F8;
+  --p-pm-400: #9B91B8;
+  --p-pm-500: #4B4569;
+
+  /* Lilac */
+  --p-lilac-50:  #F3E8FF;
+  --p-lilac-400: #C084FC;
+
+  /* Vermelho */
+  --p-red-50:  #FEE2E2;
+  --p-red-100: #FECACA;
+  --p-red-200: #FCA5A5;
+  --p-red-500: #DC2626;
+  --p-red-600: #B91C1C;
+  --p-red-700: #991B1B;
+
+  /* Laranja */
+  --p-orange-50:  #FEF3C7;
+  --p-orange-100: #FDE68A;
+  --p-orange-200: #FCD34D;
+  --p-orange-500: #F5A800;
+  --p-orange-600: #D97706;
+  --p-orange-700: #92400E;
+
+  /* Amarelo */
+  --p-yellow-50:  #FEF9C3;
+  --p-yellow-100: #FEF08A;
+  --p-yellow-200: #FCD34D;
+  --p-yellow-500: #EAB308;
+  --p-yellow-600: #CA8A04;
+  --p-yellow-700: #92400E;
+
+  /* Verde */
+  --p-green-50:  #DCFCE7;
+  --p-green-100: #BBF7D0;
+  --p-green-200: #86EFAC;
+  --p-green-500: #16A34A;
+  --p-green-600: #15803D;
+  --p-green-700: #166534;
+
+  /* ============================================================
+     02 — MARCA
+     Identidade direta da Vai Ter Pizza!
+     ============================================================ */
+
+  --brand-purple:      #6B21D4;   /* primária · wordmark    */
+  --brand-purple-alt:  #7C3AED;   /* variação hover         */
+  --brand-purple-deep: #5B1BB4;   /* pressed                */
+  --brand-white:       #FFFFFF;
+  --brand-black:       #000000;
+  --brand-orange:      #F5A800;   /* primária quente        */
+  --brand-lilac:       #A855F7;   /* secundária · lilás     */
+  --brand-lilac-light: #DDD6FE;   /* secundária · lilás claro */
+  --brand-yellow:      #F0B429;   /* secundária · amarelo   */
+  --brand-cream:       #F5EDD8;   /* secundária · creme     */
+
+  /* ============================================================
+     03 — SEMÂNTICO
+     Superfície, texto, borda, destaque.
+     ============================================================ */
+
+  /* Superfícies */
+  --bg:           #FAF7FF;    /* fundo da página — leve tint roxo */
+  --bg-elevated:  #FFFFFF;    /* cards, painéis                   */
+  --bg-subtle:    #F8F5FF;    /* preenchimento sutil              */
+  --bg-hover:     #EDE9FE;    /* hover fill                       */
+  --bg-inverse:   #1A0A2E;
+
+  /* Texto */
+  --fg:           #1A0A2E;    /* texto primário   */
+  --fg-muted:     #4B4569;    /* texto secundário */
+  --fg-subtle:    #9B91B8;    /* texto terciário  */
+  --fg-disabled:  #C4BCDE;
+  --fg-inverse:   #FFFFFF;
+  --fg-on-brand:  #FFFFFF;
+
+  /* Bordas */
+  --border:         #E5DEFF;
+  --border-strong:  #D4C8F8;
+  --border-inverse: #4B4569;
+
+  /* Destaque — roxo VTP */
+  --accent:               var(--brand-purple);
+  --accent-hover:         var(--brand-purple-alt);
+  --accent-pressed:       var(--brand-purple-deep);
+  --accent-fg:            #FFFFFF;
+  --accent-subtle:        var(--p-purple-50);
+  --accent-subtle-border: var(--p-purple-100);
+  --focus-ring:           color-mix(in oklch, var(--accent) 35%, transparent);
+
+  /* ============================================================
+     04 — FEEDBACK
+     success / warning / danger / info / orange
+     Cada cor tem: bg (sutil) · bg-bold (sólida) · fg · fg-on · border
+     ============================================================ */
+
+  --success-bg:        var(--p-green-50);
+  --success-bg-bold:   var(--p-green-500);
+  --success-fg:        var(--p-green-600);
+  --success-fg-on:     #FFFFFF;
+  --success-border:    var(--p-green-200);
+
+  --warning-bg:        var(--p-orange-50);
+  --warning-bg-bold:   var(--p-orange-600);
+  --warning-fg:        var(--p-orange-700);
+  --warning-fg-on:     #FFFFFF;
+  --warning-border:    var(--p-orange-100);
+
+  --danger-bg:         var(--p-red-50);
+  --danger-bg-bold:    var(--p-red-500);
+  --danger-fg:         var(--p-red-600);
+  --danger-fg-on:      #FFFFFF;
+  --danger-border:     var(--p-red-200);
+
+  --info-bg:           var(--p-purple-50);
+  --info-bg-bold:      var(--brand-purple);
+  --info-fg:           var(--p-pm-500);
+  --info-fg-on:        #FFFFFF;
+  --info-border:       var(--p-purple-100);
+
+  --orange-bg:         var(--p-orange-50);
+  --orange-bg-bold:    var(--p-orange-600);
+  --orange-fg:         var(--p-orange-700);
+  --orange-fg-on:      #FFFFFF;
+  --orange-border:     var(--p-orange-200);
+
+  /* ============================================================
+     05 — AÇÃO
+     Estados interativos de todos os clicáveis.
+     ============================================================ */
+
+  /* Primária — preenchida — roxo */
+  --action-primary-bg:           var(--brand-purple);
+  --action-primary-bg-hover:     var(--brand-purple-alt);
+  --action-primary-bg-pressed:   var(--brand-purple-deep);
+  --action-primary-bg-disabled:  var(--p-purple-100);
+  --action-primary-fg:           #FFFFFF;
+  --action-primary-fg-disabled:  var(--fg-subtle);
+
+  /* Secundária — delineada */
+  --action-secondary-bg:         #FFFFFF;
+  --action-secondary-bg-hover:   var(--bg-subtle);
+  --action-secondary-bg-pressed: var(--bg-hover);
+  --action-secondary-fg:         var(--fg);
+  --action-secondary-border:     var(--border-strong);
+
+  /* Ghost / Terciária */
+  --action-ghost-bg-hover:   var(--bg-subtle);
+  --action-ghost-bg-pressed: var(--bg-hover);
+  --action-ghost-fg:         var(--fg-muted);
+
+  /* Danger */
+  --action-danger-bg:           var(--p-red-500);
+  --action-danger-bg-hover:     var(--p-red-600);
+  --action-danger-bg-pressed:   var(--p-red-700);
+  --action-danger-fg:           #FFFFFF;
+
+  /* Success */
+  --action-success-bg:       var(--p-green-500);
+  --action-success-bg-hover: var(--p-green-600);
+  --action-success-fg:       #FFFFFF;
+
+  /* WhatsApp */
+  --action-wa-bg:       #25D366;
+  --action-wa-bg-hover: #1FAD54;
+  --action-wa-fg:       #FFFFFF;
+
+  /* Comercial — laranja de marca (ações de compra, conclusão, receita) */
+  --action-warm-bg:           var(--brand-orange);
+  --action-warm-bg-hover:     #E09600;
+  --action-warm-bg-pressed:   #C48200;
+  --action-warm-fg:           #1A0A2E;
+
+  /* ============================================================
+     06 — COMPONENTE
+     Papéis específicos mapeados por componente.
+     ============================================================ */
+
+  /* Card */
+  --card-bg:           var(--bg-elevated);
+  --card-border:       var(--border);
+  --card-border-hover: var(--accent-subtle-border);
+  --card-warm-bg:      var(--brand-cream);
+  --card-warm-border:  #E8D9BB;
+  --card-shadow:       var(--shadow-sm);
+  --card-fg:           var(--fg);
+
+  /* Input */
+  --input-bg:           var(--bg-subtle);
+  --input-border:       var(--border);
+  --input-border-hover: var(--border-strong);
+  --input-border-focus: var(--accent);
+  --input-fg:           var(--fg);
+  --input-placeholder:  var(--fg-subtle);
+
+  /* Nav / Sidebar */
+  --nav-bg:             var(--bg-elevated);
+  --nav-border:         var(--border);
+  --nav-item-fg:        var(--fg-muted);
+  --nav-item-fg-active: var(--accent);
+  --nav-item-bg-active: var(--accent-subtle);
+  --nav-item-bg-hover:  var(--bg-subtle);
+  --nav-item-indicator: var(--brand-orange);
+
+  /* Modal */
+  --modal-bg:      var(--bg-elevated);
+  --modal-border:  var(--border);
+  --modal-radius:  var(--radius-2xl);
+  --modal-shadow:  var(--shadow-popover);
+  --modal-overlay: rgba(26, 10, 46, 0.48);
+
+  /* Toast */
+  --toast-default-bg:  var(--fg);
+  --toast-success-bg:  var(--success-bg-bold);
+  --toast-danger-bg:   var(--danger-bg-bold);
+  --toast-info-bg:     var(--accent);
+  --toast-warning-bg:  var(--warning-bg-bold);
+  --toast-fg:          #FFFFFF;
+
+  /* Tooltip */
+  --tooltip-bg: var(--bg-inverse);
+  --tooltip-fg: var(--fg-inverse);
+
+  /* Skeleton */
+  --skeleton-bg:      var(--border);
+  --skeleton-shimmer: var(--border-strong);
+
+  /* ============================================================
+     07 — CHART
+     Paleta categórica para gráficos e KPI sparklines.
+     ============================================================ */
+
+  --chart-1: var(--brand-purple);    /* série principal  */
+  --chart-2: #2563EB;                /* azul             */
+  --chart-3: #D97706;                /* âmbar            */
+  --chart-4: #16A34A;                /* verde            */
+  --chart-5: #DC2626;                /* vermelho         */
+  --chart-6: #0891B2;                /* ciano            */
+  --chart-7: #7C3AED;                /* violeta          */
+  --chart-8: #C084FC;                /* lilac            */
+
+  /* ============================================================
+     TIPOGRAFIA
+     Inter (variable). Escala modular base 15px.
+     ============================================================ */
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+
+  --text-2xs:   11px;
+  --text-xs:    12px;
+  --text-sm:    13px;
+  --text-md:    14px;
+  --text-base:  15px;
+  --text-lg:    17px;
+  --text-xl:    20px;
+  --text-2xl:   24px;
+  --text-3xl:   28px;
+  --text-4xl:   32px;
+  --text-5xl:   40px;
+
+  --leading-tight:   1.15;
+  --leading-snug:    1.3;
+  --leading-normal:  1.45;
+  --leading-relaxed: 1.6;
+
+  --tracking-tight:  -0.02em;
+  --tracking-kpi:    -0.03em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.04em;
+  --tracking-caps:    0.08em;
+
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+  --weight-extrabold: 800;
+
+  /* ============================================================
+     ESPAÇAMENTO — base 4px
+     --space-7, --space-9 não existem (escala não-linear).
+     ============================================================ */
+
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ============================================================
+     RAIOS DE BORDA
+     ============================================================ */
+
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-2xl:  20px;
+  --radius-pill: 9999px;
+  --radius-default: var(--radius-sm);
+
+  /* ============================================================
+     SOMBRAS — tint roxo VTP
+     ============================================================ */
+
+  --shadow-xs:      0 1px 0 rgba(107,33,212,.04);
+  --shadow-sm:      0 1px 2px rgba(107,33,212,.06),
+                    0 0 0 .5px rgba(107,33,212,.04);
+  --shadow-md:      0 4px 12px -2px rgba(107,33,212,.10),
+                    0 0 0 .5px rgba(107,33,212,.04);
+  --shadow-lg:      0 12px 32px -8px rgba(107,33,212,.16),
+                    0 0 0 .5px rgba(107,33,212,.05);
+  --shadow-popover: 0 16px 48px -12px rgba(107,33,212,.22),
+                    0 0 0 .5px rgba(107,33,212,.06);
+
+  /* ============================================================
+     MOTION
+     ============================================================ */
+
+  /* Gradientes de marca */
+  --gradient-brand:        linear-gradient(135deg, var(--brand-purple) 0%, #9333EA 55%, var(--brand-orange) 100%);
+  --gradient-brand-subtle: linear-gradient(135deg, var(--p-purple-50) 0%, #FFF8E8 100%);
+
+  --ease-out:    cubic-bezier(.2,.7,.2,1);
+  --ease-in-out: cubic-bezier(.5,0,.2,1);
+  --dur-instant: 80ms;
+  --dur-fast:    140ms;
+  --dur-base:    220ms;
+  --dur-slow:    360ms;
+
+  /* ============================================================
+     LAYOUT
+     ============================================================ */
+
+  --sb-w:           240px;
+  --sb-min:         60px;
+  --container-base: 960px;
+  --container-wide: 1280px;
+  --hit-target:     44px;
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ============================================================
+     ALIASES — compatibilidade com tokens legados
+     Mapeiam os nomes antigos para os novos tokens semânticos.
+     Remover gradualmente conforme os módulos JS forem migrados.
+     ============================================================ */
+
+  /* Cor */
+  --purple:        var(--accent);
+  --purple2:       var(--accent-hover);
+  --purple-light:  var(--accent-subtle-border);
+  --purple-xlight: var(--accent-subtle);
+  --orange:        var(--brand-orange);
+  --orange-light:  var(--orange-bg);
+  --orange-dark:   var(--orange-bg-bold);
+  --lilac:         var(--brand-lilac);
+  --lilac-light:   var(--p-lilac-50);
+  --green:         var(--success-bg-bold);
+  --green-light:   var(--success-bg);
+  --red:           var(--danger-bg-bold);
+  --red-light:     var(--danger-bg);
+  --yellow:        var(--warning-bg-bold);
+  --yellow-light:  var(--warning-bg);
+  --text:          var(--fg);
+  --text2:         var(--fg-muted);
+  --muted:         var(--fg-subtle);
+  --surface:       var(--bg-elevated);
+  --surface2:      var(--bg-subtle);
+  --border2:       var(--border-strong);
+
+  /* Raios (antigos) */
+  --r6:  var(--radius-sm);
+  --r8:  var(--radius-md);
+  --r10: 10px;
+  --r12: var(--radius-lg);
+  --r16: var(--radius-xl);
+}

@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VTP Compras — Vai Ter Pizza!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
 <!-- ═══ TELA DE LOGIN ═══ -->
-<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;align-items:center;justify-content:center;flex-direction:column">
+<div id="loginScreen" class="login-screen">
   <div id="loginForm" style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r16);padding:36px 40px;width:380px;max-width:95vw;box-shadow:0 32px 80px rgba(107,33,212,.15)">
     <div style="text-align:center;margin-bottom:28px">
       <div style="width:72px;height:72px;border-radius:var(--r12);overflow:hidden;margin:0 auto 12px;box-shadow:0 4px 16px rgba(107,33,212,.3)">
@@ -28,7 +29,9 @@
         <label>Senha</label>
         <div style="position:relative">
           <input class="inp" type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" style="padding-right:40px">
-          <button onclick="toggleLoginPass()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:.85rem;padding:4px" title="Mostrar senha"></button>
+          <button id="loginPassToggle" onclick="toggleLoginPass()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--fg-subtle);padding:4px;border-radius:4px;display:flex;align-items:center" title="Mostrar senha">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
         </div>
       </div>
       <div id="loginError" style="font-size:.75rem;color:var(--red);min-height:18px;text-align:center"></div>
@@ -47,9 +50,9 @@
     <aside class="sidebar" id="sidebar">
       <div class="sb-header">
         <div class="sb-logo-icon" style="background:none;padding:0;overflow:hidden">
-          <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:34px;height:34px;object-fit:cover;border-radius:var(--r8);display:block">
+          <img id="sbLogoImg" src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:34px;height:34px;object-fit:cover;border-radius:var(--r8);display:block">
         </div>
-        <span class="sb-logo-text">Vai Ter Pizza!</span>
+        <span class="sb-logo-text" id="sbLogoText">Vai Ter Pizza!</span>
       </div>
       <nav class="sb-nav">
         <div class="sb-section">Principal</div>
@@ -67,7 +70,7 @@
         <button class="sb-item" id="nav-preproducao" onclick="goModule('preproducao')">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6V13.87z"/><line x1="6" y1="17" x2="18" y2="17"/></svg></span>
           <span class="sb-label">Pré-produção</span>
-          <span id="prepBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:.58rem;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;margin-left:auto"></span>
+          <span id="prepBadge" class="sb-badge-abs" style="display:none;background:var(--danger-bg-bold)"></span>
         </button>
         <button class="sb-item" id="nav-previsao" onclick="goModule('previsao')" title="Previsão de Demanda">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
@@ -81,50 +84,61 @@
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
           <span class="sb-label">Compras</span>
         </button>
-
-        <div class="sb-section">Análise</div>
-        <button class="sb-item" id="nav-relatorios" onclick="goModule('relatorios')">
-          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
-          <span class="sb-label">Relatórios</span>
-        </button>
-
-        <div class="sb-section">Operações</div>
         <button class="sb-item" id="nav-checklist" onclick="goModule('checklist')">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
           <span class="sb-label">Checklist</span>
           <span id="badge-checklist" class="badge-dot" style="display:none"></span>
         </button>
 
+        <button class="sb-item" id="nav-manutencao" onclick="goModule('manutencao')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+          <span class="sb-label">Manutenção</span>
+          <span id="badge-manutencao" class="badge-dot" style="display:none"></span>
+        </button>
+
+        <button class="sb-item" id="nav-inventario" onclick="goModule('inventario')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg></span>
+          <span class="sb-label">Inventário</span>
+        </button>
+
+        <button class="sb-item" id="nav-rh" onclick="goModule('rh')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <span class="sb-label">RH</span>
+        </button>
+
       </nav>
       <div class="sb-bottom">
-        <!-- Configurações isolada acima do perfil — padrão UI profissional -->
-        <button class="sb-item" id="nav-configuracoes-bottom" onclick="goModule('configuracoes')"
-          style="margin-bottom:4px;border-top:1px solid var(--border);padding-top:8px">
-          <span class="sb-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-          </span>
-          <span class="sb-label" style="font-size:.74rem">Configurações</span>
+        <!-- Relatórios + Alertas + Configurações isolados no rodapé -->
+        <button class="sb-item" id="nav-relatorios" onclick="goModule('relatorios')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>
+          <span class="sb-label">Relatórios</span>
         </button>
-        <div class="sb-user">
+        <button class="sb-item" id="nav-alertas" onclick="goModule('alertas')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
+          <span class="sb-label">Alertas</span>
+          <span id="badge-alertas" class="sb-badge-abs" style="display:none"></span>
+        </button>
+        <button class="sb-item" id="nav-configuracoes-bottom" onclick="goModule('configuracoes')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+          <span class="sb-label">Configurações</span>
+        </button>
+        <div class="sb-user" onclick="abrirModalPerfil()" title="Editar meu perfil">
           <div class="sb-avatar" id="sbAvatar">Y</div>
           <div class="sb-user-info">
             <div class="sb-user-name" id="sbUserName">Yuri Pappas</div>
-            <div class="sb-user-role" id="sbUserRole"> Gerente</div>
+            <div class="sb-user-role" id="sbUserRole"></div>
           </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            style="margin-left:auto;flex-shrink:0;opacity:.4"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </div>
-        <button onclick="doLogout()" style="width:100%;margin-top:4px;padding:7px 8px;border-radius:var(--r8);background:none;border:none;font-family:Inter,sans-serif;font-size:.72rem;color:var(--muted);cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px" onmouseover="this.style.background='var(--red-light)';this.style.color='var(--red)'" onmouseout="this.style.background='none';this.style.color='var(--muted)'">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px"><path d="M13 3h4v14h-4M8 14l4-4-4-4M3 10h9"/></svg>
-          Sair
-        </button>
       </div>
     </aside>
-    <div id="sbToggle" onclick="toggleSidebar()"
-      style="position:fixed;top:18px;left:48px;width:24px;height:24px;background:var(--surface);border:1.5px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:300;transition:left .22s cubic-bezier(.4,0,.2,1)">
-      <svg id="toggleIcon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" style="width:10px;height:10px"><path d="M4 2l4 4-4 4"/></svg>
-    </div>
+  </div>
+
+  <!-- Toggle sidebar — fora do sidebar-wrap para não herdar contexto de empilhamento do sticky -->
+  <div id="sbToggle" onclick="toggleSidebar()"
+    style="position:fixed;top:18px;left:48px;width:24px;height:24px;background:var(--surface);border:1.5px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1000;transition:left .22s cubic-bezier(.4,0,.2,1)">
+    <svg id="toggleIcon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" style="width:10px;height:10px"><path d="M4 2l4 4-4 4"/></svg>
   </div>
 
   <!-- ═══ MAIN ═══ -->
@@ -139,61 +153,24 @@
     <div class="content">
 
       <!-- DASHBOARD -->
-      <div class="page active" id="page-dashboard">
-        <div class="dash-welcome">
-          <div class="dw-text">
-            <h2 id="dashGreeting">Olá! </h2>
-            <p id="dashDate"></p>
-            <div class="dw-badge" id="dashRoleBadge"> Gerente · Acesso total</div>
-          </div>
-          <div style="position:relative;z-index:1;flex-shrink:0">
-            <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:72px;height:72px;object-fit:cover;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.25)">
-          </div>
-        </div>
-        <div class="kpi-grid" id="kpiGrid"></div>
-        <div class="dash-grid2">
-          <div>
-            <div class="card">
-              <div class="card-header"><div class="card-title"> Alertas de Estoque</div><button class="btn btn-outline btn-xs" onclick="goModule('estoque')">Ver tudo</button></div>
-              <div id="dashAlerts"></div>
-            </div>
-            <div class="card">
-              <div class="card-header"><div class="card-title"> Histórico Recente</div><button class="btn btn-outline btn-xs" onclick="goModule('relatorios')">Ver tudo</button></div>
-              <div id="dashHistorico"></div>
-            </div>
-          </div>
-          <div>
-            <div class="card">
-              <div class="card-header"><div class="card-title">Top Fornecedores</div><span class="badge b-purple">Score</span></div>
-              <div id="dashRanking"></div>
-            </div>
-            <div class="card">
-              <div class="card-header"><div class="card-title"> Custo por Categoria</div></div>
-              <div class="card-body" id="dashChart"></div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div class="page active" id="page-dashboard" style="padding:0"></div>
 
       <!-- ESTOQUE -->
       <div class="page" id="page-estoque" style="padding:0">
         <!-- Tab bar do estoque -->
-        <div id="estTabBar" style="background:var(--surface);border-bottom:1.5px solid var(--border);padding:0 24px;display:flex;gap:0;align-items:center;justify-content:space-between">
-          <div style="display:flex;gap:0">
-            <button onclick="setEstTab('contagem')" id="estTab-contagem"
-              style="display:flex;align-items:center;gap:6px;padding:12px 16px;border:none;border-bottom:2.5px solid var(--purple);background:none;color:var(--purple);font-size:.8rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">
+        <div id="estTabBar" class="tab-bar" style="justify-content:space-between">
+          <div style="display:flex">
+            <button onclick="setEstTab('contagem')" id="estTab-contagem" class="tab-btn active">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
               Contagem
             </button>
-            <button onclick="setEstTab('movimentacoes')" id="estTab-movimentacoes"
-              style="display:flex;align-items:center;gap:6px;padding:12px 16px;border:none;border-bottom:2.5px solid transparent;background:none;color:var(--muted);font-size:.8rem;font-weight:500;cursor:pointer;font-family:Inter,sans-serif">
+            <button onclick="setEstTab('movimentacoes')" id="estTab-movimentacoes" class="tab-btn">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
               Movimentações
             </button>
           </div>
-          <div style="display:flex;gap:8px;padding:8px 0">
-            <button onclick="openImportModal()" id="estBtnImport"
-              style="display:flex;align-items:center;gap:6px;padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);color:var(--text2);font-size:.76rem;font-weight:600;cursor:pointer">
+          <div style="display:flex;gap:8px;padding:8px 0;flex-shrink:0">
+            <button onclick="openImportModal()" id="estBtnImport" class="btn btn-outline btn-sm" style="gap:6px">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               Importar CSV
             </button>
@@ -211,7 +188,8 @@
                   <h2 style="font-size:1rem;font-weight:800;margin-bottom:2px">Contagem de Estoque</h2>
                   <div style="font-size:.72rem;color:var(--muted)">Compare digital vs físico · <a href="#" onclick="goModule('configuracoes')" style="color:var(--purple)">Cadastros</a></div>
                 </div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;margin-top:14px" id="estKpis"></div>
+                <div id="estModoContagem" style="margin-top:12px;margin-bottom:12px"></div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;margin-top:4px" id="estKpis"></div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
                   <input class="inp" style="max-width:220px;padding:7px 12px" placeholder="Buscar insumo..." oninput="setEstSearch(this.value)">
                   <select class="inp" id="estCatFil" style="max-width:200px;padding:7px 10px" onchange="setEstCat(this.value)">
@@ -225,8 +203,8 @@
                       <th>Insumo</th>
                       <th class="c">Un.</th>
                       <th class="c">Digital</th>
-                      <th class="c">Físico</th>
-                      <th class="c">Divergência</th>
+                      <th class="c" id="estThFisico">Últ. Contagem</th>
+                      <th class="c" id="estThDiverg">Divergência</th>
                       <th class="c">Mínimo</th>
                       <th class="c">Ideal</th>
                       <th>Nível</th>
@@ -263,8 +241,11 @@
           </div>
         </div>
         <div class="kpi-row" id="prepKpi" style="margin-bottom:14px"></div>
-        <div class="filter-bar" id="prepFiltroBar" style="margin-bottom:16px"></div>
-        <div id="prepGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+          <div class="filter-bar" id="prepFiltroBar"></div>
+          <input class="inp" style="max-width:200px;padding:7px 12px;margin-left:auto" id="prepSearch" placeholder=" Buscar preparado..." oninput="renderPreproducao()">
+        </div>
+        <div id="prepGrid"></div>
       </div>
 
             <div class="page" id="page-desperdicio">
@@ -283,12 +264,6 @@
           <input type="date" class="inp" id="despAte" style="padding:5px 8px;width:140px;font-size:.77rem" onchange="renderDesperdicio()">
           <select class="inp" id="despTipoFil" style="padding:5px 8px;width:170px;font-size:.77rem" onchange="renderDesperdicio()">
             <option value="">Todos os tipos</option>
-            <option value="preproducao"> Erro pré-produção</option>
-            <option value="montagem"> Montagem incorreta</option>
-            <option value="entrega"> Erro de entrega</option>
-            <option value="validade"> Vencimento</option>
-            <option value="acidente">Acidente</option>
-            <option value="outro"> Outro</option>
           </select>
           <button class="btn btn-outline btn-sm" onclick="clearDespFiltro()">Limpar</button>
         </div>
@@ -329,15 +304,13 @@
       <!-- CADASTROS -->
       <!-- CADASTROS -->
       <div class="page" id="page-cadastros">
-        <div style="margin-bottom:20px">
-          <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Cadastros</h2>
-          <div style="font-size:.72rem;color:var(--muted)">Configuração base do sistema · insumos, fornecedores e pré-preparo</div>
-        </div>
-        <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px">
-          <button id="cad-tab-insumos" onclick="setCadTab('insumos')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--purple);cursor:pointer;border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;font-family:Inter,sans-serif">Insumos</button>
-          <button id="cad-tab-fornecedores" onclick="setCadTab('fornecedores')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif"> Fornecedores</button>
-          <button id="cad-tab-preparo" onclick="setCadTab('preparo')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif"> Pré-preparo</button>
-          <button id="cad-tab-produtos" onclick="setCadTab('produtos')" style="padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;font-family:Inter,sans-serif">Produtos</button>
+        <div class="tab-bar" style="margin-bottom:20px">
+          <button id="cad-tab-insumos"       onclick="setCadTab('insumos')"       class="tab-btn active">Insumos</button>
+          <button id="cad-tab-fornecedores"  onclick="setCadTab('fornecedores')"  class="tab-btn">Fornecedores</button>
+          <button id="cad-tab-preparo"       onclick="setCadTab('preparo')"       class="tab-btn">Pré-preparo</button>
+          <button id="cad-tab-servicos"      onclick="setCadTab('servicos')"      class="tab-btn">Serviços</button>
+          <button id="cad-tab-produtos"      onclick="setCadTab('produtos')"      class="tab-btn">Produtos</button>
+          <button id="cad-tab-terceirizados" onclick="setCadTab('terceirizados')" class="tab-btn">Terceirizados</button>
         </div>
         <div id="cad-insumos">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -356,8 +329,16 @@
           <div id="cadInsumosGrid"></div>
         </div>
         <div id="cad-fornecedores" style="display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <input class="inp" style="max-width:200px;padding:7px 12px" id="srchCadForn" placeholder=" Buscar..." oninput="renderFornecedores()">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input class="inp" style="max-width:180px;padding:7px 12px" id="srchCadForn" placeholder=" Buscar..." oninput="renderFornecedores()">
+              <select class="inp" id="filFornCat" style="max-width:160px;padding:7px 12px" onchange="renderFornecedores()">
+                <option value="">Todas categorias</option>
+                <option value="alimentos">Alimentos</option>
+                <option value="suprimentos">Suprimentos</option>
+                <option value="bebidas">Bebidas</option>
+              </select>
+            </div>
             <button class="btn btn-primary btn-sm" onclick="openSupModal()">+ Novo Fornecedor</button>
           </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px" id="supGrid"></div>
@@ -367,7 +348,62 @@
             <div style="font-size:.8rem;color:var(--muted)">Cadastre os preparados internos que aparecem na Pré-produção</div>
             <button class="btn btn-primary btn-sm" onclick="openPreparoModal()">+ Novo Preparado</button>
           </div>
-          
+          <div id="preparoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
+        </div>
+
+        <div id="cad-servicos" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input class="inp" style="max-width:180px;padding:7px 12px" id="srchPrest" placeholder=" Buscar..." oninput="renderPrestadores()">
+              <select class="inp" id="filPrestCat" style="max-width:180px;padding:7px 12px" onchange="renderPrestadores()">
+                <option value="">Todas categorias</option>
+                <option value="refrigeracao">Refrigeração</option>
+                <option value="fornos_gas">Fornos e Gás</option>
+                <option value="eletrica">Elétrica</option>
+                <option value="climatizacao">Climatização</option>
+                <option value="equipamentos">Equipamentos</option>
+                <option value="hidraulica">Hidráulica</option>
+                <option value="infraestrutura">Infraestrutura</option>
+                <option value="tecnologia">Tecnologia</option>
+                <option value="seguranca">Segurança</option>
+                <option value="delivery">Delivery</option>
+              </select>
+              <select class="inp" id="filPrestConf" style="max-width:150px;padding:7px 12px" onchange="renderPrestadores()">
+                <option value="">Qualquer status</option>
+                <option value="prioritario">Prioritário</option>
+                <option value="backup">Backup</option>
+                <option value="bloqueado">Bloqueado</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openPrestadorModal()">+ Novo Prestador</button>
+          </div>
+          <div id="prestGrid"></div>
+        </div>
+        <!-- ABA TERCEIRIZADOS -->
+        <div id="cad-terceirizados" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input class="inp" style="max-width:180px;padding:7px 12px" id="srchTerceir" placeholder=" Buscar..." oninput="renderTerceirizados()">
+              <select class="inp" id="filTerceirFuncao" style="max-width:180px;padding:7px 12px" onchange="renderTerceirizados()">
+                <option value="">Todas as funções</option>
+                <option value="motoboy">Motoboy / Entregador</option>
+                <option value="pizzaiolo">Pizzaiolo</option>
+                <option value="aux_cozinha">Aux. de Cozinha</option>
+                <option value="atendimento">Atendimento</option>
+                <option value="limpeza">Limpeza / Diarista</option>
+                <option value="caixa">Caixa</option>
+                <option value="seguranca">Segurança</option>
+                <option value="outros">Outros</option>
+              </select>
+              <select class="inp" id="filTerceirStatus" style="max-width:150px;padding:7px 12px" onchange="renderTerceirizados()">
+                <option value="">Todos status</option>
+                <option value="ativo">Ativos</option>
+                <option value="inativo">Inativos</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="openTerceirizadoModal()">+ Novo Terceirizado</button>
+          </div>
+          <div id="terceirGrid"></div>
         </div>
 
         <!-- ABA PRODUTOS -->
@@ -395,85 +431,21 @@
               
 
       <div class="page" id="page-configuracoes" style="padding:0">
-        <!-- Tabs internas -->
-        <div style="background:var(--surface);border-bottom:1.5px solid var(--border);padding:0 24px;display:flex;gap:4px" id="cfgTabBar">
-          <button onclick="setCfgTab('empresa')" id="cfgTabEmpresa"
-            style="display:flex;align-items:center;gap:6px;padding:13px 16px;border:none;border-bottom:2.5px solid var(--purple);
-            background:none;color:var(--purple);font-size:.8rem;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">
-            Empresa
-          </button>
-          <button onclick="setCfgTab('cadastros')" id="cfgTabCadastros"
-            style="display:flex;align-items:center;gap:6px;padding:13px 16px;border:none;border-bottom:2.5px solid transparent;
-            background:none;color:var(--muted);font-size:.8rem;font-weight:500;cursor:pointer;font-family:Inter,sans-serif">
-            Cadastros
-          </button>
-          <button onclick="setCfgTab('usuarios')" id="cfgTabUsuarios"
-            style="display:flex;align-items:center;gap:6px;padding:13px 16px;border:none;border-bottom:2.5px solid transparent;
-            background:none;color:var(--muted);font-size:.8rem;font-weight:500;cursor:pointer;font-family:Inter,sans-serif">
-            Usuários
-          </button>
-        </div>
-
-        <!-- Aba: Empresa -->
-        <div id="cfgPanelEmpresa" style="padding:24px">
-          <div class="card" style="margin-bottom:16px">
-            <div class="card-header"><div class="card-title">Dados da Empresa</div></div>
-            <div class="card-body">
-              <div class="f2" style="gap:12px">
-                <div class="field"><label>Nome da empresa</label><input class="inp" id="cfgEmpresa" placeholder="ex: Vai Ter Pizza!"></div>
-                <div class="field"><label>Responsável pelas compras</label><input class="inp" id="cfgResponsavel" placeholder="ex: Yuri Pappas"></div>
-              </div>
-            </div>
-          </div>
-          <div class="card" style="margin-bottom:16px">
-            <div class="card-header"><div class="card-title">WhatsApp da Empresa</div></div>
-            <div class="card-body">
-              <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px 14px;font-size:.77rem;color:var(--text2);margin-bottom:14px;line-height:1.6">
-                Número usado para enviar cotações via WhatsApp. Cada fornecedor recebe apenas seus insumos vinculados em Cadastros.
-              </div>
-              <div class="f2">
-                <div class="field">
-                  <label>Número WhatsApp (com DDD)</label>
-                  <input class="inp" id="cfgWhatsapp" placeholder="ex: 82999999999" maxlength="11">
-                  <span style="font-size:.65rem;color:var(--muted);margin-top:3px">Somente números, sem espaços ou traços</span>
-                </div>
-                <div class="field">
-                  <label>Código da loja (Cardápio Web)</label>
-                  <input class="inp" id="cfgCodLoja" placeholder="ex: 29503">
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="card" style="margin-bottom:20px">
-            <div class="card-header"><div class="card-title">Alertas de Estoque</div></div>
-            <div class="card-body">
-              <div class="f2">
-                <div class="field">
-                  <label>Percentual crítico (% do mínimo)</label>
-                  <input class="inp" type="number" id="cfgPctCrit" placeholder="40" min="1" max="100">
-                  <span style="font-size:.65rem;color:var(--muted);margin-top:3px">Padrão: 40% — abaixo disso o item fica CRÍTICO</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <button class="btn btn-primary" onclick="saveConfiguracoes()">Salvar configurações</button>
-        </div>
-
-        <!-- Aba: Cadastros — conteúdo do módulo embutido -->
-        <div id="cfgPanelCadastros" style="padding:0;display:none">
-          <div id="cfgCadastrosContent"></div>
-        </div>
-
-        <!-- Aba: Usuários (redireciona para o módulo) -->
-        <div id="cfgPanelUsuarios" style="padding:24px;display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-            <div>
-              <div style="font-size:.96rem;font-weight:800;margin-bottom:3px">Usuários e Permissões</div>
-              <div style="font-size:.72rem;color:var(--muted)">Controle de acesso à plataforma</div>
-            </div>
-            <button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Novo Usuário</button>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:12px" id="cfgUserList"></div>
+        <div class="settings-layout">
+          <!-- Nav lateral -->
+          <nav class="settings-nav" id="cfgSettingsNav">
+            <button class="settings-nav-item active" id="cfgNav-empresa"      onclick="setCfgSection('empresa')"></button>
+            <button class="settings-nav-item"        id="cfgNav-usuarios"     onclick="setCfgSection('usuarios')"></button>
+            <button class="settings-nav-item"        id="cfgNav-insumos"      onclick="setCfgSection('insumos')"></button>
+            <button class="settings-nav-item"        id="cfgNav-fornecedores" onclick="setCfgSection('fornecedores')"></button>
+            <button class="settings-nav-item"        id="cfgNav-preparo"      onclick="setCfgSection('preparo')"></button>
+            <button class="settings-nav-item"        id="cfgNav-produtos"     onclick="setCfgSection('produtos')"></button>
+            <button class="settings-nav-item"        id="cfgNav-servicos"     onclick="setCfgSection('servicos')"></button>
+            <button class="settings-nav-item"        id="cfgNav-modulos"      onclick="setCfgSection('modulos')"></button>
+            <button class="settings-nav-item"        id="cfgNav-integracoes"  onclick="setCfgSection('integracoes')"></button>
+          </nav>
+          <!-- Conteúdo renderizado por JS -->
+          <div class="settings-content" id="cfgSectionContent"></div>
         </div>
       </div>
 
@@ -489,6 +461,25 @@
       <div class="page" id="page-checklist" style="padding:0">
         <div id="checklistContent"></div>
       </div>
+
+      <!-- MANUTENÇÃO -->
+      <div class="page" id="page-manutencao" style="padding:0">
+        <div id="manutencaoContent"></div>
+      </div>
+
+      <!-- INVENTÁRIO -->
+      <div class="page" id="page-inventario" style="padding:0"></div>
+
+      <!-- RH -->
+      <div class="page" id="page-rh" style="padding:0"></div>
+
+      <!-- ALERTAS -->
+      <div class="page" id="page-alertas" style="padding:0"></div>
+
+      <!-- AUDITORIA -->
+      <div class="page" id="page-auditoria" style="padding:0"></div>
+
+
 
     </div>
   </div>
@@ -525,9 +516,21 @@
           <input class="inp" id="fB2" placeholder="ex: Tirolez" style="background:#fff">
         </div>
       </div>
+      <hr class="sdiv">
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--orange-light);border:1.5px solid var(--orange-dark)33;border-radius:var(--r8);cursor:pointer">
+        <input type="checkbox" id="fContagemDiaria" style="width:16px;height:16px;accent-color:var(--orange-dark);flex-shrink:0">
+        <div>
+          <div style="font-size:.8rem;font-weight:700;color:var(--orange-dark)">Incluir na Contagem Diária</div>
+          <div style="font-size:.66rem;color:var(--muted);margin-top:1px">Este insumo aparece no modo de contagem rápida diária</div>
+        </div>
+      </label>
       <hr class="sdiv"><div class="slbl">Quantidades & Custos</div>
       <div class="field">
         <label>Fornecedores vinculados</label>
+        <div style="position:relative;margin-bottom:6px">
+          <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input class="inp" id="fSupSearch" placeholder="Buscar fornecedor..." style="padding-left:28px;font-size:var(--text-xs)" oninput="_filtrarFornSupSearch()">
+        </div>
         <div id="fSupIds" style="display:flex;flex-direction:column;gap:5px;padding:8px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2);max-height:160px;overflow-y:auto;min-height:40px">
           <span style="font-size:.72rem;color:var(--muted);font-style:italic">Nenhum fornecedor cadastrado</span>
         </div>
@@ -548,7 +551,15 @@
         <div class="f2" style="margin-bottom:0">
           <div class="field" style="margin:0">
             <label>Nome da embalagem</label>
-            <input class="inp" id="fUnidCompra" placeholder="Ex: Barra, Pacote, Caixa, Fardo...">
+            <input type="hidden" id="fUnidCompra">
+            <button type="button" id="fUnidCompraBtn" onclick="abrirEmbPicker()"
+              style="width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:var(--r8);
+              background:var(--surface);cursor:pointer;text-align:left;font-family:Inter,sans-serif;
+              font-size:.82rem;display:flex;align-items:center;justify-content:space-between;gap:8px;
+              transition:border-color .15s">
+              <span id="fUnidCompraTxt" style="color:var(--muted)">Selecionar tipo de embalagem...</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--muted)"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
           </div>
           <div class="field" style="margin:0">
             <label id="fQtdEmbLabel">Qtd base por embalagem</label>
@@ -574,18 +585,11 @@
     <div class="mb">
       <input type="hidden" id="ePreparoId">
       <div class="f2">
-        <div class="f2">
         <div class="field"><label>Nome do preparado *</label><input class="inp" id="fpName" placeholder="ex: Frango Desfiado"></div>
         <div class="field">
           <label>Código Cardápio Web</label>
           <input class="inp" id="fpCode" placeholder="ex: 157638">
-          <div style="font-size:.63rem;color:var(--muted);margin-top:2px">Para sync automático via importação CSV</div>
-        </div>
-      </div>
-        <div class="field">
-          <label>Código Cardápio Web</label>
-          <input class="inp" id="fpCode" placeholder="ex: 157638">
-          <span style="font-size:.63rem;color:var(--muted);margin-top:2px">Usado para sync com importação CSV</span>
+          <span style="font-size:.63rem;color:var(--muted);margin-top:2px">Sync via importação CSV</span>
         </div>
       </div>
       <div class="f2">
@@ -596,8 +600,9 @@
         <div class="field"><label>Qtd. mínima</label><input class="inp" type="number" id="fpMin" placeholder="0" min="0" step="0.1"></div>
         <div class="field"><label>Qtd. ideal</label><input class="inp" type="number" id="fpIdeal" placeholder="0" min="0" step="0.1"></div>
       </div>
-      <div class="field"><label>Porção por pizza (kg)</label><input class="inp" type="number" id="fpPorcao" placeholder="ex: 0.090" step="0.001"></div>
+      <div class="field"><label>Kg por porção</label><input class="inp" type="number" id="fpPorcao" placeholder="ex: 0.090" step="0.001"></div>
       <div class="field"><label>Observações / instruções</label><textarea class="inp" id="fpObs" rows="2" placeholder="ex: Cozinhar em baixa temperatura por 4h..."></textarea></div>
+      <div class="field"><label>Ficha técnica de preparo</label><textarea class="inp" id="fpFicha" rows="5" placeholder="Descreva o modo de preparo passo a passo, temperaturas, tempos, pontos de controle..."></textarea></div>
     </div>
     <div class="mf">
       <button class="btn btn-red btn-sm" id="delPreparoBtn" style="display:none;margin-right:auto" onclick="deletePreparo()"> Excluir</button>
@@ -668,17 +673,7 @@
         </div>
         <div class="field">
           <label>Tipo de ocasião *</label>
-          <select class="inp" id="fdTipo">
-            <option value="preproducao">Erro de pré-produção</option>
-            <option value="montagem">Montagem incorreta</option>
-            <option value="entrega">Erro de entrega</option>
-            <option value="validade">Vencimento/validade</option>
-            <option value="acidente">Acidente/queda</option>
-            <option value="alimentacao">Alimentação</option>
-            <option value="cortesia">Cortesias</option>
-            <option value="marketing">Marketing</option>
-            <option value="outro">Outro</option>
-          </select>
+          <select class="inp" id="fdTipo"></select>
         </div>
       </div>
 
@@ -738,12 +733,107 @@
     <div class="mh"><div class="mt" id="supModalTitle">Novo Fornecedor</div><button class="mc" onclick="closeModal('ovSup')"></button></div>
     <div class="mb">
       <input type="hidden" id="eSupId">
-      <div class="field"><label>Nome da empresa *</label><input class="inp" id="sfName" placeholder="ex: Up Distribuidora"></div>
+      <div class="f2">
+        <div class="field"><label>Nome da empresa *</label><input class="inp" id="sfName" placeholder="ex: Up Distribuidora"></div>
+        <div class="field">
+          <label>Categoria do fornecedor</label>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;padding:7px 8px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8)">
+            <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfCat_alimentos" style="accent-color:var(--purple)"> Alimentos</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfCat_suprimentos" style="accent-color:var(--purple)"> Suprimentos</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfCat_bebidas" style="accent-color:var(--purple)"> Bebidas</label>
+          </div>
+        </div>
+      </div>
       <div class="f2">
         <div class="field"><label>Vendedor / Contato</label><input class="inp" id="sfSeller" placeholder="ex: João Miguel"></div>
         <div class="field"><label>WhatsApp</label><input class="inp" id="sfPhone" placeholder="ex: 82999999999"></div>
       </div>
-      <div class="field"><label>E-mail</label><input class="inp" id="sfEmail" type="email" placeholder="ex: joao@empresa.com"></div>
+      <div class="f2">
+        <div class="field"><label>E-mail</label><input class="inp" id="sfEmail" type="email" placeholder="ex: joao@empresa.com"></div>
+        <div class="field">
+          <label>Modalidade de compra</label>
+          <select class="inp" id="sfFormaEntrega">
+            <option value="entrega">Entrega (pedido remoto)</option>
+            <option value="presencial">Somente presencial</option>
+            <option value="ambos">Entrega ou presencial</option>
+          </select>
+        </div>
+      </div>
+      <hr class="sdiv"><div class="slbl">Regras de Compra</div>
+      <div class="f2">
+        <div class="field">
+          <label>Pedido mínimo</label>
+          <div style="display:flex;gap:6px">
+            <input class="inp" id="sfPedidoMin" type="number" placeholder="Ex: 150" min="0" step="0.01" style="flex:1">
+            <select class="inp" id="sfPedidoMinTipo" style="width:80px">
+              <option value="">—</option>
+              <option value="valor">R$</option>
+              <option value="peso">kg/un</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Prazo de entrega (dias)</label>
+          <input class="inp" id="sfPrazoEntrega" type="number" placeholder="Ex: 2" min="0">
+        </div>
+      </div>
+      <div class="f2">
+        <div class="field">
+          <label>Antecedência mínima (dias)</label>
+          <input class="inp" id="sfAntecedencia" type="number" placeholder="Ex: 20" min="0">
+        </div>
+        <div class="field">
+          <label>Horário limite do pedido</label>
+          <input class="inp" id="sfHorarioLimite" type="time">
+        </div>
+      </div>
+      <div class="field">
+        <label>Dias que aceita pedido</label>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;padding:7px 8px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8)">
+          <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfDia_seg" style="accent-color:var(--purple)"> Seg</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfDia_ter" style="accent-color:var(--purple)"> Ter</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfDia_qua" style="accent-color:var(--purple)"> Qua</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfDia_qui" style="accent-color:var(--purple)"> Qui</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfDia_sex" style="accent-color:var(--purple)"> Sex</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:.74rem;font-weight:600;padding:4px 9px;border-radius:var(--r6);cursor:pointer"><input type="checkbox" id="sfDia_sab" style="accent-color:var(--purple)"> Sáb</label>
+          <span style="font-size:.67rem;color:var(--muted);align-self:center;padding-left:4px">vazio = qualquer dia</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Aviso interno</label>
+        <input class="inp" id="sfAviso" placeholder="Ex: Pedir embalagens no início do mês. Gráfica precisa 20 dias.">
+      </div>
+      <div class="field">
+        <label>Status de confiança</label>
+        <select class="inp" id="sfConfianca">
+          <option value="backup">Backup (segunda opção)</option>
+          <option value="prioritario">Prioritário</option>
+          <option value="bloqueado">Bloqueado</option>
+        </select>
+      </div>
+      <div id="supNotasSection" style="display:none">
+        <hr class="sdiv"><div class="slbl">Histórico de avaliações</div>
+        <div id="supNotasList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Adicionar avaliação</div>
+          <div class="f2">
+            <div class="field" style="margin-bottom:10px"><label>Data</label><input type="date" class="inp" id="sfNotaData"></div>
+            <div class="field" style="margin-bottom:10px">
+              <label>Nota (1–5)</label>
+              <select class="inp" id="sfNotaEstrelas">
+                <option value="5">★★★★★ Excelente</option>
+                <option value="4">★★★★☆ Bom</option>
+                <option value="3">★★★☆☆ Regular</option>
+                <option value="2">★★☆☆☆ Ruim</option>
+                <option value="1">★☆☆☆☆ Péssimo</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:10px"><label>Ocorrência</label><input class="inp" id="sfNotaServico" placeholder="Ex: Entrega errada, faltou calabresa"></div>
+          <div class="field" style="margin-bottom:10px"><label>Comentário</label><input class="inp" id="sfNotaComentario" placeholder="Ex: Fornecedor não avisou a falta antes da entrega"></div>
+          <button class="btn btn-outline btn-sm" onclick="addNotaSupplier()" style="width:100%">Salvar avaliação</button>
+        </div>
+      </div>
       <div class="field">
         <label>Categorias que fornece</label>
         <div id="sfCatsWrap" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2);min-height:42px;cursor:pointer" onclick="toggleCatsDropdown()"></div>
@@ -761,6 +851,233 @@
       <button class="btn btn-red btn-sm" id="delSupBtn" style="display:none;margin-right:auto" onclick="deleteSup()"> Excluir</button>
       <button class="btn btn-outline" onclick="closeModal('ovSup')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveSup()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Prestador de Serviço -->
+<div class="overlay" id="ovPrest">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt" id="prestModalTitle">Novo Prestador</div><button class="mc" onclick="closeModal('ovPrest')"></button></div>
+    <div class="mb">
+      <input type="hidden" id="ePrestId">
+      <div class="f2">
+        <div class="field"><label>Nome da empresa *</label><input class="inp" id="pfNome" placeholder="Ex: Frio Sul Refrigeração"></div>
+        <div class="field">
+          <label>Categoria de serviço *</label>
+          <select class="inp" id="pfCategoria">
+            <option value="">Selecione...</option>
+            <option value="refrigeracao">Refrigeração</option>
+            <option value="fornos_gas">Fornos e Gás</option>
+            <option value="eletrica">Elétrica</option>
+            <option value="climatizacao">Climatização</option>
+            <option value="equipamentos">Equipamentos</option>
+            <option value="hidraulica">Hidráulica</option>
+            <option value="infraestrutura">Infraestrutura</option>
+            <option value="tecnologia">Tecnologia</option>
+            <option value="seguranca">Segurança</option>
+            <option value="delivery">Delivery</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Serviço principal</label><input class="inp" id="pfServico" placeholder="Ex: Manutenção de fornos industriais a gás"></div>
+      <div class="f2">
+        <div class="field"><label>WhatsApp / Telefone</label><input class="inp" id="pfPhone" placeholder="Ex: 82999999999"></div>
+        <div class="field"><label>Contato / Técnico</label><input class="inp" id="pfContato" placeholder="Ex: João Silva"></div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>E-mail</label><input class="inp" id="pfEmail" type="email" placeholder="Ex: contato@empresa.com"></div>
+        <div class="field">
+          <label>Status de confiança</label>
+          <select class="inp" id="pfConfianca">
+            <option value="backup">Backup (segunda opção)</option>
+            <option value="prioritario">Prioritário</option>
+            <option value="bloqueado">Bloqueado</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Aviso interno</label><input class="inp" id="pfAviso" placeholder="Ex: Ligar sempre para o João, não para o escritório"></div>
+      <div id="prestNotasSection" style="display:none">
+        <hr class="sdiv"><div class="slbl">Histórico de notas</div>
+        <div id="prestNotasList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Adicionar avaliação</div>
+          <div class="f2">
+            <div class="field" style="margin-bottom:10px"><label>Data do serviço</label><input type="date" class="inp" id="pfNotaData"></div>
+            <div class="field" style="margin-bottom:10px">
+              <label>Nota (1–5)</label>
+              <select class="inp" id="pfNotaEstrelas">
+                <option value="5">★★★★★ Excelente</option>
+                <option value="4">★★★★☆ Bom</option>
+                <option value="3">★★★☆☆ Regular</option>
+                <option value="2">★★☆☆☆ Ruim</option>
+                <option value="1">★☆☆☆☆ Péssimo</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:10px"><label>Serviço realizado</label><input class="inp" id="pfNotaServico" placeholder="Ex: Manutenção preventiva Forno 1"></div>
+          <div class="field" style="margin-bottom:10px"><label>Comentário</label><input class="inp" id="pfNotaComentario" placeholder="Ex: Chegou no horário, resolveu rápido"></div>
+          <button class="btn btn-outline btn-sm" onclick="addNotaPrestador()" style="width:100%">Salvar avaliação</button>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delPrestBtn" style="display:none;margin-right:auto" onclick="deletePrestador()">Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovPrest')">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePrestador()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Terceirizado -->
+<div class="overlay" id="ovTerceir">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt" id="terceirModalTitle">Novo Terceirizado</div><button class="mc" onclick="closeModal('ovTerceir')"></button></div>
+    <div class="mb">
+      <input type="hidden" id="eTerceirId">
+      <div class="f2">
+        <div class="field"><label>Nome *</label><input class="inp" id="tfNome" placeholder="Ex: Carlos Motoboy"></div>
+        <div class="field">
+          <label>Função *</label>
+          <select class="inp" id="tfFuncao">
+            <option value="">Selecione...</option>
+            <option value="motoboy">Motoboy / Entregador</option>
+            <option value="pizzaiolo">Pizzaiolo</option>
+            <option value="aux_cozinha">Aux. de Cozinha</option>
+            <option value="atendimento">Atendimento</option>
+            <option value="limpeza">Limpeza / Diarista</option>
+            <option value="caixa">Caixa</option>
+            <option value="seguranca">Segurança</option>
+            <option value="outros">Outros</option>
+          </select>
+        </div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Telefone / WhatsApp</label><input class="inp" id="tfPhone" placeholder="(00) 90000-0000" type="tel"></div>
+        <div class="field"><label>CPF</label><input class="inp" id="tfCpf" placeholder="000.000.000-00"></div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Valor por hora (R$)</label><input class="inp" id="tfValorHora" type="number" min="0" step="0.01" placeholder="0,00" style="font-family:monospace"></div>
+        <div class="field">
+          <label>Status</label>
+          <select class="inp" id="tfStatus">
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Observações</label><input class="inp" id="tfObs" placeholder="Ex: Disponível fins de semana, tem moto própria"></div>
+      <div id="terceirNotasSection" style="display:none">
+        <hr class="sdiv"><div class="slbl">Histórico de avaliações</div>
+        <div id="terceirNotasList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Adicionar avaliação</div>
+          <div class="f2">
+            <div class="field" style="margin-bottom:10px"><label>Data</label><input type="date" class="inp" id="tfNotaData"></div>
+            <div class="field" style="margin-bottom:10px">
+              <label>Nota (1–5)</label>
+              <select class="inp" id="tfNotaEstrelas">
+                <option value="5">★★★★★ Excelente</option>
+                <option value="4">★★★★☆ Bom</option>
+                <option value="3">★★★☆☆ Regular</option>
+                <option value="2">★★☆☆☆ Ruim</option>
+                <option value="1">★☆☆☆☆ Péssimo</option>
+              </select>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:10px"><label>Ocorrência</label><input class="inp" id="tfNotaOcorrencia" placeholder="Ex: Atraso na entrega, serviço bem feito"></div>
+          <div class="field" style="margin-bottom:10px"><label>Comentário</label><input class="inp" id="tfNotaComentario" placeholder="Detalhes do serviço prestado"></div>
+          <button class="btn btn-outline btn-sm" onclick="addNotaTerceirizado()" style="width:100%">Salvar avaliação</button>
+        </div>
+      </div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delTerceirBtn" style="display:none;margin-right:auto" onclick="deleteTerceirizado()">Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovTerceir')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTerceirizado()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Funcionário -->
+<div class="overlay" id="ovFuncionario">
+  <div class="mbox wide">
+    <div class="mh"><div class="mt" id="funcModalTitle">Novo Funcionário</div><button class="mc" onclick="closeModal('ovFuncionario')"></button></div>
+    <div class="mb">
+      <input type="hidden" id="eFuncId">
+      <div class="f2">
+        <div class="field"><label>Nome completo *</label><input class="inp" id="ffNome" placeholder="Ex: João da Silva"></div>
+        <div class="field">
+          <label>Cargo *</label>
+          <select class="inp" id="ffCargo">
+            <option value="">Selecione...</option>
+            <option value="gerente">Gerente</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="pizzaiolo">Pizzaiolo</option>
+            <option value="aux_cozinha">Aux. de Cozinha</option>
+            <option value="atendimento">Atendimento</option>
+            <option value="entregador">Entregador</option>
+            <option value="caixa">Caixa</option>
+            <option value="limpeza">Limpeza</option>
+          </select>
+        </div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>CPF</label><input class="inp" id="ffCpf" placeholder="000.000.000-00"></div>
+        <div class="field"><label>Telefone / WhatsApp</label><input class="inp" id="ffPhone" type="tel" placeholder="(00) 90000-0000"></div>
+      </div>
+      <div class="f2">
+        <div class="field"><label>Data de admissão</label><input type="date" class="inp" id="ffAdmissao"></div>
+        <div class="field"><label>Salário (R$)</label><input class="inp" id="ffSalario" type="number" min="0" step="0.01" placeholder="0,00" style="font-family:monospace"></div>
+      </div>
+      <div class="f2">
+        <div class="field">
+          <label>Turno padrão</label>
+          <select class="inp" id="ffTurno">
+            <option value="">Não definido</option>
+            <option value="abertura">Abertura</option>
+            <option value="producao">Produção</option>
+            <option value="fechamento">Fechamento</option>
+            <option value="integral">Integral</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Status</label>
+          <select class="inp" id="ffStatus">
+            <option value="ativo">Ativo</option>
+            <option value="ferias">Férias</option>
+            <option value="afastado">Afastado</option>
+            <option value="inativo">Inativo</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Email</label><input type="email" class="inp" id="ffEmail" placeholder="funcionario@email.com"></div>
+      <div class="field"><label>Observações</label><input class="inp" id="ffObs" placeholder="Informações adicionais, alergias, contato de emergência..."></div>
+    </div>
+    <div class="mf">
+      <button class="btn btn-red btn-sm" id="delFuncBtn" style="display:none;margin-right:auto" onclick="deleteFuncionario()">Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovFuncionario')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveFuncionario()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Tipo de Fornecedor -->
+<div class="overlay" id="ovTipoForn">
+  <div class="mbox" style="max-width:420px">
+    <div class="mh"><div class="mt">Novo Fornecedor</div><button class="mc" onclick="closeModal('ovTipoForn')"></button></div>
+    <div class="mb">
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:20px">Qual tipo de fornecedor deseja cadastrar?</div>
+      <div style="display:flex;gap:14px">
+        <button onclick="closeModal('ovTipoForn');openSupModal()" class="tipo-forn-opt">
+          <div style="font-size:var(--text-md);font-weight:700;margin-bottom:4px">Insumos</div>
+          <div style="font-size:var(--text-xs);color:var(--fg-muted);font-weight:400">Alimentos, bebidas e suprimentos</div>
+        </button>
+        <button onclick="closeModal('ovTipoForn');openPrestadorModal()" class="tipo-forn-opt">
+          <div style="font-size:var(--text-md);font-weight:700;margin-bottom:4px">Serviços</div>
+          <div style="font-size:var(--text-xs);color:var(--fg-muted);font-weight:400">Manutenção e prestadores</div>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -812,10 +1129,10 @@
       </div>
       <div class="f2">
         <div class="field"><label>Data prevista</label><input class="inp" type="date" id="opDate"></div>
-        <div class="field"><label>Responsável</label><input class="inp" id="opResp" placeholder="ex: Cinara"></div>
+        <div class="field"><label>Responsável</label><select class="inp" id="opResp"></select></div>
       </div>
       <div class="f2">
-        <div class="field"><label>Conferente</label><input class="inp" id="opConf" placeholder="ex: Guilherme"></div>
+        <div class="field"><label>Conferente</label><select class="inp" id="opConf"></select></div>
         <div class="field"><label>Turno</label><select class="inp" id="opTurno"><option>Manhã</option><option>Tarde</option><option>Noite</option></select></div>
       </div>
       <div class="field"><label>Observações</label><textarea class="inp" id="opObs" rows="2"></textarea></div>
@@ -949,18 +1266,41 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="overlay" id="vtpConfirmOverlay">
+  <div class="confirm-box">
+    <div class="confirm-head">
+      <div class="confirm-icon danger" id="vtpConfirmIcon"></div>
+      <div class="confirm-texts">
+        <div class="confirm-title" id="vtpConfirmTitle"></div>
+        <div class="confirm-msg"   id="vtpConfirmMsg"></div>
+      </div>
+    </div>
+    <div class="confirm-actions">
+      <button class="btn btn-ghost" onclick="vtpConfirmClose()">Cancelar</button>
+      <button class="btn btn-primary" id="vtpConfirmBtn" onclick="vtpConfirmExec()"></button>
+    </div>
+  </div>
+</div>
+
 <script src="js/icons.js"></script>
-  <script src="js/data.js"></script>
-<script src="js/utils.js"></script>
+<script src="js/db.js"></script>
+  <script src="js/data.js?v=2"></script>
+<script src="js/utils.js?v=2"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/estoque.js"></script>
-<script src="js/compras.js"></script>
-<script src="js/modules.js"></script>
+<script src="js/compras.js?v=2"></script>
+<script src="js/relatorios.js?v=2"></script>
+<script src="js/modules.js?v=2"></script>
 <script src="js/previsao.js"></script>
-  <script src="js/cadastros.js"></script>
-<script src="js/configuracoes.js"></script>
+  <script src="js/cadastros.js?v=2"></script>
+<script src="js/configuracoes.js?v=6"></script>
 <script src="js/desperdicio.js"></script>
-<script src="js/checklist.js"></script>
+<script src="js/checklist.js?v=2"></script>
+<script src="js/manutencao.js?v=2"></script>
+<script src="js/inventario.js?v=2"></script>
+<script src="js/rh.js"></script>
+<script src="js/alertas.js"></script>
+<script src="js/auditoria.js"></script>
 <script src="js/login.js"></script>
 <script>
   // Seta datas padrão dos filtros
@@ -1099,6 +1439,219 @@
     </div>
   </div>
 </div>
+
+<!-- Modal: Inventário — Cadastro/Edição de item -->
+<div class="overlay" id="ovInventItem">
+  <div class="mbox" style="max-width:520px">
+    <div class="mh">
+      <div class="mt" id="invItemModalTitle">Novo Item</div>
+      <button class="mc" onclick="closeModal('ovInventItem')"></button>
+    </div>
+    <div class="mb">
+      <input type="hidden" id="eInvItemId">
+
+      <div class="field">
+        <label>Nome *</label>
+        <input class="inp" id="invItemNome" placeholder="Ex: Forno elétrico, Pá de pizza, Tablet...">
+      </div>
+
+      <div class="f2">
+        <div class="field" style="margin-bottom:12px">
+          <label>Local</label>
+          <select class="inp" id="invItemLoc">
+            <option value="">Selecione o local</option>
+            <option value="cozinha_fin">Cozinha Finalização</option>
+            <option value="cozinha_prod">Cozinha Produção</option>
+            <option value="escritorio">Escritório</option>
+            <option value="atendimento">Atendimento</option>
+            <option value="delivery">Delivery</option>
+            <option value="estoque_coz">Estoque Cozinha</option>
+            <option value="corredor">Corredor</option>
+            <option value="quintal">Quintal</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label>Tipo</label>
+          <select class="inp" id="invItemCategoria">
+            <option value="equipamento">Equipamento</option>
+            <option value="estrutura">Estrutura</option>
+            <option value="mobiliario">Mobiliário</option>
+            <option value="eletronico">Eletrônico</option>
+            <option value="utensilio">Utensílio</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:12px">
+        <label>Tipo de controle</label>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;padding:9px 14px;border:1.5px solid var(--border);border-radius:var(--r8);flex:1;background:var(--surface2)">
+            <input type="radio" name="invTipo" value="unico" id="invTipoUnico" style="accent-color:var(--purple)" onchange="invToggleTipo()"> Único
+            <span style="font-size:.68rem;color:var(--muted);display:block">1 ativo identificado</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.82rem;padding:9px 14px;border:1.5px solid var(--border);border-radius:var(--r8);flex:1;background:var(--surface2)">
+            <input type="radio" name="invTipo" value="quantidade" id="invTipoQtd" style="accent-color:var(--purple)" onchange="invToggleTipo()"> Quantidade
+            <span style="font-size:.68rem;color:var(--muted);display:block">Grupo (pás, panelas...)</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="invQtdRow" style="display:none">
+        <div class="f2">
+          <div class="field" style="margin-bottom:12px">
+            <label>Qtd. ideal</label>
+            <input class="inp" type="number" id="invItemQtdIdeal" min="1" placeholder="Ex: 10">
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>Qtd. atual</label>
+            <input class="inp" type="number" id="invItemQtdAtual" min="0" placeholder="Ex: 8">
+          </div>
+        </div>
+      </div>
+
+      <div class="f2">
+        <div class="field" style="margin-bottom:12px">
+          <label>Modelo</label>
+          <input class="inp" id="invItemModelo" placeholder="Ex: PRP-004">
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label>Nº de série</label>
+          <input class="inp" id="invItemNroSerie" placeholder="Opcional">
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:12px">
+        <label>Estado</label>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <button type="button" id="invStChip_bom" onclick="setInvStatus('bom')"
+            style="padding:6px 14px;border-radius:var(--r8);border:1.5px solid transparent;background:var(--surface2);color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;font-family:Inter,sans-serif">
+            Bom
+          </button>
+          <button type="button" id="invStChip_atencao" onclick="setInvStatus('atencao')"
+            style="padding:6px 14px;border-radius:var(--r8);border:1.5px solid transparent;background:var(--surface2);color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;font-family:Inter,sans-serif">
+            Atenção
+          </button>
+          <button type="button" id="invStChip_ruim" onclick="setInvStatus('ruim')"
+            style="padding:6px 14px;border-radius:var(--r8);border:1.5px solid transparent;background:var(--surface2);color:var(--muted);cursor:pointer;font-size:.78rem;font-weight:600;font-family:Inter,sans-serif">
+            Ruim
+          </button>
+        </div>
+        <div id="invRuimAlerta" style="display:none;margin-top:8px;padding:8px 12px;background:var(--red-light);border-radius:var(--r8);font-size:.72rem;color:var(--red);font-weight:600">
+          Item marcado como Ruim — uma ordem de manutenção será sugerida ao salvar.
+        </div>
+      </div>
+
+      <div class="f2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Preço de compra (R$)</label>
+          <input class="inp" type="number" id="invItemPreco" min="0" step="0.01" placeholder="Ex: 1200,00">
+        </div>
+        <div class="field">
+          <label>Garantia (link do documento)</label>
+          <input class="inp" id="invItemGarantia" placeholder="URL da nota ou garantia...">
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:12px">
+        <label>Observações</label>
+        <input class="inp" id="invItemObs" placeholder="Observações de uso, localização específica...">
+      </div>
+
+      <div style="padding:12px;background:var(--surface2);border-radius:var(--r8);border:1.5px solid var(--border)">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.82rem;font-weight:600">
+          <input type="checkbox" id="invItemTemPrev" style="accent-color:var(--purple)" onchange="invTogglePreventiva()">
+          Tem manutenção preventiva programada
+        </label>
+        <div id="invPrevSection" style="display:none;margin-top:12px">
+          <div class="f2">
+            <div class="field" style="margin-bottom:0">
+              <label>Frequência</label>
+              <select class="inp" id="invItemFreq">
+                <option value="mensal">Mensal</option>
+                <option value="trimestral">Trimestral</option>
+                <option value="semestral">Semestral</option>
+                <option value="anual">Anual</option>
+              </select>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>Próxima preventiva</label>
+              <input class="inp" type="date" id="invItemProxPrev">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="mf">
+      <button class="btn btn-ghost btn-sm" id="delInvItemBtn" style="margin-right:auto;display:none" onclick="invDeletarItem()">Excluir</button>
+      <button class="btn btn-outline" onclick="closeModal('ovInventItem')">Cancelar</button>
+      <button class="btn btn-primary" onclick="invSalvarItem()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Picker de Embalagem -->
+<div class="overlay" id="ovEmbPicker">
+  <div style="background:var(--surface);border-radius:var(--r16);width:100%;max-width:500px;max-height:85vh;
+    overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.22)">
+    <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div>
+        <div style="font-size:.94rem;font-weight:800">Tipo de embalagem</div>
+        <div style="font-size:.68rem;color:var(--muted);margin-top:2px">Selecione como o fornecedor vende este insumo</div>
+      </div>
+      <button onclick="closeModal('ovEmbPicker')" style="background:none;border:none;cursor:pointer;color:var(--muted);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;line-height:1">×</button>
+    </div>
+    <div style="padding:16px 20px;overflow-y:auto;flex:1">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
+        <!-- embalagens: nome | exemplo | ícone lucide -->
+        <button onclick="selecionarEmb('Barra')"      class="_embChip"><strong>Barra</strong><span>manteiga, queijo, chocolate</span></button>
+        <button onclick="selecionarEmb('Pacote')"     class="_embChip"><strong>Pacote</strong><span>farinha, açúcar, sal</span></button>
+        <button onclick="selecionarEmb('Caixa')"      class="_embChip"><strong>Caixa</strong><span>tomate, frutas, ovos</span></button>
+        <button onclick="selecionarEmb('Fardo')"      class="_embChip"><strong>Fardo</strong><span>papel, copos, caixinhas</span></button>
+        <button onclick="selecionarEmb('Saco')"       class="_embChip"><strong>Saco</strong><span>batata, cebola, arroz</span></button>
+        <button onclick="selecionarEmb('Lata')"       class="_embChip"><strong>Lata</strong><span>extrato, atum, conservas</span></button>
+        <button onclick="selecionarEmb('Galão')"      class="_embChip"><strong>Galão</strong><span>óleo, vinagre 5 L</span></button>
+        <button onclick="selecionarEmb('Bombona')"    class="_embChip"><strong>Bombona</strong><span>óleo 20 L, azeite grande</span></button>
+        <button onclick="selecionarEmb('Bisnaga')"    class="_embChip"><strong>Bisnaga</strong><span>maionese, catchup, mostarda</span></button>
+        <button onclick="selecionarEmb('Bandeja')"    class="_embChip"><strong>Bandeja</strong><span>carnes, frios</span></button>
+        <button onclick="selecionarEmb('Garrafa')"    class="_embChip"><strong>Garrafa</strong><span>azeite, molho, refrigerante</span></button>
+        <button onclick="selecionarEmb('Caixinha')"   class="_embChip"><strong>Caixinha</strong><span>creme de leite, leite UHT</span></button>
+        <button onclick="selecionarEmb('Pote')"       class="_embChip"><strong>Pote</strong><span>requeijão, geleia, manteiga</span></button>
+        <button onclick="selecionarEmb('Peça')"       class="_embChip"><strong>Peça</strong><span>queijo inteiro, presunto</span></button>
+        <button onclick="selecionarEmb('Dúzia')"      class="_embChip"><strong>Dúzia</strong><span>ovos</span></button>
+        <button onclick="selecionarEmb('Maço')"       class="_embChip"><strong>Maço</strong><span>salsinha, cheiro-verde</span></button>
+        <button onclick="selecionarEmb('Cacho')"      class="_embChip"><strong>Cacho</strong><span>banana, uva</span></button>
+        <button onclick="selecionarEmb('Sachê')"      class="_embChip"><strong>Sachê</strong><span>fermento, temperos</span></button>
+        <button onclick="selecionarEmb('Tablete')"    class="_embChip"><strong>Tablete</strong><span>fermento bio, caldos</span></button>
+        <button onclick="selecionarEmb('Envelope')"   class="_embChip"><strong>Envelope</strong><span>gelatina, sopas</span></button>
+        <button onclick="selecionarEmb('Kg')"         class="_embChip"><strong>Kg</strong><span>vendido por quilo</span></button>
+        <button onclick="selecionarEmb('Unidade')"    class="_embChip"><strong>Unidade</strong><span>vendido por peça avulsa</span></button>
+      </div>
+      <div style="margin-top:14px;border-top:1.5px solid var(--border);padding-top:14px">
+        <div style="font-size:.7rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Outro tipo</div>
+        <div style="display:flex;gap:8px">
+          <input class="inp" id="fEmbCustom" placeholder="Ex: Tambor, Bidon, Resma..."
+            style="flex:1" onkeydown="if(event.key==='Enter')confirmarEmbCustom()">
+          <button class="btn btn-primary" onclick="confirmarEmbCustom()">Confirmar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+._embChip {
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:10px 12px;border-radius:var(--r8);border:1.5px solid var(--border);
+  background:var(--surface2);cursor:pointer;text-align:left;
+  font-family:Inter,sans-serif;transition:all .12s;width:100%
+}
+._embChip:hover { border-color:var(--purple);background:var(--purple-xlight) }
+._embChip strong { font-size:.82rem;font-weight:700;color:var(--text) }
+._embChip span   { font-size:.63rem;color:var(--muted);line-height:1.3 }
+._embChip.sel    { border-color:var(--purple);background:var(--purple-xlight) }
+._embChip.sel strong { color:var(--purple) }
+</style>
 
 </body>
 </html>

@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VTP · Design System</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+<link rel="stylesheet" href="css/tokens.css">
+
+<style>
+/* =========================================================
+   Estilos da página de referência do Design System VTP.
+   Tudo usa tokens — sem valores hardcoded além de demos.
+   ========================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--focus-ring); }
+
+/* === Topbar === */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-8);
+  background: color-mix(in oklch, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--border);
+  height: 56px;
+}
+.topbar-brand {
+  display: flex; align-items: center; gap: var(--space-3);
+}
+.topbar-logo {
+  width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  overflow: hidden; flex-shrink: 0;
+}
+.topbar-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.topbar-name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--accent);
+}
+.topbar-ver {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-subtle);
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  letter-spacing: .04em;
+}
+.topbar-right {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-subtle);
+}
+
+/* === Layout === */
+.layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-16);
+  max-width: var(--container-wide);
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-8) var(--space-20);
+}
+.sidenav {
+  position: sticky;
+  top: 76px;
+  align-self: start;
+  height: calc(100vh - 96px);
+  overflow-y: auto;
+  padding-right: var(--space-2);
+}
+.sidenav::-webkit-scrollbar { width: 3px; }
+.sidenav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.nav-group { margin-bottom: var(--space-5); }
+.nav-group-title {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--fg-subtle);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-3);
+}
+.sidenav a {
+  display: block;
+  padding: 4px var(--space-3);
+  color: var(--fg-muted);
+  text-decoration: none;
+  font-size: var(--text-sm);
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast);
+  white-space: nowrap;
+}
+.sidenav a:hover { color: var(--fg); }
+.sidenav a.active { color: var(--accent); border-left-color: var(--accent); font-weight: var(--weight-medium); }
+
+main { min-width: 0; }
+
+/* === Hero === */
+.hero {
+  padding: var(--space-6) 0 var(--space-16);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-16);
+}
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--accent);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-5);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.hero h1 {
+  margin: 0 0 var(--space-5);
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.05;
+  max-width: 18ch;
+  color: var(--fg);
+}
+.hero h1 em {
+  font-style: italic;
+  font-weight: var(--weight-regular);
+  color: var(--fg-muted);
+}
+.hero-lead {
+  max-width: 54ch;
+  color: var(--fg-muted);
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+  margin: 0;
+}
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-10);
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--border);
+}
+.hero-stat .num {
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--accent);
+}
+.hero-stat .lbl {
+  font-size: var(--text-2xs);
+  color: var(--fg-subtle);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-weight: var(--weight-semibold);
+  margin-top: var(--space-2);
+}
+
+/* === Seções === */
+section {
+  padding: var(--space-16) 0;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 76px;
+}
+section:last-child { border-bottom: none; }
+
+.section-head {
+  margin-bottom: var(--space-10);
+  display: flex; align-items: flex-start; gap: var(--space-6);
+}
+.section-head .meta { flex: 1; max-width: 60ch; }
+.section-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--fg-subtle);
+  letter-spacing: .06em;
+}
+.section-head h2 {
+  margin: var(--space-2) 0 var(--space-3);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-snug);
+}
+.section-head p {
+  color: var(--fg-muted);
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+}
+.sub { margin-bottom: var(--space-10); }
+.sub:last-child { margin-bottom: 0; }
+.sub-title {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--fg-subtle);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* === Demo frames === */
+.demo {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+}
+.demo + .demo { margin-top: var(--space-3); }
+.demo-row  { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+.demo-col  { display: flex; flex-direction: column; gap: var(--space-3); }
+.demo-grid { display: grid; gap: var(--space-3); }
+.demo-label {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-weight: var(--weight-semibold);
+  color: var(--fg-subtle);
+  width: 72px; flex: none;
+}
+
+/* === Color swatches === */
+.sw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-2);
+}
+.sw {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.sw .color { aspect-ratio: 1.8; border-bottom: 1px solid var(--border); }
+.sw .meta  { padding: var(--space-2) var(--space-3); }
+.sw .nm  { display: block; font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--fg); word-break: break-all; line-height: 1.4; }
+.sw .hx  { display: block; font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--fg-subtle); margin-top: 1px; }
+
+/* Escala primitiva do roxo */
+.scale-row  { display: grid; grid-template-columns: 68px 1fr; gap: var(--space-3); align-items: center; margin-bottom: var(--space-2); }
+.scale-name { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-muted); }
+.scale-strip { display: grid; grid-template-columns: repeat(11, 1fr); border-radius: var(--radius-xs); overflow: hidden; border: 1px solid var(--border); }
+.scale-strip .step { aspect-ratio: 1.2; }
+.scale-legend { display: grid; grid-template-columns: 68px repeat(11, 1fr); font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--fg-subtle); margin-bottom: var(--space-2); }
+.scale-legend .l { text-align: center; }
+
+/* Feedback callouts */
+.callouts { display: grid; gap: var(--space-2); }
+.callout {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  font-size: var(--text-sm);
+  display: flex; align-items: center; gap: var(--space-3);
+  line-height: var(--leading-snug);
+}
+.callout svg { width: 16px; height: 16px; flex-shrink: 0; }
+.callout-success { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-border); }
+.callout-warning { background: var(--warning-bg); color: var(--warning-fg); border-color: var(--warning-border); }
+.callout-danger  { background: var(--danger-bg);  color: var(--danger-fg);  border-color: var(--danger-border);  }
+.callout-info    { background: var(--info-bg);    color: var(--info-fg);    border-color: var(--info-border);    }
+.callout-orange  { background: var(--orange-bg);  color: var(--orange-fg);  border-color: var(--orange-border);  }
+
+/* === Botões === */
+.ds-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all var(--dur-fast) var(--ease-out);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.ds-btn:active { transform: scale(.97); }
+.ds-btn-sm { height: 28px; padding: 0 10px; font-size: var(--text-2xs); }
+.ds-btn-xs { height: 24px; padding: 0 8px;  font-size: .67rem; }
+
+.ds-btn-primary  { background: var(--action-primary-bg);  color: var(--action-primary-fg);  border-color: var(--action-primary-bg); }
+.ds-btn-primary:hover { background: var(--action-primary-bg-hover); border-color: var(--action-primary-bg-hover); }
+.ds-btn-outline  { background: var(--action-secondary-bg); color: var(--action-secondary-fg); border-color: var(--action-secondary-border); }
+.ds-btn-outline:hover { background: var(--action-secondary-bg-hover); }
+.ds-btn-ghost    { background: transparent; color: var(--action-ghost-fg); border-color: transparent; }
+.ds-btn-ghost:hover { background: var(--action-ghost-bg-hover); color: var(--fg); }
+.ds-btn-green    { background: var(--success-bg);  color: var(--success-fg);  border-color: var(--success-border); }
+.ds-btn-green:hover { background: var(--p-green-100); }
+.ds-btn-red      { background: var(--danger-bg);   color: var(--danger-fg);   border-color: var(--danger-border); }
+.ds-btn-red:hover { background: var(--p-red-100); }
+.ds-btn-orange   { background: var(--orange-bg);   color: var(--orange-fg);   border-color: var(--orange-border); }
+.ds-btn-orange:hover { background: var(--p-orange-100); }
+.ds-btn-wa       { background: var(--action-wa-bg); color: var(--action-wa-fg); border-color: var(--action-wa-bg); }
+.ds-btn-wa:hover { background: var(--action-wa-bg-hover); }
+.ds-btn-warm       { background: var(--action-warm-bg); color: var(--action-warm-fg); border-color: var(--action-warm-bg); }
+.ds-btn-warm:hover { background: var(--action-warm-bg-hover); }
+.ds-btn[disabled] { opacity: .38; cursor: not-allowed; pointer-events: none; }
+
+/* === Badges & Chips === */
+.ds-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: .62rem;
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+.ds-b-red    { background: var(--danger-bg);  color: var(--danger-fg); }
+.ds-b-green  { background: var(--success-bg); color: var(--success-fg); }
+.ds-b-yellow { background: var(--warning-bg); color: var(--warning-fg); }
+.ds-b-purple { background: var(--info-bg);    color: var(--info-fg); }
+.ds-b-orange { background: var(--orange-bg);  color: var(--orange-fg); }
+.ds-b-gray   { background: var(--bg-subtle);  color: var(--fg-subtle); border: 1px solid var(--border); }
+
+.ds-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: .62rem;
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  border: 1.5px solid transparent;
+}
+.ds-chip-red    { background: var(--danger-bg);  color: var(--danger-fg);  border-color: var(--danger-border);  }
+.ds-chip-yellow { background: var(--warning-bg); color: var(--warning-fg); border-color: var(--warning-border); }
+.ds-chip-green  { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-border); }
+.ds-chip-purple { background: var(--info-bg);    color: var(--info-fg);    border-color: var(--info-border);    }
+.ds-chip-gray   { background: var(--bg-subtle);  color: var(--fg-subtle);  border-color: var(--border);         }
+.ds-chip-orange { background: var(--orange-bg);  color: var(--orange-fg);  border-color: var(--orange-border);  }
+
+/* === Inputs === */
+.ds-field { display: flex; flex-direction: column; gap: 4px; }
+.ds-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.ds-inp {
+  padding: 9px 12px;
+  border: 1.5px solid var(--input-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  background: var(--input-bg);
+  color: var(--input-fg);
+  outline: none;
+  width: 100%;
+  transition: border-color var(--dur-fast);
+}
+.ds-inp:hover  { border-color: var(--input-border-hover); }
+.ds-inp:focus  { border-color: var(--input-border-focus); background: var(--bg-elevated); }
+.ds-inp::placeholder { color: var(--input-placeholder); opacity: .7; }
+.ds-inp.is-focus { border-color: var(--input-border-focus); background: var(--bg-elevated); box-shadow: 0 0 0 3px var(--focus-ring); }
+.ds-inp.is-error { border-color: var(--danger-bg-bold); }
+.ds-inp.is-disabled { opacity: .45; cursor: not-allowed; background: var(--bg-hover); }
+.ds-hint { font-size: var(--text-xs); color: var(--fg-subtle); }
+.ds-err  { font-size: var(--text-xs); color: var(--danger-fg); }
+
+/* === Card === */
+.ds-card {
+  background: var(--card-bg);
+  border: 1.5px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.ds-card:hover { border-color: var(--card-border-hover); box-shadow: var(--shadow-sm); }
+.ds-card-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.ds-card-title  { font-size: var(--text-sm); font-weight: var(--weight-bold); display: flex; align-items: center; gap: 7px; }
+.ds-card-body   { padding: 16px; }
+
+/* KPI tile */
+.kpi-tile {
+  background: var(--card-bg);
+  border: 1.5px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.kpi-tile:hover { border-color: var(--card-border-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.kpi-tile-icon  { width: 32px; height: 32px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.kpi-tile-val   { font-size: 1.5rem; font-weight: var(--weight-bold); line-height: 1; font-variant-numeric: tabular-nums; }
+.kpi-tile-label { font-size: .62rem; color: var(--fg-subtle); text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }
+.kpi-tile-delta { font-size: var(--text-xs); font-weight: var(--weight-semibold); margin-top: 4px; display: flex; align-items: center; gap: 3px; }
+.delta-up   { color: var(--success-fg); }
+.delta-down { color: var(--danger-fg);  }
+
+/* === Tabela === */
+.ds-tbl-wrap { border: 1.5px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.ds-tbl { width: 100%; border-collapse: collapse; }
+.ds-tbl thead th {
+  padding: 9px 12px; text-align: left;
+  font-size: .62rem; font-weight: var(--weight-bold);
+  text-transform: uppercase; letter-spacing: .8px;
+  color: var(--fg-subtle); background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.ds-tbl tbody tr { border-bottom: 1px solid var(--border); transition: background var(--dur-instant); }
+.ds-tbl tbody tr:last-child { border-bottom: none; }
+.ds-tbl tbody tr:hover { background: var(--accent-subtle); }
+.ds-tbl td { padding: 9px 12px; font-size: var(--text-xs); vertical-align: middle; }
+.ds-tbl .iname { font-weight: var(--weight-semibold); }
+.ds-tbl .isub  { font-size: .62rem; color: var(--fg-subtle); }
+
+/* Progress bar */
+.prog-track { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; width: 80px; }
+.prog-fill  { height: 100%; border-radius: 3px; }
+
+/* === Toast preview === */
+.toast-preview {
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  display: inline-flex; align-items: center; gap: 8px;
+  box-shadow: var(--shadow-lg);
+  max-width: 300px;
+}
+.toast-default  { background: var(--fg);            color: #fff; }
+.toast-ok       { background: var(--success-bg-bold); color: #fff; }
+.toast-err      { background: var(--danger-bg-bold);  color: #fff; }
+.toast-info     { background: var(--accent);          color: #fff; }
+.toast-warn     { background: var(--warning-bg-bold); color: var(--warning-fg-on); }
+
+/* === Tipografia === */
+.type-row { display: flex; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
+.type-row:last-child { border-bottom: none; }
+.type-meta { width: 120px; flex-shrink: 0; }
+.type-name  { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-subtle); }
+.type-size  { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--fg-subtle); margin-top: 1px; }
+.type-sample { flex: 1; color: var(--fg); }
+
+/* === Espaçamento === */
+.space-rows { display: flex; flex-direction: column; gap: var(--space-2); }
+.space-row  { display: flex; align-items: center; gap: var(--space-4); }
+.space-bar  { height: 20px; background: var(--accent-subtle-border); border-radius: 3px; flex-shrink: 0; }
+.space-meta { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-muted); white-space: nowrap; }
+
+/* === Raios === */
+.radius-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: var(--space-3); }
+.radius-tile {
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--accent-subtle-border);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-3); padding: var(--space-5) var(--space-4);
+}
+.radius-box { width: 44px; height: 44px; background: var(--accent-subtle); border: 2px solid var(--accent-subtle-border); }
+.radius-nm  { font-family: var(--font-mono); font-size: var(--text-2xs); color: var(--fg-subtle); text-align: center; }
+
+/* === Sombras === */
+.shadow-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-5); }
+.shadow-tile {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  aspect-ratio: 1.4;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  padding-bottom: var(--space-3);
+}
+.shadow-nm { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-muted); text-align: center; }
+
+/* === Ícones === */
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: var(--space-2); }
+.icon-tile {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-2) var(--space-3);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  transition: all var(--dur-fast);
+  cursor: default;
+}
+.icon-tile:hover { border-color: var(--accent); background: var(--accent-subtle); }
+.icon-tile:hover svg { color: var(--accent); }
+.icon-tile svg { width: 20px; height: 20px; color: var(--fg-muted); }
+.icon-nm { font-family: var(--font-mono); font-size: 9px; color: var(--fg-subtle); text-align: center; line-height: 1.3; word-break: break-all; }
+
+/* === Sidebar preview === */
+.sb-preview {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  width: 240px;
+  box-shadow: var(--shadow-md);
+}
+.sbp-header { padding: 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.sbp-logo { width: 30px; height: 30px; border-radius: var(--radius-md); background: var(--accent); overflow: hidden; flex-shrink: 0; }
+.sbp-logo img { width: 100%; height: 100%; object-fit: cover; }
+.sbp-name { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--accent); }
+.sbp-nav  { padding: 8px; display: flex; flex-direction: column; gap: 1px; }
+.sbp-section { font-size: .55rem; font-weight: var(--weight-bold); text-transform: uppercase; letter-spacing: 1px; color: var(--fg-subtle); padding: 6px 8px 2px; }
+.sbp-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs); font-weight: var(--weight-medium);
+  color: var(--nav-item-fg); cursor: default;
+}
+.sbp-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+.sbp-item.active { background: var(--nav-item-bg-active); color: var(--nav-item-fg-active); }
+.sbp-item:not(.active):hover { background: var(--nav-item-bg-hover); }
+.sbp-bottom { padding: 8px; border-top: 1px solid var(--border); }
+.sbp-user { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--radius-md); }
+.sbp-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: .68rem; font-weight: var(--weight-bold); color: white; flex-shrink: 0; }
+.sbp-uname { font-size: var(--text-xs); font-weight: var(--weight-semibold); }
+.sbp-urole { font-size: .6rem; color: var(--fg-subtle); }
+
+/* === Steps bar === */
+.steps-bar {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex; align-items: stretch;
+  overflow: hidden;
+}
+.step-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 12px 16px;
+  border: none; background: none;
+  font-family: inherit; font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  color: var(--fg-subtle); cursor: default;
+  border-bottom: 3px solid transparent;
+  transition: all var(--dur-fast);
+}
+.step-btn.s-active { color: var(--accent); border-bottom-color: var(--accent); }
+.step-btn.s-done   { color: var(--success-fg); }
+.step-num {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--bg-subtle); border: 1.5px solid var(--border-strong);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .6rem; font-weight: var(--weight-bold); flex-shrink: 0;
+}
+.step-btn.s-active .step-num { background: var(--accent); border-color: var(--accent); color: white; }
+.step-btn.s-done   .step-num { background: var(--success-bg-bold); border-color: var(--success-bg-bold); color: white; }
+
+/* === Marca / Logotipo === */
+.logo-combo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+.logo-combo-cell {
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column;
+}
+.logo-combo-bg {
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 22%;
+}
+.logo-combo-bg img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.logo-combo-info {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+}
+.logo-combo-name { display: block; font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--fg); }
+.logo-combo-sub  { display: block; font-family: var(--font-mono); font-size: .6rem; color: var(--fg-subtle); margin-top: 1px; }
+
+.logo-var-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+.logo-var-cell {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.logo-var-bg {
+  aspect-ratio: 1.8;
+  display: flex; align-items: center; justify-content: center;
+  padding: 14%;
+}
+.logo-var-bg img { width: 80%; height: 80%; object-fit: contain; }
+.logo-var-info { padding: var(--space-2) var(--space-3); background: var(--bg-elevated); border-top: 1px solid var(--border); }
+.logo-var-name { display: block; font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--fg); }
+.logo-var-file { display: block; font-family: var(--font-mono); font-size: .58rem; color: var(--fg-subtle); margin-top: 1px; }
+.logo-dont-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+.logo-dont-cell {
+  border-radius: var(--radius-md);
+  border: 2px solid var(--danger-border);
+  overflow: hidden;
+  position: relative;
+}
+.logo-dont-cell::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent, transparent 10px,
+    rgba(220,38,38,.05) 10px, rgba(220,38,38,.05) 11px
+  );
+  pointer-events: none;
+}
+.logo-dont-label {
+  position: absolute; top: 6px; right: 6px;
+  background: var(--danger-bg-bold); color: white;
+  font-size: .55rem; font-weight: var(--weight-bold);
+  padding: 2px 6px; border-radius: var(--radius-pill);
+  letter-spacing: .05em; text-transform: uppercase;
+  z-index: 1;
+}
+.logo-dont-reason {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--danger-border);
+  font-size: .6rem; color: var(--danger-fg);
+  font-weight: var(--weight-medium);
+}
+
+/* === Chart palette === */
+.chart-swatches { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.chart-swatch {
+  width: 44px; height: 44px; border-radius: var(--radius-sm);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: 4px;
+}
+.chart-swatch span { font-family: var(--font-mono); font-size: 9px; color: rgba(255,255,255,.8); }
+</style>
+</head>
+<body>
+
+<!-- ═══ TOPBAR ═══ -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-logo">
+      <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!">
+    </div>
+    <span class="topbar-name">VTP Design System</span>
+    <span class="topbar-ver">v1.0</span>
+  </div>
+  <div class="topbar-right">
+    <span>tokens.css · style.css · Inter · Lucide</span>
+  </div>
+</header>
+
+<!-- ═══ LAYOUT ═══ -->
+<div class="layout">
+
+  <!-- Nav lateral -->
+  <nav class="sidenav" id="sidenav">
+    <div class="nav-group">
+      <div class="nav-group-title">Fundação</div>
+      <a href="#marca">00 · Marca</a>
+      <a href="#cores">01 · Cores</a>
+      <a href="#tipografia">02 · Tipografia</a>
+      <a href="#espaco">03 · Espaçamento</a>
+      <a href="#sombras">04 · Sombras & Motion</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Componentes</div>
+      <a href="#botoes">05 · Botões</a>
+      <a href="#badges">06 · Badges & Chips</a>
+      <a href="#forms">07 · Formulários</a>
+      <a href="#cards">08 · Cards & KPIs</a>
+      <a href="#tabela">09 · Tabela</a>
+      <a href="#feedback">10 · Feedback</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Padrões</div>
+      <a href="#navegacao">11 · Navegação</a>
+      <a href="#icones">12 · Ícones Lucide</a>
+    </div>
+  </nav>
+
+  <!-- Conteúdo principal -->
+  <main>
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="hero-eyebrow">
+        <i data-lucide="pizza" style="width:13px;height:13px"></i>
+        Vai Ter Pizza! · Sistema de Operação
+      </div>
+      <h1>Design System <em>VTP</em></h1>
+      <p class="hero-lead">
+        Tokens, componentes e padrões visuais da plataforma operacional da Vai Ter Pizza.
+        Arquitetura de 7 camadas — da primitiva ao componente.
+      </p>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="num">7</div>
+          <div class="lbl">Camadas de tokens</div>
+        </div>
+        <div class="hero-stat">
+          <div class="num">80+</div>
+          <div class="lbl">Tokens semânticos</div>
+        </div>
+        <div class="hero-stat">
+          <div class="num">12</div>
+          <div class="lbl">Módulos no app</div>
+        </div>
+        <div class="hero-stat">
+          <div class="num">Inter</div>
+          <div class="lbl">Typeface</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 00 · MARCA -->
+    <section id="marca">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">00</div>
+          <h2>Marca</h2>
+          <p>Oito variantes do logotipo — cada uma calibrada para um fundo específico. A escolha errada compromete legibilidade e identidade. Nunca aplique uma variante em fundo incompatível.</p>
+        </div>
+      </div>
+
+      <!-- Combinações recomendadas -->
+      <div class="sub">
+        <div class="sub-title">Combinações recomendadas</div>
+        <div class="logo-combo-grid">
+
+          <!-- 1: Roxa sobre laranja -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#F5A800">
+              <img src="assets/VTP_LOGO_ROXA.svg" alt="Logo roxa sobre fundo laranja">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Roxa · fundo laranja</span>
+              <span class="logo-combo-sub">VTP_LOGO_ROXA.svg</span>
+            </div>
+          </div>
+
+          <!-- 2: Laranja sobre roxo -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#6B21D4">
+              <img src="assets/VTP_LOGO_LARANJA.svg" alt="Logo laranja sobre fundo roxo">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Laranja · fundo roxo</span>
+              <span class="logo-combo-sub">VTP_LOGO_LARANJA.svg</span>
+            </div>
+          </div>
+
+          <!-- 3: Creme sobre roxo médio -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#8B5CF6">
+              <img src="assets/VTP_LOGO_CREME.svg" alt="Logo creme sobre fundo roxo médio">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Creme · fundo roxo</span>
+              <span class="logo-combo-sub">VTP_LOGO_CREME.svg</span>
+            </div>
+          </div>
+
+          <!-- 4: Preta sobre branco -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#FFFFFF;border:1px solid #E5E7EB">
+              <img src="assets/VTP_LOGO_PRETA.svg" alt="Logo preta sobre fundo branco">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Preta · fundo branco</span>
+              <span class="logo-combo-sub">VTP_LOGO_PRETA.svg</span>
+            </div>
+          </div>
+
+          <!-- 5: Roxa sobre amarelo -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#F0B429">
+              <img src="assets/VTP_LOGO_ROXA.svg" alt="Logo roxa sobre fundo amarelo">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Roxa · fundo amarelo</span>
+              <span class="logo-combo-sub">VTP_LOGO_ROXA.svg</span>
+            </div>
+          </div>
+
+          <!-- 6: Lilás sobre lavanda -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#DDD6FE">
+              <img src="assets/VTP_LOGO_LILAS.svg" alt="Logo lilás sobre fundo lavanda">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Lilás · fundo lavanda</span>
+              <span class="logo-combo-sub">VTP_LOGO_LILAS.svg</span>
+            </div>
+          </div>
+
+          <!-- 7: Roxa sobre creme -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#F5EDD8">
+              <img src="assets/VTP_LOGO_ROXA.svg" alt="Logo roxa sobre fundo creme">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Roxa · fundo creme</span>
+              <span class="logo-combo-sub">VTP_LOGO_ROXA.svg</span>
+            </div>
+          </div>
+
+          <!-- 8: Branca sobre preto -->
+          <div class="logo-combo-cell">
+            <div class="logo-combo-bg" style="background:#0D0D0D">
+              <img src="assets/VTP_LOGO_BRANCA.svg" alt="Logo branca sobre fundo preto">
+            </div>
+            <div class="logo-combo-info">
+              <span class="logo-combo-name">Branca · fundo preto</span>
+              <span class="logo-combo-sub">VTP_LOGO_BRANCA.svg</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+
+      <!-- Usos proibidos -->
+      <div class="sub">
+        <div class="sub-title">Usos proibidos</div>
+        <div class="logo-dont-grid">
+
+          <div class="logo-dont-cell">
+            <div class="logo-dont-label">não</div>
+            <div class="logo-var-bg" style="background:#6B21D4">
+              <img src="assets/VTP_LOGO_ROXA.svg" alt="">
+            </div>
+            <div class="logo-dont-reason">Roxo sobre roxo — sem contraste</div>
+          </div>
+
+          <div class="logo-dont-cell">
+            <div class="logo-dont-label">não</div>
+            <div class="logo-var-bg" style="background:#F5A800">
+              <img src="assets/VTP_LOGO_AMARELA.svg" alt="">
+            </div>
+            <div class="logo-dont-reason">Amarelo sobre laranja — perda de leitura</div>
+          </div>
+
+          <div class="logo-dont-cell">
+            <div class="logo-dont-label">não</div>
+            <div class="logo-var-bg" style="background:#EDE9FE">
+              <img src="assets/VTP_LOGO_LILASCLARO.svg" alt="">
+            </div>
+            <div class="logo-dont-reason">Lilás claro sobre lilás — contraste insuficiente</div>
+          </div>
+
+          <div class="logo-dont-cell">
+            <div class="logo-dont-label">não</div>
+            <div class="logo-var-bg" style="background:#F5EDD8">
+              <img src="assets/VTP_LOGO_CREME.svg" alt="">
+            </div>
+            <div class="logo-dont-reason">Creme sobre creme — ilegível</div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 01 · CORES -->
+    <section id="cores">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">01</div>
+          <h2>Cores</h2>
+          <p>O roxo <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">#6B21D4</code> é a cor da marca. As demais cores carregam significado semântico — verde para sucesso, vermelho para perigo, laranja para alerta intermediário.</p>
+        </div>
+      </div>
+
+      <!-- Marca -->
+      <div class="sub">
+        <div class="sub-title">Paleta da marca</div>
+
+        <!-- Swatches das 6 cores -->
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:var(--space-2)">
+          <div style="background:var(--brand-purple);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3);aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:white">Roxo</div>
+            <div style="font-family:var(--font-mono);font-size:.58rem;color:rgba(255,255,255,.65);margin-top:1px">#6B21D4</div>
+            <div style="font-family:var(--font-mono);font-size:.52rem;color:rgba(255,255,255,.5)">--brand-purple</div>
+          </div>
+          <div style="background:var(--brand-orange);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3);aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:#1A0A2E">Laranja</div>
+            <div style="font-family:var(--font-mono);font-size:.58rem;color:rgba(0,0,0,.5);margin-top:1px">#F5A800</div>
+            <div style="font-family:var(--font-mono);font-size:.52rem;color:rgba(0,0,0,.4)">--brand-orange</div>
+          </div>
+          <div style="background:var(--brand-lilac);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3);aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:white">Lilás</div>
+            <div style="font-family:var(--font-mono);font-size:.58rem;color:rgba(255,255,255,.7);margin-top:1px">#A855F7</div>
+            <div style="font-family:var(--font-mono);font-size:.52rem;color:rgba(255,255,255,.55)">--brand-lilac</div>
+          </div>
+          <div style="background:var(--brand-lilac-light);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3);aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--border)">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:#4C1D95">Lilás Claro</div>
+            <div style="font-family:var(--font-mono);font-size:.58rem;color:rgba(76,29,149,.6);margin-top:1px">#DDD6FE</div>
+            <div style="font-family:var(--font-mono);font-size:.52rem;color:rgba(76,29,149,.45)">--brand-lilac-light</div>
+          </div>
+          <div style="background:var(--brand-yellow);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3);aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:#1A0A2E">Amarelo</div>
+            <div style="font-family:var(--font-mono);font-size:.58rem;color:rgba(0,0,0,.5);margin-top:1px">#F0B429</div>
+            <div style="font-family:var(--font-mono);font-size:.52rem;color:rgba(0,0,0,.4)">--brand-yellow</div>
+          </div>
+          <div style="background:var(--brand-cream);border-radius:var(--radius-md);padding:var(--space-3) var(--space-3);aspect-ratio:1;display:flex;flex-direction:column;justify-content:flex-end;border:1px solid var(--border)">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:#5B3A1A">Creme</div>
+            <div style="font-family:var(--font-mono);font-size:.58rem;color:rgba(91,58,26,.55);margin-top:1px">#F5EDD8</div>
+            <div style="font-family:var(--font-mono);font-size:.52rem;color:rgba(91,58,26,.4)">--brand-cream</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Escala primitiva do roxo -->
+      <div class="sub">
+        <div class="sub-title">Escala primitiva — Roxo</div>
+        <div class="scale-legend">
+          <div></div>
+          <div class="l">50</div><div class="l">100</div><div class="l">200</div>
+          <div class="l">300</div><div class="l">400</div><div class="l">500</div>
+          <div class="l">600</div><div class="l">700</div><div class="l">800</div>
+          <div class="l">900</div><div class="l">950</div>
+        </div>
+        <div class="scale-row">
+          <div class="scale-name">purple</div>
+          <div class="scale-strip">
+            <div class="step" style="background:var(--p-purple-50)"  title="50 · #F5F3FF"></div>
+            <div class="step" style="background:var(--p-purple-100)" title="100 · #EDE9FE"></div>
+            <div class="step" style="background:var(--p-purple-200)" title="200 · #DDD6FE"></div>
+            <div class="step" style="background:var(--p-purple-300)" title="300 · #C4B5FD"></div>
+            <div class="step" style="background:var(--p-purple-400)" title="400 · #A78BFA"></div>
+            <div class="step" style="background:var(--p-purple-500)" title="500 · #8B5CF6"></div>
+            <div class="step" style="background:var(--p-purple-600)" title="600 · #7C3AED"></div>
+            <div class="step" style="background:var(--p-purple-700)" title="700 · #6B21D4 (brand)"></div>
+            <div class="step" style="background:var(--p-purple-800)" title="800 · #5B1BB4"></div>
+            <div class="step" style="background:var(--p-purple-900)" title="900 · #4C1D95"></div>
+            <div class="step" style="background:var(--p-purple-950)" title="950 · #1A0A2E"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Semântico: Superfícies -->
+      <div class="sub">
+        <div class="sub-title">Semântico — Superfícies & Texto</div>
+        <div class="sw-grid">
+          <div class="sw"><div class="color" style="background:var(--bg)"></div><div class="meta"><span class="nm">--bg</span><span class="hx">#F4F0FF · fundo da página</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--bg-elevated);border-bottom:1px solid var(--border)"></div><div class="meta"><span class="nm">--bg-elevated</span><span class="hx">#FFFFFF · cards, painéis</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--bg-subtle)"></div><div class="meta"><span class="nm">--bg-subtle</span><span class="hx">#F8F5FF · fill sutil</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--bg-hover)"></div><div class="meta"><span class="nm">--bg-hover</span><span class="hx">#EDE9FE · hover fill</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--fg)"></div><div class="meta"><span class="nm">--fg</span><span class="hx">#1A0A2E · texto primário</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--fg-muted)"></div><div class="meta"><span class="nm">--fg-muted</span><span class="hx">#4B4569 · secundário</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--fg-subtle)"></div><div class="meta"><span class="nm">--fg-subtle</span><span class="hx">#9B91B8 · terciário</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--border)"></div><div class="meta"><span class="nm">--border</span><span class="hx">#E5DEFF</span></div></div>
+        </div>
+      </div>
+
+      <!-- Feedback -->
+      <div class="sub">
+        <div class="sub-title">Feedback — success / warning / danger / info / orange</div>
+        <div class="sw-grid">
+          <div class="sw"><div class="color" style="background:var(--success-bg);border-bottom:1px solid var(--success-border)"></div><div class="meta"><span class="nm">success-bg</span><span class="hx" style="color:var(--success-fg)">success-fg</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--success-bg-bold)"></div><div class="meta"><span class="nm">success-bg-bold</span><span class="hx">#16A34A</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--warning-bg);border-bottom:1px solid var(--warning-border)"></div><div class="meta"><span class="nm">warning-bg</span><span class="hx" style="color:var(--warning-fg)">warning-fg</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--warning-bg-bold)"></div><div class="meta"><span class="nm">warning-bg-bold</span><span class="hx">#EAB308</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--danger-bg);border-bottom:1px solid var(--danger-border)"></div><div class="meta"><span class="nm">danger-bg</span><span class="hx" style="color:var(--danger-fg)">danger-fg</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--danger-bg-bold)"></div><div class="meta"><span class="nm">danger-bg-bold</span><span class="hx">#DC2626</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--info-bg);border-bottom:1px solid var(--info-border)"></div><div class="meta"><span class="nm">info-bg</span><span class="hx" style="color:var(--info-fg)">info-fg</span></div></div>
+          <div class="sw"><div class="color" style="background:var(--orange-bg);border-bottom:1px solid var(--orange-border)"></div><div class="meta"><span class="nm">orange-bg</span><span class="hx" style="color:var(--orange-fg)">orange-fg</span></div></div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div class="sub">
+        <div class="sub-title">Paleta de chart — --chart-1 a --chart-8</div>
+        <div class="chart-swatches">
+          <div class="chart-swatch" style="background:var(--chart-1)"><span>1</span></div>
+          <div class="chart-swatch" style="background:var(--chart-2)"><span>2</span></div>
+          <div class="chart-swatch" style="background:var(--chart-3)"><span>3</span></div>
+          <div class="chart-swatch" style="background:var(--chart-4)"><span>4</span></div>
+          <div class="chart-swatch" style="background:var(--chart-5)"><span>5</span></div>
+          <div class="chart-swatch" style="background:var(--chart-6)"><span>6</span></div>
+          <div class="chart-swatch" style="background:var(--chart-7)"><span>7</span></div>
+          <div class="chart-swatch" style="background:var(--chart-8)"><span>8</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 · TIPOGRAFIA -->
+    <section id="tipografia">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">02</div>
+          <h2>Tipografia</h2>
+          <p>Inter como única família. Escala modular base 15px. Figuras tabulares em qualquer contexto numérico com <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">font-variant-numeric: tabular-nums</code>.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Escala de tamanho</div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-5xl</div><div class="type-size">40px</div></div>
+          <div class="type-sample" style="font-size:var(--text-5xl);font-weight:var(--weight-bold);letter-spacing:var(--tracking-tight);line-height:1.1">Vai Ter Pizza!</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-4xl</div><div class="type-size">32px</div></div>
+          <div class="type-sample" style="font-size:var(--text-4xl);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-tight)">Compras · Estoque</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-3xl</div><div class="type-size">28px</div></div>
+          <div class="type-sample" style="font-size:var(--text-3xl);font-weight:var(--weight-semibold)">R$ 4.872,50</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-2xl</div><div class="type-size">24px</div></div>
+          <div class="type-sample" style="font-size:var(--text-2xl);font-weight:var(--weight-semibold)">Fornecedores</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-xl</div><div class="type-size">20px</div></div>
+          <div class="type-sample" style="font-size:var(--text-xl);font-weight:var(--weight-semibold)">Ordem de Compra</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-lg</div><div class="type-size">17px</div></div>
+          <div class="type-sample" style="font-size:var(--text-lg)">Pré-aprovação necessária</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-base</div><div class="type-size">15px</div></div>
+          <div class="type-sample" style="font-size:var(--text-base)">Lista de compras #LC-2026-047</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-sm</div><div class="type-size">13px</div></div>
+          <div class="type-sample" style="font-size:var(--text-sm)">Farinha de Trigo · 25kg · R$ 3,80/kg</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-xs</div><div class="type-size">12px</div></div>
+          <div class="type-sample" style="font-size:var(--text-xs);color:var(--fg-muted)">Atualizado há 3 minutos · Supervisor aprovado</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-name">--text-2xs</div><div class="type-size">11px</div></div>
+          <div class="type-sample" style="font-size:var(--text-2xs);color:var(--fg-subtle);text-transform:uppercase;letter-spacing:var(--tracking-caps);font-weight:var(--weight-semibold)">CATEGORIA · INSUMO · SEÇÃO</div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Estilos semânticos</div>
+        <div class="demo">
+          <div class="demo-col">
+            <div style="font-size:var(--text-2xs);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-caps);text-transform:uppercase;color:var(--fg-subtle)">.eyebrow — SEÇÃO DE CONFIGURAÇÃO</div>
+            <div style="font-size:var(--text-3xl);font-weight:var(--weight-semibold);letter-spacing:var(--tracking-tight);font-variant-numeric:tabular-nums">.metric — R$ 48.720,00</div>
+            <div style="font-size:var(--text-xs);color:var(--fg-subtle)">.caption — Dados atualizados às 14:32</div>
+            <code style="font-family:var(--font-mono);font-size:.9em;background:var(--bg-subtle);padding:3px 6px;border-radius:4px;color:var(--accent)">code · vtp_config</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 · ESPAÇAMENTO -->
+    <section id="espaco">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">03</div>
+          <h2>Espaçamento & Raios</h2>
+          <p>Base 4px. Escala não-linear — <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">--space-7, --space-9</code> não existem.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Escala de espaçamento</div>
+        <div class="space-rows">
+          <div class="space-row"><div class="space-bar" style="width:4px"></div><div class="space-meta">--space-1 · 4px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:8px"></div><div class="space-meta">--space-2 · 8px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:12px"></div><div class="space-meta">--space-3 · 12px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:16px"></div><div class="space-meta">--space-4 · 16px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:20px"></div><div class="space-meta">--space-5 · 20px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:24px"></div><div class="space-meta">--space-6 · 24px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:32px"></div><div class="space-meta">--space-8 · 32px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:40px"></div><div class="space-meta">--space-10 · 40px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:48px"></div><div class="space-meta">--space-12 · 48px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:64px"></div><div class="space-meta">--space-16 · 64px</div></div>
+          <div class="space-row"><div class="space-bar" style="width:80px"></div><div class="space-meta">--space-20 · 80px</div></div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Raios de borda</div>
+        <div class="radius-grid">
+          <div class="radius-tile" style="border-radius:var(--radius-sm)"><div class="radius-box" style="border-radius:var(--radius-xs)"></div><div class="radius-nm">--radius-xs<br>4px</div></div>
+          <div class="radius-tile" style="border-radius:var(--radius-sm)"><div class="radius-box" style="border-radius:var(--radius-sm)"></div><div class="radius-nm">--radius-sm<br>6px</div></div>
+          <div class="radius-tile" style="border-radius:var(--radius-sm)"><div class="radius-box" style="border-radius:var(--radius-md)"></div><div class="radius-nm">--radius-md<br>8px</div></div>
+          <div class="radius-tile" style="border-radius:var(--radius-sm)"><div class="radius-box" style="border-radius:var(--radius-lg)"></div><div class="radius-nm">--radius-lg<br>12px</div></div>
+          <div class="radius-tile" style="border-radius:var(--radius-sm)"><div class="radius-box" style="border-radius:var(--radius-xl)"></div><div class="radius-nm">--radius-xl<br>16px</div></div>
+          <div class="radius-tile" style="border-radius:var(--radius-sm)"><div class="radius-box" style="border-radius:var(--radius-pill)"></div><div class="radius-nm">--radius-pill<br>9999px</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 · SOMBRAS & MOTION -->
+    <section id="sombras">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">04</div>
+          <h2>Sombras & Motion</h2>
+          <p>Sombras com tint roxo. Transições consistentes via tokens de duração e curva.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Elevação</div>
+        <div class="shadow-grid">
+          <div class="shadow-tile" style="box-shadow:var(--shadow-xs)"><div class="shadow-nm">--shadow-xs</div></div>
+          <div class="shadow-tile" style="box-shadow:var(--shadow-sm)"><div class="shadow-nm">--shadow-sm</div></div>
+          <div class="shadow-tile" style="box-shadow:var(--shadow-md)"><div class="shadow-nm">--shadow-md</div></div>
+          <div class="shadow-tile" style="box-shadow:var(--shadow-lg)"><div class="shadow-nm">--shadow-lg</div></div>
+          <div class="shadow-tile" style="box-shadow:var(--shadow-popover)"><div class="shadow-nm">--shadow-popover</div></div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Motion</div>
+        <div class="demo">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-6)">
+            <div>
+              <div class="sub-title" style="font-size:var(--text-2xs);margin-bottom:var(--space-3)">Duração</div>
+              <div style="display:flex;flex-direction:column;gap:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs)">
+                <div style="display:flex;justify-content:space-between"><span style="color:var(--fg-muted)">--dur-instant</span><span>80ms</span></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:var(--fg-muted)">--dur-fast</span><span>140ms</span></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:var(--fg-muted)">--dur-base</span><span>220ms</span></div>
+                <div style="display:flex;justify-content:space-between"><span style="color:var(--fg-muted)">--dur-slow</span><span>360ms</span></div>
+              </div>
+            </div>
+            <div>
+              <div class="sub-title" style="font-size:var(--text-2xs);margin-bottom:var(--space-3)">Curvas</div>
+              <div style="display:flex;flex-direction:column;gap:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs)">
+                <div style="display:flex;justify-content:space-between;gap:16px"><span style="color:var(--fg-muted)">--ease-out</span><span style="color:var(--fg-subtle)">.2 .7 .2 1</span></div>
+                <div style="display:flex;justify-content:space-between;gap:16px"><span style="color:var(--fg-muted)">--ease-in-out</span><span style="color:var(--fg-subtle)">.5 0 .2 1</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 · BOTÕES -->
+    <section id="botoes">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">05</div>
+          <h2>Botões</h2>
+          <p>7 variantes, 3 tamanhos. A variante primária usa <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">--action-primary-bg</code> que referencia <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">--brand-purple</code>.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Variantes</div>
+        <div class="demo">
+          <div class="demo-col">
+            <div class="demo-row">
+              <div class="demo-label">Primary</div>
+              <button class="ds-btn ds-btn-primary"><i data-lucide="plus" style="width:14px;height:14px"></i> Nova Lista</button>
+              <button class="ds-btn ds-btn-primary ds-btn-sm"><i data-lucide="plus" style="width:12px;height:12px"></i> Sm</button>
+              <button class="ds-btn ds-btn-primary ds-btn-xs">Xs</button>
+              <button class="ds-btn ds-btn-primary" disabled>Disabled</button>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">Outline</div>
+              <button class="ds-btn ds-btn-outline"><i data-lucide="arrow-left" style="width:14px;height:14px"></i> Voltar</button>
+              <button class="ds-btn ds-btn-outline ds-btn-sm">Sm</button>
+              <button class="ds-btn ds-btn-outline" disabled>Disabled</button>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">Ghost</div>
+              <button class="ds-btn ds-btn-ghost">Cancelar</button>
+              <button class="ds-btn ds-btn-ghost ds-btn-sm">Sm</button>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">Green</div>
+              <button class="ds-btn ds-btn-green"><i data-lucide="check" style="width:14px;height:14px"></i> Aprovar</button>
+              <button class="ds-btn ds-btn-green ds-btn-sm">Sm</button>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">Red</div>
+              <button class="ds-btn ds-btn-red"><i data-lucide="x" style="width:14px;height:14px"></i> Reprovar</button>
+              <button class="ds-btn ds-btn-red ds-btn-sm">Sm</button>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">Orange</div>
+              <button class="ds-btn ds-btn-orange"><i data-lucide="alert-triangle" style="width:14px;height:14px"></i> Atenção</button>
+              <button class="ds-btn ds-btn-orange ds-btn-sm">Sm</button>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">WhatsApp</div>
+              <button class="ds-btn ds-btn-wa"><i data-lucide="message-circle" style="width:14px;height:14px"></i> Enviar WA</button>
+              <button class="ds-btn ds-btn-wa ds-btn-sm">Sm</button>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">Warm</div>
+              <button class="ds-btn ds-btn-warm"><i data-lucide="shopping-bag" style="width:14px;height:14px"></i> Confirmar compra</button>
+              <button class="ds-btn ds-btn-warm ds-btn-sm">Sm</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 · BADGES & CHIPS -->
+    <section id="badges">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">06</div>
+          <h2>Badges & Chips</h2>
+          <p>Badges para status de itens. Chips para status de lista/etapa — com borda 1.5px para maior destaque visual.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Badges (.ds-badge)</div>
+        <div class="demo">
+          <div class="demo-col">
+            <div class="demo-row">
+              <div class="demo-label">Status</div>
+              <span class="ds-badge ds-b-green">Aprovado</span>
+              <span class="ds-badge ds-b-red">Reprovado</span>
+              <span class="ds-badge ds-b-yellow">Pendente</span>
+              <span class="ds-badge ds-b-purple">Aguardando</span>
+              <span class="ds-badge ds-b-orange">Atenção</span>
+              <span class="ds-badge ds-b-gray">Inativo</span>
+            </div>
+            <div class="demo-row">
+              <div class="demo-label">Com ícone</div>
+              <span class="ds-badge ds-b-green"><i data-lucide="check" style="width:10px;height:10px"></i> Concluído</span>
+              <span class="ds-badge ds-b-red"><i data-lucide="x" style="width:10px;height:10px"></i> Cancelado</span>
+              <span class="ds-badge ds-b-yellow"><i data-lucide="clock" style="width:10px;height:10px"></i> Em andamento</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Chips de status (.ds-chip) — usados em listas de compra</div>
+        <div class="demo">
+          <div class="demo-row">
+            <span class="ds-chip ds-chip-green">Em dia</span>
+            <span class="ds-chip ds-chip-yellow">Atenção</span>
+            <span class="ds-chip ds-chip-red">Crítico</span>
+            <span class="ds-chip ds-chip-purple">Aguardando</span>
+            <span class="ds-chip ds-chip-orange">Alerta</span>
+            <span class="ds-chip ds-chip-gray">Sem dados</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 · FORMULÁRIOS -->
+    <section id="forms">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">07</div>
+          <h2>Formulários</h2>
+          <p>Label uppercase 11px + input 13px. Foco com borda <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">--accent</code> e ring suave. Grids f2, f3, f4.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Estados do input</div>
+        <div class="demo">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--space-4)">
+            <div class="ds-field">
+              <label class="ds-label">Padrão</label>
+              <input class="ds-inp" placeholder="Fornecedor...">
+            </div>
+            <div class="ds-field">
+              <label class="ds-label">Foco (simulado)</label>
+              <input class="ds-inp is-focus" value="Distribuidora ABC">
+            </div>
+            <div class="ds-field">
+              <label class="ds-label">Erro</label>
+              <input class="ds-inp is-error" value="abc">
+              <span class="ds-err">Campo obrigatório</span>
+            </div>
+            <div class="ds-field">
+              <label class="ds-label">Desabilitado</label>
+              <input class="ds-inp is-disabled" value="Somente leitura" disabled>
+              <span class="ds-hint">Campo não editável</span>
+            </div>
+            <div class="ds-field">
+              <label class="ds-label">Select</label>
+              <select class="ds-inp">
+                <option>Insumos</option>
+                <option>Embalagens</option>
+                <option>Limpeza</option>
+              </select>
+            </div>
+            <div class="ds-field">
+              <label class="ds-label">Número</label>
+              <input class="ds-inp" type="number" value="25" style="font-variant-numeric:tabular-nums">
+              <span class="ds-hint">Quantidade em kg</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Grid f2 — formulário de 2 colunas</div>
+        <div class="demo">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="ds-field"><label class="ds-label">Nome da empresa</label><input class="ds-inp" value="Vai Ter Pizza!"></div>
+            <div class="ds-field"><label class="ds-label">WhatsApp (DDD)</label><input class="ds-inp" value="82 99999-9999"></div>
+            <div class="ds-field"><label class="ds-label">Código da loja</label><input class="ds-inp" placeholder="ex: 29503"></div>
+            <div class="ds-field"><label class="ds-label">Categoria</label><select class="ds-inp"><option>Insumos</option></select></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 08 · CARDS & KPIs -->
+    <section id="cards">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">08</div>
+          <h2>Cards & KPIs</h2>
+          <p>Card base com header + body. KPI tiles com valor grande, label e delta colorido.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Card padrão</div>
+        <div class="demo" style="background:var(--bg);padding:0;border:none">
+          <div class="ds-card" style="max-width:360px">
+            <div class="ds-card-header">
+              <div class="ds-card-title">
+                <i data-lucide="shopping-bag" style="width:14px;height:14px;color:var(--accent)"></i>
+                Lista de Compras
+              </div>
+              <span class="ds-chip ds-chip-yellow">Em cotação</span>
+            </div>
+            <div class="ds-card-body">
+              <div style="font-size:var(--text-sm);color:var(--fg-muted);margin-bottom:12px">LC-2026-047 · 12 itens · R$ 2.840,00 est.</div>
+              <div style="display:flex;gap:8px">
+                <button class="ds-btn ds-btn-outline ds-btn-sm">Ver detalhes</button>
+                <button class="ds-btn ds-btn-primary ds-btn-sm">Aprovar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Card Warm (.card-warm)</div>
+        <div class="demo" style="background:var(--bg);padding:0;border:none">
+          <div class="ds-card" style="max-width:360px;background:var(--card-warm-bg);border-color:var(--card-warm-border)">
+            <div class="ds-card-header" style="border-color:#E8D9BB">
+              <div class="ds-card-title">
+                <i data-lucide="star" style="width:14px;height:14px;color:var(--brand-orange)"></i>
+                Destaque do dia
+              </div>
+              <span class="ds-chip ds-chip-orange">Promoção</span>
+            </div>
+            <div class="ds-card-body">
+              <div style="font-size:var(--text-sm);color:var(--fg-muted);margin-bottom:12px">Card com fundo creme para chamadas comerciais ou destaques editoriais.</div>
+              <button class="ds-btn ds-btn-warm ds-btn-sm"><i data-lucide="shopping-bag" style="width:12px;height:12px"></i> Confirmar compra</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">KPI Tiles</div>
+        <div class="demo" style="background:var(--bg);padding:16px;border:none">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px">
+            <div class="kpi-tile">
+              <div class="kpi-tile-icon" style="background:var(--accent-subtle)"><i data-lucide="shopping-cart" style="width:16px;height:16px;color:var(--accent)"></i></div>
+              <div class="kpi-tile-val">47</div>
+              <div class="kpi-tile-label">Itens em estoque</div>
+              <div class="kpi-tile-delta delta-up"><i data-lucide="trending-up" style="width:11px;height:11px"></i> +8 esta semana</div>
+            </div>
+            <div class="kpi-tile">
+              <div class="kpi-tile-icon" style="background:var(--danger-bg)"><i data-lucide="alert-circle" style="width:16px;height:16px;color:var(--danger-fg)"></i></div>
+              <div class="kpi-tile-val" style="color:var(--danger-fg)">3</div>
+              <div class="kpi-tile-label">Estoque crítico</div>
+              <div class="kpi-tile-delta delta-down"><i data-lucide="trending-down" style="width:11px;height:11px"></i> Abaixo do mínimo</div>
+            </div>
+            <div class="kpi-tile">
+              <div class="kpi-tile-icon" style="background:var(--success-bg)"><i data-lucide="check-circle" style="width:16px;height:16px;color:var(--success-fg)"></i></div>
+              <div class="kpi-tile-val" style="color:var(--success-fg)">R$ 4.872</div>
+              <div class="kpi-tile-label">Economia gerada</div>
+              <div class="kpi-tile-delta delta-up"><i data-lucide="trending-up" style="width:11px;height:11px"></i> +12% vs mês ant.</div>
+            </div>
+            <div class="kpi-tile">
+              <div class="kpi-tile-icon" style="background:var(--orange-bg)"><i data-lucide="clock" style="width:16px;height:16px;color:var(--orange-fg)"></i></div>
+              <div class="kpi-tile-val" style="color:var(--orange-fg)">2</div>
+              <div class="kpi-tile-label">Aguard. aprovação</div>
+              <div class="kpi-tile-delta" style="color:var(--fg-subtle)">Desde ontem</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 09 · TABELA -->
+    <section id="tabela">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">09</div>
+          <h2>Tabela</h2>
+          <p>Header uppercase com fundo sutil. Hover em <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">--accent-subtle</code>. Suporte a badges e progress inline.</p>
+        </div>
+      </div>
+
+      <div class="demo" style="background:var(--bg);padding:0;border:none">
+        <div class="ds-tbl-wrap">
+          <table class="ds-tbl">
+            <thead>
+              <tr>
+                <th>Insumo</th>
+                <th>Categoria</th>
+                <th style="text-align:right">Estoque</th>
+                <th style="text-align:center">Status</th>
+                <th style="text-align:right">Cobertura</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="ds-tbl iname">Farinha de Trigo</div><div class="ds-tbl isub">25kg · Dois Irmãos</div></td>
+                <td style="color:var(--fg-muted);font-size:var(--text-xs)">Massas</td>
+                <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600">48 kg</td>
+                <td style="text-align:center"><span class="ds-chip ds-chip-green">Ok</span></td>
+                <td style="text-align:right"><div class="prog-track" style="margin-left:auto"><div class="prog-fill" style="width:80%;background:var(--success-bg-bold)"></div></div></td>
+              </tr>
+              <tr>
+                <td><div class="ds-tbl iname">Mozarela</div><div class="ds-tbl isub">500g · Fatiada</div></td>
+                <td style="color:var(--fg-muted);font-size:var(--text-xs)">Laticínios</td>
+                <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:var(--warning-fg)">8 kg</td>
+                <td style="text-align:center"><span class="ds-chip ds-chip-yellow">Atenção</span></td>
+                <td style="text-align:right"><div class="prog-track" style="margin-left:auto"><div class="prog-fill" style="width:32%;background:var(--warning-bg-bold)"></div></div></td>
+              </tr>
+              <tr>
+                <td><div class="ds-tbl iname">Pepperoni</div><div class="ds-tbl isub">1kg · Seara</div></td>
+                <td style="color:var(--fg-muted);font-size:var(--text-xs)">Frios</td>
+                <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:var(--danger-fg)">2 kg</td>
+                <td style="text-align:center"><span class="ds-chip ds-chip-red">Crítico</span></td>
+                <td style="text-align:right"><div class="prog-track" style="margin-left:auto"><div class="prog-fill" style="width:12%;background:var(--danger-bg-bold)"></div></div></td>
+              </tr>
+              <tr>
+                <td><div class="ds-tbl iname">Caixas Pizza G</div><div class="ds-tbl isub">35cm · Kraft</div></td>
+                <td style="color:var(--fg-muted);font-size:var(--text-xs)">Embalagens</td>
+                <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600">320 un</td>
+                <td style="text-align:center"><span class="ds-chip ds-chip-green">Ok</span></td>
+                <td style="text-align:right"><div class="prog-track" style="margin-left:auto"><div class="prog-fill" style="width:95%;background:var(--success-bg-bold)"></div></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 · FEEDBACK -->
+    <section id="feedback">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">10</div>
+          <h2>Feedback</h2>
+          <p>Callouts inline para banners e alertas contextuais. Toasts para ações pontuais.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Callouts</div>
+        <div class="callouts">
+          <div class="callout callout-success"><i data-lucide="check-circle" style="width:16px;height:16px;flex-shrink:0"></i> <strong>Aprovado!</strong> Lista LC-2026-047 aprovada e Ordens de Compra geradas.</div>
+          <div class="callout callout-warning"><i data-lucide="alert-triangle" style="width:16px;height:16px;flex-shrink:0"></i> <strong>Atenção:</strong> 2 itens aguardam cotação antes do prazo às 18h.</div>
+          <div class="callout callout-danger"> <i data-lucide="x-circle" style="width:16px;height:16px;flex-shrink:0"></i> <strong>Estoque crítico:</strong> Mozarela abaixo de 40% do mínimo estabelecido.</div>
+          <div class="callout callout-info">   <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0"></i> <strong>Pré-aprovação necessária:</strong> Somente supervisores e gerentes podem aprovar esta etapa.</div>
+          <div class="callout callout-orange">  <i data-lucide="clock" style="width:16px;height:16px;flex-shrink:0"></i> <strong>Prazo expirando:</strong> Cotação da lista LC-2026-046 vence em 2 horas.</div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Toasts</div>
+        <div class="demo">
+          <div class="demo-row" style="flex-wrap:wrap;gap:12px">
+            <div class="toast-preview toast-default"><i data-lucide="info" style="width:14px;height:14px"></i> Ação executada</div>
+            <div class="toast-preview toast-ok"><i data-lucide="check" style="width:14px;height:14px"></i> Lista aprovada!</div>
+            <div class="toast-preview toast-err"><i data-lucide="x" style="width:14px;height:14px"></i> Erro ao salvar</div>
+            <div class="toast-preview toast-info"><i data-lucide="bell" style="width:14px;height:14px"></i> Pré-aprovação enviada</div>
+            <div class="toast-preview toast-warn"><i data-lucide="alert-triangle" style="width:14px;height:14px"></i> Cotação incompleta</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Estado de Conclusão / Celebração (.state-complete)</div>
+        <div class="demo" style="background:var(--bg);padding:var(--space-4);border:none">
+          <div style="background:var(--gradient-brand);border-radius:var(--radius-xl);padding:var(--space-6);color:#FFFFFF;text-align:center;position:relative;overflow:hidden;max-width:420px">
+            <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 25% 50%, rgba(245,168,0,.3) 0%, transparent 65%);pointer-events:none"></div>
+            <div style="width:52px;height:52px;background:rgba(255,255,255,.18);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-3);position:relative">
+              <i data-lucide="check" style="width:24px;height:24px;color:#FFFFFF"></i>
+            </div>
+            <div style="font-size:var(--text-xl);font-weight:800;letter-spacing:-0.03em;position:relative;line-height:var(--leading-snug)">Ordem de Compra enviada!</div>
+            <div style="font-size:var(--text-sm);opacity:.82;margin-top:var(--space-2);position:relative">OC-2026-031 confirmada para 3 fornecedores · R$ 4.872,50</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11 · NAVEGAÇÃO -->
+    <section id="navegacao">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">11</div>
+          <h2>Navegação</h2>
+          <p>Sidebar colapsável (60px → 240px) com transição suave. Barra de etapas do módulo Compras.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Sidebar expandida (240px)</div>
+        <div class="demo" style="background:var(--bg);padding:var(--space-6);border:none;display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start">
+          <div class="sb-preview">
+            <div class="sbp-header">
+              <div class="sbp-logo"><img src="assets/logo-bg.jpg" alt="VTP"></div>
+              <div><div class="sbp-name">VTP Compras</div><div style="font-size:.6rem;color:var(--fg-subtle)">Vai Ter Pizza!</div></div>
+            </div>
+            <div class="sbp-nav">
+              <div class="sbp-section">Principal</div>
+              <div class="sbp-item"><i data-lucide="layout-dashboard" style="width:15px;height:15px"></i> Dashboard</div>
+              <div class="sbp-item active"><i data-lucide="shopping-bag" style="width:15px;height:15px"></i> Compras</div>
+              <div class="sbp-item"><i data-lucide="package" style="width:15px;height:15px"></i> Estoque</div>
+              <div class="sbp-section">Operação</div>
+              <div class="sbp-item"><i data-lucide="check-square" style="width:15px;height:15px"></i> Checklist</div>
+              <div class="sbp-item"><i data-lucide="building-2" style="width:15px;height:15px"></i> Fornecedores</div>
+              <div class="sbp-item"><i data-lucide="bar-chart-2" style="width:15px;height:15px"></i> Relatórios</div>
+            </div>
+            <div class="sbp-bottom">
+              <div class="sbp-user">
+                <div class="sbp-avatar">YP</div>
+                <div><div class="sbp-uname">Yuri Pappas</div><div class="sbp-urole">Gerente</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Barra de etapas — módulo Compras</div>
+        <div class="demo" style="background:var(--bg);padding:var(--space-4);border:none">
+          <div class="steps-bar">
+            <div class="step-btn s-done">
+              <div class="step-num"><i data-lucide="check" style="width:9px;height:9px;color:white"></i></div>
+              Carrinho
+            </div>
+            <div class="step-btn s-done">
+              <div class="step-num"><i data-lucide="check" style="width:9px;height:9px;color:white"></i></div>
+              Pré-aprovação
+            </div>
+            <div class="step-btn s-active">
+              <div class="step-num">3</div>
+              Cotação
+            </div>
+            <div class="step-btn">
+              <div class="step-num">4</div>
+              Aprovação
+            </div>
+            <div class="step-btn">
+              <div class="step-num">5</div>
+              Ordens de Compra
+            </div>
+            <div class="step-btn">
+              <div class="step-num">6</div>
+              Recebimento
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12 · ÍCONES -->
+    <section id="icones">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">12</div>
+          <h2>Ícones Lucide</h2>
+          <p>Biblioteca <strong>Lucide</strong> — única biblioteca de ícones permitida. No app: via <code style="font-family:var(--font-mono);font-size:.85em;background:var(--bg-subtle);padding:1px 5px;border-radius:4px">lc('nome', tamanho, cor)</code>. Tamanho padrão: 14–16px em UI, 18–20px em destaque.</p>
+        </div>
+      </div>
+
+      <div class="sub">
+        <div class="sub-title">Ícones mais usados na plataforma</div>
+        <div class="icon-grid" id="iconGrid"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+lucide.createIcons();
+
+/* ── Ícones mais usados ── */
+const ICONS = [
+  'layout-dashboard','shopping-bag','package','check-square','bar-chart-2',
+  'building-2','wrench','trash-2','settings','users',
+  'plus','x','check','arrow-left','arrow-right',
+  'edit-2','save','search','filter','download',
+  'check-circle','x-circle','alert-circle','alert-triangle','info',
+  'clock','calendar','bell','tag','layers',
+  'user','user-check','user-plus','lock','log-out',
+  'shopping-cart','truck','receipt','credit-card','dollar-sign',
+  'trending-up','trending-down','bar-chart','pie-chart','activity',
+  'eye','eye-off','list','grid','table',
+  'message-circle','phone','mail','send','link',
+  'pizza','coffee','star','heart','zap',
+];
+
+const grid = document.getElementById('iconGrid');
+ICONS.forEach(name => {
+  const tile = document.createElement('div');
+  tile.className = 'icon-tile';
+  tile.innerHTML = `<i data-lucide="${name}"></i><div class="icon-nm">${name}</div>`;
+  grid.appendChild(tile);
+});
+lucide.createIcons();
+
+/* ── Active nav on scroll ── */
+const sections = document.querySelectorAll('section[id]');
+const navLinks  = document.querySelectorAll('.sidenav a');
+
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      navLinks.forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id);
+      });
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

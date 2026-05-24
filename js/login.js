@@ -19,6 +19,11 @@ const MODULE_PERMISSIONS = {
   relatorios:    ['gerente', 'supervisor'],
   usuarios:      ['gerente'],
   checklist:     ['gerente', 'supervisor', 'comprador', 'funcionario'],
+  manutencao:    ['gerente', 'supervisor', 'comprador'],
+  inventario:    ['gerente', 'supervisor', 'comprador'],
+  alertas:       ['gerente', 'supervisor', 'comprador'],
+  rh:            ['gerente', 'supervisor'],
+  auditoria:     ['gerente', 'supervisor'],
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -46,7 +51,7 @@ function isLoggedIn() {
 // ══════════════════════════════════════════════════════════════
 
 function showLogin() {
-  document.getElementById('loginScreen').style.display  = 'flex';
+  document.getElementById('loginScreen').classList.add('open');
   document.getElementById('appScreen').style.display    = 'none';
   document.getElementById('loginEmail').value    = '';
   document.getElementById('loginPassword').value = '';
@@ -55,25 +60,45 @@ function showLogin() {
 }
 
 function showApp() {
-  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('loginScreen').classList.remove('open');
   document.getElementById('appScreen').style.display   = 'flex';
+  if (typeof _updateSidebarLogo === 'function') _updateSidebarLogo();
+}
+
+// ══════════════════════════════════════════════════════════════
+// HASH DE SENHA — Web Crypto API (SHA-256)
+// Prefixo "sha256:" distingue senhas hasheadas de legado plaintext.
+// ══════════════════════════════════════════════════════════════
+
+async function _hashPass(pass) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pass));
+  return 'sha256:' + Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function _checkPass(input, stored) {
+  if (!stored) return false;
+  if (stored.startsWith('sha256:')) {
+    return (await _hashPass(input)) === stored;
+  }
+  // Legado plaintext — aceita e agenda migração silenciosa
+  return input === stored;
 }
 
 // ══════════════════════════════════════════════════════════════
 // LOGIN / LOGOUT
 // ══════════════════════════════════════════════════════════════
 
-function doLogin() {
+async function doLogin() {
   const email    = document.getElementById('loginEmail').value.trim().toLowerCase();
   const password = document.getElementById('loginPassword').value;
   const errorEl  = document.getElementById('loginError');
+  const btnLogin = document.querySelector('#loginForm .btn-primary');
 
   if (!email || !password) {
     errorEl.textContent = 'Preencha e-mail e senha.';
     return;
   }
 
-  // Busca usuário no localStorage
   const user = users.find(u => u.email.toLowerCase() === email && u.active !== false);
   if (!user) {
     errorEl.textContent = 'E-mail não encontrado.';
@@ -81,39 +106,47 @@ function doLogin() {
     return;
   }
 
-  // Verifica senha (hash simples ou texto — para prod usar bcrypt)
-  const storedPass = localStorage.getItem(`vtp_pass_${user.id}`) || _defaultPass(user.role);
-  if (password !== storedPass) {
+  if (btnLogin) { btnLogin.disabled = true; btnLogin.textContent = 'Verificando...'; }
+
+  const storedPass = db._get(`vtp_pass_${user.id}`, null) || _defaultPass(user.role);
+  const ok = await _checkPass(password, storedPass);
+
+  if (btnLogin) { btnLogin.disabled = false; btnLogin.textContent = 'Entrar →'; }
+
+  if (!ok) {
     errorEl.textContent = 'Senha incorreta.';
     shakeForm();
     return;
   }
 
-  // Login OK
+  // Migração silenciosa: se senha ainda era plaintext, re-salva com hash
+  if (!storedPass.startsWith('sha256:')) {
+    _hashPass(password).then(h => db._set(`vtp_pass_${user.id}`, h));
+  }
+
   setSession(user);
+  logAudit('login', 'Acesso ao sistema', 'sistema');
   applyPermissions(user);
   showApp();
 
-  // Funcionários vão direto para o checklist
   if (user.role === 'funcionario') {
     goModule('checklist');
   } else {
     renderDashboard();
   }
 
-  // Atualiza nome na sidebar
   const sbName = document.getElementById('sbUserName');
   if (sbName) sbName.textContent = user.name;
   const sbRole = document.getElementById('sbUserRole');
-  if (sbRole) sbRole.textContent = PERMS[user.role]?.label || user.role;
+  if (sbRole) { const p=PERMS[user.role]; sbRole.innerHTML = p ? (lc(p.icon||'user',11,p.color) + ' ' + p.label) : user.role; }
   const sbAvatar = document.getElementById('sbAvatar');
   if (sbAvatar) sbAvatar.textContent = user.name.charAt(0).toUpperCase();
-  // Atualiza badge do dashboard
   const dashBadge = document.getElementById('dashRoleBadge');
   if (dashBadge) dashBadge.textContent = (PERMS[user.role]?.label || user.role) + ' · ' + user.name;
 }
 
 function doLogout() {
+  logAudit('logout', 'Saiu do sistema', 'sistema');
   clearSession();
   showLogin();
 }
@@ -146,6 +179,7 @@ function applyPermissions(user) {
     cfgBottom.style.display = (MODULE_PERMISSIONS.configuracoes||[]).includes(role) ? '' : 'none';
   }
   _updateSections();
+  if (typeof atualizarBadgeAlertas === 'function') atualizarBadgeAlertas();
 }
 
 function _updateSections() {
@@ -175,12 +209,13 @@ function canAccess(mod) {
 // TROCAR SENHA
 // ══════════════════════════════════════════════════════════════
 
-function saveUserPassword(userId, newPassword) {
+async function saveUserPassword(userId, newPassword) {
   if (!newPassword || newPassword.length < 6) {
     toast('Senha deve ter pelo menos 6 caracteres', 'err');
     return false;
   }
-  localStorage.setItem(`vtp_pass_${userId}`, newPassword);
+  const hash = await _hashPass(newPassword);
+  db._set(`vtp_pass_${userId}`, hash);
   return true;
 }
 
@@ -200,7 +235,7 @@ function initAuth() {
       const sbName = document.getElementById('sbUserName');
       if (sbName) sbName.textContent = stillExists.name;
       const sbRole = document.getElementById('sbUserRole');
-      if (sbRole) sbRole.textContent = PERMS[stillExists.role]?.label || stillExists.role;
+      if (sbRole) { const p=PERMS[stillExists.role]; sbRole.innerHTML = p ? (lc(p.icon||'user',11,p.color) + ' ' + p.label) : stillExists.role; }
       const sbAvatar = document.getElementById('sbAvatar');
       if (sbAvatar) sbAvatar.textContent = stillExists.name.charAt(0).toUpperCase();
       const dashBadge = document.getElementById('dashRoleBadge');
@@ -213,12 +248,395 @@ function initAuth() {
 
 // Enter no campo de senha faz login
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.getElementById('loginScreen')?.style.display !== 'none') {
+  if (e.key === 'Enter' && document.getElementById('loginScreen')?.classList.contains('open')) {
     doLogin();
   }
 });
 
 function toggleLoginPass() {
   const inp = document.getElementById('loginPassword');
-  inp.type = inp.type === 'password' ? 'text' : 'password';
+  const btn = document.getElementById('loginPassToggle');
+  const showing = inp.type === 'password';
+  inp.type = showing ? 'text' : 'password';
+  if (btn) btn.innerHTML = showing
+    ? lc('eye-off', 15, 'var(--fg-subtle)')
+    : lc('eye',     15, 'var(--fg-subtle)');
+}
+
+// ══════════════════════════════════════════════════════════════
+// MENU DE PERFIL — popup ancorado no avatar da sidebar
+// ══════════════════════════════════════════════════════════════
+
+function _fecharMenuPerfil() {
+  document.getElementById('menuPerfilPopup')?.remove();
+}
+
+function abrirModalPerfil() {
+  const u = getCurrentUser();
+  if (!u) return;
+  const p         = PERMS[u.role];
+  const isGestao  = ['gerente', 'supervisor'].includes(u.role);
+
+  _fecharMenuPerfil();
+
+  const avatarEl  = document.getElementById('sbAvatar');
+  const rect      = avatarEl?.getBoundingClientRect() || { right: 72, top: window.innerHeight - 200 };
+  const cardW     = 268;
+  const leftRaw   = rect.right + 14;
+  const left      = Math.min(leftRaw, window.innerWidth - cardW - 12);
+  const topRaw    = rect.top - 10;
+  const top       = Math.max(8, Math.min(topRaw, window.innerHeight - 420));
+
+  const fotoHtml  = u.foto
+    ? `<img src="${u.foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`
+    : `<span style="font-size:1.4rem;font-weight:800;color:#fff">${u.name.charAt(0).toUpperCase()}</span>`;
+
+  const badgeHtml = isGestao
+    ? `<div style="margin-top:10px">
+        <span style="display:inline-flex;align-items:center;gap:4px;background:var(--purple-xlight);color:var(--purple);
+          font-size:var(--text-2xs);font-weight:800;text-transform:uppercase;letter-spacing:.7px;
+          padding:3px 9px;border-radius:var(--radius-pill)">
+          ${lc(p.icon || 'user', 10, 'var(--purple)')} ${p.label}
+        </span>
+      </div>`
+    : '';
+
+  function _item(icon, label, onclick, danger = false) {
+    const color = danger ? 'var(--red)' : 'var(--fg)';
+    return `<button onclick="${onclick}"
+      style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 12px;border:none;
+        background:none;border-radius:var(--radius-md);cursor:pointer;font-family:var(--font-sans);
+        font-size:var(--text-sm);color:${color};text-align:left;transition:background var(--dur-fast)"
+      onmouseenter="this.style.background='${danger ? 'var(--red-light)' : 'var(--bg-subtle)'}'"
+      onmouseleave="this.style.background='none'">
+      ${lc(icon, 15, danger ? 'var(--red)' : 'var(--fg-muted)')}
+      ${label}
+    </button>`;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.id    = 'menuPerfilPopup';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:700';
+
+  wrap.innerHTML = `
+    <div style="position:fixed;top:${top}px;left:${left}px;width:${cardW}px;
+      background:var(--surface);border:1.5px solid var(--border);
+      border-radius:var(--radius-xl);box-shadow:0 16px 48px rgba(0,0,0,.16);
+      overflow:hidden;animation:confirmIn .18s var(--ease-out) both">
+
+      <!-- Cabeçalho -->
+      <div style="padding:18px 18px 16px;background:var(--purple-xlight)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:46px;height:46px;border-radius:50%;background:var(--purple);
+              display:flex;align-items:center;justify-content:center;flex-shrink:0;
+              border:2.5px solid rgba(107,33,212,.25)">
+              ${fotoHtml}
+            </div>
+            <div>
+              <div style="font-size:var(--text-base);font-weight:800;color:var(--fg)">Olá, ${u.name.split(' ')[0]}!</div>
+              <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:2px">${u.email}</div>
+              ${badgeHtml}
+            </div>
+          </div>
+          <button onclick="_fecharMenuPerfil()"
+            style="background:none;border:none;cursor:pointer;padding:4px;border-radius:var(--radius-sm);
+              color:var(--fg-subtle);flex-shrink:0;margin-left:6px">
+            ${lc('x', 16, 'currentColor')}
+          </button>
+        </div>
+      </div>
+
+      <!-- Ações -->
+      <div style="padding:6px">
+        ${_item('pencil', 'Editar perfil', 'abrirEditarPerfil()')}
+        ${_item('key-round', 'Alterar senha', 'abrirAlterarSenha()')}
+        ${_item('file-text', 'Termos de uso', 'abrirTermosUso()')}
+        ${_item('shield', 'Política de privacidade', 'abrirPoliticaPrivacidade()')}
+      </div>
+      <div style="border-top:1px solid var(--border);padding:6px">
+        ${_item('log-out', 'Sair da conta', 'doLogout()', true)}
+      </div>
+    </div>`;
+
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click', e => { if (e.target === wrap) _fecharMenuPerfil(); });
+}
+
+// ══════════════════════════════════════════════════════════════
+// EDITAR PERFIL
+// ══════════════════════════════════════════════════════════════
+
+function abrirEditarPerfil() {
+  _fecharMenuPerfil();
+  const u        = getCurrentUser();
+  if (!u) return;
+  const isGestor = u.role === 'gerente';
+
+  const popup = document.createElement('div');
+  popup.id    = 'modalEditarPerfil';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:800;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius-xl);width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="padding:18px 22px 14px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-base);font-weight:800">
+          ${lc('pencil', 16, 'var(--purple)')} Editar perfil
+        </div>
+        <button onclick="document.getElementById('modalEditarPerfil').remove()"
+          style="background:none;border:none;cursor:pointer;padding:4px;color:var(--fg-subtle)">
+          ${lc('x', 18, 'currentColor')}
+        </button>
+      </div>
+
+      <!-- Avatar -->
+      <div style="display:flex;flex-direction:column;align-items:center;padding:20px 22px 0">
+        <div id="perfilAvatarPreview"
+          style="width:72px;height:72px;border-radius:50%;background:var(--purple);color:#fff;
+            font-size:1.8rem;font-weight:800;display:flex;align-items:center;justify-content:center;
+            border:3px solid var(--border);box-shadow:0 4px 16px rgba(107,33,212,.2);
+            margin-bottom:6px;cursor:pointer;position:relative"
+          onclick="document.getElementById('perfilFotoInput').click()" title="Trocar foto">
+          ${u.foto ? `<img src="${u.foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : u.name.charAt(0).toUpperCase()}
+          <div style="position:absolute;bottom:0;right:0;width:22px;height:22px;background:var(--purple);
+            border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center">
+            ${lc('camera', 10, '#fff')}
+          </div>
+        </div>
+        <input type="file" id="perfilFotoInput" accept="image/*" style="display:none" onchange="previewFotoPerfil(this)">
+        <div style="font-size:var(--text-2xs);color:var(--fg-subtle)">Clique para trocar a foto</div>
+      </div>
+
+      <div style="padding:16px 22px;display:flex;flex-direction:column;gap:12px">
+        <div class="field" style="margin:0">
+          <label>Nome completo</label>
+          <input type="text" id="perfilNome" class="inp" value="${u.name}" placeholder="Seu nome">
+        </div>
+        <div class="field" style="margin:0">
+          <label>E-mail</label>
+          <input type="email" id="perfilEmail" class="inp" value="${u.email}"
+            ${!isGestor ? 'readonly style="opacity:.6;cursor:not-allowed"' : ''}>
+          ${!isGestor ? `<div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:3px">Só o gestor pode alterar o e-mail</div>` : ''}
+        </div>
+        <div class="field" style="margin:0">
+          <label>Telefone</label>
+          <input type="tel" id="perfilTelefone" class="inp" value="${u.phone || ''}" placeholder="(00) 00000-0000">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--border)">
+        <button class="btn btn-ghost" onclick="document.getElementById('modalEditarPerfil').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarPerfil()">Salvar</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+function previewFotoPerfil(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('perfilAvatarPreview');
+    if (preview) preview.innerHTML = `
+      <img src="${e.target.result}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">
+      <div style="position:absolute;bottom:0;right:0;width:22px;height:22px;background:var(--purple);
+        border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center">
+        ${lc('camera', 10, '#fff')}
+      </div>`;
+    window._perfilFotoTemp = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function salvarPerfil() {
+  const u     = getCurrentUser();
+  if (!u) return;
+  const nome  = document.getElementById('perfilNome')?.value.trim();
+  const email = document.getElementById('perfilEmail')?.value.trim();
+  const phone = document.getElementById('perfilTelefone')?.value.trim();
+
+  if (!nome) { toast('Informe seu nome', 'err'); return; }
+
+  const uIdx = users.findIndex(x => x.id === u.id);
+  if (uIdx >= 0) {
+    users[uIdx].name  = nome;
+    users[uIdx].phone = phone;
+    if (u.role === 'gerente') users[uIdx].email = email;
+    if (window._perfilFotoTemp) users[uIdx].foto = window._perfilFotoTemp;
+    localStorage.setItem('vtp_users', JSON.stringify(users));
+  }
+
+  const sessaoAtualizada = { ...u, name: nome, phone, foto: window._perfilFotoTemp || u.foto };
+  setSession(sessaoAtualizada);
+  window._perfilFotoTemp = null;
+
+  const sbName = document.getElementById('sbUserName');
+  if (sbName) sbName.textContent = nome;
+  const sbAvatar = document.getElementById('sbAvatar');
+  if (sbAvatar) {
+    if (sessaoAtualizada.foto) {
+      sbAvatar.innerHTML = `<img src="${sessaoAtualizada.foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+    } else {
+      sbAvatar.textContent = nome.charAt(0).toUpperCase();
+    }
+  }
+
+  document.getElementById('modalEditarPerfil')?.remove();
+  toast('Perfil atualizado!');
+}
+
+// ══════════════════════════════════════════════════════════════
+// ALTERAR SENHA
+// ══════════════════════════════════════════════════════════════
+
+function abrirAlterarSenha() {
+  _fecharMenuPerfil();
+  const u = getCurrentUser();
+  if (!u) return;
+
+  const popup = document.createElement('div');
+  popup.id    = 'modalAlterarSenha';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:800;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius-xl);width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="padding:18px 22px 14px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-base);font-weight:800">
+          ${lc('key-round', 16, 'var(--purple)')} Alterar senha
+        </div>
+        <button onclick="document.getElementById('modalAlterarSenha').remove()"
+          style="background:none;border:none;cursor:pointer;padding:4px;color:var(--fg-subtle)">
+          ${lc('x', 18, 'currentColor')}
+        </button>
+      </div>
+      <div style="padding:20px 22px;display:flex;flex-direction:column;gap:12px">
+        <div class="field" style="margin:0">
+          <label>Nova senha</label>
+          <div style="position:relative">
+            <input type="password" id="perfilSenha" class="inp" placeholder="Mínimo 6 caracteres" style="padding-right:38px">
+            <button onclick="togglePassField('perfilSenha')"
+              style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--fg-subtle)">
+              ${lc('eye', 16, 'currentColor')}
+            </button>
+          </div>
+        </div>
+        <div class="field" style="margin:0">
+          <label>Confirmar nova senha</label>
+          <input type="password" id="perfilSenhaConf" class="inp" placeholder="Repita a senha">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--border)">
+        <button class="btn btn-ghost" onclick="document.getElementById('modalAlterarSenha').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="salvarSenha()">Salvar senha</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+async function salvarSenha() {
+  const u     = getCurrentUser();
+  if (!u) return;
+  const senha = document.getElementById('perfilSenha')?.value;
+  const conf  = document.getElementById('perfilSenhaConf')?.value;
+  if (!senha || senha.length < 6) { toast('Mínimo 6 caracteres', 'err'); return; }
+  if (senha !== conf) { toast('As senhas não coincidem', 'err'); return; }
+  await saveUserPassword(u.id, senha);
+  document.getElementById('modalAlterarSenha')?.remove();
+  toast('Senha alterada com sucesso!');
+}
+
+function togglePassField(id) {
+  const inp = document.getElementById(id);
+  if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ══════════════════════════════════════════════════════════════
+// TERMOS DE USO
+// ══════════════════════════════════════════════════════════════
+
+function abrirTermosUso() {
+  _fecharMenuPerfil();
+  _abrirModalTexto('Termos de Uso', 'file-text', `
+    <p><strong>Última atualização:</strong> maio de 2025</p>
+
+    <p>Bem-vindo ao <strong>VTP Compras</strong>, sistema de gestão operacional da <strong>Vai Ter Pizza!</strong> Ao utilizar esta plataforma, você concorda com os termos a seguir.</p>
+
+    <h4>1. Uso autorizado</h4>
+    <p>O acesso é exclusivo a colaboradores e parceiros devidamente cadastrados. É proibido compartilhar credenciais de acesso ou utilizar a plataforma para fins alheios às atividades da empresa.</p>
+
+    <h4>2. Responsabilidades do usuário</h4>
+    <p>Cada usuário é responsável pelas ações realizadas com seu login. Registros de estoque, compras, checklist e demais módulos geram histórico de auditoria vinculado ao usuário autenticado.</p>
+
+    <h4>3. Disponibilidade</h4>
+    <p>A plataforma pode passar por manutenções programadas. A Vai Ter Pizza! não se responsabiliza por indisponibilidades decorrentes de falhas de conectividade, dispositivo ou força maior.</p>
+
+    <h4>4. Propriedade intelectual</h4>
+    <p>Todo o conteúdo, código e dados da plataforma pertencem exclusivamente à Vai Ter Pizza! É vedada a reprodução ou distribuição sem autorização expressa.</p>
+
+    <h4>5. Alterações</h4>
+    <p>Estes termos podem ser atualizados a qualquer momento. A continuidade do uso após publicação de novos termos implica aceitação automática.</p>
+  `);
+}
+
+// ══════════════════════════════════════════════════════════════
+// POLÍTICA DE PRIVACIDADE
+// ══════════════════════════════════════════════════════════════
+
+function abrirPoliticaPrivacidade() {
+  _fecharMenuPerfil();
+  _abrirModalTexto('Política de Privacidade', 'shield', `
+    <p><strong>Última atualização:</strong> maio de 2025</p>
+
+    <p>A <strong>Vai Ter Pizza!</strong> trata seus dados com responsabilidade e em conformidade com a <strong>LGPD (Lei nº 13.709/2018)</strong>.</p>
+
+    <h4>1. Dados coletados</h4>
+    <p>Coletamos nome, e-mail, telefone e foto de perfil para fins de autenticação e identificação dentro do sistema. Registros de atividade (movimentações, compras, checklists) são associados ao usuário para fins de auditoria interna.</p>
+
+    <h4>2. Uso dos dados</h4>
+    <p>Os dados são utilizados exclusivamente para operação da plataforma, controle de acesso e rastreabilidade das ações no sistema. Não compartilhamos informações pessoais com terceiros.</p>
+
+    <h4>3. Armazenamento</h4>
+    <p>Os dados são armazenados localmente no dispositivo (localStorage) e, futuramente, em servidores seguros com criptografia em trânsito e em repouso.</p>
+
+    <h4>4. Seus direitos</h4>
+    <p>Você pode solicitar ao gestor a correção ou exclusão dos seus dados a qualquer momento, conforme previsto na LGPD.</p>
+
+    <h4>5. Contato</h4>
+    <p>Dúvidas sobre privacidade: <strong>contato@vaiter pizza.com.br</strong></p>
+  `);
+}
+
+function _abrirModalTexto(titulo, icon, conteudoHtml) {
+  const popup = document.createElement('div');
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:800;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius-xl);width:100%;max-width:520px;
+      max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="padding:18px 22px 14px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-base);font-weight:800">
+          ${lc(icon, 16, 'var(--purple)')} ${titulo}
+        </div>
+        <button onclick="this.closest('[style*=inset]').remove()"
+          style="background:none;border:none;cursor:pointer;padding:4px;color:var(--fg-subtle)">
+          ${lc('x', 18, 'currentColor')}
+        </button>
+      </div>
+      <div style="padding:20px 22px;overflow-y:auto;font-size:var(--text-sm);color:var(--fg-muted);
+        line-height:1.7;display:flex;flex-direction:column;gap:12px">
+        ${conteudoHtml}
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);flex-shrink:0">
+        <button class="btn btn-primary" style="width:100%;justify-content:center"
+          onclick="this.closest('[style*=inset]').remove()">Entendi</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
 }

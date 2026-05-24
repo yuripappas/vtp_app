@@ -6,26 +6,22 @@
 // ══════════════════════════════════════════════════════════════
 // DADOS
 // ══════════════════════════════════════════════════════════════
-let desperdicios = JSON.parse(localStorage.getItem('vtp_desperdicios') || '[]');
-const saveD = () => localStorage.setItem('vtp_desperdicios', JSON.stringify(desperdicios));
-
-// Tipo de ocasião (renomeado de "Tipo de desperdício")
-const TIPOS_DESPERDICIO = [
-  { id:'preproducao', label:'Erro de pré-produção', color:'var(--red)',        bg:'var(--red-light)',    icon:'chef-hat' },
-  { id:'montagem',    label:'Montagem incorreta',   color:'var(--orange-dark)',bg:'var(--orange-light)', icon:'tag' },
-  { id:'entrega',     label:'Erro de entrega',      color:'var(--yellow)',     bg:'var(--yellow-light)', icon:'truck' },
-  { id:'validade',    label:'Vencimento/validade',  color:'#7C3AED',           bg:'#EDE9FE',             icon:'calendar' },
-  { id:'acidente',    label:'Acidente/queda',       color:'var(--muted)',      bg:'var(--surface2)',      icon:'alert-triangle' },
-  { id:'alimentacao', label:'Alimentação',           color:'var(--green)',      bg:'var(--green-light)',   icon:'user' },
-  { id:'cortesia',    label:'Cortesias',             color:'var(--purple)',     bg:'var(--purple-light)',  icon:'star' },
-  { id:'marketing',   label:'Marketing',             color:'#0EA5E9',           bg:'#E0F2FE',             icon:'trending-up' },
-  { id:'outro',       label:'Outro',                 color:'var(--text2)',      bg:'var(--surface2)',      icon:'package' },
-];
+let desperdicios = db._get('vtp_desperdicios', []);
+const saveD = () => db._set('vtp_desperdicios', desperdicios);
 
 // ══════════════════════════════════════════════════════════════
 // RENDER PRINCIPAL
 // ══════════════════════════════════════════════════════════════
+function _populaDespTipoSelects() {
+  const opts = TIPOS_DESPERDICIO.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+  const fil  = document.getElementById('despTipoFil');
+  const frm  = document.getElementById('fdTipo');
+  if (fil) fil.innerHTML = '<option value="">Todos os tipos</option>' + opts;
+  if (frm) frm.innerHTML = opts;
+}
+
 function renderDesperdicio() {
+  _populaDespTipoSelects();
   const de   = document.getElementById('despDe')?.value  || '';
   const ate  = document.getElementById('despAte')?.value || '';
   const tipo = document.getElementById('despTipoFil')?.value || '';
@@ -87,14 +83,14 @@ function renderDesperdicio() {
         .map(t => `
           <div style="display:flex;align-items:center;gap:10px">
             ${lc(t.icon, 16, t.color)}
-            <div style="font-size:.73rem;width:130px;color:var(--text2)">${t.label}</div>
+            <div style="font-size:var(--text-xs);width:130px;color:var(--text2)">${t.label}</div>
             <div style="flex:1;height:7px;background:var(--border);border-radius:4px;overflow:hidden">
               <div style="height:100%;width:${Math.round(porTipo[t.id].custo/maxCusto*100)}%;background:${t.color};border-radius:4px;transition:width .5s"></div>
             </div>
-            <div style="font-size:.73rem;font-weight:700;width:72px;text-align:right;color:${t.color}">R$ ${fmt(porTipo[t.id].custo)}</div>
+            <div style="font-size:var(--text-xs);font-weight:700;width:72px;text-align:right;color:${t.color}">R$ ${fmt(porTipo[t.id].custo)}</div>
           </div>`).join('')}
       ${Object.values(porTipo).every(v => v.custo === 0)
-        ? `<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:16px;display:flex;align-items:center;justify-content:center;gap:6px">${lc('check-circle',16,'var(--green)')} Nenhum desperdício no período</div>`
+        ? `<div style="color:var(--muted);font-size:var(--text-sm);text-align:center;padding:16px;display:flex;align-items:center;justify-content:center;gap:6px">${lc('check-circle',16,'var(--green)')} Nenhum desperdício no período</div>`
         : ''}
     </div>`;
 
@@ -115,12 +111,12 @@ function renderDesperdicio() {
     ? topItems.map(([,v]) => `
         <div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)">
           <div style="flex:1">
-            <div style="font-size:.82rem;font-weight:600">${v.name}</div>
-            <div style="font-size:.67rem;color:var(--muted)">${fmt(v.qty)} ${v.unit} desperdiçado(s)</div>
+            <div style="font-size:var(--text-sm);font-weight:600">${v.name}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">${fmt(v.qty)} ${v.unit} desperdiçado(s)</div>
           </div>
           <div style="font-family:monospace;font-weight:700;color:var(--red)">R$ ${fmt(v.custo)}</div>
         </div>`).join('')
-    : `<div style="padding:24px;text-align:center;color:var(--muted);font-size:.8rem">${lc('check-circle',16,'var(--green)')} Nenhum desperdício registrado</div>`;
+    : `<div style="padding:24px;text-align:center;color:var(--muted);font-size:var(--text-sm)">${lc('check-circle',16,'var(--green)')} Nenhum desperdício registrado</div>`;
 
   // ── Lista de registros ──
   const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
@@ -147,33 +143,33 @@ function renderDesperdicio() {
               <!-- Conteúdo -->
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-                  <span style="font-size:.84rem;font-weight:700">${nome}</span>
-                  <span class="chip chip-gray" style="font-size:.6rem">
+                  <span style="font-size:var(--text-sm);font-weight:700">${nome}</span>
+                  <span class="chip chip-gray" style="font-size:var(--text-2xs)">
                     ${lc(origemIcon, 10, 'currentColor')} ${origemLabel}
                   </span>
-                  <span class="chip" style="background:${tipo?.bg};color:${tipo?.color};font-size:.6rem;border-color:transparent">
+                  <span class="chip" style="background:${tipo?.bg};color:${tipo?.color};font-size:var(--text-2xs);border-color:transparent">
                     ${tipo?.label || d.tipo}
                   </span>
                 </div>
-                <div style="font-size:.7rem;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap">
+                <div style="font-size:var(--text-xs);color:var(--muted);display:flex;gap:12px;flex-wrap:wrap">
                   <span>${fmtD(d.date)}</span>
                   <span>${fmt(d.qty)} ${unit}</span>
                   <span style="color:var(--red);font-weight:600">R$ ${fmt(custo)}</span>
                   ${d.resp ? `<span>${lc('user',11,'var(--muted)')} ${d.resp}</span>` : ''}
                 </div>
-                ${d.obs ? `<div style="font-size:.72rem;color:var(--text2);margin-top:5px;font-style:italic">"${d.obs}"</div>` : ''}
+                ${d.obs ? `<div style="font-size:var(--text-xs);color:var(--text2);margin-top:5px;font-style:italic">"${d.obs}"</div>` : ''}
               </div>
 
               <!-- Ações -->
               <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
                 <button onclick="imprimirComanda(${d.id})"
-                  style="padding:5px 8px;border-radius:var(--r6);border:1.5px solid var(--border);background:var(--surface);cursor:pointer;display:flex;align-items:center;gap:4px;font-size:.7rem;color:var(--text2)"
+                  style="padding:5px 8px;border-radius:var(--r6);border:1.5px solid var(--border);background:var(--surface);cursor:pointer;display:flex;align-items:center;gap:4px;font-size:var(--text-xs);color:var(--text2)"
                   title="Imprimir comanda">
                   ${lc('printer', 13, 'currentColor')}
                 </button>
                 ${podeExcluir ? `
                   <button onclick="deleteDesperdicios(${d.id})"
-                    style="padding:5px 8px;border-radius:var(--r6);border:1.5px solid var(--red-light);background:var(--red-light);cursor:pointer;display:flex;align-items:center;gap:4px;font-size:.7rem;color:var(--red)"
+                    style="padding:5px 8px;border-radius:var(--r6);border:1.5px solid var(--red-light);background:var(--red-light);cursor:pointer;display:flex;align-items:center;gap:4px;font-size:var(--text-xs);color:var(--red)"
                     title="Excluir registro">
                     ${lc('trash-2', 13, 'var(--red)')}
                   </button>` : ''}
@@ -183,7 +179,7 @@ function renderDesperdicio() {
        </div>`
     : `<div style="padding:40px;text-align:center">
         <div class="empty-icon">${lc('check-circle', 24, 'var(--green)')}</div>
-        <div style="font-size:.82rem;color:var(--muted);margin-top:8px">Nenhum desperdício registrado no período</div>
+        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:8px">Nenhum desperdício registrado no período</div>
        </div>`;
 }
 
@@ -243,6 +239,7 @@ let _editDespId = null;
 function openDespModal() {
   _editDespId = null;
   document.getElementById('despModalTitle').textContent = 'Registrar Desperdício';
+  _populaDespTipoSelects();
 
   // Preenche responsável com usuário logado
   const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
@@ -250,7 +247,8 @@ function openDespModal() {
   document.getElementById('fdQty').value   = '';
   document.getElementById('fdObs').value   = '';
   document.getElementById('fdDate').value  = new Date().toISOString().slice(0,10);
-  document.getElementById('fdTipo').value  = 'preproducao';
+  const firstTipo = TIPOS_DESPERDICIO[0]?.id || '';
+  document.getElementById('fdTipo').value  = firstTipo;
   document.getElementById('delDespBtn').style.display = 'none';
   document.getElementById('fdOrigem').value = 'insumo';
   updateDespOrigemList();
@@ -359,9 +357,9 @@ function _calcPizzaCusto() {
     const sabDesc = sab1 ? (tipo.grande && sab2 ? sab1.name+' + '+sab2.name : sab1.name) : '—';
     el.innerHTML = `
       <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:10px 14px">
-        <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Valor total do produto desperdiçado</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px">Valor total do produto desperdiçado</div>
         <div style="font-size:1.2rem;font-weight:800;color:var(--purple)">R$ ${fmt(total)}</div>
-        <div style="font-size:.68rem;color:var(--muted);margin-top:2px">${tipo.label} · ${sabDesc}</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${tipo.label} · ${sabDesc}</div>
       </div>`;
   }
 }
@@ -432,13 +430,20 @@ function saveDesp() {
   } else {
     if (itemId) {
       const item = items.find(i => i.id === itemId);
-      if (item) { item.qty = Math.max(0, parseFloat((item.qty - qty).toFixed(3))); saveI(); }
+      if (item) {
+        item.qty = Math.max(0, parseFloat((item.qty - qty).toFixed(3)));
+        saveI();
+        if (typeof registrarMovimentacao === 'function') {
+          registrarMovimentacao('saida_perda', itemId, qty, 'Desperdício: ' + tipo + (d.obs ? ' — ' + d.obs : ''), null);
+        }
+      }
     }
     desperdicios.push(d);
     toast('Desperdício registrado!', 'ok');
   }
 
   saveD();
+  try { logAudit('desperdicio_registrado', tipo + ' — ' + nome + ' ' + qty + ' ' + unidade, 'desperdicio'); } catch(e) {}
   closeModal('ovDesp');
   renderDesperdicio();
   renderDashboard();
@@ -450,11 +455,17 @@ function deleteDesperdicios(id) {
     toast('Apenas gerentes e supervisores podem excluir registros', 'err');
     return;
   }
-  if (!confirm('Excluir este registro de desperdício?')) return;
-  desperdicios = desperdicios.filter(d => d.id !== id);
-  saveD();
-  renderDesperdicio();
-  toast('Registro excluído.');
+  vtpConfirm({
+    title: 'Excluir registro',
+    message: 'Esta ação não pode ser desfeita.',
+    confirmLabel: 'Excluir',
+    onConfirm: () => {
+      desperdicios = desperdicios.filter(d => d.id !== id);
+      saveD();
+      renderDesperdicio();
+      toast('Registro excluído.');
+    }
+  });
 }
 
 function clearDespFiltro() {
