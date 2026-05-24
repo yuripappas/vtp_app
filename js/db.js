@@ -30,9 +30,41 @@ const db = (() => {
     }
   }
 
+  // ── Supabase sync ─────────────────────────────────────────────
+  let _sbClient = null;
+  const _debouncers = {};
+
+  function _pushToSupabase(key, value) {
+    if (!_sbClient) return;
+    clearTimeout(_debouncers[key]);
+    _debouncers[key] = setTimeout(async () => {
+      try {
+        await _sbClient.from('kv_store').upsert({ key, value }, { onConflict: 'key' });
+      } catch (e) {
+        console.warn('[db] push error:', e?.message);
+      }
+    }, 400);
+  }
+
+  async function syncFromSupabase(client) {
+    _sbClient = client;
+    try {
+      const { data, error } = await client.from('kv_store').select('key, value');
+      if (error) { console.warn('[db] sync error:', error.message); return false; }
+      for (const row of (data || [])) {
+        try { localStorage.setItem(row.key, JSON.stringify(row.value)); } catch (_) {}
+      }
+      return (data || []).length;
+    } catch (e) {
+      console.warn('[db] sync exception:', e?.message);
+      return false;
+    }
+  }
+
   function _set(key, value) {
     try {
       localStorage.setItem(key, JSON.stringify(value));
+      _pushToSupabase(key, value);
       return true;
     } catch (e) {
       if (e.name === 'QuotaExceededError' || e.code === 22) {
@@ -170,6 +202,6 @@ const db = (() => {
 
   // ── Interface pública ─────────────────────────────────────────
 
-  return { _get, _set, _remove, get, set, healthCheck, usage, exportAll };
+  return { _get, _set, _remove, get, set, healthCheck, usage, exportAll, syncFromSupabase };
 
 })();

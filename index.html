@@ -10,6 +10,14 @@
 </head>
 <body>
 
+<!-- ═══ LOADING OVERLAY ═══ -->
+<div id="vtpLoadOverlay" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px">
+  <div style="width:64px;height:64px;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(107,33,212,.3)">
+    <img src="assets/logo-bg.jpg" alt="VTP" style="width:100%;height:100%;object-fit:cover">
+  </div>
+  <div id="vtpLoadMsg" style="font-size:.8rem;color:var(--muted);font-family:Inter,sans-serif">Conectando...</div>
+</div>
+
 <!-- ═══ TELA DE LOGIN ═══ -->
 <div id="loginScreen" class="login-screen">
   <div id="loginForm" style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r16);padding:36px 40px;width:380px;max-width:95vw;box-shadow:0 32px 80px rgba(107,33,212,.15)">
@@ -1282,41 +1290,11 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/db.js"></script>
-  <script src="js/data.js?v=2"></script>
-<script src="js/utils.js?v=2"></script>
-<script src="js/dashboard.js"></script>
-<script src="js/estoque.js"></script>
-<script src="js/compras.js?v=2"></script>
-<script src="js/relatorios.js?v=2"></script>
-<script src="js/modules.js?v=2"></script>
-<script src="js/previsao.js"></script>
-  <script src="js/cadastros.js?v=2"></script>
-<script src="js/configuracoes.js?v=6"></script>
-<script src="js/desperdicio.js"></script>
-<script src="js/checklist.js?v=2"></script>
-<script src="js/manutencao.js?v=2"></script>
-<script src="js/inventario.js?v=2"></script>
-<script src="js/rh.js"></script>
-<script src="js/alertas.js"></script>
-<script src="js/auditoria.js"></script>
-<script src="js/login.js"></script>
-<script>
-  // Seta datas padrão dos filtros
-  const _hoje = new Date().toISOString().slice(0,10);
-  const _30d  = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
-  ['despDe','relDe'].forEach(id => { const el = document.getElementById(id); if(el && !el.value) el.value = _30d; });
-  ['despAte','relAte'].forEach(id => { const el = document.getElementById(id); if(el && !el.value) el.value = _hoje; });
-  // Seta período padrão da pré-produção (semana atual)
-
-  // Renderiza categorias ao abrir modal de fornecedor
-  document.addEventListener('DOMContentLoaded', () => {
-    if(typeof renderCatTags === 'function') renderCatTags([]);
-  });
-  // Inicializa autenticação
-  initAuth();
-</script>
+<script src="js/db.js?v=3"></script>
+<script src="js/config.js"></script>
+<script src="js/init.js"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">
