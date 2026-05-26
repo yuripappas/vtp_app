@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
+  repository_dispatch:
+    types: [sync-stock]
 
 jobs:
   sync:
@@ -11,19 +13,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Instalar dependencias
         working-directory: scripts
         run: npm install
-
       - name: Instalar Playwright
         working-directory: scripts
         run: npx playwright install chromium --with-deps
-
       - name: Sincronizar estoque
         working-directory: scripts
         env:
