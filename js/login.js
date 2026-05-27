@@ -352,7 +352,7 @@ function abrirModalPerfil() {
       <!-- Ações -->
       <div style="padding:6px">
         ${_item('pencil', 'Editar perfil', 'abrirEditarPerfil()')}
-        ${_item('key-round', 'Alterar senha', 'abrirAlterarSenha()')}
+        ${_item('key', 'Alterar senha', 'abrirAlterarSenha()')}
         ${_item('file-text', 'Termos de uso', 'abrirTermosUso()')}
         ${_item('shield', 'Política de privacidade', 'abrirPoliticaPrivacidade()')}
       </div>
@@ -648,21 +648,23 @@ function _abrirModalTexto(titulo, icon, conteudoHtml) {
 // ══════════════════════════════════════════════════════════════
 
 function abrirEsqueciSenha() {
-  const ov = document.createElement('div'); ov.className = 'overlay open';
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px';
   ov.innerHTML = `
-    <div class="modal" style="width:360px;padding:28px 28px 24px" onclick="event.stopPropagation()">
-      <div style="font-size:var(--text-md);font-weight:700;margin-bottom:6px">Esqueci minha senha</div>
-      <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:18px">Digite seu e-mail cadastrado e enviaremos um link para criar uma nova senha.</div>
+    <div style="background:var(--surface,#fff);border-radius:16px;width:100%;max-width:360px;padding:28px 28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.25)" onclick="event.stopPropagation()">
+      <div style="font-size:1rem;font-weight:700;margin-bottom:6px;color:var(--text,#111)">Esqueci minha senha</div>
+      <div style="font-size:.8rem;color:var(--muted,#888);margin-bottom:18px;line-height:1.5">Digite seu e-mail cadastrado e enviaremos um link para criar uma nova senha.</div>
       <div class="field" style="margin-bottom:14px">
         <label>E-mail</label>
         <input class="inp" type="email" id="resetEmail" placeholder="seu@email.com" autocomplete="email">
       </div>
       <div id="resetMsg" style="font-size:.75rem;min-height:18px;margin-bottom:10px;text-align:center"></div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" style="flex:1" onclick="this.closest('.overlay').remove()">Cancelar</button>
+        <button class="btn btn-ghost" style="flex:1" onclick="document.getElementById('_ovEsqueci').remove()">Cancelar</button>
         <button class="btn btn-primary" style="flex:1" onclick="_enviarResetSenha(this)">Enviar link</button>
       </div>
     </div>`;
+  ov.id = '_ovEsqueci';
   ov.onclick = e => { if (e.target === ov) ov.remove(); };
   document.body.appendChild(ov);
   setTimeout(() => document.getElementById('resetEmail')?.focus(), 60);
@@ -675,10 +677,8 @@ async function _enviarResetSenha(btn) {
 
   const user = users.find(u => u.email.toLowerCase() === email && u.active !== false);
   if (!user) {
-    // Por segurança, não revela se email existe ou não
-    msg.style.color = 'var(--green)';
-    msg.textContent = 'Se o e-mail estiver cadastrado, você receberá o link em breve.';
-    btn.disabled = true;
+    msg.style.color = 'var(--red,#e53e3e)';
+    msg.textContent = 'E-mail não encontrado. Verifique com o gestor.';
     return;
   }
 
