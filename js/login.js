@@ -224,6 +224,7 @@ async function saveUserPassword(userId, newPassword) {
 // ══════════════════════════════════════════════════════════════
 
 function initAuth() {
+  _verificarResetToken().then(isReset => { if (isReset) return;
   if (isLoggedIn()) {
     const user = getCurrentUser();
     // Verifica se o usuário ainda existe e está ativo
@@ -244,6 +245,7 @@ function initAuth() {
     }
   }
   showLogin();
+  }); // end _verificarResetToken
 }
 
 // Enter no campo de senha faz login
@@ -639,4 +641,145 @@ function _abrirModalTexto(titulo, icon, conteudoHtml) {
 
   document.body.appendChild(popup);
   popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+// ══════════════════════════════════════════════════════════════
+// ESQUECI MINHA SENHA
+// ══════════════════════════════════════════════════════════════
+
+function abrirEsqueciSenha() {
+  const ov = document.createElement('div'); ov.className = 'overlay open';
+  ov.innerHTML = `
+    <div class="modal" style="width:360px;padding:28px 28px 24px" onclick="event.stopPropagation()">
+      <div style="font-size:var(--text-md);font-weight:700;margin-bottom:6px">Esqueci minha senha</div>
+      <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:18px">Digite seu e-mail cadastrado e enviaremos um link para criar uma nova senha.</div>
+      <div class="field" style="margin-bottom:14px">
+        <label>E-mail</label>
+        <input class="inp" type="email" id="resetEmail" placeholder="seu@email.com" autocomplete="email">
+      </div>
+      <div id="resetMsg" style="font-size:.75rem;min-height:18px;margin-bottom:10px;text-align:center"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" style="flex:1" onclick="this.closest('.overlay').remove()">Cancelar</button>
+        <button class="btn btn-primary" style="flex:1" onclick="_enviarResetSenha(this)">Enviar link</button>
+      </div>
+    </div>`;
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+  setTimeout(() => document.getElementById('resetEmail')?.focus(), 60);
+}
+
+async function _enviarResetSenha(btn) {
+  const email = document.getElementById('resetEmail')?.value.trim().toLowerCase();
+  const msg   = document.getElementById('resetMsg');
+  if (!email) { msg.style.color = 'var(--red)'; msg.textContent = 'Digite seu e-mail.'; return; }
+
+  const user = users.find(u => u.email.toLowerCase() === email && u.active !== false);
+  if (!user) {
+    // Por segurança, não revela se email existe ou não
+    msg.style.color = 'var(--green)';
+    msg.textContent = 'Se o e-mail estiver cadastrado, você receberá o link em breve.';
+    btn.disabled = true;
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  const token   = crypto.randomUUID();
+  const expires = new Date(Date.now() + 3600000).toISOString(); // 1 hora
+  const tokens  = db._get('vtp_reset_tokens', {});
+  tokens[token] = { userId: user.id, email: user.email, expires };
+  db._set('vtp_reset_tokens', tokens);
+
+  const resetLink = `https://app.vaiterpizza.com?reset=${token}`;
+
+  try {
+    await fetch('https://yuridisrupy.app.n8n.cloud/webhook/vtp-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'reset', to: user.email, name: user.name, resetLink })
+    });
+  } catch(e) {}
+
+  msg.style.color = 'var(--green)';
+  msg.textContent = 'Link enviado! Verifique seu e-mail.';
+}
+
+async function _verificarResetToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('reset');
+  if (!token) return false;
+
+  // Remove o token da URL sem recarregar
+  window.history.replaceState({}, '', window.location.pathname);
+
+  await new Promise(r => setTimeout(r, 800)); // aguarda sync do Supabase
+  const tokens = db._get('vtp_reset_tokens', {});
+  const data   = tokens[token];
+
+  if (!data || new Date(data.expires) < new Date()) {
+    _mostrarErroReset('Link inválido ou expirado. Solicite um novo.');
+    return true;
+  }
+
+  _mostrarTelaReset(token, data);
+  return true;
+}
+
+function _mostrarErroReset(msg) {
+  const ls = document.getElementById('loginScreen');
+  if (ls) ls.classList.add('open');
+  document.getElementById('appScreen').style.display = 'none';
+  const err = document.getElementById('loginError');
+  if (err) err.textContent = msg;
+}
+
+function _mostrarTelaReset(token, data) {
+  const ls = document.getElementById('loginScreen');
+  if (ls) ls.classList.add('open');
+  document.getElementById('appScreen').style.display = 'none';
+
+  const form = document.getElementById('loginForm');
+  if (!form) return;
+  form.innerHTML = `
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="width:72px;height:72px;border-radius:var(--r12);overflow:hidden;margin:0 auto 12px;box-shadow:0 4px 16px rgba(107,33,212,.3)">
+        <img src="assets/logo-bg.jpg" alt="VTP360" style="width:100%;height:100%;object-fit:cover">
+      </div>
+      <div style="font-size:1.1rem;font-weight:800;color:var(--text)">Nova senha</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:3px">Defina sua nova senha de acesso</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="field">
+        <label>Nova senha</label>
+        <input class="inp" type="password" id="novaSenha" placeholder="mínimo 6 caracteres">
+      </div>
+      <div class="field">
+        <label>Confirmar nova senha</label>
+        <input class="inp" type="password" id="novaSenhaConf" placeholder="repita a senha">
+      </div>
+      <div id="resetSenhaErr" style="font-size:.75rem;color:var(--red);min-height:18px;text-align:center"></div>
+      <button class="btn btn-primary" onclick="_salvarNovaSenha('${token}',${data.userId})" style="width:100%;justify-content:center;padding:11px">Salvar nova senha</button>
+    </div>`;
+}
+
+async function _salvarNovaSenha(token, userId) {
+  const nova  = document.getElementById('novaSenha')?.value;
+  const conf  = document.getElementById('novaSenhaConf')?.value;
+  const err   = document.getElementById('resetSenhaErr');
+
+  if (!nova || nova.length < 6) { err.textContent = 'Senha deve ter pelo menos 6 caracteres.'; return; }
+  if (nova !== conf)            { err.textContent = 'As senhas não coincidem.'; return; }
+
+  await saveUserPassword(userId, nova);
+
+  // Remove token usado
+  const tokens = db._get('vtp_reset_tokens', {});
+  delete tokens[token];
+  db._set('vtp_reset_tokens', tokens);
+
+  toast('Senha atualizada! Faça login com a nova senha.', 'ok');
+
+  // Restaura tela de login
+  setTimeout(() => location.reload(), 1500);
 }
