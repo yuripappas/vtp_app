@@ -39,6 +39,100 @@ function toggleSidebar() {
     : `calc(var(--sb-min) - 12px)`;
 }
 
+// ══════════════════════════════════════════════════════════════
+// MOBILE NAV — drawer lateral + submenu drill-down
+// ══════════════════════════════════════════════════════════════
+
+function isMobile() { return window.innerWidth <= 768; }
+
+let _mobileMenuOpen      = false;
+let _mobileSubmenuActive = false;
+
+const _MB_HAMBURGER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`;
+const _MB_CLOSE     = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+
+function toggleMobileMenu() {
+  _mobileMenuOpen = !_mobileMenuOpen;
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('mobileBackdrop');
+  const btn      = document.getElementById('mobileMenuBtn');
+
+  if (_mobileMenuOpen) {
+    sidebar.classList.add('mobile-open');
+    backdrop.classList.add('visible');
+    btn.innerHTML = _MB_CLOSE;
+  } else {
+    sidebar.classList.remove('mobile-open');
+    backdrop.classList.remove('visible');
+    btn.innerHTML = _MB_HAMBURGER;
+    if (_mobileSubmenuActive) _closeMobileSubmenu();
+  }
+}
+
+// Submenu items de Configurações
+const _CFG_SUBMENU_ITEMS = [
+  { id: 'empresa',      icon: 'building-2', label: 'Empresa'        },
+  { id: 'usuarios',     icon: 'shield',     label: 'Usuários'       },
+  { id: 'insumos',      icon: 'package',    label: 'Insumos'        },
+  { id: 'fornecedores', icon: 'truck',      label: 'Fornecedores'   },
+  { id: 'preparo',      icon: 'chef-hat',   label: 'Preparados'     },
+  { id: 'produtos',     icon: 'pizza',      label: 'Produtos'       },
+  { id: 'servicos',     icon: 'wrench',     label: 'Serviços'       },
+  { id: 'modulos',      icon: 'settings',   label: 'Personalização' },
+  { id: 'integracoes',  icon: 'zap',        label: 'Integrações'    },
+];
+
+function _openMobileSubmenu(items, parentLabel) {
+  const sidebar = document.getElementById('sidebar');
+  const nav     = sidebar.querySelector('.sb-nav');
+  const bottom  = sidebar.querySelector('.sb-bottom');
+  _mobileSubmenuActive = true;
+
+  nav._origHTML    = nav.innerHTML;
+  bottom._origDisp = bottom.style.display;
+  bottom.style.display = 'none';
+
+  nav.innerHTML = `
+    <button class="sb-mobile-back" onclick="_closeMobileSubmenu()">
+      ${lc('arrow-left', 16, 'currentColor')}
+      ${parentLabel}
+    </button>
+    <div class="sb-mobile-submenu-label">${parentLabel}</div>
+    ${items.map(item => `
+      <button class="sb-item" style="justify-content:flex-start;gap:10px" onclick="${item.action}">
+        <span class="sb-icon">${lc(item.icon, 18, 'currentColor')}</span>
+        <span class="sb-label" style="opacity:1;width:auto">${item.label}</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+function _closeMobileSubmenu() {
+  const sidebar = document.getElementById('sidebar');
+  const nav    = sidebar.querySelector('.sb-nav');
+  const bottom = sidebar.querySelector('.sb-bottom');
+  if (nav._origHTML !== undefined) {
+    nav.innerHTML    = nav._origHTML;
+    nav._origHTML    = undefined;
+    bottom.style.display = bottom._origDisp || '';
+  }
+  _mobileSubmenuActive = false;
+}
+
+function _handleNavConfiguracoes() {
+  if (isMobile()) {
+    _openMobileSubmenu(
+      _CFG_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `_cfgSection='${item.id}'; goModule('configuracoes');`
+      })),
+      'Configurações'
+    );
+  } else {
+    goModule('configuracoes');
+  }
+}
+
 const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
   estoque:        { title: 'Estoque',               sub: 'Contagem e movimentações' },
@@ -76,7 +170,11 @@ function goModule(mod) {
   if (info) {
     document.getElementById('topbarTitle').textContent = info.title;
     document.getElementById('topbarSub').textContent   = info.sub;
+    // Mobile: atualiza título do topbar e fecha drawer
+    const mobileTitle = document.getElementById('mobileModuleTitle');
+    if (mobileTitle) mobileTitle.textContent = info.title;
   }
+  if (_mobileMenuOpen) toggleMobileMenu();
   if (mod === 'dashboard')       renderDashboard();
   else if (mod === 'estoque')    renderEstoque();
   else if (mod === 'preproducao') renderPreproducao();

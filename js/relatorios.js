@@ -276,8 +276,10 @@ function _relMapaComprasSemana() {
         <button onclick="window._relMapaLun=null;renderRelatorios()" class="btn btn-ghost" style="padding:4px 10px;font-size:var(--text-xs);color:var(--purple)">Semana atual</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--border)">
-      ${days.map((iso, i) => dayCell(iso, i)).join('')}
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--border);min-width:560px">
+        ${days.map((iso, i) => dayCell(iso, i)).join('')}
+      </div>
     </div>
   </div>`;
 }

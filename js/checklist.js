@@ -546,11 +546,11 @@ function _renderCkEquipe() {
               <div style="width:36px;height:36px;border-radius:50%;background:var(--purple);color:#fff;font-size:var(--text-md);font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 ${u.name.charAt(0).toUpperCase()}
               </div>
-              <div style="flex:1">
-                <div style="font-size:var(--text-md);font-weight:700">${u.name}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:var(--text-md);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.name}</div>
                 <div style="font-size:var(--text-xs);color:var(--muted)">${u.funcao||u.role} · ${uSessoes.length} checklist(s) hoje</div>
               </div>
-              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0">
                 ${uConc > 0 ? `<span style="background:var(--green-light);color:var(--green);border:1px solid var(--green);border-radius:20px;padding:2px 8px;font-size:var(--text-xs);font-weight:700">${uConc} concluído(s)</span>` : ''}
                 ${uPend > 0 ? `<span style="background:var(--red-light);color:var(--red);border:1px solid var(--red);border-radius:20px;padding:2px 8px;font-size:var(--text-xs);font-weight:700">${uPend} pendente(s)</span>` : ''}
                 <button onclick="abrirModalNovaInstanciaUser(${u.id})"
@@ -572,11 +572,11 @@ function _renderCkEquipe() {
               return `
               <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
                 <div style="width:6px;height:6px;border-radius:50%;background:${stColors[s.status]||'var(--muted)'};flex-shrink:0"></div>
-                <div style="flex:1">
+                <div style="flex:1;min-width:120px">
                   <div style="font-size:var(--text-sm);font-weight:600">${tmpl.nome}</div>
                   <div style="font-size:var(--text-2xs);color:var(--muted)">${feitos}/${total} itens · ${s.turno||''}</div>
                 </div>
-                <div style="display:flex;align-items:center;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
                   <div style="width:60px;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
                     <div style="height:100%;width:${pct}%;background:${stColors[s.status]||'var(--muted)'};border-radius:3px"></div>
                   </div>

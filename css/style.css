@@ -1501,3 +1501,34 @@ svg { display: block; }
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ── Estoque: padding e layout ── */
+@media (max-width: 768px) {
+  #estConteudo { padding: 16px !important; }
+  /* Coluna principal + painel lateral → stack vertical */
+  #estPanelContagem > div { flex-direction: column !important; }
+  #estPanelContagem > div > div:last-child {
+    width: 100% !important;
+    position: static !important;
+  }
+  /* Ocultar colunas secundárias: Digital(3), Divergência(5), Mínimo(6), Ideal(7), Nível(8) */
+  #estTable th:nth-child(3), #estTable td:nth-child(3),
+  #estTable th:nth-child(5), #estTable td:nth-child(5),
+  #estTable th:nth-child(6), #estTable td:nth-child(6),
+  #estTable th:nth-child(7), #estTable td:nth-child(7),
+  #estTable th:nth-child(8), #estTable td:nth-child(8) { display: none !important; }
+}
+
+/* ── Compras: tabela lista, filtros histórico ── */
+@media (max-width: 768px) {
+  /* Lista de compras: ocultar Digital(3), Mínimo(4), Ideal(5), Nível(6) */
+  #e1Table th:nth-child(3), #e1Table td:nth-child(3),
+  #e1Table th:nth-child(4), #e1Table td:nth-child(4),
+  #e1Table th:nth-child(5), #e1Table td:nth-child(5),
+  #e1Table th:nth-child(6), #e1Table td:nth-child(6) { display: none !important; }
+  /* Filtros de histórico: inputs de data full-width */
+  #histDe, #histAte, #histFiltro {
+    max-width: none !important;
+    width: 100% !important;
+  }
+}

@@ -27,7 +27,7 @@ function _audShell() {
   const modulosUnicos  = _audModulosUnicos();
 
   return `
-<div style="padding:24px 28px;max-width:1280px;margin:0 auto">
+<div style="padding:${isMobile()?'16px':'24px 28px'};max-width:1280px;margin:0 auto">
 
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px">
     <div>

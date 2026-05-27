@@ -15,7 +15,7 @@ function renderDashboard() {
 
   const el = document.getElementById('page-dashboard');
   el.innerHTML = `
-    <div style="padding:14px 24px 12px;border-bottom:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div style="padding:14px ${isMobile()?'16px':'24px'} 12px;border-bottom:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <div>
         <div style="font-size:1rem;font-weight:700;color:var(--text)">
           ${h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'}, ${nome}
@@ -36,7 +36,7 @@ function renderDashboard() {
         </button>
       </div>
     </div>
-    <div id="dashContent" style="overflow-y:auto;padding:20px 24px 40px;height:calc(100vh - 110px)"></div>
+    <div id="dashContent" style="overflow-y:auto;overflow-x:hidden;padding:${isMobile()?'16px 16px 32px':'20px 24px 40px'};height:calc(100vh - 110px)"></div>
   `;
 
   _updateSidebarBadges();

@@ -62,6 +62,9 @@
           <img id="sbLogoImg" src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:34px;height:34px;object-fit:cover;border-radius:var(--r8);display:block">
         </div>
         <span class="sb-logo-text" id="sbLogoText">Vai Ter Pizza!</span>
+        <button class="sb-drawer-close" onclick="toggleMobileMenu()" aria-label="Fechar menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
       <nav class="sb-nav">
         <div class="sb-section">Principal</div>
@@ -127,7 +130,7 @@
           <span class="sb-label">Alertas</span>
           <span id="badge-alertas" class="sb-badge-abs" style="display:none"></span>
         </button>
-        <button class="sb-item" id="nav-configuracoes-bottom" onclick="goModule('configuracoes')">
+        <button class="sb-item" id="nav-configuracoes-bottom" onclick="_handleNavConfiguracoes()">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
           <span class="sb-label">Configurações</span>
         </button>
@@ -143,6 +146,16 @@
       </div>
     </aside>
   </div>
+
+  <!-- MOBILE TOPBAR — header fixo com hambúrguer + nome do módulo ativo -->
+  <div id="mobileTopbar" class="mobile-topbar">
+    <button id="mobileMenuBtn" class="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Abrir menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span id="mobileModuleTitle" class="mobile-module-title">Dashboard</span>
+  </div>
+  <!-- Backdrop do drawer mobile -->
+  <div id="mobileBackdrop" class="mobile-backdrop"></div>
 
   <!-- Toggle sidebar — fora do sidebar-wrap para não herdar contexto de empilhamento do sticky -->
   <div id="sbToggle" onclick="toggleSidebar()"
@@ -207,7 +220,7 @@
                   <div class="filter-bar" id="estFiltrosBtns"></div>
                 </div>
                 <div class="tbl-wrap">
-                  <table>
+                  <table id="estTable">
                     <thead><tr>
                       <th>Insumo</th>
                       <th class="c">Un.</th>

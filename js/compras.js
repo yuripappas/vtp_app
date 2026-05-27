@@ -496,7 +496,7 @@ function _e1RenderEstrutura() {
 
         <!-- Tabela — atualizada independentemente -->
         <div class="tbl-wrap">
-          <table>
+          <table id="e1Table">
             <thead><tr>
               <th>Insumo</th>
               <th class="c" style="width:48px">Un.</th>
@@ -594,9 +594,17 @@ function _e1RenderFiltrosBtns() {
 }
 
 // Renderiza APENAS a tabela de insumos — sem tocar nos inputs de filtro
+function _e1ToggleCat(cat) {
+  if (!window._e1CatColapso) window._e1CatColapso = {};
+  window._e1CatColapso[cat] = !window._e1CatColapso[cat];
+  _e1RenderTabela();
+}
+
 function _e1RenderTabela() {
   const tbody = document.getElementById('e1TableBody');
   if (!tbody) return;
+
+  if (!window._e1CatColapso) window._e1CatColapso = {};
 
   const l       = _listaAtual;
   const carrinho= l.itens;
@@ -638,10 +646,14 @@ function _e1RenderTabela() {
   };
 
   tbody.innerHTML = Object.entries(byCat).map(([cat, catItems]) => {
-    const catRow = `<tr>
+    const collapsed = !!window._e1CatColapso[cat];
+    const catKey    = encodeURIComponent(cat);
+    const catRow = `<tr style="cursor:pointer" onclick="_e1ToggleCat(decodeURIComponent('${catKey}'))">
       <td colspan="8" style="padding:6px 14px 4px;background:var(--surface2);border-top:2px solid var(--border)">
         <span style="font-size:var(--text-2xs);font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--purple);display:inline-flex;align-items:center;gap:5px">
           ${lc(_CAT_ICONS[cat]||'package',10,'var(--purple)')} ${cat}
+          ${lc(collapsed?'chevron-right':'chevron-down',9,'var(--muted)')}
+          <span style="font-size:var(--text-2xs);color:var(--muted);font-weight:500;letter-spacing:0">${catItems.length}</span>
         </span>
       </td>
     </tr>`;
@@ -701,7 +713,7 @@ function _e1RenderTabela() {
         </div>
       `;
 
-      return `<tr id="e1row_${i.id}" style="background:${bg};border-bottom:1px solid var(--border)">
+      return `<tr id="e1row_${i.id}" style="background:${bg};border-bottom:1px solid var(--border);${collapsed?'display:none':''}">
         <td style="padding:9px 14px">
           <div style="font-size:var(--text-sm);font-weight:600">${i.name}</div>
           ${i.code?`<div style="font-size:var(--text-2xs);color:var(--muted);font-family:monospace">#${i.code}</div>`:''}
@@ -1448,7 +1460,7 @@ function abrirEditarCotacao(itemId, idx) {
           <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">
             ${isPresencialFixo ? 'Orçamento máximo (opcional)' : 'Preço'}
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="display:grid;grid-template-columns:${isMobile()?'1fr':'1fr 1fr'};gap:10px">
             <div class="field" style="margin:0">
               <label style="display:flex;align-items:baseline;justify-content:space-between;gap:6px">
                 <span>Valor por ${i.unidade} (R$)${isPresencialFixo ? '' : ' *'}</span>
@@ -1483,7 +1495,7 @@ function abrirEditarCotacao(itemId, idx) {
         <!-- Prazo comercial -->
         <div style="padding:14px;background:var(--surface2);border-radius:var(--r10);border:1.5px solid var(--border)">
           <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Prazo comercial</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="display:grid;grid-template-columns:${isMobile()?'1fr':'1fr 1fr'};gap:10px">
             <div class="field" style="margin:0">
               <label>Último dia de pedido</label>
               <input type="date" id="cqDiasPedido" class="inp" value="${cot.diasPedido||''}">
@@ -1513,7 +1525,7 @@ function abrirEditarCotacao(itemId, idx) {
               <input type="number" id="cqBoletoDias" class="inp" value="${cot.boletoDias||''}" min="1" max="120" placeholder="Ex: 30">
             </div>
           </div>
-          <div id="cqCamposParcelado" style="display:${cot.formaPagamento==='parcelado'?'grid':'none'};grid-template-columns:1fr 1fr;gap:10px">
+          <div id="cqCamposParcelado" style="display:${cot.formaPagamento==='parcelado'?'grid':'none'};grid-template-columns:${isMobile()?'1fr':'1fr 1fr'};gap:10px">
             <div class="field" style="margin:0">
               <label>Quantas vezes</label>
               <input type="number" id="cqParceladoVezes" class="inp" value="${cot.parceladoVezes||''}" min="2" max="52" placeholder="Ex: 3">
@@ -3416,7 +3428,7 @@ function _rowAprovFinal(i) {
 
   return `<div style="border:1.5px solid ${borderColor};border-radius:var(--r8);background:${bgColor};overflow:hidden">
     <!-- Linha principal compacta -->
-    <div style="display:flex;align-items:center;gap:0;min-height:44px">
+    <div style="display:flex;align-items:center;gap:0;min-height:44px;${isMobile()?'overflow-x:auto;':''}">
       <!-- Barra lateral de status -->
       <div style="width:4px;align-self:stretch;background:${borderColor};flex-shrink:0"></div>
 
@@ -4828,17 +4840,17 @@ function _renderHistorico() {
         <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">Buscar</div>
         <input type="text" id="histBusca" class="inp" placeholder="Código da lista..." value="${busca}" oninput="_renderHistorico()">
       </div>
-      <div>
+      <div style="flex:1;min-width:100px">
         <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">De</div>
-        <input type="date" id="histDe" class="inp" value="${de}" onchange="_renderHistorico()" style="max-width:150px">
+        <input type="date" id="histDe" class="inp" value="${de}" onchange="_renderHistorico()" style="width:100%">
       </div>
-      <div>
+      <div style="flex:1;min-width:100px">
         <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">Até</div>
-        <input type="date" id="histAte" class="inp" value="${ate}" onchange="_renderHistorico()" style="max-width:150px">
+        <input type="date" id="histAte" class="inp" value="${ate}" onchange="_renderHistorico()" style="width:100%">
       </div>
-      <div>
+      <div style="flex:1;min-width:120px">
         <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">Status</div>
-        <select id="histFiltro" class="inp" style="max-width:170px" onchange="_renderHistorico()">
+        <select id="histFiltro" class="inp" style="width:100%" onchange="_renderHistorico()">
           <option value="">Todos</option>
           ${Object.entries(STATUS_ETAPA).map(([k,v])=>`<option value="${k}" ${filtro===k?'selected':''}>${v.label}</option>`).join('')}
         </select>
