@@ -178,7 +178,7 @@ function _renderDashRotina() {
         ${lc('check-circle',14,'var(--green)')}
         <span style="font-size:var(--text-sm);font-weight:700;color:var(--green)">Tudo em dia — nenhuma ação necessária</span>
       </div>`
-    : `<div class="dash-actions" style="display:grid;grid-template-columns:repeat(${ACOES.length},1fr);gap:10px;margin-bottom:16px">
+    : `<div class="dash-actions" style="display:grid;grid-template-columns:repeat(${isMobile()?Math.min(ACOES.length,2):ACOES.length},1fr);gap:10px;margin-bottom:16px">
         ${ACOES.map(a => `
           <div onclick="goModule('${a.mod}')" class="action-card" style="background:${a.bg}">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
@@ -433,7 +433,7 @@ function _renderDashRotina() {
 
   el.innerHTML = `
     ${acoesHtml}
-    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:14px;align-items:start">
+    <div style="display:grid;grid-template-columns:${isMobile()?'1fr':'1.2fr 1fr'};gap:14px;align-items:start">
       <div style="display:flex;flex-direction:column;gap:14px">
         ${cicloHtml}
         ${alertasHtml}
@@ -570,7 +570,7 @@ function _renderDashPerf() {
 
   // KPIs
   const kpiHtml = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:repeat(${isMobile()?2:4},1fr);gap:10px;margin-bottom:14px">
       <div style="background:var(--brand-purple);border-radius:var(--r14);padding:16px 18px;position:relative;overflow:hidden">
         <div style="position:absolute;right:-10px;top:-10px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.08)"></div>
         <div style="margin-bottom:6px">${lc('dollar-sign',14,'rgba(255,255,255,.7)')}</div>
@@ -602,7 +602,7 @@ function _renderDashPerf() {
         ${lc('git-merge',13,'var(--purple)')}
         <span style="font-size:var(--text-sm);font-weight:700">Pipeline de pedidos</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--border)">
+      <div style="display:grid;grid-template-columns:repeat(${isMobile()?3:5},1fr);border-top:1px solid var(--border)">
         ${Object.entries(STATUS_INFO).map(([k,info],i,arr) => `
           <div style="text-align:center;padding:16px 8px;background:${info.bg};border-right:${i<arr.length-1?'1px solid var(--border)':'none'}">
             ${lc(info.ic, 18, info.c)}
@@ -804,7 +804,7 @@ function _renderDashPerf() {
     ${statusBarHtml}
     ${kpiHtml}
     ${pipelineHtml}
-    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:14px">
+    <div style="display:grid;grid-template-columns:${isMobile()?'1fr':'1.5fr 1fr'};gap:14px">
       ${tabelaHoraHtml}
       ${lateralHtml}
     </div>

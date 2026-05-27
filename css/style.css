@@ -1328,3 +1328,176 @@ svg { display: block; }
   /* Formulários 3 e 4 colunas colapsam */
   .f3, .f4 { grid-template-columns: 1fr; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE NAV — topbar fixo + drawer lateral
+   ══════════════════════════════════════════════════════════════ */
+
+/* Topbar mobile — oculto no desktop */
+.mobile-topbar {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 56px;
+  background: var(--bg-elevated);
+  border-bottom: 1.5px solid var(--border);
+  align-items: center;
+  padding: 0 16px 0 4px;
+  gap: 4px;
+  z-index: 900;
+}
+
+.mobile-menu-btn {
+  width: 48px; height: 48px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  flex-shrink: 0;
+  transition: background var(--dur-fast);
+}
+.mobile-menu-btn:hover { background: var(--accent-subtle); }
+
+.mobile-module-title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Botão X dentro do drawer — só visível no mobile */
+.sb-drawer-close {
+  display: none;
+  margin-left: auto;
+  width: 32px; height: 32px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  align-items: center; justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--nav-item-fg);
+  flex-shrink: 0;
+  transition: background var(--dur-fast);
+}
+.sb-drawer-close:hover { background: var(--nav-item-bg-hover); }
+
+/* Backdrop escurecido atrás do drawer */
+.mobile-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(2px);
+  z-index: 940;
+}
+.mobile-backdrop.visible { display: block; }
+
+/* Botão ← Voltar dentro do drawer (submenu) */
+.sb-mobile-back {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: none;
+  background: none;
+  color: var(--nav-item-fg);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  border-bottom: 1px solid var(--nav-border);
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-sans);
+  transition: background var(--dur-fast);
+  flex-shrink: 0;
+}
+.sb-mobile-back:hover { background: var(--nav-item-bg-hover); color: var(--nav-item-fg-active); }
+
+.sb-mobile-submenu-label {
+  font-size: .58rem;
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--fg-subtle);
+  padding: 12px 16px 4px;
+}
+
+@media (max-width: 768px) {
+  /* Mostrar topbar mobile */
+  .mobile-topbar { display: flex; }
+
+  /* Esconder botão toggle do desktop */
+  #sbToggle { display: none !important; }
+
+  /* sidebar-wrap: sem espaço no layout — sidebar vira fixed overlay */
+  .sidebar-wrap {
+    width: 0;
+    height: 0;
+    position: static;
+    overflow: visible;
+    flex-shrink: 0;
+  }
+
+  /* Sidebar: drawer fixo da esquerda */
+  #sidebar {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    width: 280px !important;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform .28s cubic-bezier(.4,0,.2,1);
+    z-index: 950;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-shadow: none;
+    border-right: none;
+  }
+  #sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: 8px 0 32px rgba(0,0,0,.35);
+  }
+
+  /* Sidebar sempre expandido dentro do drawer (labels visíveis) */
+  #sidebar .sb-logo-text  { opacity: 1; }
+  #sidebar .sb-label      { opacity: 1; width: auto; }
+  #sidebar .sb-section    { opacity: 1; height: 22px; }
+  #sidebar .sb-badge      { opacity: 1; width: auto; padding: 1px 5px; margin-left: auto; }
+  #sidebar .sb-item       { justify-content: flex-start; gap: 10px; }
+  #sidebar .sb-user       { justify-content: flex-start; gap: 10px; }
+  #sidebar .sb-user > svg { opacity: .4; width: 13px; }
+  #sidebar .sb-user-info  { opacity: 1; width: auto; }
+
+  /* Main: padding para não esconder atrás do topbar */
+  .main { padding-top: 56px; }
+
+  /* Topbar desktop: oculto no mobile (substituído pelo mobile-topbar) */
+  .topbar { display: none; }
+
+  /* Botão X dentro do drawer visível no mobile */
+  .sb-drawer-close { display: flex; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — fixes por módulo
+   ══════════════════════════════════════════════════════════════ */
+
+/* Modal: nunca ultrapassar a tela */
+@media (max-width: 540px) {
+  .modal {
+    width: calc(100vw - 32px) !important;
+    max-width: calc(100vw - 32px) !important;
+  }
+}
+
+/* Relatórios: grids inline de 2 ou 3 colunas → 1 coluna no mobile */
+@media (max-width: 640px) {
+  #page-relatorios [style*="grid-template-columns:1fr 1fr"],
+  #page-relatorios [style*="grid-template-columns:repeat(3,1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -442,10 +442,10 @@ function _e1RenderEstrutura() {
   const f     = window._e1Filtro;
 
   document.getElementById('comprasContent').innerHTML = `
-    <div style="display:flex;gap:20px;align-items:flex-start">
+    <div style="display:flex;gap:20px;align-items:flex-start;${isMobile()?'flex-direction:column':''}">
 
       <!-- Coluna principal -->
-      <div style="flex:1;min-width:0">
+      <div style="flex:1;min-width:0;width:100%">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px">
           <div>
             <h3 style="font-size:var(--text-base);font-weight:800;margin-bottom:3px">
@@ -513,7 +513,7 @@ function _e1RenderEstrutura() {
       </div>
 
       <!-- Carrinho lateral — atualizado independentemente -->
-      <div style="width:268px;flex-shrink:0;position:sticky;top:20px" id="e1CarrinhoWrap">
+      <div style="width:${isMobile()?'100%':'268px'};flex-shrink:0;${isMobile()?'':'position:sticky;top:20px'}" id="e1CarrinhoWrap">
         <!-- preenchido por _e1RenderCarrinho -->
       </div>
 

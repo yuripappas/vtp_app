@@ -41,7 +41,7 @@ function _audShell() {
 
   <!-- Filtros -->
   <div class="card" style="padding:16px 18px;margin-bottom:14px">
-    <div style="display:grid;grid-template-columns:1fr 1fr 160px 160px auto;gap:12px;align-items:end;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:${isMobile()?'1fr 1fr':'1fr 1fr 160px 160px auto'};gap:12px;align-items:end;margin-bottom:12px">
 
       <div>
         <label style="display:block;font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Colaborador</label>
@@ -89,7 +89,7 @@ function _audShell() {
   </div>
 
   <!-- Stats -->
-  <div id="audStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px"></div>
+  <div id="audStats" style="display:grid;grid-template-columns:repeat(${isMobile()?2:4},1fr);gap:12px;margin-bottom:14px"></div>
 
   <!-- Tabela -->
   <div class="card" style="overflow:hidden">

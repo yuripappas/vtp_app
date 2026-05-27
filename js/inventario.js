@@ -185,11 +185,11 @@ function _renderInvVisaoGeral() {
 
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <input class="inp" id="invSearch" placeholder="Buscar item..." style="flex:1;min-width:140px" oninput="_renderInvLista()">
-      <select class="inp" id="invFiltCat" style="width:180px;padding:7px 10px" onchange="_renderInvLista()">
+      <select class="inp" id="invFiltCat" style="flex:1;min-width:120px;padding:7px 10px" onchange="_renderInvLista()">
         <option value="">Todas categorias</option>
         ${Object.entries(inventarioCats).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('')}
       </select>
-      <select class="inp" id="invFiltStatus" style="width:130px;padding:7px 10px" onchange="_renderInvLista()">
+      <select class="inp" id="invFiltStatus" style="flex:1;min-width:100px;padding:7px 10px" onchange="_renderInvLista()">
         <option value="">Todos status</option>
         <option value="bom">Bom</option>
         <option value="atencao">Atenção</option>

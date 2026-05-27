@@ -68,7 +68,7 @@ function renderPrevisao() {
     <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
 
       <!-- ═══════ COLUNA PRINCIPAL ═══════ -->
-      <div style="flex:1;min-width:320px;display:flex;flex-direction:column;gap:16px">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px">
 
         ${_renderSecao1(hoje, diaSem, hist, mediaHist)}
         ${_renderSecao2(mediaHist)}
@@ -79,7 +79,7 @@ function renderPrevisao() {
       </div>
 
       <!-- ═══════ PAINEL LATERAL ═══════ -->
-      <div style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:12px">
+      <div style="width:${isMobile()?'100%':'300px'};flex-shrink:0;display:flex;flex-direction:column;gap:12px">
         ${_renderPainelFatores()}
         ${_renderPainelHistorico(hist, diaSem)}
         ${_renderPainelAcoes()}

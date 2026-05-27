@@ -1136,7 +1136,7 @@ function _renderMovimentacoes() {
       </div>
 
       <!-- Grid: tabela + sidebar com top consumo -->
-      <div style="display:grid;grid-template-columns:1fr 240px;gap:16px;align-items:flex-start">
+      <div style="display:grid;grid-template-columns:${isMobile()?'1fr':'1fr 240px'};gap:16px;align-items:flex-start">
 
         <!-- Tabela de movimentações -->
         <div>
