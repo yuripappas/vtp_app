@@ -2258,6 +2258,12 @@ function _cfgSalvarUsuario(id, m, btn) {
     const newId = nextUid++;
     users.push({ id: newId, name: nome, email, role, active: true, perms: finalPerms, ...empFields });
     saveUserPassword(newId, pass);
+    // Envia email de boas-vindas
+    fetch('https://yuridisrupy.app.n8n.cloud/webhook/vtp-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'welcome', to: email, name: nome, email, tempPassword: pass })
+    }).catch(() => {});
     toast(`"${nome}" criado!`, 'ok');
   }
 
