@@ -553,31 +553,41 @@ function _etqPreviewHtml(s, cfg, dtManip, dtVal, qrHash) {
 
 // ── QR Code rendering (real matrix via qrcode.js) ─────────────
 
-function _etqQRUrl(text, size) {
-  return `https://chart.googleapis.com/chart?chs=${size}x${size}&cht=qr&chl=${encodeURIComponent(text)}&choe=UTF-8`;
-}
-
 function _etqRenderQR(imgId, text, size = 80) {
+  // qrcode-generator (pure JS, síncrono, sem canvas na lib)
+  // → https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js
+  // Exporta: window.qrcode(typeNumber, errorCorrectionLevel)
   const img = document.getElementById(imgId);
   if (!img || !text || text === '—') return;
 
-  if (typeof QRCode !== 'undefined' && typeof QRCode.toDataURL === 'function') {
-    try {
-      // v1.5+ retorna Promise quando chamado sem callback
-      const p = QRCode.toDataURL(text, {
-        width: size, margin: 1,
-        color: { dark: '#000000', light: '#ffffff' },
-        errorCorrectionLevel: 'M'
-      });
-      if (p && typeof p.then === 'function') {
-        p.then(url => { const el = document.getElementById(imgId); if (el) el.src = url; })
-         .catch(() => { const el = document.getElementById(imgId); if (el) el.src = _etqQRUrl(text, size); });
-        return;
+  try {
+    if (typeof qrcode !== 'undefined') {
+      const qr = qrcode(0, 'M'); // typeNumber 0 = auto, nível M
+      qr.addData(text);
+      qr.make();
+
+      // Renderiza via canvas nativo do browser (síncrono)
+      const n       = qr.getModuleCount();
+      const canvas  = document.createElement('canvas');
+      const tile    = Math.max(1, Math.floor(size / n));
+      canvas.width  = n * tile;
+      canvas.height = n * tile;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000000';
+      for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+          if (qr.isDark(r, c)) ctx.fillRect(c * tile, r * tile, tile, tile);
+        }
       }
-    } catch (_) { /* fallthrough */ }
-  }
-  // Fallback: Google Charts API (funciona sem biblioteca local)
-  img.src = _etqQRUrl(text, size);
+      img.src = canvas.toDataURL('image/png');
+      return;
+    }
+  } catch (e) { /* fallthrough */ }
+
+  // Fallback: API externa (requer internet)
+  img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&format=png`;
 }
 
 // ── Passo 6: Sucesso ──────────────────────────────────────────
