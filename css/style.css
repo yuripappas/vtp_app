@@ -1519,6 +1519,21 @@ svg { display: block; }
   #estTable th:nth-child(8), #estTable td:nth-child(8) { display: none !important; }
 }
 
+/* === Etiquetagem — card hover === */
+.etq-card {
+  cursor: pointer;
+  transition: border-color .15s, background .15s, box-shadow .15s, transform .1s;
+}
+.etq-card:hover {
+  border-color: var(--brand-purple) !important;
+  background: var(--purple-xlight) !important;
+  box-shadow: 0 3px 10px rgba(107,33,212,.13);
+  transform: translateY(-2px);
+}
+.etq-card:active {
+  transform: translateY(0);
+}
+
 /* ── Compras: tabela lista, filtros histórico ── */
 @media (max-width: 768px) {
   /* Lista de compras: ocultar Digital(3), Mínimo(4), Ideal(5), Nível(6) */

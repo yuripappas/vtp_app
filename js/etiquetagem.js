@@ -260,8 +260,9 @@ function _etqStep2(el) {
         return `
           <button onclick="_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
           }';_etqWizNext()"
+            class="etq-card"
             style="padding:18px 14px;border-radius:var(--r12);border:2px solid var(--border);background:var(--surface);
-              cursor:pointer;text-align:center;transition:all .12s;font-family:Inter,sans-serif;
+              text-align:center;font-family:Inter,sans-serif;
               display:flex;flex-direction:column;align-items:center;gap:10px">
             <div style="width:44px;height:44px;border-radius:50%;background:var(--brand-purple);display:flex;align-items:center;justify-content:center">
               ${lc(icon, 20, '#fff')}
@@ -296,12 +297,13 @@ function _etqStep3(el) {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;max-width:700px">
       ${filtrados.map(item => {
         const isSel = selId === item.id;
-        const valids = _etqValidades.filter(v => v.item_id === item.id);
+        const valids = _etqValidades.filter(v => v.item_id == item.id);
         return `
           <button onclick="_etqWizardState.item=${JSON.stringify({id:item.id,name:item.name,cat:item.cat,isProd:item.isProd,unit:item.unit}).replace(/"/g,'&quot;')};_etqRenderWizStep(document.getElementById('etqWizContent'))"
+            class="etq-card"
             style="padding:14px;border-radius:var(--r10);border:2px solid ${isSel ? 'var(--brand-purple)' : 'var(--border)'};
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
-              cursor:pointer;text-align:left;transition:all .12s;font-family:Inter,sans-serif">
+              text-align:left;font-family:Inter,sans-serif">
             <div style="font-size:.82rem;font-weight:700;color:${isSel ? 'var(--brand-purple)' : 'var(--text)'};line-height:1.3;margin-bottom:4px">${item.name}</div>
             <div style="font-size:.66rem;color:var(--muted)">${item.isProd ? 'Produção Interna' : 'Insumo'}</div>
             <div style="font-size:.64rem;color:var(--muted);margin-top:3px">${valids.length} conservação${valids.length !== 1 ? 'ões' : ''} conf.</div>
@@ -323,7 +325,7 @@ function _etqStep3(el) {
 function _etqStep4(el) {
   const itemId  = _etqWizardState.item?.id;
   // Validades configuradas para este item
-  const valids  = _etqValidades.filter(v => v.item_id === itemId);
+  const valids  = _etqValidades.filter(v => v.item_id == itemId);
 
   if (valids.length === 0) {
     el.innerHTML = `
@@ -359,9 +361,10 @@ function _etqStep4(el) {
         const isSel = _etqWizardState.metodo?.id === v.metodo_id;
         return `
           <button onclick="_etqWizardState.metodo=${JSON.stringify({id:met.id,nome:met.nome,status:met.status,icone:met.icone,cor:met.cor,validade_dias:v.validade_dias}).replace(/"/g,'&quot;')};_etqRenderWizStep(document.getElementById('etqWizContent'))"
+            class="etq-card"
             style="padding:20px 16px;border-radius:var(--r12);border:2px solid ${isSel ? 'var(--brand-purple)' : 'var(--border)'};
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
-              cursor:pointer;text-align:center;transition:all .12s;font-family:Inter,sans-serif">
+              text-align:center;font-family:Inter,sans-serif">
             <div style="width:44px;height:44px;border-radius:50%;background:${met.cor}22;display:flex;align-items:center;justify-content:center;margin:0 auto 10px">
               ${lc(met.icone || 'thermometer', 22, met.cor)}
             </div>
@@ -961,6 +964,7 @@ function _etqCadMetodos(el) {
 }
 
 function _etqOpenMetodoModal(id) {
+  if (!_etqMetodos || !_etqValidades) _etqInit();
   const m = id ? _etqMetodos.find(x => x.id === id) : null;
   document.getElementById('etqMetodoId').value     = id || '';
   document.getElementById('etqMetodoNome').value   = m?.nome   || '';
@@ -1033,7 +1037,7 @@ function _etqCadValidades(el) {
 
     <div style="display:flex;flex-direction:column;gap:12px;max-width:900px">
       ${filtrados.map(item => {
-        const validsItem = _etqValidades.filter(v => v.item_id === item.id);
+        const validsItem = _etqValidades.filter(v => v.item_id == item.id);
         return `
           <div style="border:1.5px solid var(--border);border-radius:var(--r10);background:var(--surface);overflow:hidden">
             <div style="padding:12px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
@@ -1073,6 +1077,7 @@ function _etqCadValidades(el) {
 }
 
 function _etqOpenValidadeModal(itemId, metodoId) {
+  if (!_etqMetodos || !_etqValidades) _etqInit();
   const item = (typeof items !== 'undefined' ? items : []).find(i => i.id == itemId);
   const existing = metodoId ? _etqValidades.find(v => v.item_id == itemId && v.metodo_id === metodoId) : null;
 
@@ -1113,7 +1118,8 @@ function _etqOpenValidadeModal(itemId, metodoId) {
 }
 
 function _etqSaveValidade() {
-  const itemId   = document.getElementById('etqValidadeItemId').value;
+  if (!_etqMetodos || !_etqValidades) _etqInit();
+  const itemId   = parseInt(document.getElementById('etqValidadeItemId').value) || document.getElementById('etqValidadeItemId').value;
   let metodoId   = document.getElementById('etqValidadeMetodoId').value;
   const dias     = parseInt(document.getElementById('etqValidadeDias').value);
 
@@ -1130,7 +1136,9 @@ function _etqSaveValidade() {
   if (idx >= 0) {
     _etqValidades[idx].validade_dias = dias;
   } else {
-    _etqValidades.push({ id: _etqGenId(), item_id: itemId, metodo_id: metodoId, validade_dias: dias });
+    // Salva item_id sempre como número para consistência com items array
+    const itemIdNum = parseInt(itemId) || itemId;
+    _etqValidades.push({ id: _etqGenId(), item_id: itemIdNum, metodo_id: metodoId, validade_dias: dias });
   }
   _saveEtqValidades();
   closeModal('etqValidadeOverlay');
@@ -1139,6 +1147,7 @@ function _etqSaveValidade() {
 }
 
 function _etqDeleteValidade() {
+  if (!_etqValidades) _etqInit();
   const itemId   = document.getElementById('etqValidadeItemId').value;
   const metodoId = document.getElementById('etqValidadeMetodoId').value;
   _etqValidades = _etqValidades.filter(v => !(v.item_id == itemId && v.metodo_id === metodoId));
@@ -1279,15 +1288,16 @@ function _etqGenId() {
 
 function _etqGetResponsaveis() {
   const result = [];
-  // System users
   const usrs = typeof users !== 'undefined' ? users : [];
-  usrs.filter(u => u.active !== false).forEach(u => {
+  usrs.filter(u => {
+    if (u.active === false) return false;
+    // Só quem tiver a permissão 'Etiquetagem' configurada no perfil
+    const perms = typeof getUserPerms === 'function'
+      ? getUserPerms(u)
+      : (typeof PERMS !== 'undefined' ? (PERMS[u.role]?.perms || []) : []);
+    return perms.includes('Etiquetagem');
+  }).forEach(u => {
     result.push({ id: 'u_' + u.id, nome: u.name, cargo: u.role });
-  });
-  // RH funcionarios
-  const funcs = typeof funcionarios !== 'undefined' ? funcionarios : [];
-  funcs.filter(f => f.ativo !== false && f.status !== 'inativo').forEach(f => {
-    result.push({ id: 'f_' + f.id, nome: f.nome, cargo: f.cargo || '' });
   });
   return result;
 }

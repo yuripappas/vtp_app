@@ -2628,7 +2628,7 @@ function _cfgEtqValidades(el) {
 
     <div style="display:flex;flex-direction:column;gap:10px;max-width:900px">
       ${filtrados.map(item => {
-        const validsItem = _etqValidades ? _etqValidades.filter(v => v.item_id === item.id) : [];
+        const validsItem = _etqValidades ? _etqValidades.filter(v => v.item_id == item.id) : [];
         const isProd = item.isProd ? 'Produção Interna' : 'Insumo';
         return `
           <div style="border:1.5px solid var(--border);border-radius:var(--r10);background:var(--surface);overflow:hidden">
