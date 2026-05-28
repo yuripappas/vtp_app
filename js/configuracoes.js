@@ -248,8 +248,20 @@ function _renderCfgSecEmpresa(el) {
           <input class="inp" id="cfgResponsavel" value="${cfg.responsavel||''}" placeholder="Nome do gestor">
         </div>
         <div class="field" style="margin:0">
+          <label>CNPJ</label>
+          <input class="inp" id="cfgCnpj" value="${cfg.cnpj||''}" placeholder="ex: 00.000.000/0001-00" maxlength="18">
+        </div>
+        <div class="field" style="margin:0">
           <label>WhatsApp (com DDD)</label>
           <input class="inp" id="cfgWhatsapp" value="${cfg.whatsapp||''}" placeholder="ex: 82999999999" maxlength="11">
+        </div>
+        <div class="field" style="margin:0">
+          <label>CEP</label>
+          <input class="inp" id="cfgCep" value="${cfg.cep||''}" placeholder="ex: 57025-355" maxlength="9">
+        </div>
+        <div class="field" style="margin:0">
+          <label>Endereço</label>
+          <input class="inp" id="cfgEndereco" value="${cfg.endereco||''}" placeholder="Rua, número, bairro, cidade/UF">
         </div>
       </div>
       <div style="display:flex;justify-content:flex-end">
@@ -1443,6 +1455,9 @@ function saveConfiguracoes() {
 
   const empresa    = g('cfgEmpresa');     if (empresa    !== null) cfg.empresa     = empresa.trim();
   const resp       = g('cfgResponsavel'); if (resp       !== null) cfg.responsavel = resp.trim();
+  const cnpj       = g('cfgCnpj');        if (cnpj       !== null) cfg.cnpj        = cnpj.trim();
+  const cep        = g('cfgCep');         if (cep        !== null) cfg.cep         = cep.trim();
+  const endereco   = g('cfgEndereco');    if (endereco   !== null) cfg.endereco    = endereco.trim();
   const whatsapp   = g('cfgWhatsapp');    if (whatsapp   !== null) cfg.whatsapp    = whatsapp.replace(/\D/g,'');
   const codLoja    = g('cfgCodLoja');     if (codLoja    !== null) cfg.codLoja     = codLoja.trim();
   const pctCrit    = g('cfgPctCrit');     if (pctCrit    !== null) cfg.pctCrit     = pctCrit;

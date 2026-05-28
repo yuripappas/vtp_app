@@ -553,21 +553,31 @@ function _etqPreviewHtml(s, cfg, dtManip, dtVal, qrHash) {
 
 // ── QR Code rendering (real matrix via qrcode.js) ─────────────
 
+function _etqQRUrl(text, size) {
+  return `https://chart.googleapis.com/chart?chs=${size}x${size}&cht=qr&chl=${encodeURIComponent(text)}&choe=UTF-8`;
+}
+
 function _etqRenderQR(imgId, text, size = 80) {
   const img = document.getElementById(imgId);
-  if (!img) return;
-  if (typeof QRCode === 'undefined') {
-    // Fallback: Google Charts API
-    img.src = `https://chart.googleapis.com/chart?chs=${size}x${size}&cht=qr&chl=${encodeURIComponent(text)}&choe=UTF-8`;
-    return;
+  if (!img || !text || text === '—') return;
+
+  if (typeof QRCode !== 'undefined' && typeof QRCode.toDataURL === 'function') {
+    try {
+      // v1.5+ retorna Promise quando chamado sem callback
+      const p = QRCode.toDataURL(text, {
+        width: size, margin: 1,
+        color: { dark: '#000000', light: '#ffffff' },
+        errorCorrectionLevel: 'M'
+      });
+      if (p && typeof p.then === 'function') {
+        p.then(url => { const el = document.getElementById(imgId); if (el) el.src = url; })
+         .catch(() => { const el = document.getElementById(imgId); if (el) el.src = _etqQRUrl(text, size); });
+        return;
+      }
+    } catch (_) { /* fallthrough */ }
   }
-  QRCode.toDataURL(text, {
-    width: size, margin: 1,
-    color: { dark: '#000000', light: '#ffffff' },
-    errorCorrectionLevel: 'M'
-  }, (err, url) => {
-    if (!err) { const el = document.getElementById(imgId); if (el) el.src = url; }
-  });
+  // Fallback: Google Charts API (funciona sem biblioteca local)
+  img.src = _etqQRUrl(text, size);
 }
 
 // ── Passo 6: Sucesso ──────────────────────────────────────────
