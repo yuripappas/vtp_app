@@ -233,7 +233,7 @@ function initAuth() {
     if (stillExists) {
       applyPermissions(stillExists);
       showApp();
-      renderDashboard();
+      _vtpRestoreRoute(); // restaura o módulo salvo no hash (ex: #estoque)
       const sbName = document.getElementById('sbUserName');
       if (sbName) sbName.textContent = stillExists.name;
       const sbRole = document.getElementById('sbUserRole');

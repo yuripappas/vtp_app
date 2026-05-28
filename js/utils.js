@@ -154,12 +154,46 @@ const modInfo = {
   etiquetagem:    { title: 'Etiquetagem',             sub: 'Impressão · Validades · Produção · Cadastros' },
 };
 
+// ─── Hash-based routing ────────────────────────────────────────
+// Grava o módulo atual no hash da URL (ex: app.vaiterpizza.com/#estoque)
+// para que o refresh restaure a mesma página.
+
+let _vtpNavFromPop = false; // flag para evitar loop no popstate
+
+function _vtpPushRoute(mod) {
+  // Normaliza: 'usuarios' exibe dentro de configuracoes
+  const hashMod = mod === 'usuarios' ? 'configuracoes' : mod;
+  history.pushState({ mod: hashMod }, '', '#' + hashMod);
+}
+
+// Botão Voltar / Avançar do navegador
+window.addEventListener('popstate', e => {
+  const mod = e.state?.mod || location.hash.replace('#', '') || 'dashboard';
+  if (modInfo[mod]) { _vtpNavFromPop = true; goModule(mod); _vtpNavFromPop = false; }
+});
+
+// Chamado pelo initAuth para restaurar a rota salva no hash
+function _vtpRestoreRoute() {
+  const hash = location.hash.replace('#', '').trim();
+  const mod  = hash && modInfo[hash] ? hash : 'dashboard';
+  // Verifica permissão antes de restaurar
+  if (mod !== 'dashboard' && typeof canAccess === 'function' && !canAccess(mod)) {
+    goModule('dashboard');
+    return;
+  }
+  goModule(mod);
+}
+
 function goModule(mod) {
   // Verifica permissão
   if (typeof canAccess === 'function' && !canAccess(mod)) {
     toast('Acesso não permitido para seu perfil', 'err');
     return;
   }
+
+  // Atualiza URL (não duplica entrada se veio do popstate)
+  if (!_vtpNavFromPop) _vtpPushRoute(mod);
+
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
   document.getElementById(`nav-${mod}`)?.classList.add('active');
   // Configurações tem dois botões (nav e rodapé) — ativa ambos
