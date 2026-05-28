@@ -426,6 +426,196 @@ function deleteItem() {
 
 let editPreparoId = null;
 
+// ══════════════════════════════════════════════════════════════
+// FICHA TÉCNICA DE CUSTO — estado e funções
+// ══════════════════════════════════════════════════════════════
+
+// Rows em memória enquanto o modal está aberto
+// Cada row: { item_id: number, peso_g: number }
+let _ftRows = [];
+
+function _ftInit(fichaTecnica) {
+  _ftRows = fichaTecnica?.ingredientes
+    ? fichaTecnica.ingredientes.map(r => ({ ...r }))
+    : [];
+  const rend = document.getElementById('ftRendimento');
+  if (rend) rend.value = fichaTecnica?.rendimento_kg || '';
+  _ftRenderTable();
+  _ftRecalc();
+}
+
+function _ftAddRow() {
+  _ftRows.push({ item_id: null, peso_g: 0 });
+  _ftRenderTable();
+  // Foca no select do novo row
+  const selects = document.querySelectorAll('#ftTable select[id^="ftItem-"]');
+  const last = selects[selects.length - 1];
+  if (last) setTimeout(() => last.focus(), 40);
+}
+
+function _ftRemoveRow(idx) {
+  _ftRows.splice(idx, 1);
+  _ftRenderTable();
+  _ftRecalc();
+}
+
+function _ftUpdateRow(idx) {
+  const sel  = document.getElementById(`ftItem-${idx}`);
+  const peso = document.getElementById(`ftPeso-${idx}`);
+  if (!sel || !peso) return;
+  _ftRows[idx] = {
+    item_id: parseInt(sel.value) || null,
+    peso_g:  parseFloat(peso.value) || 0,
+  };
+  _ftRecalc();
+  // Atualiza só a linha de custo sem re-renderizar tudo (evita perder foco)
+  const ins     = items.find(i => i.id === _ftRows[idx].item_id);
+  const preco   = ins ? ins.cost : 0;
+  const custo   = ins ? (_ftRows[idx].peso_g / 1000) * preco : 0;
+  const custoEl = document.getElementById(`ftCustoLn-${idx}`);
+  const precoEl = document.getElementById(`ftPrecoKg-${idx}`);
+  if (custoEl) custoEl.textContent = 'R$ ' + fmt(custo);
+  if (precoEl) precoEl.textContent = 'R$ ' + fmt(preco);
+  // Atualiza totais
+  const totCusto = document.getElementById('ftTotalCusto');
+  const totPeso  = document.getElementById('ftTotalPeso');
+  if (totCusto) totCusto.textContent = 'R$ ' + fmt(_ftCalcTotalCusto());
+  if (totPeso)  totPeso.textContent  = _ftCalcTotalPeso() + ' g';
+}
+
+function _ftCalcTotalCusto() {
+  return _ftRows.reduce((sum, row) => {
+    const ins = items.find(i => i.id === row.item_id);
+    return sum + (ins ? (row.peso_g / 1000) * ins.cost : 0);
+  }, 0);
+}
+
+function _ftCalcTotalPeso() {
+  return _ftRows.reduce((sum, r) => sum + (parseFloat(r.peso_g) || 0), 0);
+}
+
+function _ftRecalc() {
+  const totalCusto = _ftCalcTotalCusto();
+  const rendimento = parseFloat(document.getElementById('ftRendimento')?.value) || 0;
+  const custoKg    = (rendimento > 0) ? totalCusto / rendimento : 0;
+
+  const display = document.getElementById('ftCustoDisplay');
+  const sub     = document.getElementById('ftCustoSub');
+  const hidden  = document.getElementById('fpCost');
+
+  if (!display) return;
+
+  if (_ftRows.length === 0) {
+    display.textContent = 'R$ 0,00/kg';
+    display.style.color = 'var(--muted)';
+    display.style.background = 'var(--surface2)';
+    display.style.borderColor = 'var(--border)';
+    if (sub) sub.textContent = 'Preencha os ingredientes e o rendimento';
+    if (hidden) hidden.value = '0';
+    return;
+  }
+
+  if (rendimento <= 0) {
+    display.textContent = 'Informe o rendimento';
+    display.style.color = 'var(--warning-fg,#D97706)';
+    display.style.background = 'var(--warning-bg,#FEF3C7)';
+    display.style.borderColor = 'var(--warning-fg,#D97706)';
+    if (sub) sub.textContent = `Custo total: R$ ${fmt(totalCusto)} — divida pelo rendimento`;
+    if (hidden) hidden.value = '0';
+    return;
+  }
+
+  display.textContent = `R$ ${fmt(custoKg)}/kg`;
+  display.style.color = 'var(--brand-purple,#6B21D4)';
+  display.style.background = 'var(--purple-xlight,#EDE9FE)';
+  display.style.borderColor = 'var(--brand-purple,#6B21D4)';
+  if (sub) sub.textContent = `Total: R$ ${fmt(totalCusto)} ÷ ${rendimento} kg rendimento`;
+  if (hidden) hidden.value = custoKg.toFixed(4);
+}
+
+function _ftRenderTable() {
+  const el = document.getElementById('ftTable');
+  if (!el) return;
+
+  const insumos = items.filter(i => !i.isProd);
+
+  if (_ftRows.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:18px 12px;font-size:.76rem;color:var(--muted)">
+      Nenhum ingrediente adicionado — clique em "+ Adicionar insumo"
+    </div>`;
+    return;
+  }
+
+  // Agrupa insumos por categoria para optgroup
+  const cats = [...new Set(insumos.map(i => i.cat || 'Outros'))].sort();
+  const optGroupsHtml = cats.map(cat => `
+    <optgroup label="${cat}">
+      ${insumos.filter(i => (i.cat || 'Outros') === cat).map(ins =>
+        `<option value="${ins.id}">${ins.name}</option>`
+      ).join('')}
+    </optgroup>
+  `).join('');
+
+  el.innerHTML = `
+    <!-- Header -->
+    <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 28px;gap:6px;padding:6px 10px;background:var(--surface2);border-bottom:1.5px solid var(--border)">
+      <span style="font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Ingrediente</span>
+      <span style="font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:right">Peso (g)</span>
+      <span style="font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:right">R$/kg</span>
+      <span style="font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:right">Custo</span>
+      <span></span>
+    </div>
+
+    <!-- Rows -->
+    ${_ftRows.map((row, i) => {
+      const ins   = insumos.find(x => x.id === row.item_id);
+      const preco = ins ? ins.cost : 0;
+      const custo = ins ? (row.peso_g / 1000) * preco : 0;
+
+      // Rebuild select com selected
+      const opts = cats.map(cat => `
+        <optgroup label="${cat}">
+          ${insumos.filter(x => (x.cat || 'Outros') === cat).map(x =>
+            `<option value="${x.id}"${x.id === row.item_id ? ' selected' : ''}>${x.name}</option>`
+          ).join('')}
+        </optgroup>
+      `).join('');
+
+      return `
+        <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 28px;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);align-items:center;background:var(--surface)">
+          <select id="ftItem-${i}" class="inp" style="font-size:.74rem;padding:5px 8px"
+            onchange="_ftUpdateRow(${i})">
+            <option value="">Selecione...</option>
+            ${opts}
+          </select>
+          <input type="number" id="ftPeso-${i}" class="inp" value="${row.peso_g || ''}"
+            min="0" step="1" placeholder="0"
+            style="font-size:.74rem;padding:5px 8px;text-align:right"
+            oninput="_ftUpdateRow(${i})">
+          <div id="ftPrecoKg-${i}" style="font-size:.74rem;text-align:right;color:var(--muted);padding:0 4px">
+            ${preco > 0 ? 'R$ ' + fmt(preco) : '—'}
+          </div>
+          <div id="ftCustoLn-${i}" style="font-size:.74rem;font-weight:700;text-align:right;padding:0 4px;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">
+            ${custo > 0 ? 'R$ ' + fmt(custo) : '—'}
+          </div>
+          <button onclick="_ftRemoveRow(${i})"
+            style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:.9rem;padding:2px 4px;border-radius:4px;line-height:1;display:flex;align-items:center;justify-content:center"
+            title="Remover">×</button>
+        </div>
+      `;
+    }).join('')}
+
+    <!-- Totals -->
+    <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 28px;gap:6px;padding:7px 10px;background:var(--surface2);align-items:center">
+      <span style="font-size:.72rem;font-weight:700;color:var(--muted)">TOTAL</span>
+      <div id="ftTotalPeso" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--muted)">${_ftCalcTotalPeso()} g</div>
+      <div></div>
+      <div id="ftTotalCusto" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--purple)">R$ ${fmt(_ftCalcTotalCusto())}</div>
+      <div></div>
+    </div>
+  `;
+}
+
 function renderPreparoGrid() {
   const prods = items.filter(i => i.isProd);
   const el    = document.getElementById('preparoGrid');
@@ -438,33 +628,47 @@ function renderPreparoGrid() {
   const inCfg = !!document.getElementById('cfgSectionContent')?.contains(el);
   if (inCfg) {
     el.style.cssText = 'display:flex;flex-direction:column;gap:3px';
-    el.innerHTML = prods.map(item =>
-      `<div class="cfg-row" style="cursor:pointer" onclick="openEditPreparo(${item.id})">
+    el.innerHTML = prods.map(item => {
+      const ft = item.fichaTecnica;
+      const ftBadge = ft?.ingredientes?.length
+        ? `<span style="font-size:10px;background:var(--purple-xlight);color:var(--purple);border-radius:4px;padding:1px 6px;font-weight:600">${ft.ingredientes.length} ing. · R$ ${fmt(item.cost)}/kg</span>`
+        : `<span style="font-size:10px;background:var(--surface2);color:var(--muted);border-radius:4px;padding:1px 6px">Sem ficha</span>`;
+      return `<div class="cfg-row" style="cursor:pointer" onclick="openEditPreparo(${item.id})">
         <div class="cfg-row-icon" style="background:var(--purple-xlight);color:var(--purple)">${lc('chef-hat',14,'currentColor')}</div>
         <div style="flex:1;min-width:0">
           <div class="cfg-row-label">${item.name}</div>
-          <div class="cfg-row-sub">${item.unit} · R$ ${fmt(item.cost)}/${item.unit} · Mín ${item.min} · Ideal ${item.ideal}</div>
+          <div class="cfg-row-sub" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${item.unit} · Mín ${item.min} · Ideal ${item.ideal} ${ftBadge}</div>
         </div>
         <div class="cfg-row-actions">
           <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openEditPreparo(${item.id})">${lc('edit-2',12,'currentColor')}</button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     return;
   }
 
-  el.innerHTML = prods.map(item => `
+  el.innerHTML = prods.map(item => {
+    const ft = item.fichaTecnica;
+    const hasFt = ft?.ingredientes?.length > 0;
+    const custoLabel = hasFt
+      ? `<span style="font-weight:700;color:var(--purple)">R$ ${fmt(item.cost)}/${item.unit}</span>`
+      : `<span style="font-weight:500;color:var(--muted)">— sem ficha técnica</span>`;
+    const ftBadge = hasFt
+      ? `<span style="font-size:10px;background:var(--purple-xlight);color:var(--purple);border-radius:4px;padding:2px 7px;font-weight:600">${lc('clipboard',10,'currentColor')} ${ft.ingredientes.length} ingredientes</span>`
+      : `<span style="font-size:10px;background:var(--surface2);color:var(--muted);border-radius:4px;padding:2px 7px">${lc('clipboard',10,'currentColor')} Sem ficha técnica</span>`;
+    return `
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r12);padding:16px;cursor:pointer;transition:border-color .15s" onclick="openEditPreparo(${item.id})">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
         <div>
           <div style="font-size:var(--text-md);font-weight:700">${item.name}</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Produção Interna · ${item.unit}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px">Produção Interna · ${item.unit} ${ftBadge}</div>
         </div>
         <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();openEditPreparo(${item.id})">${lc("edit-2",13,"currentColor")}️</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;font-size:var(--text-xs)">
         <div style="display:flex;justify-content:space-between">
           <span style="color:var(--muted)">Custo produção</span>
-          <span style="font-weight:700;color:var(--purple)">R$ ${fmt(item.cost)}/${item.unit}</span>
+          ${custoLabel}
         </div>
         <div style="display:flex;justify-content:space-between">
           <span style="color:var(--muted)">Qtd. mínima</span>
@@ -480,16 +684,19 @@ function renderPreparoGrid() {
         </div>` : ''}
       </div>
       ${item.obs ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:var(--text-xs);color:var(--muted);line-height:1.5">${item.obs}</div>` : ''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function openPreparoModal() {
   editPreparoId = null;
   document.getElementById('preparoModalTitle').textContent = 'Novo Preparado';
   document.getElementById('ePreparoId').value = '';
-  ['fpName','fpCode','fpCost','fpMin','fpIdeal','fpPorcao','fpObs','fpFicha'].forEach(id => document.getElementById(id).value = '');
+  ['fpName','fpCode','fpMin','fpIdeal','fpPorcao','fpObs'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fpCost').value = '0';
   document.getElementById('fpUnit').value = 'kg';
   document.getElementById('delPreparoBtn').style.display = 'none';
+  _ftInit(null);
   document.getElementById('ovPreparo').classList.add('open');
   setTimeout(() => document.getElementById('fpName').focus(), 80);
 }
@@ -502,12 +709,13 @@ function openEditPreparo(id) {
   document.getElementById('fpName').value   = item.name;
   document.getElementById('fpCode').value   = item.code  || '';
   document.getElementById('fpUnit').value   = item.unit;
-  document.getElementById('fpCost').value   = item.cost;
+  document.getElementById('fpCost').value   = item.cost  || 0;
   document.getElementById('fpMin').value    = item.min;
   document.getElementById('fpIdeal').value  = item.ideal;
   document.getElementById('fpPorcao').value = item.medPorcao || '';
   document.getElementById('fpObs').value    = item.obs   || '';
-  document.getElementById('fpFicha').value  = item.ficha || '';
+  // Ficha Técnica — _ftInit seta ftRendimento, popula _ftRows e renderiza
+  _ftInit(item.fichaTecnica || null);
   document.getElementById('delPreparoBtn').style.display = 'inline-flex';
   document.getElementById('ovPreparo').classList.add('open');
 }
@@ -515,20 +723,28 @@ function openEditPreparo(id) {
 function savePreparo() {
   const name = document.getElementById('fpName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
+  // Ficha Técnica — build from current _ftRows
+  const rendimento_kg = parseFloat(document.getElementById('ftRendimento').value) || 0;
+  const fichaTecnica = {
+    ingredientes: _ftRows.filter(r => r.item_id),
+    rendimento_kg,
+  };
+  // Custo calculado (já atualizado em fpCost pelo _ftRecalc)
+  const custoKg = parseFloat(document.getElementById('fpCost').value) || 0;
   const data = {
     name,
-    code:      document.getElementById('fpCode').value.trim(),
-    cat:       'Produção Interna',
-    unit:      document.getElementById('fpUnit').value,
-    cost:      parseFloat(document.getElementById('fpCost').value)   || 0,
-    min:       parseFloat(document.getElementById('fpMin').value)    || 0,
-    ideal:     parseFloat(document.getElementById('fpIdeal').value)  || 0,
-    medPorcao: parseFloat(document.getElementById('fpPorcao').value) || null,
-    obs:       document.getElementById('fpObs').value.trim(),
-    ficha:     document.getElementById('fpFicha').value.trim(),
-    isProd:    true,
-    brands:    [],
-    supId:     null,
+    code:         document.getElementById('fpCode').value.trim(),
+    cat:          'Produção Interna',
+    unit:         document.getElementById('fpUnit').value,
+    cost:         custoKg,
+    min:          parseFloat(document.getElementById('fpMin').value)    || 0,
+    ideal:        parseFloat(document.getElementById('fpIdeal').value)  || 0,
+    medPorcao:    parseFloat(document.getElementById('fpPorcao').value) || null,
+    obs:          document.getElementById('fpObs').value.trim(),
+    fichaTecnica: fichaTecnica.ingredientes.length > 0 ? fichaTecnica : null,
+    isProd:       true,
+    brands:       [],
+    supId:        null,
   };
   if (editPreparoId) {
     const idx = items.findIndex(i => i.id === editPreparoId);

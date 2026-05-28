@@ -80,6 +80,7 @@ const _CFG_SUBMENU_ITEMS = [
   { id: 'servicos',     icon: 'wrench',     label: 'Serviços'       },
   { id: 'modulos',      icon: 'settings',   label: 'Personalização' },
   { id: 'integracoes',  icon: 'zap',        label: 'Integrações'    },
+  { id: 'etiquetagem', icon: 'tag',        label: 'Etiquetagem'    },
 ];
 
 function _openMobileSubmenu(items, parentLabel) {
@@ -150,6 +151,7 @@ const modInfo = {
   alertas:        { title: 'Alertas',                sub: 'Notificações de movimentações e eventos do sistema' },
   rh:             { title: 'RH',                     sub: 'Escala · Presença · Horas Extras · Materiais · Indicadores' },
   auditoria:      { title: 'Auditoria',              sub: 'Log de ações · Rastreabilidade · Histórico do sistema' },
+  etiquetagem:    { title: 'Etiquetagem',             sub: 'Impressão · Validades · Produção · Cadastros' },
 };
 
 function goModule(mod) {
@@ -198,9 +200,10 @@ function goModule(mod) {
         '<div style="padding:32px 24px;color:var(--red);font-size:var(--text-sm);font-weight:700">inventario.js não carregou — verifique o console (F12)</div>';
     } else { renderInventario(); }
   }
-  else if (mod === 'alertas')    renderAlertas();
-  else if (mod === 'rh')         renderRh();
-  else if (mod === 'auditoria')  renderAuditoria();
+  else if (mod === 'alertas')      renderAlertas();
+  else if (mod === 'rh')           renderRh();
+  else if (mod === 'auditoria')    renderAuditoria();
+  else if (mod === 'etiquetagem')  renderEtiquetagem();
 }
 
 function calcScore(price, delivery, payTerm, minP, maxP, minD, maxD) {

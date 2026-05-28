@@ -130,6 +130,7 @@ const db = (() => {
       'vtp_manut_itens','vtp_manut_cats_cfg','vtp_manut_grupos',
       'vtp_inv_locs','vtp_inv_cats','vtp_ck_turnos','vtp_tipos_lista',
       'vtp_auditlog','vtp_alertas',
+      'vtp_etiq_metodos','vtp_etiq_validades','vtp_etiquetas','vtp_etiq_pontos',
     ];
     for (const key of VTP_KEYS) {
       const val = _get(key, null);
@@ -188,6 +189,10 @@ const db = (() => {
     alertas:           'vtp_alertas',
     desperdicios:      'vtp_desperdicios',
     manutSessoes:      'vtp_manut_sessoes',
+    etiqMetodos:       'vtp_etiq_metodos',
+    etiqValidades:     'vtp_etiq_validades',
+    etiquetas:         'vtp_etiquetas',
+    etiqPontos:        'vtp_etiq_pontos',
   };
 
   const get = {};

@@ -339,6 +339,7 @@ let PERMS = {
       'Checklist Meu','Checklist',
       'Manutenção','RH','Performance',
       'Gerenciar usuários','Configurações',
+      'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
   },
   supervisor: {
@@ -351,6 +352,7 @@ let PERMS = {
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
       'Manutenção','RH','Performance',
+      'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
   },
   comprador: {
@@ -362,11 +364,12 @@ let PERMS = {
       'Compras',
       'Fornecedores',
       'Checklist Meu','Checklist',
+      'Etiquetagem','Etiquetagem: Produção',
     ]
   },
   funcionario: {
     label: 'Funcionário', icon: 'user', color: '#3B82F6', bg: '#EFF6FF', mutavel: true,
-    perms: ['Checklist Meu']
+    perms: ['Checklist Meu','Etiquetagem']
   },
 };
 (function() {

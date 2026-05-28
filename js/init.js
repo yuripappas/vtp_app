@@ -26,6 +26,7 @@
     'vtp_manut_itens','vtp_manut_cats_cfg','vtp_manut_grupos',
     'vtp_inv_locs','vtp_inv_cats','vtp_ck_turnos','vtp_tipos_lista',
     'vtp_auditlog','vtp_alertas','vtp_desperdicios','vtp_manut_sessoes','vtp_v',
+    'vtp_etiq_metodos','vtp_etiq_validades','vtp_etiquetas','vtp_etiq_pontos',
   ];
 
   // Sync data from Supabase into localStorage before data.js runs
@@ -61,7 +62,8 @@
     'js/compras.js', 'js/relatorios.js', 'js/modules.js', 'js/previsao.js',
     'js/cadastros.js', 'js/configuracoes.js', 'js/desperdicio.js',
     'js/checklist.js', 'js/manutencao.js', 'js/inventario.js',
-    'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/login.js',
+    'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/etiquetagem.js',
+    'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
     await loadScript(src + '?v=3');

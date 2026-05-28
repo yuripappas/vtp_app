@@ -18,6 +18,7 @@ const _CFG_SECTIONS = [
   { id:'servicos',     icon:'wrench',     label:'Serviços'       },
   { id:'modulos',      icon:'settings',   label:'Personalização' },
   { id:'integracoes',  icon:'zap',        label:'Integrações'    },
+  { id:'etiquetagem',  icon:'tag',        label:'Etiquetagem'    },
 ];
 
 // Seções que usam o DOM transplant do page-cadastros
@@ -96,6 +97,7 @@ function setCfgSection(section) {
   else if (section === 'integracoes') _renderCfgSecIntegracoes(el);
   else if (section === 'usuarios')    _renderCfgSecUsuarios(el);
   else if (section === 'modulos')     _renderCfgSecModulos(el);
+  else if (section === 'etiquetagem') _renderCfgSecEtiquetagem(el);
   else if (isCad)                     _renderCfgCadSection(section, el);
 }
 
@@ -195,6 +197,7 @@ function setCfgTab(tab) {
     produtos:'produtos', servicos:'servicos',
     equipe:'modulos', rh:'modulos',
     estoque:'modulos', estoque_cfg:'modulos', modulos:'modulos',
+    etiquetagem:'etiquetagem',
   };
   _cfgSection = map[tab] || tab;
   if (document.getElementById('cfgSectionContent')) {
@@ -2508,4 +2511,231 @@ function saveContagemPerms() {
   }
   db._set('vtp_contagem_perms', perms);
   toast('Permissões de contagem salvas!', 'ok');
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONFIGURAÇÕES → ETIQUETAGEM
+// ══════════════════════════════════════════════════════════════
+
+let _cfgEtqTab = 'metodos'; // 'metodos' | 'validades' | 'pontos'
+
+function _renderCfgSecEtiquetagem(el) {
+  if (typeof _etqInit === 'function') _etqInit();
+
+  el.innerHTML = `
+    <div class="settings-section-title">${lc('tag', 16, 'var(--purple)')} Etiquetagem</div>
+    <div class="settings-section-sub">Métodos de conservação · Validades por produto · Pontos de impressão</div>
+
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+      <button onclick="_cfgEtqTab='metodos';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
+        class="btn btn-sm ${_cfgEtqTab==='metodos'?'btn-primary':'btn-ghost'}">
+        ${lc('thermometer',12,'currentColor')} Métodos de Conservação
+      </button>
+      <button onclick="_cfgEtqTab='validades';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
+        class="btn btn-sm ${_cfgEtqTab==='validades'?'btn-primary':'btn-ghost'}">
+        ${lc('clock',12,'currentColor')} Validades por Produto
+      </button>
+      <button onclick="_cfgEtqTab='pontos';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
+        class="btn btn-sm ${_cfgEtqTab==='pontos'?'btn-primary':'btn-ghost'}">
+        ${lc('cpu',12,'currentColor')} Pontos de Impressão
+      </button>
+    </div>
+
+    <div id="cfgEtqContent"></div>
+  `;
+
+  const cadEl = document.getElementById('cfgEtqContent');
+  if (!cadEl) return;
+
+  if (_cfgEtqTab === 'metodos')   _cfgEtqMetodos(cadEl);
+  else if (_cfgEtqTab === 'validades') _cfgEtqValidades(cadEl);
+  else if (_cfgEtqTab === 'pontos')    _cfgEtqPontos(cadEl);
+}
+
+// ── Métodos de Conservação ────────────────────────────────────
+
+function _cfgEtqMetodos(el) {
+  if (typeof _etqMetodos === 'undefined' || !_etqMetodos) return;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:.84rem;font-weight:700;color:var(--text)">Métodos de conservação</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:2px">Cada método pode ter um sub-status (ex: Resfriado · Amostra)</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="_etqOpenMetodoModal(null)">
+        ${lc('plus', 13, '#fff')} Novo método
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;max-width:900px">
+      ${_etqMetodos.map(m => {
+        const label  = m.status ? `${m.nome} · ${m.status}` : m.nome;
+        const vCount = _etqValidades ? _etqValidades.filter(v => v.metodo_id === m.id).length : 0;
+        return `
+          <div style="padding:14px;border-radius:var(--r10);border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;gap:12px">
+            <div style="width:40px;height:40px;border-radius:50%;background:${m.cor}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              ${lc(m.icone || 'thermometer', 20, m.cor)}
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.82rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</div>
+              <div style="font-size:.67rem;color:var(--muted);margin-top:2px">${vCount} produto${vCount !== 1 ? 's' : ''} configurado${vCount !== 1 ? 's' : ''}</div>
+            </div>
+            <button onclick="_cfgEtqOpenMetodo('${m.id}')"
+              style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:4px;flex-shrink:0">
+              ${lc('edit-2', 14, 'currentColor')}
+            </button>
+          </div>
+        `;
+      }).join('')}
+    </div>
+    ${_etqMetodos.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum método cadastrado</div>` : ''}
+  `;
+}
+
+function _cfgEtqOpenMetodo(id) {
+  if (typeof _etqOpenMetodoModal === 'function') {
+    _etqOpenMetodoModal(id || null);
+    // Após fechar o modal, re-renderiza a seção
+    const origSave = window._etqSaveMetodo;
+    // Override temporário para re-renderizar após salvar
+    window._etqSaveMetodoAndRefresh = () => {
+      if (typeof origSave === 'function') origSave();
+      setTimeout(() => _cfgEtqMetodos(document.getElementById('cfgEtqContent')), 80);
+    };
+  }
+}
+
+// ── Validades por Produto ─────────────────────────────────────
+
+function _cfgEtqValidades(el) {
+  if (typeof _etqMetodos === 'undefined' || !_etqMetodos) return;
+
+  const allItems  = typeof items !== 'undefined' ? items : [];
+  const busca     = _cfgEtqBusca || '';
+  const filtrados = allItems.filter(i => i.name.toLowerCase().includes(busca.toLowerCase()));
+
+  el.innerHTML = `
+    <div style="margin-bottom:14px">
+      <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Validades por produto</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">
+        Configure quantos dias cada produto dura em cada método de conservação.
+        Esses valores são usados automaticamente no wizard de impressão.
+      </div>
+      <input class="inp" placeholder="Buscar produto..." value="${busca}"
+        oninput="_cfgEtqBusca=this.value;_cfgEtqValidades(document.getElementById('cfgEtqContent'))"
+        style="max-width:380px">
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:900px">
+      ${filtrados.map(item => {
+        const validsItem = _etqValidades ? _etqValidades.filter(v => v.item_id === item.id) : [];
+        const isProd = item.isProd ? 'Produção Interna' : 'Insumo';
+        return `
+          <div style="border:1.5px solid var(--border);border-radius:var(--r10);background:var(--surface);overflow:hidden">
+            <div style="padding:11px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:.82rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div>
+                <div style="font-size:.67rem;color:var(--muted)">${item.cat || '—'} · ${isProd}</div>
+              </div>
+              <button class="btn btn-outline btn-xs" onclick="_cfgEtqOpenVal('${item.id}', null)">
+                ${lc('plus', 11, 'currentColor')} Adicionar
+              </button>
+            </div>
+            ${validsItem.length > 0 ? `
+              <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px">
+                ${validsItem.map(v => {
+                  const met = _etqMetodos.find(m => m.id === v.metodo_id);
+                  if (!met) return '';
+                  const label = met.status ? `${met.nome} · ${met.status}` : met.nome;
+                  return `
+                    <button onclick="_cfgEtqOpenVal('${item.id}','${v.metodo_id}')"
+                      title="Clique para editar"
+                      style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                        border:1.5px solid ${met.cor}44;background:${met.cor}11;
+                        cursor:pointer;font-family:Inter,sans-serif;font-size:.72rem;font-weight:600;color:var(--text)">
+                      ${lc(met.icone || 'thermometer', 10, met.cor)}
+                      ${label}
+                      <strong style="color:${met.cor}">${v.validade_dias}d</strong>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            ` : `
+              <div style="padding:9px 14px;font-size:.72rem;color:var(--muted)">
+                Nenhuma conservação configurada — clique em Adicionar
+              </div>
+            `}
+          </div>
+        `;
+      }).join('')}
+      ${filtrados.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum produto encontrado</div>` : ''}
+    </div>
+  `;
+}
+
+let _cfgEtqBusca = '';
+
+function _cfgEtqOpenVal(itemId, metodoId) {
+  if (typeof _etqOpenValidadeModal === 'function') {
+    _etqOpenValidadeModal(itemId, metodoId);
+  }
+}
+
+// ── Pontos de Impressão (Fase 3) ──────────────────────────────
+
+function _cfgEtqPontos(el) {
+  el.innerHTML = `
+    <div style="max-width:680px">
+      <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Pontos de Impressão</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:16px">
+        Cada ponto é um Raspberry Pi conectado a uma impressora Zebra ZD220 via USB na cozinha.
+      </div>
+
+      <div style="background:var(--warning-bg,#FEF3C7);border:1.5px solid var(--warning-border,#FDE68A);border-radius:var(--r10);padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:20px">
+        ${lc('alert-triangle', 16, 'var(--warning-fg,#D97706)')}
+        <div>
+          <div style="font-size:.8rem;font-weight:700;color:var(--warning-fg,#D97706);margin-bottom:4px">Fase 3 — Em desenvolvimento</div>
+          <div style="font-size:.74rem;color:var(--warning-fg,#D97706);line-height:1.6">
+            A integração com Raspberry Pi + Zebra ZD220 via protocolo ZPL está planejada para a Fase 3.
+            Quando ativada, cada etiqueta gerada no wizard será impressa automaticamente no ponto configurado.
+            <br><br>
+            <strong>Hardware necessário:</strong> Raspberry Pi 4B (2GB+) · Zebra ZD220 · Cabo USB-B · Rede local
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden;margin-bottom:14px">
+        <div style="padding:12px 16px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:.8rem;font-weight:700">Pontos cadastrados</div>
+          <button class="btn btn-outline btn-xs" disabled style="opacity:.5;cursor:not-allowed">
+            ${lc('plus',11,'currentColor')} Adicionar ponto
+          </button>
+        </div>
+        <div style="padding:14px 16px;opacity:.5">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px dashed var(--border);border-radius:var(--r8)">
+            <div style="width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center">
+              ${lc('cpu', 18, 'var(--muted)')}
+            </div>
+            <div>
+              <div style="font-size:.8rem;font-weight:700">COZINHA</div>
+              <div style="font-size:.68rem;color:var(--muted)">Raspberry Pi 4B · Zebra ZD220 · Aguardando Fase 3</div>
+            </div>
+            <span style="margin-left:auto;font-size:.65rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--muted)">OFFLINE</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px">
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Especificações técnicas do agente</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.76rem">
+          <div><span style="color:var(--muted)">Hardware</span><br><strong>Raspberry Pi 4B (2GB+)</strong></div>
+          <div><span style="color:var(--muted)">Impressora</span><br><strong>Zebra ZD220</strong></div>
+          <div><span style="color:var(--muted)">Protocolo</span><br><strong>ZPL via USB (lp0)</strong></div>
+          <div><span style="color:var(--muted)">Comunicação</span><br><strong>Supabase Realtime</strong></div>
+          <div><span style="color:var(--muted)">Etiqueta</span><br><strong>60×60mm térmica direta</strong></div>
+          <div><span style="color:var(--muted)">Runtime</span><br><strong>Node.js + systemd</strong></div>
+        </div>
+      </div>
+    </div>
+  `;
 }

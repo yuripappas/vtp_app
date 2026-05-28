@@ -185,18 +185,41 @@ function _renderPrepGrid(prod, orFilt) {
             ${lc('check-circle',10,'var(--green)')} ${fmt(lastProd.qty)} ${item.unit} · Prog. ${fmtD(lastProd.date)}${lastProd.finishedAt ? ' · Conc. '+fmtDT(lastProd.finishedAt) : ''}${lastProd.resp ? ' · '+lastProd.resp : ''}
           </div>` : ''}
 
-        <!-- Accordion ficha técnica -->
-        <div style="border-top:1px solid var(--border)">
-          <button onclick="_ppToggleFicha(${item.id})" style="width:100%;text-align:left;background:none;border:none;padding:7px 14px;font-size:var(--text-xs);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px">
-            <span style="display:flex;align-items:center;gap:5px">${lc('file-text',11,'currentColor')} Ficha técnica${item.ficha ? '' : ' <span style="font-size:var(--text-2xs);opacity:.6">(sem conteúdo)</span>'}</span>
-            <span id="fichachev_${item.id}" style="transition:transform .2s">${lc('chevron-down',11,'currentColor')}</span>
-          </button>
-          <div id="fichabox_${item.id}" style="display:none;padding:0 14px 12px">
-            ${item.ficha
-              ? `<div style="font-size:var(--text-sm);line-height:1.75;white-space:pre-wrap;color:var(--text2);background:var(--surface2);border-radius:var(--r8);padding:10px 12px">${item.ficha.replace(/</g,'&lt;')}</div>`
-              : `<div style="font-size:var(--text-sm);color:var(--muted);font-style:italic">Nenhuma ficha cadastrada. Edite o preparado em Cadastros → Preparados para adicionar.</div>`}
-          </div>
-        </div>
+        <!-- Accordion ficha técnica de custo -->
+        ${(() => {
+          const ft = item.fichaTecnica;
+          if (!ft?.ingredientes?.length) return `
+            <div style="border-top:1px solid var(--border);padding:7px 14px;font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px">
+              ${lc('clipboard',11,'currentColor')} Sem ficha técnica · <a href="#" style="color:var(--purple);text-decoration:none;font-weight:600" onclick="event.preventDefault();setCadTab('preparo');goModule('cadastros')">Cadastrar →</a>
+            </div>`;
+          // Recalcula ao vivo com preços atuais
+          let totalFt = 0;
+          const linhFt = ft.ingredientes.map(r => {
+            const ins = items.find(x => x.id === r.item_id && !x.isProd);
+            const preco = ins ? ins.cost : 0;
+            const custo = (r.peso_g / 1000) * preco;
+            totalFt += custo;
+            return ins
+              ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-size:.68rem;white-space:nowrap">${ins.name} ${r.peso_g}g <strong style="color:var(--purple)">R$ ${fmt(custo)}</strong></span>`
+              : '';
+          }).filter(Boolean).join('');
+          const rendFt   = ft.rendimento_kg || 1;
+          const custoKgFt = totalFt / rendFt;
+          return `
+            <div style="border-top:1px solid var(--border)">
+              <button onclick="_ppToggleFicha(${item.id})" style="width:100%;text-align:left;background:none;border:none;padding:7px 14px;font-size:var(--text-xs);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px">
+                <span style="display:flex;align-items:center;gap:5px">
+                  ${lc('clipboard',11,'currentColor')}
+                  Ficha técnica · <strong style="color:var(--purple)">R$ ${fmt(custoKgFt)}/kg</strong> · ${ft.ingredientes.length} ingredientes
+                </span>
+                <span id="fichachev_${item.id}" style="transition:transform .2s">${lc('chevron-down',11,'currentColor')}</span>
+              </button>
+              <div id="fichabox_${item.id}" style="display:none;padding:4px 14px 12px">
+                <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">${linhFt}</div>
+                <div style="font-size:.72rem;color:var(--muted)">Total insumos: <strong style="color:var(--text)">R$ ${fmt(totalFt)}</strong> · rendimento ${rendFt} kg → <strong style="color:var(--purple)">R$ ${fmt(custoKgFt)}/kg</strong></div>
+              </div>
+            </div>`;
+        })()}
       </div>`;
   }).join('');
 }
@@ -272,8 +295,74 @@ function openOrdemModal(preItemId) {
   const confEl = document.getElementById('opConf');
   if (respEl) { respEl.innerHTML = optsFunc; respEl.value = ''; }
   if (confEl) { confEl.innerHTML = optsFunc; confEl.value = ''; }
+  _ppUpdateCusto();
   document.getElementById('ovOrdem').classList.add('open');
   setTimeout(() => sel.focus(), 80);
+}
+
+// Custo em tempo real baseado na ficha técnica do preparado
+function _ppUpdateCusto() {
+  const el    = document.getElementById('opCustoInfo');
+  const itemId = parseInt(document.getElementById('opItem')?.value);
+  const qty    = parseFloat(document.getElementById('opQty')?.value) || 0;
+  if (!el) return;
+
+  if (!itemId) { el.style.display = 'none'; return; }
+
+  const item = items.find(i => i.id === itemId && i.isProd);
+  if (!item) { el.style.display = 'none'; return; }
+
+  const ft = item.fichaTecnica;
+  const custoKg = item.cost || 0;
+
+  el.style.display = 'block';
+
+  if (!ft || !ft.ingredientes?.length) {
+    el.innerHTML = `
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 14px;font-size:.75rem;color:var(--muted)">
+        ${lc('info',13,'currentColor')} <strong>${item.name}</strong> não possui ficha técnica — cadastre os ingredientes para ver o custo calculado.
+      </div>`;
+    return;
+  }
+
+  // Recalcula o custo ao vivo com preços atuais dos insumos
+  let totalCusto = 0;
+  const linhas = ft.ingredientes.map(r => {
+    const ins  = items.find(i => i.id === r.item_id && !i.isProd);
+    const preco = ins ? ins.cost : 0;
+    const custo = (r.peso_g / 1000) * preco;
+    totalCusto += custo;
+    return ins ? `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+      <span>${ins.name} — ${r.peso_g}g</span>
+      <span style="font-weight:600">R$ ${fmt(custo)}</span>
+    </div>` : '';
+  }).filter(Boolean).join('');
+
+  const rendimento = ft.rendimento_kg || 1;
+  const custoKgAtual = totalCusto / rendimento;
+  const custoOrdem  = qty > 0 ? custoKgAtual * qty : null;
+
+  el.innerHTML = `
+    <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light,#C4B5FD);border-radius:var(--r8);padding:12px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:.72rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.4px">
+          ${lc('clipboard',12,'var(--purple)')} Custo da ficha técnica
+        </span>
+        <span style="font-size:.72rem;color:var(--muted)">${ft.ingredientes.length} ingredientes · rendimento ${rendimento} kg</span>
+      </div>
+      <div style="font-size:.72rem;color:var(--text);margin-bottom:8px;display:flex;flex-direction:column;gap:0">
+        ${linhas}
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1.5px solid var(--purple-light,#C4B5FD)">
+        <span style="font-size:.75rem;font-weight:700;color:var(--purple)">Custo/kg atual</span>
+        <span style="font-size:.88rem;font-weight:800;color:var(--purple)">R$ ${fmt(custoKgAtual)}/kg</span>
+      </div>
+      ${custoOrdem !== null ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding:8px 12px;background:var(--purple);border-radius:var(--r6);color:#fff">
+        <span style="font-size:.75rem;font-weight:700">Custo total desta ordem (${qty} ${item.unit})</span>
+        <span style="font-size:1rem;font-weight:800">R$ ${fmt(custoOrdem)}</span>
+      </div>` : ''}
+    </div>`;
 }
 
 function saveOrdem() {

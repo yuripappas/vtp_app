@@ -24,6 +24,7 @@ const MODULE_PERMISSIONS = {
   alertas:       ['gerente', 'supervisor', 'comprador'],
   rh:            ['gerente', 'supervisor'],
   auditoria:     ['gerente', 'supervisor'],
+  etiquetagem:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
 };
 
 // ══════════════════════════════════════════════════════════════
