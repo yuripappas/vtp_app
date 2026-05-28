@@ -469,6 +469,9 @@ function _etqStep5(el) {
     </div>
   `;
 
+  // Gera hash de preview fixo para este step (reutilizado ao atualizar)
+  if (!s._previewQR) s._previewQR = _etqQRHash();
+
   // Restaura estado dos campos
   if (s._medida)  document.getElementById('etqMedida').value  = s._medida;
   if (s._unidade) document.getElementById('etqUnidade').value = s._unidade;
@@ -476,6 +479,13 @@ function _etqStep5(el) {
   if (s._lote)    document.getElementById('etqLote').value    = s._lote;
   if (s._sif)     document.getElementById('etqSif').value     = s._sif;
   if (s._qty)     document.getElementById('etqQtyDisplay').textContent = s._qty;
+
+  // Popula preview com QR real
+  const box5 = document.getElementById('etqPreviewBox');
+  if (box5) {
+    box5.innerHTML = _etqPreviewHtml(s, cfg, now, dtVal, s._previewQR);
+    _etqRenderQR('etqQRImg_preview', s._previewQR, 62);
+  }
 }
 
 function _etqStep5UpdatePreview() {
@@ -487,7 +497,11 @@ function _etqStep5UpdatePreview() {
   const dtVal = new Date(now.getTime() + dias * 864e5);
   const cfg  = _etqConfigEmpresa();
   const box  = document.getElementById('etqPreviewBox');
-  if (box) box.innerHTML = _etqPreviewHtml(s, cfg, now, dtVal);
+  if (!s._previewQR) s._previewQR = _etqQRHash();
+  if (box) {
+    box.innerHTML = _etqPreviewHtml(s, cfg, now, dtVal, s._previewQR);
+    _etqRenderQR('etqQRImg_preview', s._previewQR, 62);
+  }
 }
 
 function _etqQtyChange(delta) {
@@ -501,39 +515,59 @@ function _etqQtyChange(delta) {
   if (btn) btn.innerHTML = `${lc('printer', 16, '#fff')} Imprimir ${next > 1 ? next + ' etiquetas' : 'etiqueta'}`;
 }
 
-function _etqPreviewHtml(s, cfg, dtManip, dtVal) {
+function _etqPreviewHtml(s, cfg, dtManip, dtVal, qrHash) {
   const produto  = s.item?.name?.toUpperCase() || '';
   const metodo   = s.metodo ? (s.metodo.status ? `${s.metodo.nome.toUpperCase()} · ${s.metodo.status.toUpperCase()}` : s.metodo.nome.toUpperCase()) : '';
-  const peso     = s._medida && s._unidade ? `${s._medida} ${s._unidade}` : '';
+  const peso     = s._medida && s._unidade ? `${s._medida} ${s._unidade}` : '0 g';
   const resp     = s.responsavel?.nome?.toUpperCase() || '';
   const empresa  = (cfg.nome || 'VAI TER PIZZA!').toUpperCase();
   const cnpj     = cfg.cnpj || '';
+  const cep      = cfg.cep  || '';
   const end      = cfg.endereco || '';
-  const qr       = _etqQRHash();
+  const qr       = qrHash || '—';
 
   return `
-    <div style="font-size:9px;font-family:monospace;line-height:1.45;color:#000">
-      <div style="font-size:11px;font-weight:bold;margin-bottom:2px;border-bottom:1px solid #ccc;padding-bottom:3px">${produto}</div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+    <div style="font-size:9px;font-family:monospace;line-height:1.5;color:#000">
+      <div style="font-size:12px;font-weight:bold;margin-bottom:3px;border-bottom:1.5px solid #333;padding-bottom:3px">${produto}</div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:2px;font-size:9px">
         <span>${metodo}</span>
         <span>${peso}</span>
       </div>
-      <div style="border-top:1px solid #eee;padding-top:3px;margin-bottom:3px">
-        <div>MANIPULAÇÃO: <strong>${_etqFmtDT(dtManip.toISOString())}</strong></div>
-        <div>VALIDADE:    <strong>${_etqFmtDT(dtVal.toISOString())}</strong></div>
+      <div style="border-top:1px solid #ccc;padding-top:4px;margin-bottom:4px">
+        <div><strong>MANIPULAÇÃO:</strong> ${_etqFmtDT(dtManip.toISOString())}</div>
+        <div><strong>VALIDADE:</strong>    ${_etqFmtDT(dtVal.toISOString())}</div>
       </div>
-      <div style="border-top:1px solid #eee;padding-top:3px;margin-bottom:3px">
-        <div>RESP.: ${resp}</div>
-        <div>${empresa}</div>
-        ${cnpj ? `<div>CNPJ: ${cnpj}</div>` : ''}
-        ${end  ? `<div style="font-size:8px">${end}</div>` : ''}
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px;border-top:1px solid #eee;padding-top:3px">
-        <span style="font-size:10px;font-weight:bold;color:#333">${qr}</span>
-        <div style="width:32px;height:32px;background:#f5f5f5;border:1px solid #ddd;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:6px;color:#999">QR</div>
+      <div style="border-top:1px solid #ccc;padding-top:4px;margin-bottom:4px;display:flex;gap:8px;align-items:flex-end;justify-content:space-between">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:bold">RESP.: ${resp}</div>
+          <div style="font-weight:bold">${empresa}</div>
+          ${cnpj ? `<div>CNPJ: ${cnpj}</div>` : ''}
+          ${cep  ? `<div>CEP: ${cep}${end ? ' ' + end : ''}</div>` : (end ? `<div style="font-size:7.5px">${end}</div>` : '')}
+          <div style="margin-top:4px;font-size:11px;font-weight:bold">${qr}</div>
+        </div>
+        <img id="etqQRImg_preview" width="62" height="62" alt="QR" style="border-radius:3px;flex-shrink:0">
       </div>
     </div>
   `;
+}
+
+// ── QR Code rendering (real matrix via qrcode.js) ─────────────
+
+function _etqRenderQR(imgId, text, size = 80) {
+  const img = document.getElementById(imgId);
+  if (!img) return;
+  if (typeof QRCode === 'undefined') {
+    // Fallback: Google Charts API
+    img.src = `https://chart.googleapis.com/chart?chs=${size}x${size}&cht=qr&chl=${encodeURIComponent(text)}&choe=UTF-8`;
+    return;
+  }
+  QRCode.toDataURL(text, {
+    width: size, margin: 1,
+    color: { dark: '#000000', light: '#ffffff' },
+    errorCorrectionLevel: 'M'
+  }, (err, url) => {
+    if (!err) { const el = document.getElementById(imgId); if (el) el.src = url; }
+  });
 }
 
 // ── Passo 6: Sucesso ──────────────────────────────────────────
@@ -667,6 +701,14 @@ function _etqRenderValidades(el) {
 
   el.innerHTML = `
     <div style="padding:20px 24px">
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="_etqOpenScanner()" style="display:flex;align-items:center;gap:7px">
+          ${lc('scan-line',16,'#fff')} Dar Baixa por QR
+        </button>
+        <div style="font-size:.75rem;color:var(--muted)">ou abra uma etiqueta abaixo e use os botões de baixa</div>
+      </div>
+
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;max-width:900px;margin-bottom:28px">
         ${_etqValidCard('Ontem', vencOntem, 'var(--red)', 'var(--danger-bg)', ontem)}
         ${_etqValidCard('Hoje', vencHoje, 'var(--orange-dark,#D97706)', '#FEF3C7', hoje)}
@@ -766,58 +808,305 @@ function _etqRenderValidadesDrill(el, dateIso) {
 }
 
 function _etqAbrirDetalheEtq(id) {
+  if (!_etqMetodos || !_etqValidades) _etqInit();
   const e = _etiquetas.find(x => x.id === id);
   if (!e) return;
   _etqDetalheId = id;
-  const sv = _etqStatusValidade(e.dt_validade);
+
+  const cfg = _etqConfigEmpresa();
+  const sv  = _etqStatusValidade(e.dt_validade);
   const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
+  const dtManip  = new Date(e.dt_manipulacao);
+  const dtVal    = new Date(e.dt_validade);
 
+  // Breadcrumb: categoria > produto
+  document.getElementById('etqDetalheBreadcrumb').innerHTML =
+    `<span style="color:var(--muted)">${e.item_cat || '—'}</span>
+     <span style="margin:0 5px;color:var(--muted)">›</span>
+     <span style="color:var(--brand-orange);font-weight:700">${e.item_nome}</span>`;
   document.getElementById('etqDetalheTitle').textContent = e.item_nome;
-  document.getElementById('etqDetalheBody').innerHTML = `
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
-      <span style="font-size:.72rem;font-weight:700;background:${sv.cor}22;color:${sv.cor};border-radius:6px;padding:4px 10px">${sv.label}</span>
-      <span style="font-size:.72rem;color:var(--muted)">${metLabel}</span>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.78rem;margin-bottom:14px">
-      <div><span style="color:var(--muted)">Responsável</span><br><strong>${e.responsavel_nome || '—'}</strong></div>
-      <div><span style="color:var(--muted)">Categoria</span><br><strong>${e.item_cat || '—'}</strong></div>
-      <div><span style="color:var(--muted)">Manipulação</span><br><strong>${_etqFmtDT(e.dt_manipulacao)}</strong></div>
-      <div><span style="color:var(--muted)">Validade</span><br><strong>${_etqFmtDT(e.dt_validade)}</strong></div>
-      ${e.medida ? `<div><span style="color:var(--muted)">Medida</span><br><strong>${e.medida} ${e.unidade || ''}</strong></div>` : ''}
-      ${e.lote   ? `<div><span style="color:var(--muted)">Lote</span><br><strong>${e.lote}</strong></div>` : ''}
-      ${e.sif    ? `<div><span style="color:var(--muted)">SIF</span><br><strong>${e.sif}</strong></div>` : ''}
-    </div>
-    <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);padding:10px;font-family:monospace;font-size:.82rem;font-weight:700;color:var(--brand-purple);text-align:center;letter-spacing:1px">
-      ${e.qr_hash}
-    </div>
-    <div style="font-size:.66rem;color:var(--muted);text-align:center;margin-top:4px">QR Code individual desta etiqueta</div>
-  `;
 
+  // Preview (Suflex style)
+  const previewEl = document.getElementById('etqDetalhePreview');
+  const peso = e.medida ? `${e.medida} ${e.unidade || ''}` : '0 g';
+  previewEl.innerHTML = `
+    <div style="font-size:12px;font-weight:bold;border-bottom:1.5px solid #333;padding-bottom:3px;margin-bottom:3px">${e.item_nome.toUpperCase()}</div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:9px">
+      <span>${metLabel.toUpperCase()}</span><span>${peso}</span>
+    </div>
+    <div style="border-top:1px solid #ccc;padding-top:3px;margin-bottom:3px;font-size:9px">
+      <div><strong>MANIPULAÇÃO:</strong> ${_etqFmtDT(e.dt_manipulacao)}</div>
+      <div><strong>VALIDADE:</strong>    ${_etqFmtDT(e.dt_validade)}</div>
+    </div>
+    <div style="border-top:1px solid #ccc;padding-top:3px;display:flex;gap:8px;align-items:flex-end;justify-content:space-between">
+      <div style="flex:1;min-width:0;font-size:9px">
+        <div style="font-weight:bold">RESP.: ${(e.responsavel_nome || '').toUpperCase()}</div>
+        <div style="font-weight:bold">${(cfg.nome || 'VAI TER PIZZA!').toUpperCase()}</div>
+        ${cfg.cnpj ? `<div>CNPJ: ${cfg.cnpj}</div>` : ''}
+        ${cfg.cep  ? `<div>CEP: ${cfg.cep}${cfg.endereco ? ' ' + cfg.endereco : ''}</div>` : ''}
+        <div style="margin-top:4px;font-size:11px;font-weight:bold">${e.qr_hash}</div>
+      </div>
+      <img id="etqDetQRImg" width="62" height="62" alt="QR" style="border-radius:3px;flex-shrink:0">
+    </div>
+  `;
+  // Gera QR real
+  setTimeout(() => _etqRenderQR('etqDetQRImg', e.qr_hash, 62), 30);
+
+  // Zona de baixa rápida (apenas se válida)
+  const baixaEl = document.getElementById('etqDetalheBaixaZone');
+  if (e.status === 'valida') {
+    baixaEl.innerHTML = `
+      <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Dar baixa nesta etiqueta</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="_etqDarBaixa('${id}','consumida')" style="justify-content:flex-start;gap:8px">
+          ${lc('check-circle',14,'var(--green)')} Consumida / Utilizada
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="_etqDarBaixa('${id}','descartada')" style="justify-content:flex-start;gap:8px">
+          ${lc('trash-2',14,'var(--orange-dark)')} Descartada / Perdida
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="_etqDarBaixa('${id}','nao_encontrada')" style="justify-content:flex-start;gap:8px">
+          ${lc('help-circle',14,'var(--muted)')} Não encontrada
+        </button>
+      </div>`;
+  } else {
+    const statusLabel = { excluida: 'Excluída', consumida: 'Consumida', descartada: 'Descartada', nao_encontrada: 'Não encontrada', vencida: 'Vencida' }[e.status] || e.status;
+    baixaEl.innerHTML = `
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);padding:10px;font-size:.76rem;color:var(--muted);text-align:center">
+        ${lc('info',13,'currentColor')} Status: <strong>${statusLabel}</strong>
+      </div>`;
+  }
+
+  // Etiquetas associadas (mesmo lote / mesmo item+metodo+data)
+  const assocEl = document.getElementById('etqDetalheAssociadas');
+  const sameBatch = _etiquetas.filter(x =>
+    x.item_id === e.item_id &&
+    x.metodo_id === e.metodo_id &&
+    _sameDay(new Date(x.dt_manipulacao), dtManip) &&
+    x.status !== 'excluida'
+  ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  assocEl.innerHTML = sameBatch.map((x, idx) => {
+    const xsv = _etqStatusValidade(x.dt_validade);
+    const isThis = x.id === id;
+    return `
+      <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r8);
+        border:1.5px solid ${isThis ? 'var(--brand-purple)' : 'var(--border)'};
+        background:${isThis ? 'var(--purple-xlight)' : 'var(--surface)'};cursor:pointer">
+        <span style="font-size:.72rem;color:var(--muted);min-width:20px;text-align:right">${String(idx+1).padStart(2,'0')}</span>
+        <span style="font-family:monospace;font-size:.78rem;font-weight:700;color:var(--brand-purple);flex:1">${x.qr_hash}</span>
+        <span style="font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${xsv.bg};color:${xsv.cor}">${xsv.label}</span>
+        <input type="checkbox" class="etq-assoc-chk" data-id="${x.id}" ${isThis ? 'checked' : ''}
+          style="width:16px;height:16px;accent-color:var(--brand-purple)">
+      </label>`;
+  }).join('') || `<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:.8rem">Nenhuma etiqueta associada</div>`;
+
+  // Footer: Excluir só se há etiquetas válidas
   const delBtn = document.getElementById('etqDetalheExcluirBtn');
-  if (delBtn) delBtn.style.display = e.status !== 'excluida' ? 'inline-flex' : 'none';
+  if (delBtn) delBtn.style.display = sameBatch.length > 0 ? 'inline-flex' : 'none';
 
   document.getElementById('etqDetalheOverlay').classList.add('open');
 }
 
-function _etqExcluirBatch() {
-  if (!_etqDetalheId) return;
+function _etqDetalheToggleAll() {
+  const chks = document.querySelectorAll('.etq-assoc-chk');
+  const allChecked = [...chks].every(c => c.checked);
+  chks.forEach(c => c.checked = !allChecked);
+  const btn = document.getElementById('etqDetalheSelAll');
+  if (btn) btn.textContent = allChecked ? 'Selecionar todas' : 'Desmarcar todas';
+}
+
+function _etqDarBaixaSelecao(tipo) {
+  const chks = [...document.querySelectorAll('.etq-assoc-chk:checked')];
+  const ids = chks.map(c => c.dataset.id);
+  if (ids.length === 0) { toast('Selecione ao menos uma etiqueta', 'err'); return; }
+  const tipoLabel = { excluida: 'excluir', consumida: 'marcar como consumida', descartada: 'marcar como descartada', nao_encontrada: 'marcar como não encontrada' }[tipo] || tipo;
   vtpConfirm({
-    title: 'Excluir etiqueta',
-    message: 'Confirma a exclusão desta etiqueta? O registro será mantido mas marcado como excluído.',
-    confirmLabel: 'Excluir',
-    danger: true,
+    title: `${ids.length} etiqueta${ids.length > 1 ? 's' : ''} selecionada${ids.length > 1 ? 's' : ''}`,
+    message: `Confirma ${tipoLabel} as etiquetas selecionadas?`,
+    confirmLabel: tipo === 'excluida' ? 'Excluir' : 'Confirmar',
+    danger: tipo === 'excluida',
     onConfirm: () => {
-      const e = _etiquetas.find(x => x.id === _etqDetalheId);
-      if (e) {
-        e.status = 'excluida';
-        _saveEtiquetas();
-        _etqUpdateBadge();
-        closeModal('etqDetalheOverlay');
-        toast('Etiqueta marcada como excluída', 'ok');
-        _etqRenderValidades(document.getElementById('etqTabContent'));
-      }
+      ids.forEach(id => {
+        const etq = _etiquetas.find(x => x.id === id);
+        if (etq) etq.status = tipo;
+      });
+      _saveEtiquetas();
+      _etqUpdateBadge();
+      closeModal('etqDetalheOverlay');
+      toast(`${ids.length} etiqueta${ids.length > 1 ? 's' : ''} ${tipoLabel === 'excluir' ? 'excluída' + (ids.length > 1 ? 's' : '') : 'atualizadas'}`, 'ok');
+      const tabEl = document.getElementById('etqTabContent');
+      if (tabEl) _etqRenderValidades(tabEl);
     },
   });
+}
+
+function _etqDarBaixa(id, tipo) {
+  const e = _etiquetas.find(x => x.id === id);
+  if (!e) return;
+  const tipoLabel = { consumida: 'Consumida / Utilizada', descartada: 'Descartada / Perdida', nao_encontrada: 'Não encontrada', excluida: 'Excluída' }[tipo] || tipo;
+  vtpConfirm({
+    title: `Dar baixa: ${e.item_nome}`,
+    message: `Marcar esta etiqueta como "${tipoLabel}"?`,
+    confirmLabel: 'Confirmar baixa',
+    danger: tipo === 'excluida',
+    onConfirm: () => {
+      e.status = tipo;
+      _saveEtiquetas();
+      _etqUpdateBadge();
+      closeModal('etqDetalheOverlay');
+      closeModal('etqScannerOverlay');
+      closeModal('etqBaixaOverlay');
+      toast(`${lc('check-circle',14,'var(--green)')} Etiqueta marcada como ${tipoLabel.toLowerCase()}`, 'ok');
+      const tabEl = document.getElementById('etqTabContent');
+      if (tabEl && _etqTab === 'validades') _etqRenderValidades(tabEl);
+    },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SCANNER QR — câmera + baixa manual
+// ═══════════════════════════════════════════════════════════════
+
+let _etqCamStream   = null;
+let _etqScanActive  = false;
+let _etqScanRAF     = null;
+
+function _etqOpenScanner() {
+  if (!_etqMetodos || !_etqValidades) _etqInit();
+  document.getElementById('etqHashManual').value = '';
+  document.getElementById('etqScanStatus').textContent = 'Aponte para o QR Code da etiqueta';
+  document.getElementById('etqScannerOverlay').classList.add('open');
+  setTimeout(_etqStartCamera, 200);
+}
+
+function _etqStartCamera() {
+  if (_etqCamStream) return; // já ativa
+  const video = document.getElementById('etqCamVideo');
+  if (!video) return;
+  navigator.mediaDevices?.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(stream => {
+      _etqCamStream  = stream;
+      _etqScanActive = true;
+      video.srcObject = stream;
+      video.play();
+      video.onloadedmetadata = () => _etqScanLoop();
+    })
+    .catch(err => {
+      const st = document.getElementById('etqScanStatus');
+      if (st) st.textContent = 'Câmera não disponível — use o campo manual abaixo';
+    });
+}
+
+function _etqStopCamera() {
+  _etqScanActive = false;
+  if (_etqScanRAF) { cancelAnimationFrame(_etqScanRAF); _etqScanRAF = null; }
+  if (_etqCamStream) {
+    _etqCamStream.getTracks().forEach(t => t.stop());
+    _etqCamStream = null;
+  }
+  const video = document.getElementById('etqCamVideo');
+  if (video) { video.srcObject = null; }
+}
+
+function _etqScanLoop() {
+  if (!_etqScanActive) return;
+  const video  = document.getElementById('etqCamVideo');
+  const canvas = document.getElementById('etqCamCanvas');
+  if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+    _etqScanRAF = requestAnimationFrame(_etqScanLoop);
+    return;
+  }
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  if (typeof jsQR !== 'undefined') {
+    const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
+    if (code?.data) {
+      _etqScanActive = false; // pausa scan
+      _etqHandleQRFound(code.data.trim().toUpperCase());
+      return;
+    }
+  }
+  _etqScanRAF = requestAnimationFrame(_etqScanLoop);
+}
+
+function _etqHandleQRFound(hash) {
+  if (typeof navigator.vibrate === 'function') navigator.vibrate(80);
+  const st = document.getElementById('etqScanStatus');
+  if (st) st.textContent = `✅ Lido: ${hash}`;
+  setTimeout(() => _etqBaixaPorHash(hash), 300);
+}
+
+function _etqBaixaManual() {
+  const raw = (document.getElementById('etqHashManual')?.value || '').trim().toUpperCase();
+  if (!raw) { toast('Digite o código da etiqueta', 'err'); return; }
+  const hash = raw.startsWith('#') ? raw : '#' + raw;
+  _etqBaixaPorHash(hash);
+}
+
+function _etqBaixaPorHash(hash) {
+  if (!_etqMetodos || !_etqValidades) _etqInit();
+  const e = _etiquetas.find(x => x.qr_hash === hash);
+
+  if (!e) {
+    toast(`QR ${hash} não encontrado no sistema`, 'err');
+    // Reativa scan
+    setTimeout(() => { _etqScanActive = true; _etqScanLoop(); }, 1500);
+    return;
+  }
+
+  // Fecha scanner e abre resultado
+  _etqStopCamera();
+  closeModal('etqScannerOverlay');
+
+  const sv  = _etqStatusValidade(e.dt_validade);
+  const cfg = _etqConfigEmpresa();
+
+  document.getElementById('etqBaixaTitle').textContent = e.item_nome;
+  document.getElementById('etqBaixaBody').innerHTML = `
+    <div style="padding:16px 20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:.76rem;font-weight:700;padding:3px 10px;border-radius:10px;background:${sv.bg};color:${sv.cor}">${sv.label}</span>
+        <span style="font-size:.76rem;color:var(--muted)">${e.metodo_nome}${e.metodo_status ? ' · ' + e.metodo_status : ''}</span>
+      </div>
+      <div style="background:#fff;border:1.5px solid var(--border);border-radius:var(--r8);padding:10px;font-family:monospace;font-size:9px;color:#000;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:bold;border-bottom:1px solid #ccc;padding-bottom:2px;margin-bottom:2px">${e.item_nome.toUpperCase()}</div>
+        <div><strong>MANIPULAÇÃO:</strong> ${_etqFmtDT(e.dt_manipulacao)}</div>
+        <div><strong>VALIDADE:</strong>    ${_etqFmtDT(e.dt_validade)}</div>
+        <div style="margin-top:4px"><strong>RESP.:</strong> ${(e.responsavel_nome||'').toUpperCase()}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;border-top:1px solid #eee;padding-top:4px">
+          <span style="font-size:10px;font-weight:bold">${e.qr_hash}</span>
+          <img id="etqBaixaQRImg" width="50" height="50" alt="QR" style="border-radius:2px">
+        </div>
+      </div>
+      ${e.status !== 'valida' ? `
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);padding:10px;font-size:.78rem;color:var(--muted);text-align:center">
+          ${lc('info',13,'currentColor')} Esta etiqueta já tem status: <strong>${e.status}</strong>
+        </div>` : ''}
+    </div>`;
+
+  setTimeout(() => _etqRenderQR('etqBaixaQRImg', e.qr_hash, 50), 30);
+
+  const foot = document.getElementById('etqBaixaFoot');
+  if (e.status === 'valida') {
+    foot.innerHTML = `
+      <button class="btn btn-outline" onclick="closeModal('etqBaixaOverlay');_etqOpenScanner()">${lc('scan-line',14,'currentColor')} Escanear outro</button>
+      <button class="btn btn-ghost" onclick="_etqDarBaixa('${e.id}','nao_encontrada')" style="color:var(--muted)">${lc('help-circle',13,'currentColor')} Não encontrada</button>
+      <button class="btn btn-outline btn-sm" onclick="_etqDarBaixa('${e.id}','descartada')" style="color:var(--orange-dark)">${lc('trash-2',13,'currentColor')} Descartada</button>
+      <button class="btn btn-primary" onclick="_etqDarBaixa('${e.id}','consumida')">${lc('check-circle',14,'#fff')} Consumida</button>`;
+  } else {
+    foot.innerHTML = `
+      <button class="btn btn-outline" onclick="closeModal('etqBaixaOverlay');_etqOpenScanner()">${lc('scan-line',14,'currentColor')} Escanear outro</button>
+      <button class="btn btn-primary" onclick="closeModal('etqBaixaOverlay')">Fechar</button>`;
+  }
+  document.getElementById('etqBaixaOverlay').classList.add('open');
+}
+
+function _etqExcluirBatch() {
+  _etqDarBaixaSelecao('excluida');
 }
 
 // ═══════════════════════════════════════════════════════════════

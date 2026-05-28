@@ -1344,6 +1344,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/db.js?v=4"></script>
 <script src="js/config.js"></script>
@@ -1673,17 +1675,85 @@
 <!-- ═══ ETIQUETAGEM — MODAIS ═══ -->
 
 <!-- Modal: Etiqueta — Detalhes e QR hashes -->
+<!-- Modal: Detalhe Etiqueta — estilo Suflex -->
 <div class="overlay" id="etqDetalheOverlay">
-  <div class="mbox" style="max-width:480px">
-    <div class="mh">
-      <div class="mt" id="etqDetalheTitle">Detalhes da Etiqueta</div>
+  <div class="mbox wide" style="max-width:780px;padding:0;overflow:hidden">
+    <!-- Header com breadcrumb -->
+    <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:3px" id="etqDetalheBreadcrumb">—</div>
+        <div style="font-size:1rem;font-weight:800;color:var(--text)" id="etqDetalheTitle">Detalhes da Etiqueta</div>
+      </div>
       <button class="mc" onclick="closeModal('etqDetalheOverlay')"></button>
     </div>
-    <div class="mb" id="etqDetalheBody"></div>
-    <div class="mf">
-      <button class="btn btn-red btn-sm" id="etqDetalheExcluirBtn" style="margin-right:auto;display:none" onclick="_etqExcluirBatch()">Excluir lote</button>
+    <!-- Corpo em duas colunas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:360px;max-height:70vh">
+      <!-- Coluna esquerda: etiqueta impressa -->
+      <div style="padding:20px;border-right:1.5px solid var(--border);overflow-y:auto">
+        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Etiqueta impressa</div>
+        <div id="etqDetalhePreview" style="background:#fff;border:1.5px solid var(--border);border-radius:var(--r8);padding:12px;font-family:monospace;font-size:9px;color:#000;line-height:1.5"></div>
+        <!-- Baixa rápida -->
+        <div style="margin-top:14px" id="etqDetalheBaixaZone"></div>
+      </div>
+      <!-- Coluna direita: etiquetas associadas -->
+      <div style="padding:20px;overflow-y:auto;display:flex;flex-direction:column">
+        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Etiquetas associadas</div>
+        <div id="etqDetalheAssociadas" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1.5px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-red btn-sm" id="etqDetalheExcluirBtn" style="margin-right:auto;display:none" onclick="_etqDarBaixaSelecao('excluida')">Excluir</button>
+      <button class="btn btn-outline btn-sm" id="etqDetalheSelAll" onclick="_etqDetalheToggleAll()">Selecionar todas</button>
       <button class="btn btn-outline" onclick="closeModal('etqDetalheOverlay')">Fechar</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal: Scanner QR — dar baixa por câmera ou manual -->
+<div class="overlay" id="etqScannerOverlay">
+  <div class="mbox" style="max-width:480px;padding:0;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:1rem;font-weight:800">📷 Dar Baixa por QR</div>
+      <button class="mc" onclick="_etqStopCamera();closeModal('etqScannerOverlay')"></button>
+    </div>
+    <div class="mb" style="padding:16px 20px">
+      <!-- Câmera -->
+      <div style="position:relative;border-radius:var(--r10);overflow:hidden;background:#000;margin-bottom:14px;aspect-ratio:1" id="etqCamZone">
+        <video id="etqCamVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block"></video>
+        <canvas id="etqCamCanvas" style="display:none"></canvas>
+        <!-- Mira -->
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <div style="width:55%;aspect-ratio:1;border:3px solid rgba(255,255,255,.7);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.4)"></div>
+        </div>
+        <div id="etqScanStatus" style="position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:.75rem;font-weight:700;color:#fff">Aponte para o QR Code da etiqueta</div>
+      </div>
+      <!-- Divisor -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:.7rem;color:var(--muted);font-weight:600">ou informe o código</span>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <!-- Manual -->
+      <div style="display:flex;gap:8px">
+        <input class="inp" id="etqHashManual" placeholder="Ex: #6774F4" style="flex:1;font-family:monospace;font-weight:700;letter-spacing:1px;text-transform:uppercase"
+          oninput="this.value=this.value.toUpperCase()"
+          onkeydown="if(event.key==='Enter')_etqBaixaManual()">
+        <button class="btn btn-primary" onclick="_etqBaixaManual()">Buscar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Resultado da Baixa -->
+<div class="overlay" id="etqBaixaOverlay">
+  <div class="mbox" style="max-width:420px;padding:0;overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:1rem;font-weight:800" id="etqBaixaTitle">Dar Baixa</div>
+      <button class="mc" onclick="closeModal('etqBaixaOverlay')"></button>
+    </div>
+    <div class="mb" id="etqBaixaBody"></div>
+    <div class="mf" id="etqBaixaFoot"></div>
   </div>
 </div>
 
