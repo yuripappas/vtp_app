@@ -554,40 +554,50 @@ function _etqPreviewHtml(s, cfg, dtManip, dtVal, qrHash) {
 // ── QR Code rendering (real matrix via qrcode.js) ─────────────
 
 function _etqRenderQR(imgId, text, size = 80) {
-  // qrcode-generator (pure JS, síncrono, sem canvas na lib)
-  // → https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js
-  // Exporta: window.qrcode(typeNumber, errorCorrectionLevel)
+  // qrcode-generator: usa createDataURL() nativo (GIF embutido, sem canvas, síncrono)
   const img = document.getElementById(imgId);
   if (!img || !text || text === '—') return;
 
   try {
     if (typeof qrcode !== 'undefined') {
-      const qr = qrcode(0, 'M'); // typeNumber 0 = auto, nível M
-      qr.addData(text);
+      const qr = qrcode(0, 'M');
+      qr.addData(text, 'Byte');
       qr.make();
-
-      // Renderiza via canvas nativo do browser (síncrono)
-      const n       = qr.getModuleCount();
-      const canvas  = document.createElement('canvas');
-      const tile    = Math.max(1, Math.floor(size / n));
-      canvas.width  = n * tile;
-      canvas.height = n * tile;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#000000';
-      for (let r = 0; r < n; r++) {
-        for (let c = 0; c < n; c++) {
-          if (qr.isDark(r, c)) ctx.fillRect(c * tile, r * tile, tile, tile);
-        }
-      }
-      img.src = canvas.toDataURL('image/png');
+      // cellSize: quantos px por módulo. Margem = 2 células.
+      const cellSize = Math.max(2, Math.floor(size / (qr.getModuleCount() + 8)));
+      img.src = qr.createDataURL(cellSize, cellSize * 2);
       return;
     }
-  } catch (e) { /* fallthrough */ }
+  } catch(e) {
+    console.warn('[VTP QR]', e);
+  }
 
-  // Fallback: API externa (requer internet)
-  img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&format=png`;
+  // Fallback: SVG inline sem dependência externa
+  _etqRenderQRSvgFallback(imgId, text, size);
+}
+
+function _etqRenderQRSvgFallback(imgId, text, size) {
+  // Renderiza via canvas nativo se o fallback SVG for necessário
+  const img = document.getElementById(imgId);
+  if (!img) return;
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(text, 'Byte');
+    qr.make();
+    const n      = qr.getModuleCount();
+    const canvas = document.createElement('canvas');
+    const tile   = Math.max(2, Math.floor(size / n));
+    canvas.width = canvas.height = n * tile;
+    const ctx    = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#000';
+    for (let r = 0; r < n; r++)
+      for (let c = 0; c < n; c++)
+        if (qr.isDark(r, c)) ctx.fillRect(c*tile, r*tile, tile, tile);
+    img.src = canvas.toDataURL('image/png');
+  } catch(_) {
+    img.alt = text; // último recurso: mostra o hash como texto
+  }
 }
 
 // ── Passo 6: Sucesso ──────────────────────────────────────────
