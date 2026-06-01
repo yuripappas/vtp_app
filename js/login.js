@@ -170,9 +170,16 @@ function shakeForm() {
 
 function applyPermissions(user) {
   const role = user.role;
+  const hasCustomPerms = Array.isArray(user.perms);
+  const userPerms = hasCustomPerms ? user.perms : (typeof getUserPerms === 'function' ? getUserPerms(user) : []);
   Object.entries(MODULE_PERMISSIONS).forEach(([mod, roles]) => {
     const navEl = document.getElementById(`nav-${mod}`);
-    if (navEl) navEl.style.display = roles.includes(role) ? '' : 'none';
+    if (!navEl) return;
+    if (mod === 'etiquetagem' && hasCustomPerms) {
+      navEl.style.display = userPerms.includes('Etiquetagem') ? '' : 'none';
+      return;
+    }
+    navEl.style.display = roles.includes(role) ? '' : 'none';
   });
   // Botão de configurações no rodapé (id diferente)
   const cfgBottom = document.getElementById('nav-configuracoes-bottom');

@@ -1708,6 +1708,7 @@ const _CFG_PERMS_TREE = [
       { id:'Checklist Meu', label:'Ver meu checklist'                    },
       { id:'Checklist',     label:'Equipe, templates e dashboard'         },
     ]},
+  { id:'Etiquetagem',        label:'Etiquetagem',         icon:'tag'             },
   { id:'Manutenção',         label:'Manutenção',          icon:'wrench'          },
   { id:'RH',                 label:'RH',                  icon:'users'           },
   { id:'Performance',        label:'Performance',         icon:'trending-up'     },
