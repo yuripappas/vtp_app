@@ -51,10 +51,19 @@ const db = (() => {
     try {
       const { data, error } = await client.from('kv_store').select('key, value');
       if (error) { console.warn('[db] sync error:', error.message); return false; }
+      const remoteKeys = new Set((data || []).map(r => r.key));
+      // Sincroniza dados do Supabase → localStorage
       for (const row of (data || [])) {
         try { localStorage.setItem(row.key, JSON.stringify(row.value)); } catch (_) {}
       }
-      return (data || []).length;
+      // Remove do localStorage chaves vtp_ que não existem mais no Supabase
+      const VTP_KEYS = Object.values(ENTITY_MAP || {});
+      for (const key of VTP_KEYS) {
+        if (!remoteKeys.has(key)) {
+          try { localStorage.removeItem(key); } catch (_) {}
+        }
+      }
+      return remoteKeys.size;
     } catch (e) {
       console.warn('[db] sync exception:', e?.message);
       return false;
