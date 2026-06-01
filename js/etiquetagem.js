@@ -973,7 +973,14 @@ function _etqDarBaixaSelecao(tipo) {
 function _etqDarBaixa(id, tipo) {
   const e = _etiquetas.find(x => x.id === id);
   if (!e) return;
-  const tipoLabel = { consumida: 'Consumida / Utilizada', descartada: 'Descartada / Perdida', nao_encontrada: 'Não encontrada', excluida: 'Excluída' }[tipo] || tipo;
+
+  // Descartada → abre modal de desperdício pré-preenchido
+  if (tipo === 'descartada') {
+    _etqAbrirModalDesperdicio(e);
+    return;
+  }
+
+  const tipoLabel = { consumida: 'Consumida / Utilizada', nao_encontrada: 'Não encontrada', excluida: 'Excluída' }[tipo] || tipo;
   vtpConfirm({
     title: `Dar baixa: ${e.item_nome}`,
     message: `Marcar esta etiqueta como "${tipoLabel}"?`,
@@ -991,6 +998,138 @@ function _etqDarBaixa(id, tipo) {
       if (tabEl && _etqTab === 'validades') _etqRenderValidades(tabEl);
     },
   });
+}
+
+function _etqAbrirModalDesperdicio(e) {
+  // Monta opções de tipo de desperdício
+  const tiposOpts = (typeof TIPOS_DESPERDICIO !== 'undefined' ? TIPOS_DESPERDICIO : [])
+    .map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+
+  const qty    = e.medida  || e.quantidade || '';
+  const unid   = e.unidade || '';
+  const hoje   = new Date().toISOString().slice(0,10);
+
+  // Cria overlay temporário
+  const ovId = 'etqDespOverlay';
+  let ov = document.getElementById(ovId);
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = ovId;
+    ov.className = 'overlay';
+    document.body.appendChild(ov);
+  }
+
+  ov.innerHTML = `
+    <div class="mbox" style="max-width:420px">
+      <div class="mh">
+        <div class="mt">${lc('trash-2',16,'var(--orange-dark)')} Registrar Desperdício</div>
+        <button class="mc" onclick="closeModal('${ovId}')"></button>
+      </div>
+      <div class="mb" style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:var(--surface2);border-radius:var(--r8);padding:10px 14px;font-size:var(--text-sm)">
+          <div style="font-weight:700;color:var(--text)">${e.item_nome}</div>
+          <div style="color:var(--muted);margin-top:2px">${qty ? qty + ' ' + unid : 'Quantidade não informada'}</div>
+        </div>
+        <div class="field">
+          <label>Tipo de desperdício *</label>
+          <select class="inp" id="etqDespTipo">${tiposOpts}</select>
+        </div>
+        <div class="f2">
+          <div class="field">
+            <label>Quantidade *</label>
+            <input class="inp" type="number" id="etqDespQty" value="${qty}" min="0.001" step="0.001" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Unidade</label>
+            <input class="inp" id="etqDespUnid" value="${unid}" placeholder="kg, g, L…">
+          </div>
+        </div>
+        <div class="field">
+          <label>Responsável *</label>
+          <input class="inp" id="etqDespResp" placeholder="Nome de quem está registrando">
+        </div>
+        <div class="field">
+          <label>Observação</label>
+          <input class="inp" id="etqDespObs" placeholder="Opcional">
+        </div>
+      </div>
+      <div class="mf" style="gap:8px">
+        <button class="btn btn-ghost" onclick="closeModal('${ovId}')">Cancelar</button>
+        <button class="btn btn-primary" style="background:var(--orange-dark);border-color:var(--orange-dark)"
+          onclick="_etqConfirmarDesperdicio('${e.id}','${ovId}')">
+          ${lc('check-circle',14,'#fff')} Confirmar desperdício
+        </button>
+      </div>
+    </div>`;
+
+  ov.classList.add('open');
+}
+
+function _etqConfirmarDesperdicio(etqId, ovId) {
+  const e    = _etiquetas.find(x => x.id === etqId);
+  if (!e) return;
+
+  const tipo = document.getElementById('etqDespTipo')?.value;
+  const qty  = parseFloat(document.getElementById('etqDespQty')?.value);
+  const unid = document.getElementById('etqDespUnid')?.value.trim() || e.unidade || '';
+  const resp = document.getElementById('etqDespResp')?.value.trim();
+  const obs  = document.getElementById('etqDespObs')?.value.trim();
+
+  if (!tipo)         { toast('Selecione o tipo de desperdício', 'err'); return; }
+  if (!qty || qty <= 0) { toast('Informe a quantidade', 'err'); return; }
+  if (!resp)         { toast('Informe o responsável', 'err'); return; }
+
+  // Registra no módulo de desperdício
+  if (typeof desperdicios !== 'undefined') {
+    const item   = (typeof items !== 'undefined') ? items.find(i => i.id === e.item_id) : null;
+    const custo  = item ? (item.cost || 0) * qty : 0;
+    const nextId = Math.max(0, ...desperdicios.map(x => x.id)) + 1;
+    const d = {
+      id:        nextId,
+      itemId:    e.item_id || null,
+      prodId:    null,
+      origem:    'etiquetagem',
+      nome:      e.item_nome,
+      unidade:   unid,
+      qty,
+      tipo,
+      custo,
+      date:      new Date().toISOString().slice(0,10),
+      resp,
+      obs:       obs || `Descartada via Etiquetagem (etq #${etqId})`,
+      createdAt: new Date().toISOString(),
+    };
+    desperdicios.push(d);
+    if (typeof saveD === 'function') saveD();
+
+    // Baixa no estoque
+    if (item) {
+      item.qty = Math.max(0, parseFloat((item.qty - qty).toFixed(3)));
+      if (typeof saveI === 'function') saveI();
+      if (typeof registrarMovimentacao === 'function') {
+        registrarMovimentacao('saida_perda', item.id, qty, 'Desperdício via Etiquetagem: ' + tipo, null);
+      }
+    }
+
+    try { if (typeof logAudit === 'function') logAudit('desperdicio_registrado', tipo + ' — ' + e.item_nome + ' ' + qty + ' ' + unid, 'desperdicio'); } catch(_){}
+    if (typeof renderDesperdicio === 'function') renderDesperdicio();
+    if (typeof renderDashboard   === 'function') renderDashboard();
+  }
+
+  // Marca etiqueta como descartada
+  e.status = 'descartada';
+  _saveEtiquetas();
+  _etqUpdateBadge();
+
+  closeModal(ovId);
+  closeModal('etqDetalheOverlay');
+  closeModal('etqScannerOverlay');
+  closeModal('etqBaixaOverlay');
+
+  toast(`${lc('check-circle',14,'var(--green)')} Desperdício registrado e etiqueta baixada`, 'ok');
+
+  const tabEl = document.getElementById('etqTabContent');
+  if (tabEl && _etqTab === 'validades') _etqRenderValidades(tabEl);
 }
 
 // ═══════════════════════════════════════════════════════════════
