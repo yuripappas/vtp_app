@@ -299,7 +299,7 @@ function _etqStep3(el) {
         const isSel = selId === item.id;
         const valids = _etqValidades.filter(v => v.item_id == item.id);
         return `
-          <button onclick="_etqWizardState.item=${JSON.stringify({id:item.id,name:item.name,cat:item.cat,isProd:item.isProd,unit:item.unit}).replace(/"/g,'&quot;')};_etqRenderWizStep(document.getElementById('etqWizContent'))"
+          <button onclick="_etqWizardState.item=${JSON.stringify({id:item.id,name:item.name,cat:item.cat,isProd:item.isProd,unit:item.unit}).replace(/"/g,'&quot;')};_etqWizNext()"
             class="etq-card"
             style="padding:14px;border-radius:var(--r10);border:2px solid ${isSel ? 'var(--brand-purple)' : 'var(--border)'};
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
@@ -312,11 +312,6 @@ function _etqStep3(el) {
       }).join('')}
     </div>
     ${filtrados.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum produto encontrado</div>` : ''}
-    ${selId ? `<div style="margin-top:20px;max-width:700px">
-      <button class="btn btn-primary" onclick="_etqWizNext()">
-        Continuar com ${_etqWizardState.item?.name} ${lc('arrow-right',14,'#fff')}
-      </button>
-    </div>` : ''}
   `;
 }
 
@@ -360,7 +355,7 @@ function _etqStep4(el) {
         const label = met.status ? `${met.nome} · ${met.status}` : met.nome;
         const isSel = _etqWizardState.metodo?.id === v.metodo_id;
         return `
-          <button onclick="_etqWizardState.metodo=${JSON.stringify({id:met.id,nome:met.nome,status:met.status,icone:met.icone,cor:met.cor,validade_dias:v.validade_dias}).replace(/"/g,'&quot;')};_etqRenderWizStep(document.getElementById('etqWizContent'))"
+          <button onclick="_etqWizardState.metodo=${JSON.stringify({id:met.id,nome:met.nome,status:met.status,icone:met.icone,cor:met.cor,validade_dias:v.validade_dias}).replace(/"/g,'&quot;')};_etqWizNext()"
             class="etq-card"
             style="padding:20px 16px;border-radius:var(--r12);border:2px solid ${isSel ? 'var(--brand-purple)' : 'var(--border)'};
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
@@ -374,11 +369,6 @@ function _etqStep4(el) {
         `;
       }).join('')}
     </div>
-    ${_etqWizardState.metodo ? `<div style="margin-top:20px;max-width:700px">
-      <button class="btn btn-primary" onclick="_etqWizNext()">
-        Continuar ${lc('arrow-right',14,'#fff')}
-      </button>
-    </div>` : ''}
   `;
 }
 
