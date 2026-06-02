@@ -813,10 +813,10 @@ function parseCSV(file) {
 
     prev.innerHTML = `
       <div style="background:var(--green-light);border:1px solid var(--green);border-radius:var(--r8);padding:10px;margin-bottom:10px;font-size:var(--text-sm);color:var(--green);font-weight:600">
-        ${lc('check-circle',13,'currentColor')} ${importData.length} itens reconhecidos — <strong>apenas a quantidade</strong> será atualizada
+        ${lc('check-circle',13,'currentColor')} ${importData.length} itens reconhecidos — estoque digital será atualizado
       </div>
       <div style="background:var(--surface2);border-radius:var(--r6);padding:7px 10px;margin-bottom:10px;font-size:var(--text-xs);color:var(--muted)">
-        ${lc('info',12,'currentColor')} Nome, estoque mínimo, ideal e custo permanecem conforme configurado no VTP App.
+        ${lc('info',12,'currentColor')} O <strong>nome</strong> dos insumos nunca é alterado pela importação — permanece sempre o cadastrado no VTP App.
       </div>
       <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
         ${importData.map(d => {
@@ -829,6 +829,8 @@ function parseCSV(file) {
             <div style="display:flex;gap:12px;font-family:monospace;font-size:var(--text-xs);color:var(--muted)">
               <span>Qtd: <strong>${d.oldQty}</strong> → <strong style="color:var(--purple)">${d.newQty}</strong></span>
               <span style="color:${diffColor};font-weight:600">${diffStr}</span>
+              ${Math.abs(d.newMin - d.oldMin) > 0.001 ? `<span>Mín: ${d.oldMin}→${d.newMin}</span>` : ''}
+              ${d.newCost !== d.oldCost && d.newCost > 0 ? `<span style="color:var(--green)">Custo: R$${d.newCost}</span>` : ''}
             </div>
           </div>`;}).join('')}
       </div>
@@ -847,17 +849,19 @@ function confirmImport() {
   // Registra movimentações antes de alterar os itens
   registrarImportacaoCW(importData);
 
-  // Regra: importação do Cardápio Web APENAS atualiza a quantidade (estoque digital).
-  // Nome, estoque mínimo, estoque ideal e custo são sempre os definidos no VTP App — nunca sobrescritos.
+  // Regra: o NOME do insumo nunca é sobrescrito pela importação — permanece sempre o do VTP App.
+  // Quantidade, estoque mínimo e custo são atualizados normalmente via CSV.
   importData.forEach(d => {
     const item = items.find(i => i.id === d.id);
     if (!item) return;
-    item.qty = d.newQty;
-    // item.min, item.cost e item.name NÃO são alterados pela importação
+    item.qty  = d.newQty;
+    if (d.newMin !== undefined) item.min  = d.newMin;
+    if (d.newCost > 0)          item.cost = d.newCost;
+    // item.name nunca é alterado pela importação
   });
   saveI();
   closeModal('ovImport');
-  toast(`${importData.length} itens atualizados (apenas quantidade)!`, 'ok');
+  toast(`${importData.length} itens atualizados!`, 'ok');
   renderEstoque();
   renderDashboard();
   importData = [];
