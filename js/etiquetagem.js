@@ -685,8 +685,162 @@ function _etqImprimir() {
   _etqWizardState._impressas = hashes;
   _etqWizardState._medida    = medida;
   _etqWizardState._unidade   = unidade;
+
+  // Abre janela de impressão 60×60mm
+  _etqAbrirJanelaPrint(s, hashes, now, dtVal, medida, unidade);
+
   _etqWizardStep = 6;
   _etqRenderWizard(document.getElementById('etqTabContent'));
+}
+
+function _etqAbrirJanelaPrint(s, hashes, dtManip, dtVal, medida, unidade) {
+  const produto = (s.item?.name || '').toUpperCase();
+  const metodo  = s.metodo ? (s.metodo.status
+    ? `${s.metodo.nome.toUpperCase()} · ${s.metodo.status.toUpperCase()}`
+    : s.metodo.nome.toUpperCase()) : '';
+  const peso    = medida && unidade ? `${medida} ${unidade}` : '';
+  const resp    = (s.responsavel?.nome || '').toUpperCase();
+  const cfg     = (typeof empresaConfig !== 'undefined') ? empresaConfig : {};
+  const empresa = (cfg.nome || 'VAI TER PIZZA!').toUpperCase();
+  const cnpj    = cfg.cnpj || '';
+  const end     = cfg.endereco || '';
+
+  const fmtDT = iso => {
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2,'0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const yy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mi = String(d.getMinutes()).padStart(2,'0');
+    return `${dd}/${mm}/${yy} − ${hh}H${mi}`;
+  };
+
+  // Gera QR como data URL síncrono para cada etiqueta
+  const qrDataURLs = hashes.map(hash => {
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(hash, 'Byte');
+      qr.make();
+      // Para 60×60mm a ~96dpi ≈ 227px; reservamos ~56px para o QR
+      const cell = 3;
+      return { hash, url: qr.createDataURL(cell, cell * 2) };
+    } catch(e) {
+      return { hash, url: '' };
+    }
+  });
+
+  const etiquetasHtml = qrDataURLs.map(({ hash, url }) => `
+    <div class="etiqueta">
+      <div class="produto">${produto}</div>
+      <div class="linha-metodo">
+        <span>${metodo}</span>
+        <span>${peso}</span>
+      </div>
+      <div class="divisor"></div>
+      <div class="datas">
+        <div><b>MANIPULAÇÃO:</b> ${fmtDT(dtManip.toISOString())}</div>
+        <div><b>VALIDADE:</b>    ${fmtDT(dtVal.toISOString())}</div>
+      </div>
+      <div class="divisor"></div>
+      <div class="rodape">
+        <div class="rodape-texto">
+          <div><b>RESP.: ${resp}</b></div>
+          <div><b>${empresa}</b></div>
+          ${cnpj ? `<div>CNPJ: ${cnpj}</div>` : ''}
+          ${end  ? `<div class="end">${end}</div>` : ''}
+          <div class="hash">${hash}</div>
+        </div>
+        ${url ? `<img src="${url}" class="qr" alt="QR">` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  const win = window.open('', '_blank', 'width=400,height=400');
+  if (!win) { toast('Permita popups para imprimir', 'err'); return; }
+
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>Etiqueta VTP</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    @page {
+      size: 60mm 60mm;
+      margin: 0;
+    }
+    body {
+      font-family: monospace;
+      background: #fff;
+    }
+    .etiqueta {
+      width: 60mm;
+      height: 60mm;
+      padding: 2.5mm;
+      overflow: hidden;
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .produto {
+      font-size: 9pt;
+      font-weight: bold;
+      border-bottom: 1pt solid #333;
+      padding-bottom: 1mm;
+      margin-bottom: 1mm;
+      line-height: 1.2;
+    }
+    .linha-metodo {
+      display: flex;
+      justify-content: space-between;
+      font-size: 7pt;
+      margin-bottom: 1mm;
+    }
+    .divisor {
+      border-top: 0.5pt solid #ccc;
+      margin: 1mm 0;
+    }
+    .datas {
+      font-size: 7pt;
+      line-height: 1.4;
+    }
+    .rodape {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 1mm;
+      margin-top: auto;
+    }
+    .rodape-texto {
+      font-size: 6.5pt;
+      line-height: 1.35;
+      flex: 1;
+      min-width: 0;
+    }
+    .end { font-size: 6pt; }
+    .hash {
+      font-size: 8pt;
+      font-weight: bold;
+      margin-top: 1mm;
+    }
+    .qr {
+      width: 16mm;
+      height: 16mm;
+      flex-shrink: 0;
+      border-radius: 1mm;
+    }
+    @media print {
+      html, body { width: 60mm; height: 60mm; }
+    }
+  </style>
+  </head><body>
+    ${etiquetasHtml}
+  <script>
+    window.onload = function() {
+      window.print();
+      window.onafterprint = function() { window.close(); };
+    };
+  <\/script>
+  </body></html>`);
+  win.document.close();
 }
 
 // ═══════════════════════════════════════════════════════════════
