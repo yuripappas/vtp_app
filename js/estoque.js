@@ -813,18 +813,24 @@ function parseCSV(file) {
 
     prev.innerHTML = `
       <div style="background:var(--green-light);border:1px solid var(--green);border-radius:var(--r8);padding:10px;margin-bottom:10px;font-size:var(--text-sm);color:var(--green);font-weight:600">
-        ${lc('check-circle',13,'currentColor')} ${importData.length} itens reconhecidos — estoque digital será atualizado
+        ${lc('check-circle',13,'currentColor')} ${importData.length} itens reconhecidos — <strong>apenas a quantidade</strong> será atualizada
+      </div>
+      <div style="background:var(--surface2);border-radius:var(--r6);padding:7px 10px;margin-bottom:10px;font-size:var(--text-xs);color:var(--muted)">
+        ${lc('info',12,'currentColor')} Nome, estoque mínimo, ideal e custo permanecem conforme configurado no VTP App.
       </div>
       <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
-        ${importData.map(d => `
+        ${importData.map(d => {
+          const diff = d.newQty - d.oldQty;
+          const diffColor = diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--muted)';
+          const diffStr  = diff > 0 ? `+${diff.toFixed(3)}` : diff.toFixed(3);
+          return `
           <div style="padding:7px 11px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
             <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:2px">${d.name}</div>
             <div style="display:flex;gap:12px;font-family:monospace;font-size:var(--text-xs);color:var(--muted)">
-              <span>Digital: <strong>${d.oldQty}</strong> → <strong style="color:var(--purple)">${d.newQty}</strong></span>
-              ${Math.abs(d.newMin - d.oldMin) > 0.001 ? `<span>Mín: ${d.oldMin}→${d.newMin}</span>` : ''}
-              ${d.newCost !== d.oldCost && d.newCost > 0 ? `<span style="color:var(--green)">Custo: R$${d.newCost}</span>` : ''}
+              <span>Qtd: <strong>${d.oldQty}</strong> → <strong style="color:var(--purple)">${d.newQty}</strong></span>
+              <span style="color:${diffColor};font-weight:600">${diffStr}</span>
             </div>
-          </div>`).join('')}
+          </div>`;}).join('')}
       </div>
       ${naoEncontrados.length ? `
         <div style="font-size:var(--text-xs);color:var(--muted);background:var(--surface2);border-radius:var(--r6);padding:7px 10px;margin-bottom:10px">
@@ -841,16 +847,17 @@ function confirmImport() {
   // Registra movimentações antes de alterar os itens
   registrarImportacaoCW(importData);
 
+  // Regra: importação do Cardápio Web APENAS atualiza a quantidade (estoque digital).
+  // Nome, estoque mínimo, estoque ideal e custo são sempre os definidos no VTP App — nunca sobrescritos.
   importData.forEach(d => {
     const item = items.find(i => i.id === d.id);
     if (!item) return;
-    item.qty  = d.newQty;
-    if (d.newMin !== undefined) item.min  = d.newMin;
-    if (d.newCost > 0)          item.cost = d.newCost;
+    item.qty = d.newQty;
+    // item.min, item.cost e item.name NÃO são alterados pela importação
   });
   saveI();
   closeModal('ovImport');
-  toast(`${importData.length} itens atualizados (digital)!`, 'ok');
+  toast(`${importData.length} itens atualizados (apenas quantidade)!`, 'ok');
   renderEstoque();
   renderDashboard();
   importData = [];
