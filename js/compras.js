@@ -116,9 +116,10 @@ function _abrirModalCriarLista() {
 }
 
 function _criarListaDoEstoque() {
-  const criticos = items.filter(i => gst(i) !== 'ok');
+  // Apenas insumos (!isProd) — preparados são produção interna, não compra
+  const criticos = items.filter(i => !i.isProd && gst(i) !== 'ok');
   if (!criticos.length) {
-    toast('Todos os itens estão acima do mínimo no estoque!', 'warn');
+    toast('Todos os insumos estão acima do mínimo no estoque!', 'warn');
     return;
   }
   const carrinho = criticos.map(i => ({
@@ -828,6 +829,7 @@ function _e1RenderCarrinho() {
 function e1AddItem(itemId) {
   const item = items.find(i => i.id === itemId);
   if (!item) return;
+  if (item.isProd) { toast('Preparados são produção interna — não entram na lista de compras.', 'warn'); return; }
   if (_listaAtual.itens.find(ci => ci.itemId === itemId)) return;
   const need = gneed(item);
   const qty  = need > 0 ? parseFloat(need.toFixed(3)) : parseFloat((item.min||1).toFixed(3));
@@ -2828,6 +2830,14 @@ function _renderEtapaAprovacao() {
 // ══════════════════════════════════════════════════════════════
 function _renderEtapa2Cotacao() {
   const l = _listaAtual;
+  // Remove preparados (isProd) de listas existentes — não são itens de compra
+  const antes = l.itens.length;
+  l.itens = l.itens.filter(ci => {
+    const item = items.find(x => x.id === ci.itemId);
+    return item ? !item.isProd : true;
+  });
+  if (l.itens.length !== antes) saveListas();
+
   l.itens.forEach(i => {
     if (!i.cotacoes) i.cotacoes = [];
     if (i.tipoCompra !== 'presencial') {
