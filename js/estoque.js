@@ -115,7 +115,7 @@ function _renderContagemTab() {
             color:${_modoContagem==='diaria'?'#fff':'var(--muted)'}">
           ${lc('zap',12,_modoContagem==='diaria'?'#fff':'currentColor')} Contagem Diária
         </button>` : ''}
-        ${podeSemanal ? `<button onclick="setModoContagem('semanal')"
+        ${podeSemanal ? `<button onclick="_modoContagem='semanal';renderEstoque()"
           style="padding:6px 14px;border-radius:var(--r8);border:none;cursor:pointer;font-size:var(--text-sm);font-weight:700;font-family:Inter,sans-serif;transition:all .15s;
             background:${_modoContagem==='semanal'?'var(--purple)':'transparent'};
             color:${_modoContagem==='semanal'?'#fff':'var(--muted)'}">
@@ -829,7 +829,7 @@ function _renderContagemDiaria() {
   if (!itensDiarios.length) {
     document.getElementById('estPanelContagem').innerHTML = `
       <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
-        <button onclick="setModoContagem('semanal')"
+        <button onclick="_modoContagem='semanal';renderEstoque()"
           style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)">
           ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
         </button>
@@ -859,7 +859,7 @@ function _renderContagemDiaria() {
 
   el.innerHTML = `
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
-      <button onclick="setModoContagem('semanal')"
+      <button onclick="_modoContagem='semanal';renderEstoque()"
         style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
         onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
         ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
@@ -937,7 +937,7 @@ function _renderResumoDiario(diaAtual, itensDiarios, hoje) {
 
   el.innerHTML = `
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
-      <button onclick="setModoContagem('semanal')"
+      <button onclick="_modoContagem='semanal';renderEstoque()"
         style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
         onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
         ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
