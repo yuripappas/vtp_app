@@ -167,15 +167,16 @@ function _renderCatCards(el) {
       </button>`;
   });
 
-  const barHtml = _catsSelecionadas.size > 0 ? `
-    <div style="padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);
+  const nCats = _catsSelecionadas.size;
+  const barHtml = nCats > 0 ? `
+    <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);
         display:flex;align-items:center;justify-content:space-between;gap:12px;
-        box-shadow:0 -4px 16px rgba(0,0,0,.08)">
+        box-shadow:0 -4px 16px rgba(0,0,0,.08);z-index:100">
       <div style="font-size:var(--text-sm);color:var(--text2)">
-        <strong style="color:var(--purple)">${_catsSelecionadas.size}</strong> categoria${_catsSelecionadas.size > 1 ? 's' : ''} ·
+        <strong style="color:var(--purple)">${nCats}</strong> categoria${nCats > 1 ? 's' : ''} ·
         <strong>${totalSel}</strong> itens
       </div>
-      <button id="btnIniciarContagem"
+      <button onclick="_iniciarContagem()"
         style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
           font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;min-height:44px">
         ${lc('play-circle',15,'#fff')} Iniciar contagem
@@ -189,7 +190,7 @@ function _renderCatCards(el) {
           <div style="font-size:var(--text-base);font-weight:800">${lc('clipboard-list',16,'var(--purple)')} Contagem de Estoque</div>
           <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Selecione uma ou mais categorias para contar</div>
         </div>
-        <button id="btnHistContagem"
+        <button onclick="verHistoricoContagens()"
           style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2);min-height:40px">
           ${lc('clock',13,'currentColor')} Histórico
         </button>
@@ -200,9 +201,7 @@ function _renderCatCards(el) {
     </div>
     ${barHtml}`;
 
-  // Event listeners — sem onclick inline
-  el.querySelector('#btnHistContagem')?.addEventListener('click', verHistoricoContagens);
-  el.querySelector('#btnIniciarContagem')?.addEventListener('click', _iniciarContagem);
+  // (botões Histórico e Iniciar contagem usam onclick inline — sem encoding issues)
 
   // Delegação: qualquer clique num card com data-cat
   el.querySelector('#catGrid')?.addEventListener('click', e => {
