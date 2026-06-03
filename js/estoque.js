@@ -1,16 +1,14 @@
 /**
  * VTP Compras — Vai Ter Pizza!
- * estoque.js — Módulo de Contagem de Estoque (reformulado)
+ * estoque.js — Módulo de Contagem de Estoque (mobile-first, por categoria)
  * Objetivo: comparar estoque físico vs digital, detectar divergências
  */
 
-let _estFiltro      = { search: '', cat: '', status: 'all' };
-let _contagem       = {}; // { itemId: qtyFisico }
-let _contagemAtiva  = false;
-let _estTab         = 'contagem'; // 'contagem' | 'movimentacoes'
-let _modoContagem   = 'semanal';  // 'diaria' | 'semanal'
-
-// Categorias prioritárias para contagem diária
+let _estTab          = 'contagem';   // 'contagem' | 'movimentacoes'
+let _contagem        = {};           // { itemId: qtyFisico }
+let _contagemAtiva   = false;
+let _catsSelecionadas = new Set();   // categories selected for current count
+let _categoriasContando = [];        // categories in the active count session
 
 // Storage de movimentações
 const _getMov    = () => db._get('vtp_movimentacoes', []);
@@ -80,480 +78,286 @@ function _atualizarEstTabs() {
   if (btnImport) btnImport.style.display = _estTab === 'contagem' ? 'flex' : 'none';
 }
 
-function setModoContagem(modo) {
-  _modoContagem = modo;
-  _estFiltro.cat = '';
-  _estFiltro.status = 'all';
-  _renderContagemTab();
+// ── Ícone por categoria ───────────────────────────────────────
+function _estIconCat(cat) {
+  const m = {
+    'Preparados':'chef-hat','Laticínios':'droplets','Carnes e Frios':'flame',
+    'Carnes':'flame','Frios':'flame','Massas':'layers','Massas e Farinhas':'layers',
+    'Molhos':'droplets','Molhos e Bases':'droplets','Molhos e Temperos':'droplets',
+    'Embalagens':'box','Descartáveis':'box','Bebidas':'coffee',
+    'Refrigerantes':'coffee','Doces':'star','Sobremesas':'star',
+    'Hortifruti':'leaf','Horti-Fruti':'leaf','Vegetais':'leaf',
+    'Higiene/Limpeza':'sparkles','Limpeza':'sparkles','Higiene':'sparkles',
+    'Temperos':'tag','Temperos e Enlatados':'tag','Outros':'package',
+  };
+  if (m[cat]) return m[cat];
+  const l = (cat||'').toLowerCase();
+  for (const [k,v] of Object.entries(m)) {
+    if (l.includes(k.toLowerCase()) || k.toLowerCase().includes(l)) return v;
+  }
+  return 'package';
 }
 
+// ── Render principal ──────────────────────────────────────────
 function _renderContagemTab() {
-  const modoEl = document.getElementById('estModoContagem');
-  if (modoEl) {
-    const u          = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-    const role       = u?.role || '';
-    const perms      = typeof getContagemPerms === 'function' ? getContagemPerms() : { diaria: ['gerente','supervisor','comprador','funcionario'], semanal: ['gerente','supervisor','comprador'] };
-    const podeDiaria = perms.diaria.includes(role);
-    const podeSemanal= perms.semanal.includes(role);
-
-    // Ajusta modo ativo se o atual não é permitido
-    if (_modoContagem === 'diaria'  && !podeDiaria  && podeSemanal) _modoContagem = 'semanal';
-    if (_modoContagem === 'semanal' && !podeSemanal && podeDiaria)  _modoContagem = 'diaria';
-
-    if (!podeDiaria && !podeSemanal) {
-      modoEl.innerHTML = `<div style="padding:12px 14px;border-radius:var(--r8);background:var(--surface2);font-size:var(--text-sm);color:var(--muted);display:flex;align-items:center;gap:8px">
-        ${lc('lock',14,'currentColor')} Seu perfil não tem permissão para realizar contagens. Solicite ao gerente.
-      </div>`;
-      return;
-    }
-
-    modoEl.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:3px">
-        ${podeDiaria ? `<button onclick="setModoContagem('diaria')"
-          style="padding:6px 14px;border-radius:var(--r8);border:none;cursor:pointer;font-size:var(--text-sm);font-weight:700;font-family:Inter,sans-serif;transition:all .15s;
-            background:${_modoContagem==='diaria'?'var(--orange-dark)':'transparent'};
-            color:${_modoContagem==='diaria'?'#fff':'var(--muted)'}">
-          ${lc('zap',12,_modoContagem==='diaria'?'#fff':'currentColor')} Contagem Diária
-        </button>` : ''}
-        ${podeSemanal ? `<button onclick="setModoContagem('semanal')"
-          style="padding:6px 14px;border-radius:var(--r8);border:none;cursor:pointer;font-size:var(--text-sm);font-weight:700;font-family:Inter,sans-serif;transition:all .15s;
-            background:${_modoContagem==='semanal'?'var(--purple)':'transparent'};
-            color:${_modoContagem==='semanal'?'#fff':'var(--muted)'}">
-          ${lc('clipboard-list',12,_modoContagem==='semanal'?'#fff':'currentColor')} Contagem Semanal
-        </button>` : ''}
-      </div>
-      ${_modoContagem==='diaria'
-        ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);margin-top:6px;display:flex;align-items:center;gap:5px">
-            ${lc('info',10,'currentColor')} Apenas insumos marcados para contagem diária no cadastro + críticos — configure em Cadastros → Insumos
-           </div>`
-        : `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:5px">
-            ${lc('info',10,'currentColor')} Contagem completa de todos os insumos — use para fechar a lista de compras da semana
-           </div>`}`;
-  }
-
-  // Contagem diária tem UX própria (abertura/fechamento)
-  if (_modoContagem === 'diaria') {
-    _diariaInputs = _diariaInputs || {};
-    document.getElementById('estTableBody') && (document.getElementById('estTableBody').closest('table') ? document.getElementById('estTableBody').closest('table').style.display = 'none' : null);
-    const estKpis = document.getElementById('estKpis');
-    if (estKpis) estKpis.style.display = 'none';
-    _renderContagemDiaria();
-    return;
-  }
-
-  // Contagem semanal — restaura tabela e kpis
-  const tbl = document.getElementById('estTableBody')?.closest('table');
-  if (tbl) tbl.style.display = '';
-  const estKpis2 = document.getElementById('estKpis');
-  if (estKpis2) estKpis2.style.display = '';
-
-  const thFis   = document.getElementById('estThFisico');
-  const thDiv   = document.getElementById('estThDiverg');
-  if (thFis)   thFis.textContent   = _contagemAtiva ? 'Físico'       : 'Últ. Contagem';
-  if (thDiv)   thDiv.style.display = _contagemAtiva ? ''             : 'none';
-
-  const todosInsumos = items.filter(i => !i.isProd);
-  const insumos = todosInsumos;
-
-  const cats = [...new Set(insumos.map(i => i.cat))].sort();
-  const catEl = document.getElementById('estCatFil');
-  if (catEl) {
-    const cur = catEl.value;
-    catEl.innerHTML = '<option value="">Todas categorias</option>' +
-      cats.map(c => `<option value="${c}" ${c===cur?'selected':''}>${c}</option>`).join('');
-  }
-  _renderEstKpis(insumos);
-  _renderFiltrosBtns();
-  _renderEstoqueTabela(insumos);
+  const el = document.getElementById('estPanelContagem');
+  if (!el) return;
+  if (_contagemAtiva) _renderContagemAtiva(el);
+  else                _renderCatCards(el);
 }
 
-// ── KPIs ──────────────────────────────────────────────────────
-function _renderEstKpis(insumos) {
-  const el = document.getElementById('estKpis');
+// ── Cards de categoria ────────────────────────────────────────
+function _renderCatCards(el) {
+  if (!el) { el = document.getElementById('estPanelContagem'); }
   if (!el) return;
 
-  const crit = insumos.filter(i => gst(i) === 'crit').length;
-  const warn = insumos.filter(i => gst(i) === 'warn').length;
-  const ok   = insumos.filter(i => gst(i) === 'ok').length;
-
-  // Divergências na contagem ativa
-  const diverg = _contagemAtiva
-    ? insumos.filter(i => {
-        const fis = _contagem[i.id];
-        return fis !== undefined && Math.abs(fis - i.qty) > 0.001;
-      }).length
-    : null;
-
-  el.innerHTML = `
-    ${_kpi(crit, 'Críticos',    'var(--red)',    'crit', 'alert-circle')}
-    ${_kpi(warn, 'Baixo',       'var(--yellow)', 'warn', 'alert-triangle')}
-    ${_kpi(ok,   'OK',          'var(--green)',  'ok',   'check-circle')}
-    ${diverg !== null ? _kpi(diverg, 'Divergências', 'var(--orange-dark)', 'diverg', 'git-branch') : ''}`;
-}
-
-function _kpi(val, label, cor, filtro, icon) {
-  const active = _estFiltro.status === filtro;
-  return `
-    <div class="kpi" onclick="setEstFiltro('${filtro}')"
-      style="cursor:pointer;border-color:${active ? cor : 'var(--border)'};background:${active ? cor+'11' : 'var(--surface)'}">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        ${lc(icon, 16, active ? cor : 'var(--muted)')}
-        <div class="kpi-v" style="color:${cor};font-size:1.4rem">${val}</div>
-      </div>
-      <div class="kpi-l">${label}</div>
-    </div>`;
-}
-
-// ── Filtros ───────────────────────────────────────────────────
-function _renderFiltrosBtns() {
-  const el = document.getElementById('estFiltrosBtns');
-  if (!el) return;
-  const st = _estFiltro.status;
-  const btns = [
-    { id:'all',    label:'Todos',           icon:'package'        },
-    { id:'crit',   label:'Críticos',        icon:'alert-circle'   },
-    { id:'warn',   label:'Baixo',           icon:'alert-triangle' },
-    { id:'ok',     label:'OK',              icon:'check-circle'   },
-    { id:'need',   label:'Com necessidade', icon:'arrow-up'       },
-    ..._contagemAtiva ? [{ id:'diverg', label:'Divergências', icon:'git-branch' }] : [],
-    ..._contagemAtiva ? [{ id:'contado', label:'Contados', icon:'check-square' }] : [],
-  ];
-  el.innerHTML = btns.map(b =>
-    `<button class="filter-btn ${st===b.id?'active':''}" onclick="setEstFiltro('${b.id}')">
-      ${lc(b.icon, 12, 'currentColor')} ${b.label}
-    </button>`
-  ).join('');
-}
-
-// ── Tabela ────────────────────────────────────────────────────
-function _renderEstoqueTabela(insumos) {
-  const q   = _estFiltro.search.toLowerCase();
-  const cat = _estFiltro.cat;
-  const st  = _estFiltro.status;
-
-  let filt = insumos.filter(i => {
-    if (cat && i.cat !== cat) return false;
-    if (q && !i.name.toLowerCase().includes(q)) return false;
-    if (st === 'crit')   return gst(i) === 'crit';
-    if (st === 'warn')   return gst(i) === 'warn';
-    if (st === 'ok')     return gst(i) === 'ok';
-    if (st === 'need')   return gneed(i) > 0;
-    if (st === 'diverg') {
-      const fis = _contagem[i.id];
-      return fis !== undefined && Math.abs(fis - i.qty) > 0.001;
-    }
-    if (st === 'contado') return _contagem[i.id] !== undefined;
-    return true;
-  }).sort((a,b) => {
-    const order = { crit:0, warn:1, ok:2 };
-    return (order[gst(a)]||2) - (order[gst(b)]||2) || a.name.localeCompare(b.name);
-  });
-
-  const byCat = {};
-  filt.forEach(i => { if (!byCat[i.cat]) byCat[i.cat]=[]; byCat[i.cat].push(i); });
-
-  const tbody = document.getElementById('estTableBody');
-  if (!tbody) return;
-
-  if (!filt.length) {
-    tbody.innerHTML = `
-      <tr><td colspan="9" style="text-align:center;padding:40px">
-        <div class="empty-icon">${lc('package',24,'var(--muted)')}</div>
-        <div style="font-size:var(--text-sm);color:var(--muted)">Nenhum item encontrado</div>
-      </td></tr>`;
-    return;
-  }
-
-  const stColors  = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' };
-  const stLabels  = { crit:'CRÍTICO', warn:'BAIXO', ok:'OK' };
-  const rowBg     = { crit:'#FFF1F1', warn:'#FFFBEB', ok:'var(--surface)' };
+  const allCats = [...new Set(items.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
   const ultimaMapa = _ultimaContagemPorItem();
 
-  tbody.innerHTML = Object.entries(byCat).map(([cat, catItems]) => {
-    const catRow = `
-      <tr>
-        <td colspan="9" style="padding:8px 16px 5px;background:var(--surface2);border-top:2px solid var(--border);border-bottom:1px solid var(--border)">
-          <span style="font-size:var(--text-2xs);font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--purple)">${cat}</span>
-        </td>
-      </tr>`;
+  // Última contagem por categoria
+  function _ultimaContCat(cat) {
+    const catItems = items.filter(i => (i.cat||'Outros') === cat);
+    const datas = catItems.map(i => ultimaMapa[i.id]?.date).filter(Boolean);
+    if (!datas.length) return null;
+    return datas.sort().reverse()[0];
+  }
+  function _divergCat(cat) {
+    const catItems = items.filter(i => (i.cat||'Outros') === cat);
+    return catItems.filter(i => {
+      const u = ultimaMapa[i.id];
+      return u && Math.abs(u.diverg||0) > 0.001;
+    }).length;
+  }
+  function _diasDesde(dateStr) {
+    if (!dateStr) return null;
+    const d = Math.floor((new Date() - new Date(dateStr)) / 864e5);
+    if (d === 0) return 'hoje';
+    if (d === 1) return 'ontem';
+    return d + 'd atrás';
+  }
 
-    const itemRows = catItems.map(i => {
-      const s         = gst(i);
-      const pct       = i.ideal > 0 ? Math.min(100, Math.round(i.qty / i.ideal * 100)) : 0;
-      const fisBg     = rowBg[s] || 'var(--surface)';
-      const fisCont   = _contagem[i.id];
-      const temFis    = fisCont !== undefined;
-      const diverg    = temFis && Math.abs(fisCont - i.qty) > 0.001;
-      const divergPct = temFis && i.qty > 0 ? ((fisCont - i.qty) / i.qty * 100) : 0;
-      const rowBgFinal= diverg ? '#FFF3CD' : fisBg;
-      const ultima        = ultimaMapa[i.id] || null;
-      const divRegist     = ultima && ultima.diverg !== null && Math.abs(ultima.diverg) > 0.001;
-      const divRegistSinal= divRegist ? (ultima.diverg > 0 ? '+' : '') + fmt(ultima.diverg) + ' ' + i.unit : null;
-      // Se há divergência registrada e não há contagem ativa, sinaliza a linha
-      const rowBgEfetivo  = (!_contagemAtiva && divRegist) ? 'var(--orange-light)' : rowBgFinal;
-      const leftBorder    = (!_contagemAtiva && divRegist) ? '3px solid var(--orange-dark)' : diverg ? '3px solid var(--orange-dark)' : '3px solid transparent';
+  const totalSelecionados = [..._catsSelecionadas].reduce((s,c) =>
+    s + items.filter(i => (i.cat||'Outros') === c).length, 0);
 
-      return `
-        <tr id="est-row-${i.id}" style="background:${rowBgEfetivo};border-bottom:1px solid var(--border);border-left:${leftBorder}">
-          <!-- Nome -->
-          <td style="padding:10px 14px;min-width:180px">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span style="font-size:var(--text-sm);font-weight:600;color:var(--text)">${i.name}</span>
-              ${divRegist && !_contagemAtiva ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:20px;background:var(--orange-dark);color:#fff;font-size:var(--text-2xs);font-weight:800;white-space:nowrap">
-                ${lc('alert-triangle',8,'#fff')} ${divRegistSinal}
-              </span>` : ''}
+  el.innerHTML = `
+    <div style="padding:16px">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:var(--text-base);font-weight:800">${lc('clipboard-list',16,'var(--purple)')} Contagem de Estoque</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Selecione uma ou mais categorias para contar</div>
+        </div>
+        <button onclick="verHistoricoContagens()"
+          style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2)">
+          ${lc('clock',13,'currentColor')} Histórico
+        </button>
+      </div>
+
+      <!-- Grid de categorias -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:${_catsSelecionadas.size > 0 ? '80px' : '0'}">
+        ${allCats.map(cat => {
+          const count   = items.filter(i => (i.cat||'Outros') === cat).length;
+          const sel     = _catsSelecionadas.has(cat);
+          const ultima  = _ultimaContCat(cat);
+          const diverg  = _divergCat(cat);
+          const icon    = _estIconCat(cat);
+          return `
+          <button onclick="_toggleCatSel('${cat.replace(/'/g,"\\'")}'); return false"
+            style="display:flex;flex-direction:column;align-items:center;padding:16px 10px;border-radius:var(--r12);
+              border:2px solid ${sel ? 'var(--purple)' : 'var(--border)'};
+              background:${sel ? 'var(--purple-xlight)' : 'var(--surface)'};
+              cursor:pointer;text-align:center;gap:8px;transition:all .15s;
+              min-height:110px;font-family:Inter,sans-serif;position:relative">
+            ${sel ? `<span style="position:absolute;top:8px;right:8px;width:18px;height:18px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center">${lc('check',10,'#fff')}</span>` : ''}
+            <div style="width:44px;height:44px;border-radius:50%;background:${sel ? 'var(--purple)' : 'var(--surface2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s">
+              ${lc(icon, 20, sel ? '#fff' : 'var(--muted)')}
             </div>
-            ${i.code ? `<div style="font-size:var(--text-2xs);color:var(--muted);font-family:monospace;margin-top:1px">#${i.code}</div>` : ''}
-          </td>
+            <div style="font-size:var(--text-xs);font-weight:700;color:${sel ? 'var(--purple)' : 'var(--text)'};line-height:1.2">${cat}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
+            ${ultima ? `<div style="font-size:.62rem;color:${diverg > 0 ? 'var(--orange-dark)' : 'var(--muted)'}">
+              ${diverg > 0 ? lc('alert-triangle',9,'currentColor') + ' ' + diverg + ' diverg. · ' : ''}${_diasDesde(ultima)}
+            </div>` : `<div style="font-size:.62rem;color:var(--muted)">Nunca contada</div>`}
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
 
-          <!-- Un -->
-          <td class="c" style="font-size:var(--text-sm);color:var(--muted);width:48px">${i.unit}</td>
-
-          <!-- Digital (readonly) -->
-          <td class="c" style="width:88px">
-            <div style="font-size:var(--text-md);font-weight:700;font-family:monospace;color:var(--text)">${fmt(i.qty)}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted)">digital</div>
-          </td>
-
-          <!-- Última Contagem / Físico editável -->
-          <td class="c" style="width:110px">
-            ${_contagemAtiva ? `
-              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-                ${ultima ? `<div style="font-size:var(--text-2xs);color:var(--muted);font-family:monospace">${fmt(ultima.fisico)} <span style="opacity:.7">${i.unit}</span></div>` : ''}
-                <input type="number" value="${temFis ? fisCont : ''}" min="0" step="0.001"
-                  placeholder="${ultima ? fmt(ultima.fisico) : '0'}"
-                  style="width:76px;padding:5px 7px;border:1.5px solid ${diverg?'var(--orange-dark)':'var(--border)'};
-                  border-radius:var(--r6);font-size:var(--text-sm);font-family:monospace;text-align:center;
-                  background:${diverg?'#FFFBEB':'var(--surface)'}"
-                  oninput="setFisico(${i.id}, this.value)">
-              </div>
-            ` : ultima ? `
-              <div style="display:flex;flex-direction:column;align-items:center;gap:1px">
-                <div style="font-size:var(--text-md);font-weight:700;font-family:monospace;color:var(--text2)">${fmt(ultima.fisico)}</div>
-                <div style="font-size:var(--text-2xs);color:var(--muted)">${fmtD(ultima.date)}</div>
-              </div>
-            ` : `<div style="font-size:var(--text-xs);color:var(--muted);font-style:italic">—</div>`}
-          </td>
-
-          <!-- Divergência (só durante contagem ativa) -->
-          <td class="c" style="width:100px;${_contagemAtiva?'':'display:none'}">
-            ${temFis ? `
-              <div style="display:flex;flex-direction:column;align-items:center;gap:1px">
-                <div style="font-size:var(--text-sm);font-weight:700;font-family:monospace;
-                  color:${diverg?'var(--orange-dark)':'var(--green)'}">
-                  ${diverg ? `${fisCont > i.qty ? '+' : ''}${fmt(fisCont - i.qty)}` : '✓'}
-                </div>
-                ${diverg ? `<div style="font-size:var(--text-2xs);color:var(--orange-dark)">${divergPct > 0 ? '+' : ''}${divergPct.toFixed(1)}%</div>` : ''}
-              </div>
-            ` : '<div style="font-size:var(--text-xs);color:var(--border2)">—</div>'}
-          </td>
-
-          <!-- Mín -->
-          <td class="c" style="font-size:var(--text-sm);color:var(--muted);width:60px">${fmt(i.min)}</td>
-
-          <!-- Ideal -->
-          <td class="c" style="font-size:var(--text-sm);color:var(--muted);width:60px">${fmt(i.ideal)}</td>
-
-          <!-- Barra -->
-          <td style="width:120px;padding:8px 12px">
-            <div style="display:flex;align-items:center;gap:7px">
-              <div style="flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
-                <div style="height:100%;width:${pct}%;background:${stColors[s]};border-radius:3px"></div>
-              </div>
-              <span style="font-size:var(--text-2xs);color:${stColors[s]};font-weight:700;min-width:32px;text-align:right">${pct}%</span>
-            </div>
-          </td>
-
-          <!-- Status -->
-          <td class="c" style="width:80px">
-            <span class="chip chip-${s==='crit'?'red':s==='warn'?'yellow':'green'}">
-              ${lc(s==='crit'?'alert-circle':s==='warn'?'alert-triangle':'check-circle', 10, 'currentColor')}
-              ${stLabels[s]}
-            </span>
-          </td>
-        </tr>`;
-    }).join('');
-
-    return catRow + itemRows;
-  }).join('');
-
-  // Badge sidebar
-  const badge = document.getElementById('badge-estoque');
-  const critCount = insumos.filter(i => gst(i) === 'crit').length;
-  if (badge) { badge.textContent = critCount||''; badge.style.display = critCount > 0 ? 'inline-flex' : 'none'; }
-
-  // Atualiza painel de contagem
-  _renderPainelContagem();
+    <!-- Barra de ação sticky (quando há seleção) -->
+    ${_catsSelecionadas.size > 0 ? `
+    <div style="position:sticky;bottom:0;left:0;right:0;padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 16px rgba(0,0,0,.08)">
+      <div style="font-size:var(--text-sm);color:var(--text2)">
+        <strong style="color:var(--purple)">${_catsSelecionadas.size}</strong> categoria${_catsSelecionadas.size > 1 ? 's' : ''} ·
+        <strong>${totalSelecionados}</strong> itens
+      </div>
+      <button onclick="_iniciarContagem()"
+        style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap">
+        ${lc('play-circle',15,'#fff')} Iniciar contagem
+      </button>
+    </div>` : ''}
+  `;
 }
 
-// ── Painel lateral de contagem ────────────────────────────────
-function _renderPainelContagem() {
-  const el = document.getElementById('estPainelContagem');
+function _toggleCatSel(cat) {
+  if (_catsSelecionadas.has(cat)) _catsSelecionadas.delete(cat);
+  else _catsSelecionadas.add(cat);
+  _renderCatCards(document.getElementById('estPanelContagem'));
+}
+
+function _iniciarContagem() {
+  if (_catsSelecionadas.size === 0) { toast('Selecione pelo menos uma categoria', 'err'); return; }
+  _contagemAtiva      = true;
+  _categoriasContando = [..._catsSelecionadas];
+  _catsSelecionadas   = new Set();
+  _contagem           = {};
+  _renderContagemAtiva(document.getElementById('estPanelContagem'));
+}
+
+// ── Contagem ativa ────────────────────────────────────────────
+function _renderContagemAtiva(el) {
+  if (!el) { el = document.getElementById('estPanelContagem'); }
   if (!el) return;
 
-  const insumos  = items.filter(i => !i.isProd);
+  const todosItens = _categoriasContando.flatMap(cat =>
+    items.filter(i => (i.cat||'Outros') === cat)
+  );
+  const total    = todosItens.length;
   const contados = Object.keys(_contagem).length;
-  const divergs  = insumos.filter(i => {
-    const f = _contagem[i.id];
-    return f !== undefined && Math.abs(f - i.qty) > 0.001;
-  });
+  const pct      = total > 0 ? Math.round(contados / total * 100) : 0;
+  const tituloLabel = _categoriasContando.length === 1
+    ? _categoriasContando[0]
+    : _categoriasContando.length + ' categorias';
 
-  if (!_contagemAtiva) {
-    const hist        = _getHistContagens();
-    const histRecente = [...hist].sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,5);
-    const ultimaData  = histRecente[0] ? fmtD(histRecente[0].date) : null;
-
-    el.innerHTML = `
-      <div style="padding:16px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-          ${lc('clipboard-list',14,'var(--purple)')}
-          <span style="font-size:var(--text-sm);font-weight:800">Contagem de Estoque</span>
-        </div>
-        ${ultimaData
-          ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:5px">
-              ${lc('calendar',9,'currentColor')} Última: <strong style="color:var(--text)">${ultimaData}</strong>
-             </div>`
-          : `<div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:14px">Nenhuma contagem registrada ainda</div>`}
-        <button onclick="iniciarContagemEstoque()"
-          style="width:100%;padding:10px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
-          font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:${hist.length?'16px':'0'}">
-          ${lc('play-circle',15,'#fff')} Iniciar contagem
+  el.innerHTML = `
+    <!-- Header sticky -->
+    <div style="position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1.5px solid var(--border)">
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:10px">
+        <button onclick="cancelarContagem()"
+          style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:var(--text-xs);font-weight:600;padding:6px;border-radius:var(--r6);min-height:36px">
+          ${lc('arrow-left',14,'currentColor')} Cancelar
         </button>
-        ${hist.length ? `
-          <div>
-            <div style="font-size:var(--text-2xs);font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Histórico</div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              ${histRecente.map(c => {
-                const nd  = c.itens?.filter(x => Math.abs(x.diverg||0) > 0.001).length ?? c.divergs ?? 0;
-                const dt  = fmtDT(c.date);
-                return `<div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
-                  <div style="padding:8px 10px;background:var(--surface2);display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
-                    <div style="min-width:0">
-                      <div style="font-size:var(--text-xs);font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${dt}</div>
-                      <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lc('user',8,'currentColor')} ${c.user}</div>
-                    </div>
-                    <button onclick="abrirDetalheContagem('${c.id}')" title="Ver detalhes"
-                      style="background:none;border:none;cursor:pointer;padding:2px;flex-shrink:0;color:var(--purple)">
-                      ${lc('external-link',12,'currentColor')}
-                    </button>
-                  </div>
-                  <div style="padding:6px 10px;display:flex;gap:10px">
-                    <div style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:4px">
-                      ${lc('package',9,'currentColor')} <strong style="color:var(--text)">${c.total}</strong> itens
-                    </div>
-                    <div style="font-size:var(--text-xs);display:flex;align-items:center;gap:4px;color:${nd>0?'var(--orange-dark)':'var(--green)'}">
-                      ${lc(nd>0?'alert-triangle':'check-circle',9,'currentColor')}
-                      <strong>${nd}</strong> diverg.
-                    </div>
-                  </div>
-                </div>`;
-              }).join('')}
-              ${hist.length > 5 ? `<div style="font-size:var(--text-2xs);color:var(--muted);text-align:center;padding:4px">
-                +${hist.length-5} contagem${hist.length-5>1?'ns':''} anteriores
-              </div>` : ''}
-            </div>
-          </div>
-        ` : ''}
-      </div>`;
-  } else {
-    el.innerHTML = `
-      <div style="padding:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div>
-            <div style="font-size:var(--text-sm);font-weight:800;color:var(--purple)">${lc('clipboard-list',13,'var(--purple)')} Contagem ativa</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:1px">${contados}/${insumos.length} itens contados</div>
-          </div>
-          <button onclick="cancelarContagemEstoque()"
-            style="background:none;border:1px solid var(--red);border-radius:var(--r6);padding:3px 8px;
-            font-size:var(--text-2xs);color:var(--red);cursor:pointer">${lc('x',10,'currentColor')} Cancelar</button>
+        <div style="flex:1;min-width:0;text-align:center">
+          <div style="font-size:var(--text-sm);font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tituloLabel}</div>
+          <div id="estContagemProg" style="font-size:var(--text-2xs);color:var(--muted)">${contados}/${total} contados</div>
         </div>
+        <div style="font-size:var(--text-xs);font-weight:700;color:var(--purple);min-width:36px;text-align:right">${pct}%</div>
+      </div>
+      <div style="height:3px;background:var(--border)">
+        <div id="estContagemBar" style="height:100%;width:${pct}%;background:var(--purple);transition:width .3s"></div>
+      </div>
+    </div>
 
-        <!-- Progresso -->
-        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:12px">
-          <div style="height:100%;width:${insumos.length > 0 ? Math.round(contados/insumos.length*100) : 0}%;background:var(--purple);border-radius:3px;transition:width .3s"></div>
+    <!-- Lista de itens agrupados por categoria -->
+    <div style="padding-bottom:80px">
+      ${_categoriasContando.map(cat => {
+        const catItems = items.filter(i => (i.cat||'Outros') === cat);
+        return `
+        <!-- Separador de categoria -->
+        <div style="padding:10px 16px 6px;background:var(--surface2);border-bottom:1px solid var(--border);margin-top:4px;display:flex;align-items:center;gap:8px">
+          <div style="width:26px;height:26px;border-radius:50%;background:var(--purple);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc(_estIconCat(cat),13,'#fff')}
+          </div>
+          <div>
+            <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--purple)">${cat}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">${catItems.length} ${catItems.length===1?'item':'itens'}</div>
+          </div>
         </div>
-
-        <!-- Resumo divergências -->
-        ${divergs.length > 0 ? `
-          <div style="background:var(--yellow-light);border:1.5px solid var(--yellow);border-radius:var(--r8);padding:10px;margin-bottom:12px">
-            <div style="font-size:var(--text-xs);font-weight:700;color:var(--orange-dark);margin-bottom:6px">
-              ${lc('alert-triangle',12,'var(--orange-dark)')} ${divergs.length} divergência(s)
+        ${catItems.map((item, idx) => {
+          const val       = _contagem[item.id];
+          const preenchido = val !== undefined;
+          return `
+          <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);
+            background:${preenchido ? 'var(--purple-xlight)' : (idx%2===0?'var(--surface)':'var(--surface2)')}">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--text-sm);font-weight:600;color:var(--text)">${item.name}</div>
+              <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:1px">CW: ${fmt(item.qty)} ${item.unit}</div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto">
-              ${divergs.slice(0,6).map(i => {
-                const f = _contagem[i.id];
-                const d = f - i.qty;
-                return `<div style="display:flex;justify-content:space-between;font-size:var(--text-xs)">
-                  <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">${i.name}</span>
-                  <span style="font-family:monospace;font-weight:700;color:${d>0?'var(--green)':'var(--red)'};flex-shrink:0">
-                    ${d>0?'+':''}${fmt(d)} ${i.unit}
-                  </span>
-                </div>`;
-              }).join('')}
-              ${divergs.length > 6 ? `<div style="font-size:var(--text-2xs);color:var(--muted)">+${divergs.length-6} mais...</div>` : ''}
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <input
+                type="number" inputmode="decimal" min="0" step="0.001"
+                value="${preenchido ? val : ''}"
+                placeholder="—"
+                style="width:90px;height:48px;padding:0 8px;
+                  border:2px solid ${preenchido ? 'var(--purple)' : 'var(--border)'};
+                  border-radius:var(--r8);font-size:16px;font-weight:700;
+                  text-align:center;font-family:monospace;
+                  background:${preenchido ? '#fff' : 'var(--surface)'};
+                  color:var(--text)"
+                oninput="_setCont(${item.id}, this.value)"
+                onfocus="this.select()">
+              <span style="font-size:var(--text-xs);color:var(--muted);min-width:20px">${item.unit}</span>
             </div>
-          </div>
-        ` : contados > 0 ? `
-          <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r8);padding:8px;margin-bottom:12px;font-size:var(--text-xs);color:var(--green);font-weight:600;text-align:center">
-            ${lc('check-circle',12,'currentColor')} Sem divergências até agora!
-          </div>
-        ` : ''}
+          </div>`;
+        }).join('')}`;
+      }).join('')}
+    </div>
 
-        <button onclick="concluirContagemEstoque()"
-          style="width:100%;padding:10px;background:var(--green);color:#fff;border:none;border-radius:var(--r8);
-          font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:6px">
-          ${lc('check-circle',15,'#fff')} Concluir contagem
-        </button>
-        <div style="font-size:var(--text-2xs);color:var(--muted);text-align:center">O digital não será alterado</div>
-      </div>`;
+    <!-- Botão de conclusão sticky na base -->
+    <div style="position:sticky;bottom:0;padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);box-shadow:0 -4px 16px rgba(0,0,0,.08)">
+      <button onclick="concluirContagemEstoque()"
+        style="width:100%;padding:14px;background:${contados > 0 ? 'var(--green)' : 'var(--border)'};
+          color:${contados > 0 ? '#fff' : 'var(--muted)'};border:none;border-radius:var(--r10);
+          font-size:var(--text-md);font-weight:700;cursor:${contados > 0 ? 'pointer' : 'default'};
+          display:flex;align-items:center;justify-content:center;gap:8px;transition:background .2s">
+        ${lc('check-circle',16, contados > 0 ? '#fff' : 'var(--muted)')}
+        Concluir contagem${contados > 0 ? ' · ' + contados + ' itens' : ''}
+      </button>
+    </div>
+  `;
+}
+
+function _setCont(itemId, val) {
+  if (val === '' || val === null) delete _contagem[itemId];
+  else {
+    const v = parseFloat(val);
+    if (!isNaN(v) && v >= 0) _contagem[itemId] = parseFloat(v.toFixed(3));
+  }
+  const total    = _categoriasContando.reduce((s,c) =>
+    s + items.filter(i => (i.cat||'Outros') === c).length, 0);
+  const contados = Object.keys(_contagem).length;
+  const pct      = total > 0 ? Math.round(contados/total*100) : 0;
+  const progEl = document.getElementById('estContagemProg');
+  const barEl  = document.getElementById('estContagemBar');
+  if (progEl) progEl.textContent = `${contados}/${total} contados`;
+  if (barEl)  barEl.style.width  = `${pct}%`;
+  // Atualiza cor do botão de concluir
+  const btn = document.querySelector('[onclick="concluirContagemEstoque()"]');
+  if (btn) {
+    btn.style.background = contados > 0 ? 'var(--green)' : 'var(--border)';
+    btn.style.color      = contados > 0 ? '#fff' : 'var(--muted)';
+    btn.style.cursor     = contados > 0 ? 'pointer' : 'default';
+    btn.innerHTML = `${lc('check-circle',16, contados > 0 ? '#fff' : 'var(--muted)')} Concluir contagem${contados > 0 ? ' · ' + contados + ' itens' : ''}`;
   }
 }
 
-// ── Contagem física ───────────────────────────────────────────
-function setFisico(itemId, val) {
-  const v = parseFloat(val);
-  if (val === '' || val === null) {
-    delete _contagem[itemId];
-  } else if (!isNaN(v) && v >= 0) {
-    _contagem[itemId] = parseFloat(v.toFixed(3));
-  }
-  // Atualiza a linha inline
-  const insumos = items.filter(i => !i.isProd);
-  _renderEstKpis(insumos);
-  _renderPainelContagem();
-}
+// setFisico: alias mantido para compatibilidade
+function setFisico(itemId, val) { _setCont(itemId, val); }
 
-function iniciarContagemEstoque() {
-  _contagem = {};
-  _contagemAtiva = true;
-  renderEstoque();
-  toast('Contagem iniciada! Digite as quantidades físicas.', 'ok');
-}
-
-function cancelarContagemEstoque() {
+function cancelarContagem() {
   vtpConfirm({
     title: 'Cancelar contagem',
-    message: 'Os dados não serão salvos.',
+    message: 'Os dados digitados não serão salvos.',
     confirmLabel: 'Cancelar contagem',
     onConfirm: () => {
-      _contagem = {};
-      _contagemAtiva = false;
-      renderEstoque();
+      _contagem           = {};
+      _contagemAtiva      = false;
+      _categoriasContando = [];
+      _renderCatCards(document.getElementById('estPanelContagem'));
     }
   });
 }
 
 function concluirContagemEstoque() {
-  const u        = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-  const insumos  = items.filter(i => !i.isProd);
   const contados = Object.keys(_contagem).length;
+  if (contados === 0) { toast('Digite pelo menos uma quantidade antes de concluir.', 'err'); return; }
 
-  if (contados === 0) {
-    toast('Nenhum item contado. Digite as quantidades físicas antes de concluir.', 'err');
-    return;
-  }
+  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
 
-  const snapshot = insumos.map(i => ({
+  // Monta snapshot apenas dos itens contados (nas categorias selecionadas)
+  const todosCatItems = _categoriasContando.flatMap(cat =>
+    items.filter(i => (i.cat||'Outros') === cat)
+  );
+
+  const snapshot = todosCatItems.map(i => ({
     id:         i.id,
     name:       i.name,
     unit:       i.unit,
@@ -568,23 +372,24 @@ function concluirContagemEstoque() {
 
   const hist = _getHistContagens();
   const novaContagem = {
-    id:      `CNT-${String(hist.length+1).padStart(4,'0')}`,
-    date:    new Date().toISOString(),
-    tipo:    _modoContagem,
-    user:    u?.name || 'Sistema',
-    total:   contados,
-    divergs: snapshot.filter(x => Math.abs(x.diverg) > 0.001).length,
-    itens:   snapshot,
+    id:          `CNT-${String(hist.length+1).padStart(4,'0')}`,
+    date:        new Date().toISOString(),
+    categorias:  _categoriasContando,
+    user:        u?.name || 'Sistema',
+    total:       contados,
+    divergs:     snapshot.filter(x => Math.abs(x.diverg) > 0.001).length,
+    itens:       snapshot,
   };
   hist.push(novaContagem);
   _saveHistContagens(hist);
 
-  _contagem      = {};
-  _contagemAtiva = false;
+  _contagem           = {};
+  _contagemAtiva      = false;
+  _categoriasContando = [];
 
-  // Mostra resumo inteligente pós-contagem
   _abrirResumoPosContagem(novaContagem);
 }
+
 
 // ── Resumo inteligente pós-contagem ──────────────────────────
 function _abrirResumoPosContagem(contagem) {
@@ -806,302 +611,69 @@ function _enviarResumoWA(contagemId) {
   window.open(url, '_blank');
 }
 
-// ── Contagem Diária: Abertura & Fechamento ────────────────────
-let _diariaModo   = 'abertura'; // 'abertura' | 'fechamento'
-let _diariaInputs = {};         // { itemId: qty } do momento atual
-
-const _getDiariaDados  = ()  => db._get('vtp_contagem_diaria', {});
-const _saveDiariaDados = (d) => db._set('vtp_contagem_diaria', d);
-
-// Reconstrói a estrutura HTML original de estPanelContagem
-// (destruída pela contagem diária) e volta para o modo semanal
-function _voltarEstoqueSemanal() {
-  _modoContagem = 'semanal';
-  const outer = document.getElementById('estPanelContagem');
-  if (!outer) { renderEstoque(); return; }
-
-  // Reconstrói a estrutura esperada por _renderContagemTab
-  outer.innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
-      <div style="flex:1;min-width:280px">
-        <div style="margin-bottom:4px">
-          <h2 style="font-size:1rem;font-weight:800;margin-bottom:2px">Contagem de Estoque</h2>
-          <div style="font-size:.72rem;color:var(--muted)">Compare digital vs físico</div>
-        </div>
-        <div id="estModoContagem" style="margin-top:12px;margin-bottom:12px"></div>
-        <div id="estKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:16px;margin-top:4px"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-          <input class="inp" style="flex:1;min-width:140px;padding:7px 12px" placeholder="Buscar insumo..." oninput="setEstSearch(this.value)">
-          <select class="inp" id="estCatFil" style="flex:1;min-width:140px;padding:7px 10px" onchange="setEstCat(this.value)">
-            <option value="">Todas categorias</option>
-          </select>
-          <div class="filter-bar" id="estFiltrosBtns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        </div>
-        <div class="tbl-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-          <table id="estTable" style="min-width:480px">
-            <thead><tr>
-              <th>Insumo</th>
-              <th class="c">Un.</th>
-              <th class="c">Digital</th>
-              <th class="c" id="estThFisico">Últ. Contagem</th>
-              <th class="c" id="estThDiverg" style="display:none">Divergência</th>
-              <th class="c">Mínimo</th>
-              <th class="c">Ideal</th>
-              <th>Nível</th>
-              <th class="c">Status</th>
-            </tr></thead>
-            <tbody id="estTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div style="width:clamp(240px,30vw,280px);flex-shrink:0;position:sticky;top:20px">
-        <div class="card" id="estPainelContagem" style="overflow:hidden"></div>
-      </div>
-    </div>`;
-
-  // Agora que o DOM está restaurado, renderiza normalmente
-  _renderContagemTab();
-}
-
-function _renderContagemDiaria() {
-  const hoje      = new Date().toISOString().slice(0,10);
-  const dados     = _getDiariaDados();
-  const diaAtual  = dados[hoje] || {};
-  const temAbert  = diaAtual.abertura && Object.keys(diaAtual.abertura).length > 0;
-  const temFech   = diaAtual.fechamento && Object.keys(diaAtual.fechamento).length > 0;
-
-  // Se já tem abertura, vai para fechamento automaticamente
-  if (temAbert && !temFech) _diariaModo = 'fechamento';
-  else if (!temAbert)       _diariaModo = 'abertura';
-
-  const itensDiarios = items.filter(i => !i.isProd && i.contagemDiaria);
-
-  if (!itensDiarios.length) {
-    document.getElementById('estPanelContagem').innerHTML = `
-      <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
-        <button onclick="_voltarEstoqueSemanal()"
-          style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)">
-          ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
-        </button>
-      </div>
-      <div style="padding:24px;text-align:center">
-        <div class="empty-icon">${lc('zap',24,'var(--muted)')}</div>
-        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:8px">Nenhum item marcado para contagem diária.</div>
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px">Vá em Cadastros → Insumos e marque os itens com "Incluir na Contagem Diária".</div>
-        <button onclick="goModule('cadastros')" class="btn btn-outline btn-sm" style="margin-top:12px">Ir para Cadastros</button>
-      </div>`;
-    return;
-  }
-
-  const el = document.getElementById('estPanelContagem');
-  if (!el) return;
-
-  // Se ambos já feitos, mostra resumo do dia
-  if (temAbert && temFech) {
-    _renderResumoDiario(diaAtual, itensDiarios, hoje);
-    return;
-  }
-
-  const modoLabel  = _diariaModo === 'abertura' ? 'Abertura' : 'Fechamento';
-  const modoCor    = _diariaModo === 'abertura' ? 'var(--orange-dark)' : 'var(--purple)';
-  const modoIcon   = _diariaModo === 'abertura' ? 'sunrise' : 'sunset';
-  const snapAnter  = diaAtual[_diariaModo === 'abertura' ? 'abertura' : 'abertura'] || {};
-
-  el.innerHTML = `
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
-      <button onclick="_voltarEstoqueSemanal()"
-        style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
-        onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
-        ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
-      </button>
-    </div>
-    <div style="padding:14px 16px;background:${modoCor}11;border-bottom:1.5px solid ${modoCor}33;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:var(--text-sm);font-weight:800;color:${modoCor}">${lc(modoIcon,14,modoCor)} ${modoLabel} — ${hoje.split('-').reverse().join('/')}</div>
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:1px">${itensDiarios.length} itens · toque no campo e digite a quantidade</div>
-      </div>
-      <div style="display:flex;gap:6px">
-        ${!temAbert ? '' : `<button onclick="_diariaModo='abertura';_renderContagemDiaria()" style="font-size:var(--text-xs);padding:4px 10px;border:1px solid var(--border);border-radius:var(--r6);background:${_diariaModo==='abertura'?modoCor:'var(--surface)'};color:${_diariaModo==='abertura'?'#fff':'var(--muted)'};cursor:pointer">Abertura</button>`}
-        ${temAbert ? `<button onclick="_diariaModo='fechamento';_renderContagemDiaria()" style="font-size:var(--text-xs);padding:4px 10px;border:1px solid var(--border);border-radius:var(--r6);background:${_diariaModo==='fechamento'?modoCor:'var(--surface)'};color:${_diariaModo==='fechamento'?'#fff':'var(--muted)'};cursor:pointer">Fechamento</button>` : ''}
-      </div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:0">
-      ${itensDiarios.map((item, idx) => {
-        const valAnterior = _diariaModo === 'fechamento' ? (diaAtual.abertura?.[item.id] ?? null) : null;
-        return `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:${idx%2===0?'var(--surface)':'var(--surface2)'}">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:var(--text-sm);font-weight:600">${item.name}</div>
-            <div style="font-size:var(--text-xs);color:var(--muted)">${valAnterior !== null ? `Abertura: ${fmt(valAnterior)} ${item.unit}` : `CW: ${fmt(item.qty)} ${item.unit}`}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <input type="number" inputmode="decimal" min="0" step="0.01"
-              value="${_diariaInputs[item.id] !== undefined ? _diariaInputs[item.id] : ''}"
-              placeholder="0"
-              style="width:80px;padding:10px 8px;border:2px solid ${_diariaInputs[item.id]!==undefined?modoCor:'var(--border)'};border-radius:var(--r8);font-size:1rem;font-weight:700;text-align:center;font-family:monospace"
-              oninput="_diariaInputs[${item.id}]=this.value===''?undefined:parseFloat(this.value);this.style.borderColor=this.value?'${modoCor}':'var(--border)'"
-              onfocus="this.select()">
-            <span style="font-size:var(--text-xs);color:var(--muted);min-width:20px">${item.unit}</span>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-    <div style="padding:14px 16px">
-      <button onclick="_salvarDiaria('${hoje}','${_diariaModo}')"
-        style="width:100%;padding:12px;background:${modoCor};color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-md);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-        ${lc('check-circle',16,'#fff')} Salvar ${modoLabel}
-      </button>
-    </div>`;
-}
-
-function _salvarDiaria(hoje, momento) {
-  const itensDiarios = items.filter(i => !i.isProd && i.contagemDiaria);
-  const contados     = Object.entries(_diariaInputs).filter(([,v]) => v !== undefined && !isNaN(v));
-  if (!contados.length) { toast('Digite pelo menos uma quantidade antes de salvar.', 'err'); return; }
-
-  const dados   = _getDiariaDados();
-  if (!dados[hoje]) dados[hoje] = {};
-  dados[hoje][momento] = {};
-  itensDiarios.forEach(i => {
-    if (_diariaInputs[i.id] !== undefined) dados[hoje][momento][i.id] = parseFloat(_diariaInputs[i.id]);
-  });
-  _saveDiariaDados(dados);
-  _diariaInputs = {};
-  toast(`${momento === 'abertura' ? 'Abertura' : 'Fechamento'} salvo!`, 'ok');
-  _renderContagemDiaria();
-}
-
-function _renderResumoDiario(diaAtual, itensDiarios, hoje) {
-  const el = document.getElementById('estPanelContagem');
-  if (!el) return;
-
-  const ab  = diaAtual.abertura   || {};
-  const fe  = diaAtual.fechamento || {};
-
-  const linhas = itensDiarios.map(item => {
-    const qAb   = ab[item.id]  ?? null;
-    const qFe   = fe[item.id]  ?? null;
-    const cons  = (qAb !== null && qFe !== null) ? parseFloat((qAb - qFe).toFixed(3)) : null;
-    return { item, qAb, qFe, cons };
-  });
-
-  el.innerHTML = `
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
-      <button onclick="_voltarEstoqueSemanal()"
-        style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
-        onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
-        ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
-      </button>
-    </div>
-    <div style="padding:14px 16px;background:var(--green-light);border-bottom:1.5px solid var(--green);display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:var(--text-sm);font-weight:800;color:var(--green)">${lc('check-circle',14,'currentColor')} Contagem do dia concluída · ${hoje.split('-').reverse().join('/')}</div>
-      <button onclick="if(confirm('Refazer a contagem de hoje?')){const d=_getDiariaDados();if(d['${hoje}'])delete d['${hoje}'];_saveDiariaDados(d);_diariaInputs={};_renderContagemDiaria();}"
-        style="font-size:var(--text-xs);padding:3px 8px;border:1px solid var(--muted);border-radius:var(--r6);background:var(--surface);cursor:pointer;color:var(--muted)">Refazer</button>
-    </div>
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:var(--text-sm)">
-        <thead>
-          <tr style="background:var(--surface2)">
-            <th style="padding:8px 14px;text-align:left;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Item</th>
-            <th style="padding:8px 10px;text-align:center;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Abertura</th>
-            <th style="padding:8px 10px;text-align:center;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Fechamento</th>
-            <th style="padding:8px 10px;text-align:center;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Consumo</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${linhas.map((l,i) => `
-            <tr style="border-top:1px solid var(--border);background:${i%2===0?'var(--surface)':'var(--surface2)'}">
-              <td style="padding:8px 14px;font-weight:600">${l.item.name}</td>
-              <td style="padding:8px 10px;text-align:center;font-family:monospace">${l.qAb !== null ? fmt(l.qAb) : '—'} ${l.item.unit}</td>
-              <td style="padding:8px 10px;text-align:center;font-family:monospace">${l.qFe !== null ? fmt(l.qFe) : '—'} ${l.item.unit}</td>
-              <td style="padding:8px 10px;text-align:center;font-family:monospace;font-weight:700;color:${l.cons!==null&&l.cons>0?'var(--red)':l.cons===0?'var(--green)':'var(--muted)'}">
-                ${l.cons !== null ? (l.cons > 0 ? '-' : '') + fmt(l.cons) + ' ' + l.item.unit : '—'}
-              </td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-    <div style="padding:14px 16px">
-      <button onclick="_enviarResumoDiarioWA('${hoje}')"
-        style="width:100%;padding:11px;background:#25D366;color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
-        ${lc('message-circle',14,'#fff')} Enviar para o grupo WA
-      </button>
-    </div>`;
-}
-
-function _enviarResumoDiarioWA(hoje) {
-  const dados        = _getDiariaDados();
-  const diaAtual     = dados[hoje] || {};
-  const itensDiarios = items.filter(i => !i.isProd && i.contagemDiaria);
-  const cfg          = typeof getConfig === 'function' ? getConfig() : {};
-
-  let msg = `🍕 *Vai Ter Pizza! — Contagem Diária ${hoje.split('-').reverse().join('/')}*\n\n`;
-  itensDiarios.forEach(item => {
-    const qAb  = diaAtual.abertura?.[item.id]   ?? null;
-    const qFe  = diaAtual.fechamento?.[item.id] ?? null;
-    const cons = (qAb !== null && qFe !== null) ? parseFloat((qAb - qFe).toFixed(3)) : null;
-    msg += `• ${item.name}: Abertura ${qAb !== null ? fmt(qAb) : '—'} | Fechamento ${qFe !== null ? fmt(qFe) : '—'} | Consumo ${cons !== null ? fmt(cons) : '—'} ${item.unit}\n`;
-  });
-
-  const waNum = cfg.whatsapp || '';
-  window.open(`https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`, '_blank');
-}
-
 // ── Histórico de contagens ────────────────────────────────────
 function verHistoricoContagens() {
-  const hist = _getHistContagens();
+  const hist  = _getHistContagens();
   const popup = document.createElement('div');
   popup.id = 'popupHistContagem';
-  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:12px;overflow-y:auto';
+
+  const _catChips = (cats) => {
+    if (!cats?.length) return '';
+    return (Array.isArray(cats) ? cats : [cats]).map(c =>
+      `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light)">${c}</span>`
+    ).join('');
+  };
 
   popup.innerHTML = `
-    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:760px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0">
+    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:720px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0;position:sticky;top:0;z-index:1">
         <div>
-          <div style="font-size:1rem;font-weight:800">${lc('clock',16,'var(--purple)')} Histórico de Contagens</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${hist.length} contagem(ns) registrada(s)</div>
+          <div style="font-size:var(--text-base);font-weight:800">${lc('clock',16,'var(--purple)')} Histórico de Contagens</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${hist.length} contagem(ns) · todas as categorias</div>
         </div>
         <button onclick="document.getElementById('popupHistContagem').remove()"
-          style="background:none;border:none;cursor:pointer;padding:6px">${lc('x',18,'var(--muted)')}</button>
+          style="background:none;border:none;cursor:pointer;padding:8px;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center">
+          ${lc('x',20,'var(--muted)')}
+        </button>
       </div>
-      <div style="padding:20px 22px;display:flex;flex-direction:column;gap:12px">
-        ${hist.length === 0 ? `<div class="empty" style="padding:40px">Nenhuma contagem registrada.</div>` :
-          [...hist].reverse().map(c => {
-            const divItems = c.itens.filter(x => Math.abs(x.diverg) > 0.001);
-            return `<div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden">
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--surface2);flex-wrap:wrap;gap:8px">
-                <div>
-                  <div style="font-size:var(--text-md);font-weight:800">${c.id}</div>
-                  <div style="font-size:var(--text-xs);color:var(--muted)">${fmtDT(c.date)} · por <strong>${c.user}</strong></div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:10px;max-height:75vh;overflow-y:auto">
+        ${hist.length === 0
+          ? `<div style="text-align:center;padding:40px;color:var(--muted);font-size:var(--text-sm)">Nenhuma contagem registrada ainda.</div>`
+          : [...hist].reverse().map(c => {
+              const cats    = c.categorias || (c.tipo ? [c.tipo] : ['—']);
+              const divs    = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
+              const temDiv  = divs.length > 0;
+              return `
+              <div style="border:1.5px solid ${temDiv ? 'var(--yellow)' : 'var(--border)'};border-radius:var(--r10);overflow:hidden;background:var(--surface)">
+                <div style="padding:12px 14px;background:${temDiv ? 'var(--yellow-light)' : 'var(--surface2)'};display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                  <div>
+                    <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:4px">${fmtDT(c.date)} · ${c.user}</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px">${_catChips(cats)}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+                    <div style="text-align:center;padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
+                      <div style="font-size:var(--text-md);font-weight:800;color:var(--purple)">${c.total}</div>
+                      <div style="font-size:var(--text-2xs);color:var(--muted)">contados</div>
+                    </div>
+                    <div style="text-align:center;padding:4px 8px;background:${temDiv?'var(--yellow-light)':'var(--green-light)'};border:1px solid ${temDiv?'var(--yellow)':'var(--green)'};border-radius:var(--r6)">
+                      <div style="font-size:var(--text-md);font-weight:800;color:${temDiv?'var(--orange-dark)':'var(--green)'}">${divs.length}</div>
+                      <div style="font-size:var(--text-2xs);color:var(--muted)">diverg.</div>
+                    </div>
+                  </div>
                 </div>
-                <div style="display:flex;gap:10px;align-items:center">
-                  <div style="text-align:center;padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
-                    <div style="font-size:var(--text-md);font-weight:800;color:var(--purple)">${c.total}</div>
-                    <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Contados</div>
-                  </div>
-                  <div style="text-align:center;padding:4px 10px;background:${divItems.length>0?'var(--yellow-light)':'var(--green-light)'};border:1px solid ${divItems.length>0?'var(--yellow)':'var(--green)'};border-radius:var(--r6)">
-                    <div style="font-size:var(--text-md);font-weight:800;color:${divItems.length>0?'var(--orange-dark)':'var(--green)'}">${divItems.length}</div>
-                    <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Divergências</div>
-                  </div>
+                <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap">
                   <button onclick="abrirDetalheContagem('${c.id}')"
-                    style="padding:5px 12px;border:1.5px solid var(--purple);border-radius:var(--r6);
-                    background:var(--surface);color:var(--purple);font-size:var(--text-xs);font-weight:600;cursor:pointer">
-                    ${lc('search',12,'currentColor')} Detalhar
+                    style="flex:1;min-width:100px;padding:8px;border:1.5px solid var(--purple);border-radius:var(--r8);background:var(--surface);color:var(--purple);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;min-height:40px">
+                    ${lc('search',12,'currentColor')} Ver detalhe
+                  </button>
+                  <button onclick="_gerarPDFContagem('${c.id}')"
+                    style="flex:1;min-width:100px;padding:8px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);color:var(--text2);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;min-height:40px">
+                    ${lc('printer',12,'currentColor')} Imprimir / PDF
                   </button>
                 </div>
-              </div>
-              ${divItems.length > 0 ? `
-                <div style="padding:10px 16px;display:flex;flex-wrap:wrap;gap:6px">
-                  ${divItems.slice(0,6).map(x => `
-                    <span style="font-size:var(--text-xs);padding:2px 7px;border-radius:20px;
-                      background:${x.diverg<0?'var(--red-light)':'var(--green-light)'};
-                      color:${x.diverg<0?'var(--red)':'var(--green)'};border:1px solid ${x.diverg<0?'var(--red)':'var(--green)'}">
-                      ${x.name}: ${x.diverg>0?'+':''}${fmt(x.diverg)}
-                    </span>`).join('')}
-                  ${divItems.length > 6 ? `<span style="font-size:var(--text-2xs);color:var(--muted)">+${divItems.length-6} mais</span>` : ''}
-                </div>` : ''}
-            </div>`;
-          }).join('')}
+              </div>`;
+            }).join('')}
       </div>
     </div>`;
 
@@ -1111,56 +683,64 @@ function verHistoricoContagens() {
 
 function abrirDetalheContagem(id) {
   const hist = _getHistContagens();
-  const c = hist.find(x => x.id === id);
+  const c    = hist.find(x => x.id === id);
   if (!c) return;
+
+  const cats    = c.categorias || (c.tipo ? [c.tipo] : ['—']);
+  const divItems = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
+  const okItems  = (c.itens||[]).filter(x => Math.abs(x.diverg||0) <= 0.001);
 
   const popup2 = document.createElement('div');
   popup2.id = 'popupDetalheContagem';
-  popup2.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:700;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
-
-  const divItems = c.itens.filter(x => Math.abs(x.diverg) > 0.001);
-  const okItems  = c.itens.filter(x => Math.abs(x.diverg||0) <= 0.001);
+  popup2.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:700;display:flex;align-items:flex-start;justify-content:center;padding:12px;overflow-y:auto';
 
   popup2.innerHTML = `
     <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:680px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0">
+      <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
         <div>
           <div style="font-size:var(--text-base);font-weight:800">${c.id} — Detalhe</div>
-          <div style="font-size:var(--text-xs);color:var(--muted)">${fmtDT(c.date)} · ${c.user}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${fmtDT(c.date)} · ${c.user}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+            ${cats.map(cat => `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:var(--purple);color:#fff">${cat}</span>`).join('')}
+          </div>
         </div>
-        <button onclick="document.getElementById('popupDetalheContagem').remove()"
-          style="background:none;border:none;cursor:pointer">${lc('x',18,'var(--muted)')}</button>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button onclick="_gerarPDFContagem('${c.id}')"
+            style="padding:7px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);color:var(--text2);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;min-height:40px">
+            ${lc('printer',12,'currentColor')} PDF
+          </button>
+          <button onclick="document.getElementById('popupDetalheContagem').remove()"
+            style="background:none;border:none;cursor:pointer;padding:8px;min-height:44px;display:flex;align-items:center">
+            ${lc('x',18,'var(--muted)')}
+          </button>
+        </div>
       </div>
-      <div style="padding:20px 22px">
+      <div style="padding:16px 20px;max-height:65vh;overflow-y:auto">
         ${divItems.length > 0 ? `
           <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--orange-dark);margin-bottom:8px">
             ${lc('alert-triangle',12,'var(--orange-dark)')} Divergências (${divItems.length})
           </div>
-          <div style="border:1px solid var(--border);border-radius:var(--r8);overflow:hidden;margin-bottom:16px">
-            <table style="width:100%;border-collapse:collapse">
+          <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden;margin-bottom:16px;overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;min-width:400px">
               <thead><tr style="background:var(--surface2)">
-                <th style="padding:7px 12px;text-align:left;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Item</th>
-                <th style="padding:7px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Digital</th>
-                <th style="padding:7px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Físico</th>
-                <th style="padding:7px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Diferença</th>
-                <th style="padding:7px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Var %</th>
+                <th style="padding:8px 12px;text-align:left;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Item</th>
+                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">CW</th>
+                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Físico</th>
+                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Dif.</th>
+                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">%</th>
               </tr></thead>
               <tbody>
                 ${divItems.map((x,idx) => {
-                  const pctDiv = x.digital > 0 ? ((x.diverg/x.digital)*100).toFixed(1) : '—';
+                  const pct = x.digital > 0 ? ((x.diverg/x.digital)*100).toFixed(1) : '—';
                   return `<tr style="border-top:1px solid var(--border);background:${idx%2===0?'var(--surface)':'var(--surface2)'}">
                     <td style="padding:7px 12px">
                       <div style="font-size:var(--text-sm);font-weight:600">${x.name}</div>
                       <div style="font-size:var(--text-2xs);color:var(--muted)">${x.cat}</div>
                     </td>
-                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.digital)} ${x.unit}</td>
-                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.fisico)} ${x.unit}</td>
-                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm);font-weight:700;color:${x.diverg<0?'var(--red)':'var(--green)'}">
-                      ${x.diverg>0?'+':''}${fmt(x.diverg)}
-                    </td>
-                    <td style="padding:7px 12px;text-align:center;font-size:var(--text-sm);font-weight:600;color:${x.diverg<0?'var(--red)':'var(--green)'}">
-                      ${x.diverg>0?'+':''}${pctDiv}%
-                    </td>
+                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.digital)}</td>
+                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.fisico)}</td>
+                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm);font-weight:700;color:${x.diverg<0?'var(--red)':'var(--green)'}">${x.diverg>0?'+':''}${fmt(x.diverg)} ${x.unit}</td>
+                    <td style="padding:7px 12px;text-align:center;font-size:var(--text-sm);font-weight:600;color:${x.diverg<0?'var(--red)':'var(--green)'}">${x.diverg>0?'+':''}${pct}%</td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -1169,16 +749,12 @@ function abrirDetalheContagem(id) {
           <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r8);padding:12px;text-align:center;margin-bottom:16px;font-size:var(--text-sm);font-weight:600;color:var(--green)">
             ${lc('check-circle',14,'currentColor')} Nenhuma divergência nesta contagem!
           </div>`}
-
         ${okItems.length > 0 ? `
           <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:8px">
             ${lc('check-circle',12,'var(--green)')} OK (${okItems.length})
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:5px">
-            ${okItems.map(x => `
-              <span style="font-size:var(--text-2xs);padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">
-                ${x.name}: ${fmt(x.fisico)} ${x.unit}
-              </span>`).join('')}
+            ${okItems.map(x => `<span style="font-size:var(--text-2xs);padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">${x.name}: ${fmt(x.fisico)} ${x.unit}</span>`).join('')}
           </div>` : ''}
       </div>
     </div>`;
@@ -1187,23 +763,117 @@ function abrirDetalheContagem(id) {
   popup2.addEventListener('click', e => { if(e.target===popup2) popup2.remove(); });
 }
 
-// ── Filtros ───────────────────────────────────────────────────
-function setEstFiltro(status) {
-  _estFiltro.status = _estFiltro.status === status ? 'all' : status;
-  _renderFiltrosBtns();
-  _renderEstKpis(items.filter(i => !i.isProd));
-  _renderEstoqueTabela(items.filter(i => !i.isProd));
+// ── Gerador de PDF ────────────────────────────────────────────
+function _gerarPDFContagem(id) {
+  const hist = _getHistContagens();
+  const c    = hist.find(x => x.id === id);
+  if (!c) return;
+
+  const cfg  = typeof getConfig === 'function' ? getConfig() : {};
+  const tolerancia = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+  const cats = c.categorias || [c.tipo || '—'];
+  const nowStr = new Date().toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
+
+  // Grupos de divergência
+  const despsRaw = typeof desperdicios !== 'undefined' ? desperdicios : [];
+  function classificar(x) {
+    const divAbs = Math.abs(x.diverg ?? 0);
+    if (divAbs <= 0.001) return 'ok';
+    const despQty = despsRaw.filter(d => d.itemId === x.id).reduce((s,d) => s+(parseFloat(d.qty)||0), 0);
+    if (!x.debitoAuto) return 'manual';
+    const pct = x.digital > 0 ? divAbs/x.digital : 0;
+    if (despQty > 0 && (divAbs - despQty) <= 0.001) return 'explicado';
+    if (pct <= tolerancia) return 'normal';
+    return 'anomalia';
+  }
+
+  const acao = { ok:'✅ OK', manual:'📋 Atualizar CW', explicado:'✅ Desperdício', normal:'📊 Variação normal', anomalia:'⚠️ Investigar' };
+
+  // Agrupa por categoria
+  const byCat = {};
+  c.itens.forEach(x => { if (!byCat[x.cat]) byCat[x.cat]=[]; byCat[x.cat].push(x); });
+
+  const rows = Object.entries(byCat).map(([cat, catItens]) => `
+    <tr><td colspan="6" style="background:#EDE9FE;padding:8px 12px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#6B21D4;border-top:2px solid #C4B5FD">${cat}</td></tr>
+    ${catItens.map(x => {
+      const cl = classificar(x);
+      const divColor = x.diverg < 0 ? '#DC2626' : x.diverg > 0 ? '#16A34A' : '#666';
+      return `<tr style="border-bottom:1px solid #E5DEFF">
+        <td style="padding:7px 12px;font-weight:600">${x.name}</td>
+        <td style="padding:7px 8px;text-align:center;font-family:monospace">${x.unit}</td>
+        <td style="padding:7px 8px;text-align:center;font-family:monospace">${fmt(x.digital)}</td>
+        <td style="padding:7px 8px;text-align:center;font-family:monospace;font-weight:700">${fmt(x.fisico)}</td>
+        <td style="padding:7px 8px;text-align:center;font-family:monospace;font-weight:700;color:${divColor}">${x.diverg>0?'+':''}${fmt(x.diverg)}</td>
+        <td style="padding:7px 10px;font-size:11px;font-weight:700;color:${cl==='anomalia'?'#DC2626':cl==='manual'?'#D97706':'#16A34A'}">${acao[cl]||'—'}</td>
+      </tr>`;
+    }).join('')}
+  `).join('');
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Contagem de Estoque — Vai Ter Pizza!</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#1a0a2e;background:#fff;padding:20px;font-size:13px}
+    .header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #6B21D4;padding-bottom:12px;margin-bottom:16px}
+    .logo-text{font-size:1rem;font-weight:800;color:#6B21D4}
+    .logo-sub{font-size:11px;color:#9B91B8;margin-top:2px}
+    .cats{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+    .cat-chip{padding:3px 10px;border-radius:20px;background:#EDE9FE;color:#6B21D4;font-size:11px;font-weight:700;border:1px solid #C4B5FD}
+    .summary{display:grid;grid-template-columns:repeat(4,auto);gap:16px;background:#F5F3FF;border:1.5px solid #E5DEFF;border-radius:8px;padding:10px 14px;margin-bottom:16px}
+    .sum-val{font-size:1.1rem;font-weight:800;color:#6B21D4}
+    .sum-lbl{font-size:10px;color:#9B91B8;text-transform:uppercase}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    thead th{background:#6B21D4;color:#fff;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+    thead th:nth-child(2),thead th:nth-child(3),thead th:nth-child(4),thead th:nth-child(5){text-align:center}
+    tbody tr:nth-child(even){background:#F5F3FF}
+    .footer{margin-top:20px;border-top:1px solid #E5DEFF;padding-top:8px;font-size:11px;color:#9B91B8;display:flex;justify-content:space-between}
+    @media print{body{padding:10px}@page{size:A4;margin:15mm}}
+  </style></head><body>
+  <div class="header">
+    <div>
+      <div class="logo-text">Vai Ter Pizza!</div>
+      <div class="logo-sub">Sistema de Operação · Contagem de Estoque</div>
+    </div>
+    <div style="text-align:right;font-size:11px;color:#9B91B8">
+      <strong>${c.id}</strong><br>
+      ${fmtDT(c.date)}<br>
+      por <strong>${c.user}</strong><br>
+      Gerado em ${nowStr}
+    </div>
+  </div>
+  <div class="cats">${cats.map(cat => `<span class="cat-chip">${cat}</span>`).join('')}</div>
+  <div class="summary">
+    <div><div class="sum-val">${c.total}</div><div class="sum-lbl">Contados</div></div>
+    <div><div class="sum-val" style="color:${c.divergs>0?'#D97706':'#16A34A'}">${c.divergs}</div><div class="sum-lbl">Divergências</div></div>
+    <div><div class="sum-val">${cats.length}</div><div class="sum-lbl">Categoria${cats.length>1?'s':''}</div></div>
+    <div><div class="sum-val">${Math.round(tolerancia*100)}%</div><div class="sum-lbl">Tolerância</div></div>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Item</th><th>Un.</th><th>CW (Digital)</th><th>Físico</th><th>Diferença</th><th>Ação</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">
+    <span>Vai Ter Pizza! · Contagem de Estoque</span>
+    <span>Impresso em ${nowStr}</span>
+  </div>
+  <script>window.onload = () => { window.print(); }<\/script>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('Permita popups para gerar o PDF', 'warn');
 }
 
-function setEstSearch(val) {
-  _estFiltro.search = val;
-  _renderEstoqueTabela(items.filter(i => !i.isProd));
-}
+// ── Compatibilidade (funções removidas mas chamadas em algum lugar) ──
+function setModoContagem(modo) { /* removido — contagem agora é por categoria */ }
+function iniciarContagemEstoque() { /* removido */ }
+function cancelarContagemEstoque() { cancelarContagem(); }
+function setEstFiltro(status) {}
+function setEstSearch(val) {}
+function setEstCat(val) {}
 
-function setEstCat(val) {
-  _estFiltro.cat = val;
-  _renderEstoqueTabela(items.filter(i => !i.isProd));
-}
 
 // ── CSV Import (mantém lógica, atualiza digital) ──────────────
 function openImportModal() {
