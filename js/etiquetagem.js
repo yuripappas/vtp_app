@@ -313,7 +313,11 @@ function _etqStep1(el) {
 function _etqStep2(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
   // Categorias habilitadas em Configurações → Etiquetagem → Categorias Visíveis
-  const habilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
+  const rawHabilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
+  // Normaliza a lista salva: 'Produção Interna' vira 'Preparados' (migração transparente)
+  const habilitadas = rawHabilitadas !== null
+    ? rawHabilitadas.map(c => (c === 'Produção Interna' || c.toLowerCase().includes('produção')) ? 'Preparados' : c)
+    : null;
   // Usa o nome normalizado (isProd → "Preparados") para agrupar
   const todasCats = [...new Set(allItems.map(i => _etqCatDisplay(i)))].filter(Boolean).sort();
   const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
