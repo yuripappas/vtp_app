@@ -115,7 +115,7 @@ function _renderContagemTab() {
             color:${_modoContagem==='diaria'?'#fff':'var(--muted)'}">
           ${lc('zap',12,_modoContagem==='diaria'?'#fff':'currentColor')} Contagem Diária
         </button>` : ''}
-        ${podeSemanal ? `<button onclick="_modoContagem='semanal';renderEstoque()"
+        ${podeSemanal ? `<button onclick="setModoContagem('semanal')"
           style="padding:6px 14px;border-radius:var(--r8);border:none;cursor:pointer;font-size:var(--text-sm);font-weight:700;font-family:Inter,sans-serif;transition:all .15s;
             background:${_modoContagem==='semanal'?'var(--purple)':'transparent'};
             color:${_modoContagem==='semanal'?'#fff':'var(--muted)'}">
@@ -813,6 +813,56 @@ let _diariaInputs = {};         // { itemId: qty } do momento atual
 const _getDiariaDados  = ()  => db._get('vtp_contagem_diaria', {});
 const _saveDiariaDados = (d) => db._set('vtp_contagem_diaria', d);
 
+// Reconstrói a estrutura HTML original de estPanelContagem
+// (destruída pela contagem diária) e volta para o modo semanal
+function _voltarEstoqueSemanal() {
+  _modoContagem = 'semanal';
+  const outer = document.getElementById('estPanelContagem');
+  if (!outer) { renderEstoque(); return; }
+
+  // Reconstrói a estrutura esperada por _renderContagemTab
+  outer.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+      <div style="flex:1;min-width:280px">
+        <div style="margin-bottom:4px">
+          <h2 style="font-size:1rem;font-weight:800;margin-bottom:2px">Contagem de Estoque</h2>
+          <div style="font-size:.72rem;color:var(--muted)">Compare digital vs físico</div>
+        </div>
+        <div id="estModoContagem" style="margin-top:12px;margin-bottom:12px"></div>
+        <div id="estKpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:16px;margin-top:4px"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+          <input class="inp" style="flex:1;min-width:140px;padding:7px 12px" placeholder="Buscar insumo..." oninput="setEstSearch(this.value)">
+          <select class="inp" id="estCatFil" style="flex:1;min-width:140px;padding:7px 10px" onchange="setEstCat(this.value)">
+            <option value="">Todas categorias</option>
+          </select>
+          <div class="filter-bar" id="estFiltrosBtns" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+        <div class="tbl-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+          <table id="estTable" style="min-width:480px">
+            <thead><tr>
+              <th>Insumo</th>
+              <th class="c">Un.</th>
+              <th class="c">Digital</th>
+              <th class="c" id="estThFisico">Últ. Contagem</th>
+              <th class="c" id="estThDiverg" style="display:none">Divergência</th>
+              <th class="c">Mínimo</th>
+              <th class="c">Ideal</th>
+              <th>Nível</th>
+              <th class="c">Status</th>
+            </tr></thead>
+            <tbody id="estTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="width:clamp(240px,30vw,280px);flex-shrink:0;position:sticky;top:20px">
+        <div class="card" id="estPainelContagem" style="overflow:hidden"></div>
+      </div>
+    </div>`;
+
+  // Agora que o DOM está restaurado, renderiza normalmente
+  _renderContagemTab();
+}
+
 function _renderContagemDiaria() {
   const hoje      = new Date().toISOString().slice(0,10);
   const dados     = _getDiariaDados();
@@ -829,7 +879,7 @@ function _renderContagemDiaria() {
   if (!itensDiarios.length) {
     document.getElementById('estPanelContagem').innerHTML = `
       <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
-        <button onclick="_modoContagem='semanal';renderEstoque()"
+        <button onclick="_voltarEstoqueSemanal()"
           style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)">
           ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
         </button>
@@ -859,7 +909,7 @@ function _renderContagemDiaria() {
 
   el.innerHTML = `
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
-      <button onclick="_modoContagem='semanal';renderEstoque()"
+      <button onclick="_voltarEstoqueSemanal()"
         style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
         onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
         ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
@@ -937,7 +987,7 @@ function _renderResumoDiario(diaAtual, itensDiarios, hoje) {
 
   el.innerHTML = `
     <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
-      <button onclick="_modoContagem='semanal';renderEstoque()"
+      <button onclick="_voltarEstoqueSemanal()"
         style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
         onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
         ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
