@@ -47,13 +47,22 @@ const MOV_TIPOS = {
 // RENDER PRINCIPAL + TABS
 // ══════════════════════════════════════════════════════════════
 function renderEstoque() {
-  _atualizarEstTabs();
-  if (_estTab === 'movimentacoes') {
-    _renderMovimentacoes();
-  } else {
-    _renderContagemTab();
+  try {
+    _atualizarEstTabs();
+    if (_estTab === 'movimentacoes') {
+      _renderMovimentacoes();
+    } else {
+      _renderContagemTab();
+    }
+    if (typeof updatePrepBadge === 'function') updatePrepBadge();
+  } catch(e) {
+    console.error('[Estoque] Erro ao renderizar:', e);
+    const el = document.getElementById('estPanelContagem');
+    if (el) el.innerHTML = `<div style="padding:24px;color:var(--red);font-size:var(--text-sm)">
+      Erro ao carregar o módulo de estoque. Tente recarregar a página.<br>
+      <small style="color:var(--muted)">${e.message}</small>
+    </div>`;
   }
-  updatePrepBadge();
 }
 
 function setEstTab(tab) {
