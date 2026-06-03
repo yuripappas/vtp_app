@@ -364,11 +364,117 @@ function _renderCfgSecEstoque(el) {
       </div>
     </div>
 
+    <div style="margin-bottom:22px">
+      ${_secTitle('Categorias Cadastradas', null)}
+      <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:10px">
+        Renomeie categorias que vieram do Cardápio Web ou ajuste qualquer nome. Todos os insumos e preparados da categoria são atualizados automaticamente.
+      </div>
+      <div id="cfgCatRenameList" style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden"></div>
+    </div>
+
     ${_block(_secTitle('Categorias de Insumo', null), _addBar(`
       <input class="inp" id="cfgNewCatInsumo" placeholder="Nova categoria" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddCatInsumo()">
       <button class="btn btn-primary" style="font-size:var(--text-sm);white-space:nowrap" onclick="_cfgAddCatInsumo()">${lc('plus',13,'#fff')} Add</button>`), 'cfgCatInsumoList')}
     ${_cfgContagemPermsHtml()}`;
   _cfgRenderCatInsumo();
+  _cfgRenderCatRename();
+}
+
+// ── Gerenciar Categorias ──────────────────────────────────────
+
+function _cfgRenderCatRename() {
+  const el = document.getElementById('cfgCatRenameList');
+  if (!el) return;
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const cats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+
+  if (!cats.length) {
+    el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:var(--text-sm)">Nenhum insumo cadastrado ainda.</div>`;
+    return;
+  }
+
+  el.innerHTML = cats.map((cat, idx) => {
+    const count = allItems.filter(i => (i.cat || 'Outros') === cat).length;
+    return `
+    <div id="cfgCatRow_${idx}" style="display:flex;align-items:center;gap:10px;padding:11px 14px;${idx > 0 ? 'border-top:1px solid var(--border)' : ''};background:var(--surface)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:var(--text-sm);font-weight:600;color:var(--text)">${cat}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
+      </div>
+      <button onclick="_cfgAbrirRenomearCat('${cat.replace(/'/g,"\\'")}', ${idx})"
+        style="display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r6);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2);white-space:nowrap;min-height:36px">
+        ${lc('edit-2',12,'currentColor')} Renomear
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function _cfgAbrirRenomearCat(catAtual, idx) {
+  const el = document.getElementById(`cfgCatRow_${idx}`);
+  if (!el) return;
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const count = allItems.filter(i => (i.cat || 'Outros') === catAtual).length;
+
+  el.innerHTML = `
+    <div style="flex:1;min-width:0">
+      <input class="inp" id="cfgCatNovoNome_${idx}"
+        value="${catAtual}"
+        placeholder="Novo nome da categoria"
+        style="font-size:var(--text-sm);font-weight:600;width:100%"
+        onkeydown="if(event.key==='Enter')_cfgSalvarRenomearCat('${catAtual.replace(/'/g,"\\'")}', ${idx}); if(event.key==='Escape')_cfgRenderCatRename()">
+      <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:3px">${count} ${count === 1 ? 'item será' : 'itens serão'} atualizados</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0">
+      <button onclick="_cfgSalvarRenomearCat('${catAtual.replace(/'/g,"\\'")}', ${idx})"
+        style="padding:6px 12px;border:none;border-radius:var(--r6);background:var(--purple);color:#fff;font-size:var(--text-xs);font-weight:700;cursor:pointer;min-height:36px">
+        Salvar
+      </button>
+      <button onclick="_cfgRenderCatRename()"
+        style="padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r6);background:var(--surface);color:var(--muted);font-size:var(--text-xs);font-weight:600;cursor:pointer;min-height:36px">
+        Cancelar
+      </button>
+    </div>`;
+
+  setTimeout(() => {
+    const inp = document.getElementById(`cfgCatNovoNome_${idx}`);
+    if (inp) { inp.focus(); inp.select(); }
+  }, 50);
+}
+
+function _cfgSalvarRenomearCat(catAtual, idx) {
+  const novoNome = document.getElementById(`cfgCatNovoNome_${idx}`)?.value.trim();
+  if (!novoNome) { toast('Informe o novo nome', 'err'); return; }
+  if (novoNome === catAtual) { _cfgRenderCatRename(); return; }
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  let count = 0;
+  allItems.forEach(i => {
+    if ((i.cat || 'Outros') === catAtual) { i.cat = novoNome; count++; }
+  });
+
+  if (typeof saveI === 'function') saveI();
+
+  // Atualiza também a lista de categorias de insumo se o nome antigo estiver lá
+  if (typeof CATEGORIAS_INSUMO !== 'undefined') {
+    const ci = CATEGORIAS_INSUMO.indexOf(catAtual);
+    if (ci >= 0) { CATEGORIAS_INSUMO[ci] = novoNome; if (typeof saveCategoriasInsumo === 'function') saveCategoriasInsumo(); }
+  }
+
+  // Atualiza filtro de etiquetagem se o nome antigo estiver lá
+  if (typeof db !== 'undefined') {
+    const etiqCats = db._get('vtp_etiq_categorias', null);
+    if (Array.isArray(etiqCats)) {
+      const updated = etiqCats.map(c => c === catAtual ? novoNome : c);
+      db._set('vtp_etiq_categorias', updated);
+    }
+  }
+
+  toast(`${lc('check-circle',13,'var(--green)')} "${catAtual}" → "${novoNome}" · ${count} ${count === 1 ? 'item atualizado' : 'itens atualizados'}`, 'ok');
+  _cfgRenderCatRename();
+  if (typeof _cfgRenderCatInsumo === 'function') _cfgRenderCatInsumo();
+  if (typeof renderDashboard === 'function') renderDashboard();
 }
 
 // ── Seção: Módulos ────────────────────────────────────────────
