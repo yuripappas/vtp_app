@@ -237,153 +237,83 @@ function _toggleCatSel(cat) {
 }
 
 function _iniciarContagem() {
-  try {
-    if (_catsSelecionadas.size === 0) { toast('Selecione pelo menos uma categoria', 'err'); return; }
-    toast('Iniciando contagem...', 'ok');
-    _contagemAtiva      = true;
-    _categoriasContando = [..._catsSelecionadas];
-    _catsSelecionadas   = new Set();
-    _contagem           = {};
-    _abrirOverlayContagem();
-  } catch(e) {
-    console.error('[_iniciarContagem]', e);
-    toast('Erro: ' + e.message, 'err');
-  }
+  if (_catsSelecionadas.size === 0) { toast('Selecione pelo menos uma categoria', 'err'); return; }
+  _contagemAtiva      = true;
+  _categoriasContando = [..._catsSelecionadas];
+  _catsSelecionadas   = new Set();
+  _contagem           = {};
+  _renderContagemAtiva();
 }
-
-// Alias global explícito para garantir acesso via onclick inline
 window._iniciarContagem = _iniciarContagem;
 
-// ── Contagem ativa — overlay full-screen ─────────────────────
-function _abrirOverlayContagem() {
-  try {
-    document.getElementById('estContagemOverlay')?.remove();
-
-    const ov = document.createElement('div');
-    ov.id = 'estContagemOverlay';
-    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:900;background:#FAF7FF;display:flex;flex-direction:column;overflow:hidden';
-    document.body.appendChild(ov);
-
-    toast('Overlay criado, renderizando...', 'ok');
-    _renderContagemAtiva();
-  } catch(e) {
-    console.error('[_abrirOverlayContagem]', e);
-    toast('Erro overlay: ' + e.message, 'err');
-  }
-}
-
 function _renderContagemAtiva() {
-  try {
-  const ov = document.getElementById('estContagemOverlay');
-  if (!ov) { toast('Overlay não encontrado!', 'err'); return; }
+  const el = document.getElementById('estPanelContagem');
+  if (!el) return;
 
-  const todosItens = _categoriasContando.flatMap(cat =>
-    (typeof items !== 'undefined' ? items : []).filter(i => (i.cat||'Outros') === cat)
-  );
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const todosItens = [];
+  _categoriasContando.forEach(cat => {
+    allItems.filter(i => (i.cat||'Outros') === cat).forEach(i => todosItens.push(i));
+  });
+
   const total    = todosItens.length;
   const contados = Object.keys(_contagem).length;
   const pct      = total > 0 ? Math.round(contados / total * 100) : 0;
-  const titulo   = _categoriasContando.length === 1
-    ? _categoriasContando[0]
-    : _categoriasContando.length + ' categorias';
+  const titulo   = _categoriasContando.length === 1 ? _categoriasContando[0] : _categoriasContando.length + ' categorias';
 
-  // Constrói HTML dos itens sem template literals aninhados
-  let itensHtml = '';
-  _categoriasContando.forEach(cat => {
-    const catItems = (typeof items !== 'undefined' ? items : []).filter(i => (i.cat||'Outros') === cat);
-    itensHtml += `
-      <div style="padding:10px 16px 6px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--purple);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          ${lc(_estIconCat(cat),13,'#fff')}
-        </div>
-        <div>
-          <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--purple)">${cat}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted)">${catItems.length} ${catItems.length===1?'item':'itens'}</div>
-        </div>
-      </div>`;
-    catItems.forEach((item, idx) => {
-      const val        = _contagem[item.id];
-      const preenchido = val !== undefined;
-      const bg         = preenchido ? 'var(--purple-xlight)' : (idx%2===0 ? 'var(--surface)' : 'var(--surface2)');
-      const borInput   = preenchido ? 'var(--purple)' : 'var(--border)';
-      const bgInput    = preenchido ? '#fff' : 'var(--surface)';
-      const valStr     = preenchido ? String(val) : '';
-      itensHtml += `
-        <div style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--border);background:${bg}">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:var(--text-sm);font-weight:600;color:var(--text)">${item.name}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">CW: ${fmt(item.qty)} ${item.unit}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-            <input type="number" inputmode="decimal" min="0" step="0.001"
-              data-item="${item.id}"
-              value="${valStr}"
-              placeholder="—"
-              style="width:88px;height:48px;padding:0 8px;border:2px solid ${borInput};border-radius:var(--r8);font-size:16px;font-weight:700;text-align:center;font-family:monospace;background:${bgInput}"
-              onfocus="this.select()">
-            <span style="font-size:var(--text-xs);color:var(--muted);min-width:22px">${item.unit}</span>
-          </div>
-        </div>`;
+  // Header fixo
+  let html = '<div style="background:var(--surface);border-bottom:2px solid var(--border);padding:12px 16px;">';
+  html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">';
+  html += '<button onclick="cancelarContagem()" style="padding:8px 14px;background:none;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700;color:var(--muted);min-height:40px;">← Cancelar</button>';
+  html += '<div style="flex:1;text-align:center;"><div style="font-size:14px;font-weight:800;">' + titulo + '</div>';
+  html += '<div id="estContagemProg" style="font-size:11px;color:gray;">' + contados + '/' + total + ' contados</div></div>';
+  html += '<div style="font-size:13px;font-weight:800;color:purple;">' + pct + '%</div>';
+  html += '</div>';
+  html += '<div style="height:4px;background:#eee;border-radius:4px;">';
+  html += '<div id="estContagemBar" style="height:100%;width:' + pct + '%;background:purple;border-radius:4px;transition:width .3s;"></div></div>';
+  html += '</div>';
+
+  // Itens
+  html += '<div style="padding-bottom:80px;">';
+  _categoriasContando.forEach(function(cat) {
+    var catItems = allItems.filter(function(i) { return (i.cat||'Outros') === cat; });
+    html += '<div style="padding:10px 16px 6px;background:#f0ebff;border-bottom:1px solid #ddd;font-size:12px;font-weight:800;text-transform:uppercase;color:purple;">' + cat + ' (' + catItems.length + ' itens)</div>';
+    catItems.forEach(function(item, idx) {
+      var val = _contagem[item.id];
+      var preenchido = val !== undefined;
+      var bg = preenchido ? '#ede9fe' : (idx%2===0 ? '#fff' : '#fafafa');
+      var valStr = preenchido ? String(val) : '';
+      html += '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #eee;background:' + bg + ';">';
+      html += '<div style="flex:1;"><div style="font-size:14px;font-weight:600;">' + item.name + '</div>';
+      html += '<div style="font-size:11px;color:gray;">CW: ' + fmt(item.qty) + ' ' + item.unit + '</div></div>';
+      html += '<input type="number" inputmode="decimal" min="0" step="0.001"';
+      html += ' data-item="' + item.id + '"';
+      html += ' value="' + valStr + '"';
+      html += ' placeholder="—"';
+      html += ' style="width:88px;height:48px;padding:0 8px;border:2px solid ' + (preenchido?'purple':'#ddd') + ';border-radius:8px;font-size:16px;font-weight:700;text-align:center;"';
+      html += ' onfocus="this.select()">';
+      html += '<span style="font-size:12px;color:gray;">' + item.unit + '</span>';
+      html += '</div>';
     });
   });
+  html += '</div>';
 
-  ov.innerHTML = `
-    <!-- Header fixo -->
-    <div style="flex-shrink:0;background:var(--surface);border-bottom:1.5px solid var(--border);padding-top:env(safe-area-inset-top,0)">
-      <div style="padding:12px 16px;display:flex;align-items:center;gap:10px">
-        <button id="btnCancelarContagem"
-          style="display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:var(--text-xs);font-weight:700;padding:8px;border-radius:var(--r6);min-height:44px">
-          ${lc('x',16,'currentColor')} Cancelar
-        </button>
-        <div style="flex:1;text-align:center">
-          <div style="font-size:var(--text-sm);font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${titulo}</div>
-          <div id="estContagemProg" style="font-size:var(--text-2xs);color:var(--muted)">${contados}/${total} contados</div>
-        </div>
-        <div style="font-size:var(--text-xs);font-weight:800;color:var(--purple);min-width:36px;text-align:right">${pct}%</div>
-      </div>
-      <div style="height:4px;background:var(--border)">
-        <div id="estContagemBar" style="height:100%;width:${pct}%;background:var(--purple);transition:width .3s;border-radius:2px"></div>
-      </div>
-    </div>
+  // Botão concluir fixo
+  html += '<div style="position:fixed;bottom:0;left:60px;right:0;padding:12px 16px;background:white;border-top:2px solid #eee;z-index:50;">';
+  html += '<button onclick="concluirContagemEstoque()" style="width:100%;padding:14px;background:' + (contados>0?'#16a34a':'#ddd') + ';color:' + (contados>0?'#fff':'#999') + ';border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">';
+  html += 'Concluir' + (contados>0?' · '+contados+' itens':'') + '</button></div>';
 
-    <!-- Lista scrollável -->
-    <div id="estContagemLista" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:16px">
-      ${itensHtml}
-    </div>
+  el.innerHTML = html;
 
-    <!-- Footer fixo -->
-    <div style="flex-shrink:0;padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);box-shadow:0 -4px 16px rgba(0,0,0,.08);padding-bottom:calc(12px + env(safe-area-inset-bottom,0))">
-      <button id="btnConcluirContagem"
-        style="width:100%;padding:14px;border:none;border-radius:var(--r10);font-size:var(--text-md);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .2s;background:${contados > 0 ? 'var(--green)' : 'var(--border)'};color:${contados > 0 ? '#fff' : 'var(--muted)'}">
-        ${lc('check-circle',16, contados > 0 ? '#fff' : 'var(--muted)')} Concluir${contados > 0 ? ' · ' + contados + ' itens' : ''}
-      </button>
-    </div>
-  `;
-
-  // Event listeners via JS em vez de onclick inline — mais seguro
-  document.getElementById('btnCancelarContagem')?.addEventListener('click', cancelarContagem);
-  document.getElementById('btnConcluirContagem')?.addEventListener('click', concluirContagemEstoque);
-
-  // Delegação de eventos para os inputs
-  document.getElementById('estContagemLista')?.addEventListener('input', e => {
-    if (e.target.tagName === 'INPUT' && e.target.dataset.item) {
-      _setCont(parseInt(e.target.dataset.item), e.target.value);
+  // Input handler via delegation
+  el.addEventListener('input', function(e) {
+    if (e.target.tagName === 'INPUT' && e.target.getAttribute('data-item')) {
+      _setCont(parseInt(e.target.getAttribute('data-item')), e.target.value);
     }
   });
-  toast('Contagem pronta! ' + Object.keys(_contagem).length + '/' + todosItens.length + ' itens', 'ok');
-  } catch(e) {
-    console.error('[_renderContagemAtiva]', e);
-    // Mostra erro diretamente no overlay (acima do z-index do toast)
-    const ovErr = document.getElementById('estContagemOverlay');
-    if (ovErr) ovErr.innerHTML = `<div style="padding:32px;text-align:center;color:red;font-size:14px;font-weight:700">
-      ERRO: ${e.message}<br><br>
-      <button onclick="document.getElementById('estContagemOverlay').remove();_contagemAtiva=false;"
-        style="padding:10px 20px;background:var(--purple);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">
-        Fechar
-      </button>
-    </div>`;
-  }
 }
+
+
 
 function _setCont(itemId, val) {
   if (val === '' || val === null) delete _contagem[itemId];
@@ -430,7 +360,7 @@ function cancelarContagem() {
       _contagem           = {};
       _contagemAtiva      = false;
       _categoriasContando = [];
-      document.getElementById('estContagemOverlay')?.remove();
+      
       _renderCatCards(document.getElementById('estPanelContagem'));
     }
   });
@@ -476,7 +406,7 @@ function concluirContagemEstoque() {
   _contagem           = {};
   _contagemAtiva      = false;
   _categoriasContando = [];
-  document.getElementById('estContagemOverlay')?.remove();
+  
 
   _abrirResumoPosContagem(novaContagem);
 }
