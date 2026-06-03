@@ -118,7 +118,22 @@ function _renderContagemTab() {
 // ── Cards de categoria ────────────────────────────────────────
 function _renderCatCards(el) {
   if (!el) el = document.getElementById('estPanelContagem');
-  if (!el) return;
+  if (!el) {
+    console.error('[_renderCatCards] estPanelContagem não encontrado!');
+    return;
+  }
+  // Diagnóstico: força visibilidade do elemento e seus pais
+  el.style.display = 'block';
+  el.style.minHeight = '300px';
+  let p = el.parentElement;
+  while (p && p !== document.body) {
+    if (getComputedStyle(p).display === 'none') {
+      console.error('[_renderCatCards] pai com display:none:', p.id || p.className);
+      p.style.display = 'block';
+    }
+    p = p.parentElement;
+  }
+  console.log('[_renderCatCards] el encontrado, items:', typeof items !== 'undefined' ? items.length : 'undefined');
 
   const allItems   = typeof items !== 'undefined' ? items : [];
   const allCats    = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
@@ -246,7 +261,7 @@ function _abrirOverlayContagem() {
 
     const ov = document.createElement('div');
     ov.id = 'estContagemOverlay';
-    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2000;background:#FAF7FF;display:flex;flex-direction:column;overflow:hidden';
+    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:900;background:#FAF7FF;display:flex;flex-direction:column;overflow:hidden';
     document.body.appendChild(ov);
 
     toast('Overlay criado, renderizando...', 'ok');
@@ -358,7 +373,15 @@ function _renderContagemAtiva() {
   toast('Contagem pronta! ' + Object.keys(_contagem).length + '/' + todosItens.length + ' itens', 'ok');
   } catch(e) {
     console.error('[_renderContagemAtiva]', e);
-    toast('Erro ao renderizar: ' + e.message, 'err');
+    // Mostra erro diretamente no overlay (acima do z-index do toast)
+    const ovErr = document.getElementById('estContagemOverlay');
+    if (ovErr) ovErr.innerHTML = `<div style="padding:32px;text-align:center;color:red;font-size:14px;font-weight:700">
+      ERRO: ${e.message}<br><br>
+      <button onclick="document.getElementById('estContagemOverlay').remove();_contagemAtiva=false;"
+        style="padding:10px 20px;background:var(--purple);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">
+        Fechar
+      </button>
+    </div>`;
   }
 }
 
