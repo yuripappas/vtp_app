@@ -90,12 +90,13 @@ function _etqIconCat(cat) {
   return 'package';
 }
 
-// Normaliza o nome da categoria para exibição no wizard.
-// "Produção Interna" (nome interno do CW) é exibido como "Preparados".
+// Normaliza o nome da categoria para exibição.
+// Garante consistência mesmo que itens antigos ainda tenham 'Produção Interna'.
 function _etqCatDisplay(item) {
   if (!item) return 'Outros';
-  if (item.isProd || (item.cat || '').toLowerCase().includes('produção')) return 'Preparados';
-  return item.cat || 'Outros';
+  const cat = item.cat || '';
+  if (item.isProd || cat.toLowerCase().includes('produção') || cat.toLowerCase().includes('interno')) return 'Preparados';
+  return cat || 'Outros';
 }
 
 // Estado do módulo

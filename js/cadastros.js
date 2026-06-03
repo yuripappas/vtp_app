@@ -663,7 +663,7 @@ function renderPreparoGrid() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
         <div>
           <div style="font-size:var(--text-md);font-weight:700">${item.name}</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px">Produção Interna · ${item.unit} ${ftBadge}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px">Preparados · ${item.unit} ${ftBadge}</div>
         </div>
         <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();openEditPreparo(${item.id})">${lc("edit-2",13,"currentColor")}️</button>
       </div>
@@ -736,7 +736,7 @@ function savePreparo() {
   const data = {
     name,
     code:         document.getElementById('fpCode').value.trim(),
-    cat:          'Produção Interna',
+    cat:          'Preparados',
     unit:         document.getElementById('fpUnit').value,
     cost:         custoKg,
     min:          parseFloat(document.getElementById('fpMin').value)    || 0,
@@ -1456,11 +1456,19 @@ function confirmarImportCad() {
   if (!data) return;
 
   // Adiciona novos
+  // Normaliza categoria: qualquer variação de "produção interna" → "Preparados"
+  const _normCat = cat => {
+    const l = (cat || '').toLowerCase();
+    if (l.includes('produção') || l.includes('producao') || l.includes('interno') || l.includes('preparado')) return 'Preparados';
+    return cat.trim() || 'Outros';
+  };
+
   data.novos.forEach(r => {
+    const catNorm = _normCat(r.cat);
     items.push({
       id:     nextIid++,
       name:   r.name.trim(),
-      cat:    r.cat.trim() || 'Geral',
+      cat:    catNorm,
       unit:   r.unit || 'un',
       qty:    0,
       min:    r.min || 0,
@@ -1469,7 +1477,7 @@ function confirmarImportCad() {
       supId:  null,
       brands: [],
       code:   r.code || '',
-      isProd: r.cat.toLowerCase().includes('produção') || r.cat.toLowerCase().includes('interno'),
+      isProd: catNorm === 'Preparados',
     });
   });
 
@@ -1478,7 +1486,7 @@ function confirmarImportCad() {
     const item = items.find(i => i.id === r.id);
     if (!item) return;
     if (r.code) item.code = r.code;
-    if (r.cat)  item.cat  = r.cat;
+    if (r.cat)  item.cat  = _normCat(r.cat);
     if (r.cost > 0) item.cost = r.cost;
     if (r.min !== null) item.min = r.min;
   });
