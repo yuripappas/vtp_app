@@ -332,9 +332,10 @@ function openOrdemModal(preItemId) {
   const sel = document.getElementById('opItem');
   sel.innerHTML = '<option value="">Selecionar...</option>' +
     items.filter(i => i.isProd).map(i => `<option value="${i.id}"${i.id === preItemId ? ' selected' : ''}>${i.name}</option>`).join('');
-  document.getElementById('opQty').value  = '';
-  document.getElementById('opObs').value  = '';
-  document.getElementById('opDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('opQty').value   = '';
+  document.getElementById('opObs').value   = '';
+  document.getElementById('opDate').value  = new Date().toISOString().slice(0, 10);
+  const opTurno = document.getElementById('opTurno'); if (opTurno) opTurno.value = '';
   // Popula selects de responsável e conferente com funcionários cadastrados
   const funcs = (typeof users !== 'undefined' ? users : []).filter(u => u.active !== false);
   const optsFunc = '<option value="">Selecionar...</option>' +

@@ -1592,6 +1592,13 @@ function renderPrestadores() {
 
 let _editPrestId = null;
 
+function _prestResetNotaForm() {
+  ['pfNotaData','pfNotaServico','pfNotaComentario'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const est = document.getElementById('pfNotaEstrelas'); if (est) est.value = '5';
+}
+
 function openPrestadorModal() {
   _editPrestId = null;
   document.getElementById('prestModalTitle').textContent = 'Novo Prestador';
@@ -1603,6 +1610,7 @@ function openPrestadorModal() {
   document.getElementById('pfConfianca').value  = 'backup';
   document.getElementById('delPrestBtn').style.display = 'none';
   document.getElementById('prestNotasSection').style.display = 'none';
+  _prestResetNotaForm();
   document.getElementById('ovPrest').classList.add('open');
   setTimeout(() => document.getElementById('pfNome').focus(), 80);
 }
@@ -1623,6 +1631,7 @@ function openEditPrestador(id) {
   document.getElementById('pfAviso').value        = p.aviso || '';
   document.getElementById('delPrestBtn').style.display = 'inline-flex';
   document.getElementById('prestNotasSection').style.display = '';
+  _prestResetNotaForm();
   _renderNotasPrestador(p);
   document.getElementById('ovPrest').classList.add('open');
 }
@@ -1800,6 +1809,13 @@ function renderTerceirizados() {
 
 let _editTerceirId = null;
 
+function _tercResetNotaForm() {
+  ['tfNotaData','tfNotaOcorrencia','tfNotaComentario'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const est = document.getElementById('tfNotaEstrelas'); if (est) est.value = '5';
+}
+
 function openTerceirizadoModal() {
   _editTerceirId = null;
   document.getElementById('terceirModalTitle').textContent = 'Novo Terceirizado';
@@ -1810,6 +1826,7 @@ function openTerceirizadoModal() {
   document.getElementById('tfValorHora').value = '';
   document.getElementById('delTerceirBtn').style.display = 'none';
   document.getElementById('terceirNotasSection').style.display = 'none';
+  _tercResetNotaForm();
   document.getElementById('ovTerceir').classList.add('open');
   setTimeout(() => document.getElementById('tfNome').focus(), 80);
 }
@@ -1829,6 +1846,7 @@ function openEditTerceirizado(id) {
   document.getElementById('tfObs').value         = t.obs || '';
   document.getElementById('delTerceirBtn').style.display = 'inline-flex';
   document.getElementById('terceirNotasSection').style.display = '';
+  _tercResetNotaForm();
   _renderNotasTerceirizado(t);
   document.getElementById('ovTerceir').classList.add('open');
 }
