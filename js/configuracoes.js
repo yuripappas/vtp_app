@@ -2555,14 +2555,14 @@ function saveContagemPerms() {
 // CONFIGURAÇÕES → ETIQUETAGEM
 // ══════════════════════════════════════════════════════════════
 
-let _cfgEtqTab = 'metodos'; // 'metodos' | 'validades' | 'pontos'
+let _cfgEtqTab = 'metodos'; // 'metodos' | 'validades' | 'pontos' | 'categorias'
 
 function _renderCfgSecEtiquetagem(el) {
   if (typeof _etqInit === 'function') _etqInit();
 
   el.innerHTML = `
     <div class="settings-section-title">${lc('tag', 16, 'var(--purple)')} Etiquetagem</div>
-    <div class="settings-section-sub">Métodos de conservação · Validades por produto · Pontos de impressão</div>
+    <div class="settings-section-sub">Métodos de conservação · Validades por produto · Categorias visíveis · Pontos de impressão</div>
 
     <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
       <button onclick="_cfgEtqTab='metodos';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
@@ -2572,6 +2572,10 @@ function _renderCfgSecEtiquetagem(el) {
       <button onclick="_cfgEtqTab='validades';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
         class="btn btn-sm ${_cfgEtqTab==='validades'?'btn-primary':'btn-ghost'}">
         ${lc('clock',12,'currentColor')} Validades por Produto
+      </button>
+      <button onclick="_cfgEtqTab='categorias';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
+        class="btn btn-sm ${_cfgEtqTab==='categorias'?'btn-primary':'btn-ghost'}">
+        ${lc('filter',12,'currentColor')} Categorias Visíveis
       </button>
       <button onclick="_cfgEtqTab='pontos';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
         class="btn btn-sm ${_cfgEtqTab==='pontos'?'btn-primary':'btn-ghost'}">
@@ -2585,9 +2589,72 @@ function _renderCfgSecEtiquetagem(el) {
   const cadEl = document.getElementById('cfgEtqContent');
   if (!cadEl) return;
 
-  if (_cfgEtqTab === 'metodos')   _cfgEtqMetodos(cadEl);
+  if (_cfgEtqTab === 'metodos')        _cfgEtqMetodos(cadEl);
   else if (_cfgEtqTab === 'validades') _cfgEtqValidades(cadEl);
+  else if (_cfgEtqTab === 'categorias') _cfgEtqCategorias(cadEl);
   else if (_cfgEtqTab === 'pontos')    _cfgEtqPontos(cadEl);
+}
+
+// ── Categorias Visíveis na Etiquetagem ───────────────────────
+
+function _cfgEtqCategorias(el) {
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  const habilitadas = db._get('vtp_etiq_categorias', null); // null = todas habilitadas
+  const sel = habilitadas !== null ? new Set(habilitadas) : new Set(todasCats);
+
+  el.innerHTML = `
+    <div style="max-width:680px">
+      <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Categorias visíveis na Etiquetagem</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:14px">
+        Selecione quais categorias de insumos e preparados aparecem no wizard de impressão de etiquetas.
+        Categorias desmarcadas ficam ocultas para o operador.
+      </div>
+      <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden;margin-bottom:14px">
+        <div style="padding:10px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:.78rem;font-weight:700;color:var(--text2)">${todasCats.length} categorias encontradas</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-xs" onclick="_cfgEtqCatToggleAll(true)">Todas</button>
+            <button class="btn btn-ghost btn-xs" onclick="_cfgEtqCatToggleAll(false)">Nenhuma</button>
+          </div>
+        </div>
+        ${todasCats.map(cat => {
+          const count   = allItems.filter(i => (i.cat || 'Outros') === cat).length;
+          const checked = sel.has(cat);
+          return `
+          <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;
+            background:${checked ? 'var(--purple-xlight)' : 'var(--surface)'};transition:background .1s"
+            onmouseover="this.style.background='var(--purple-xlight)'"
+            onmouseout="this.style.background=this.querySelector('input').checked?'var(--purple-xlight)':'var(--surface)'">
+            <input type="checkbox" value="${cat}" ${checked ? 'checked' : ''}
+              style="width:16px;height:16px;accent-color:var(--purple);flex-shrink:0"
+              onchange="this.closest('label').style.background=this.checked?'var(--purple-xlight)':'var(--surface)'">
+            <div style="flex:1">
+              <div style="font-size:.82rem;font-weight:600;color:var(--text)">${cat}</div>
+              <div style="font-size:.67rem;color:var(--muted)">${count} ${count===1?'item':'itens'}</div>
+            </div>
+            ${checked ? `<span style="font-size:.65rem;font-weight:700;color:var(--purple);background:var(--purple-xlight);border:1px solid var(--purple-light);border-radius:20px;padding:1px 8px">Visível</span>` : `<span style="font-size:.65rem;color:var(--muted)">Oculta</span>`}
+          </label>`;
+        }).join('')}
+      </div>
+      <button class="btn btn-primary" onclick="_cfgEtqSalvarCategorias()">
+        ${lc('save',13,'#fff')} Salvar categorias visíveis
+      </button>
+    </div>`;
+}
+
+function _cfgEtqCatToggleAll(checked) {
+  document.querySelectorAll('#cfgEtqContent input[type=checkbox]').forEach(cb => {
+    cb.checked = checked;
+    cb.closest('label').style.background = checked ? 'var(--purple-xlight)' : 'var(--surface)';
+  });
+}
+
+function _cfgEtqSalvarCategorias() {
+  const selecionadas = [...document.querySelectorAll('#cfgEtqContent input[type=checkbox]:checked')]
+    .map(cb => cb.value);
+  db._set('vtp_etiq_categorias', selecionadas);
+  toast('Categorias salvas! O wizard de etiquetagem usará apenas as categorias selecionadas.', 'ok');
 }
 
 // ── Métodos de Conservação ────────────────────────────────────
@@ -2645,7 +2712,32 @@ function _cfgEtqOpenMetodo(id) {
 
 // ── Validades por Produto ─────────────────────────────────────
 
+let _cfgEtqBusca = '';
+
 function _cfgEtqValidades(el) {
+  if (typeof _etqMetodos === 'undefined' || !_etqMetodos) return;
+
+  // Só cria a estrutura do container uma vez — evita recriar o input e perder o foco
+  if (!el.querySelector('#cfgEtqValidList')) {
+    el.innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Validades por produto</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">
+          Configure quantos dias cada produto dura em cada método de conservação.
+          Esses valores são usados automaticamente no wizard de impressão.
+        </div>
+        <input class="inp" id="cfgEtqBuscaInp" placeholder="Buscar produto..." value="${_cfgEtqBusca}"
+          oninput="_cfgEtqBusca=this.value;_cfgEtqValidListUpdate()"
+          style="max-width:380px">
+      </div>
+      <div id="cfgEtqValidList" style="display:flex;flex-direction:column;gap:10px;max-width:900px"></div>`;
+  }
+  _cfgEtqValidListUpdate();
+}
+
+function _cfgEtqValidListUpdate() {
+  const el = document.getElementById('cfgEtqValidList');
+  if (!el) return;
   if (typeof _etqMetodos === 'undefined' || !_etqMetodos) return;
 
   const allItems  = typeof items !== 'undefined' ? items : [];
@@ -2653,65 +2745,48 @@ function _cfgEtqValidades(el) {
   const filtrados = allItems.filter(i => i.name.toLowerCase().includes(busca.toLowerCase()));
 
   el.innerHTML = `
-    <div style="margin-bottom:14px">
-      <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Validades por produto</div>
-      <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">
-        Configure quantos dias cada produto dura em cada método de conservação.
-        Esses valores são usados automaticamente no wizard de impressão.
-      </div>
-      <input class="inp" placeholder="Buscar produto..." value="${busca}"
-        oninput="_cfgEtqBusca=this.value;_cfgEtqValidades(document.getElementById('cfgEtqContent'))"
-        style="max-width:380px">
-    </div>
-
-    <div style="display:flex;flex-direction:column;gap:10px;max-width:900px">
-      ${filtrados.map(item => {
-        const validsItem = _etqValidades ? _etqValidades.filter(v => v.item_id == item.id) : [];
-        const isProd = item.isProd ? 'Produção Interna' : 'Insumo';
-        return `
-          <div style="border:1.5px solid var(--border);border-radius:var(--r10);background:var(--surface);overflow:hidden">
-            <div style="padding:11px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:.82rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div>
-                <div style="font-size:.67rem;color:var(--muted)">${item.cat || '—'} · ${isProd}</div>
-              </div>
-              <button class="btn btn-outline btn-xs" onclick="_cfgEtqOpenVal('${item.id}', null)">
-                ${lc('plus', 11, 'currentColor')} Adicionar
-              </button>
+    ${filtrados.map(item => {
+      const validsItem = _etqValidades ? _etqValidades.filter(v => v.item_id == item.id) : [];
+      const isProd = item.isProd ? 'Produção Interna' : 'Insumo';
+      return `
+        <div style="border:1.5px solid var(--border);border-radius:var(--r10);background:var(--surface);overflow:hidden">
+          <div style="padding:11px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.82rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div>
+              <div style="font-size:.67rem;color:var(--muted)">${item.cat || '—'} · ${isProd}</div>
             </div>
-            ${validsItem.length > 0 ? `
-              <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px">
-                ${validsItem.map(v => {
-                  const met = _etqMetodos.find(m => m.id === v.metodo_id);
-                  if (!met) return '';
-                  const label = met.status ? `${met.nome} · ${met.status}` : met.nome;
-                  return `
-                    <button onclick="_cfgEtqOpenVal('${item.id}','${v.metodo_id}')"
-                      title="Clique para editar"
-                      style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
-                        border:1.5px solid ${met.cor}44;background:${met.cor}11;
-                        cursor:pointer;font-family:Inter,sans-serif;font-size:.72rem;font-weight:600;color:var(--text)">
-                      ${lc(met.icone || 'thermometer', 10, met.cor)}
-                      ${label}
-                      <strong style="color:${met.cor}">${v.validade_dias}d</strong>
-                    </button>
-                  `;
-                }).join('')}
-              </div>
-            ` : `
-              <div style="padding:9px 14px;font-size:.72rem;color:var(--muted)">
-                Nenhuma conservação configurada — clique em Adicionar
-              </div>
-            `}
+            <button class="btn btn-outline btn-xs" onclick="_cfgEtqOpenVal('${item.id}', null)">
+              ${lc('plus', 11, 'currentColor')} Adicionar
+            </button>
           </div>
-        `;
-      }).join('')}
-      ${filtrados.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum produto encontrado</div>` : ''}
-    </div>
+          ${validsItem.length > 0 ? `
+            <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px">
+              ${validsItem.map(v => {
+                const met = _etqMetodos.find(m => m.id === v.metodo_id);
+                if (!met) return '';
+                const label = met.status ? `${met.nome} · ${met.status}` : met.nome;
+                return `
+                  <button onclick="_cfgEtqOpenVal('${item.id}','${v.metodo_id}')"
+                    title="Clique para editar"
+                    style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                      border:1.5px solid ${met.cor}44;background:${met.cor}11;
+                      cursor:pointer;font-family:Inter,sans-serif;font-size:.72rem;font-weight:600;color:var(--text)">
+                    ${lc(met.icone || 'thermometer', 10, met.cor)}
+                    ${label}
+                    <strong style="color:${met.cor}">${v.validade_dias}d</strong>
+                  </button>`;
+              }).join('')}
+            </div>
+          ` : `
+            <div style="padding:9px 14px;font-size:.72rem;color:var(--muted)">
+              Nenhuma conservação configurada — clique em Adicionar
+            </div>
+          `}
+        </div>`;
+    }).join('')}
+    ${filtrados.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum produto encontrado</div>` : ''}
   `;
 }
-
-let _cfgEtqBusca = '';
 
 function _cfgEtqOpenVal(itemId, metodoId) {
   if (typeof _etqOpenValidadeModal === 'function') {

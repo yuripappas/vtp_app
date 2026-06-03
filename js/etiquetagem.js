@@ -167,7 +167,8 @@ function _etqRenderTab() {
 // ═══════════════════════════════════════════════════════════════
 
 function _etqRenderWizard(el) {
-  const stepTitles = ['','Responsável','Categoria','Produto','Conservação','Confirmar'];
+  const catLabel   = _etqWizardState.categoria || 'Produto';
+  const stepTitles = ['','Responsável','Categoria', catLabel, 'Conservação','Confirmar'];
   const step = _etqWizardStep;
 
   el.innerHTML = `
@@ -249,8 +250,11 @@ function _etqStep1(el) {
 
 function _etqStep2(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
-  // Extrair categorias únicas
-  const cats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  // Categorias habilitadas em Configurações → Etiquetagem → Categorias Visíveis
+  const habilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
+  const todasCats   = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  // null = todas; array = apenas as selecionadas
+  const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
