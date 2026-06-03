@@ -320,7 +320,10 @@ function _etqStep2(el) {
     : null;
   // Usa o nome normalizado (isProd → "Preparados") para agrupar
   const todasCats = [...new Set(allItems.map(i => _etqCatDisplay(i)))].filter(Boolean).sort();
-  const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
+  let cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
+  // "Preparados" sempre aparece se houver itens isProd, independente do filtro salvo
+  const temPreparados = allItems.some(i => i.isProd);
+  if (temPreparados && !cats.includes('Preparados')) cats = ['Preparados', ...cats].sort();
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
