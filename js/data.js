@@ -147,8 +147,9 @@ const saveTiposDesperdicio = () => db._set('vtp_emp_tipos_desp', TIPOS_DESPERDIC
 
 // ── Categorias de Insumo configuráveis ─────────────────────────
 let CATEGORIAS_INSUMO = db._get('vtp_emp_cat_insumo', null) || [
-  'Carnes e Frios','Massas e Farinhas','Molhos e Temperos','Queijos','Vegetais',
-  'Bebidas','Embalagens','Limpeza','Descartáveis','Outros',
+  // Mesmos nomes usados nos itens e importados do Cardápio Web
+  'Laticínios','Carnes e Frios','Massas','Molhos','Embalagens',
+  'Bebidas','Hortifruti','Higiene/Limpeza','Descartáveis','Outros',
 ];
 const saveCategoriasInsumo = () => db._set('vtp_emp_cat_insumo', CATEGORIAS_INSUMO);
 

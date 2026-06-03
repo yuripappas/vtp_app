@@ -22,20 +22,75 @@ const ETQ_METODOS_DEFAULT = [
   { id: 'tamb',       nome: 'Temp. Ambiente', status: null,          icone: 'sun',         cor: '#F59E0B' },
 ];
 
+// Mapa de ícones por categoria — usa exatamente os mesmos nomes que aparecem
+// em item.cat (vindos do Cardápio Web ou cadastrados manualmente).
+// Qualquer categoria não listada recebe o ícone genérico 'package'.
 const ETQ_CAT_ICONS = {
-  'Produção Interna': 'chef-hat',
-  'Laticínios':       'package',
-  'Carnes e Frios':   'flame',
-  'Massas':           'package',
-  'Molhos e Pastas':  'droplets',
-  'Embalagens':       'box',
-  'Bebidas':          'coffee',
-  'Limpeza':          'sparkles',
-  'Hortifruti':       'leaf',
-  'Secos':            'archive',
-  'Sobremesas':       'star',
-  'Temperos':         'tag',
+  // Preparados / Produção interna
+  'Produção Interna':   'chef-hat',
+  'Preparados':         'chef-hat',
+
+  // Laticínios e derivados
+  'Laticínios':         'droplets',
+  'Queijos':            'droplets',
+
+  // Proteínas
+  'Carnes e Frios':     'flame',
+  'Carnes':             'flame',
+  'Frios':              'flame',
+
+  // Massas / farinhas
+  'Massas':             'layers',
+  'Massas e Farinhas':  'layers',
+  'Farinhas':           'layers',
+
+  // Molhos / temperos
+  'Molhos':             'droplets',
+  'Molhos e Temperos':  'droplets',
+  'Molhos e Pastas':    'droplets',
+  'Temperos':           'tag',
+
+  // Embalagens
+  'Embalagens':         'box',
+  'Descartáveis':       'box',
+
+  // Bebidas
+  'Bebidas':            'coffee',
+
+  // Hortifruti / vegetais
+  'Hortifruti':         'leaf',
+  'Vegetais':           'leaf',
+  'Frutas':             'leaf',
+
+  // Higiene / limpeza
+  'Limpeza':            'sparkles',
+  'Higiene/Limpeza':    'sparkles',
+  'Higiene':            'sparkles',
+
+  // Secos / grãos
+  'Secos':              'archive',
+  'Grãos':              'archive',
+
+  // Sobremesas / doces
+  'Sobremesas':         'star',
+  'Doces':              'star',
+
+  // Outros
+  'Outros':             'package',
 };
+
+// Retorna o ícone para qualquer categoria, com fallback genérico
+function _etqIconCat(cat) {
+  if (!cat) return 'package';
+  // Busca exata
+  if (ETQ_CAT_ICONS[cat]) return ETQ_CAT_ICONS[cat];
+  // Busca parcial (case-insensitive)
+  const lower = cat.toLowerCase();
+  for (const [key, icon] of Object.entries(ETQ_CAT_ICONS)) {
+    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) return icon;
+  }
+  return 'package';
+}
 
 // Estado do módulo
 let _etqTab    = 'imprimir';
@@ -260,7 +315,7 @@ function _etqStep2(el) {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
       ${cats.map(cat => {
         const count = allItems.filter(i => (i.cat || 'Outros') === cat).length;
-        const icon  = ETQ_CAT_ICONS[cat] || 'package';
+        const icon  = _etqIconCat(cat);
         return `
           <button onclick="_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
           }';_etqWizNext()"
@@ -309,7 +364,7 @@ function _etqStep3(el) {
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
               text-align:left;font-family:Inter,sans-serif">
             <div style="font-size:.82rem;font-weight:700;color:${isSel ? 'var(--brand-purple)' : 'var(--text)'};line-height:1.3;margin-bottom:4px">${item.name}</div>
-            <div style="font-size:.66rem;color:var(--muted)">${item.isProd ? 'Produção Interna' : 'Insumo'}</div>
+            <div style="font-size:.66rem;color:var(--muted)">${item.cat || (item.isProd ? 'Preparado' : 'Insumo')}</div>
             <div style="font-size:.64rem;color:var(--muted);margin-top:3px">${valids.length} conservação${valids.length !== 1 ? 'ões' : ''} conf.</div>
           </button>
         `;
@@ -1649,7 +1704,7 @@ function _etqCadValidades(el) {
             <div style="padding:12px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
               <div style="flex:1">
                 <div style="font-size:.84rem;font-weight:700;color:var(--text)">${item.name}</div>
-                <div style="font-size:.68rem;color:var(--muted)">${item.cat || '—'} · ${item.isProd ? 'Produção Interna' : 'Insumo'}</div>
+                <div style="font-size:.68rem;color:var(--muted)">${item.cat || '—'} · ${item.isProd ? 'Preparado' : 'Insumo'}</div>
               </div>
               <button class="btn btn-outline btn-xs" onclick="_etqOpenValidadeModal('${item.id}', null)">
                 ${lc('plus', 11, 'currentColor')} Adicionar
