@@ -183,15 +183,17 @@ function _renderCatCards(el) {
   });
 
   const nCats = _catsSelecionadas.size;
+  // Passa as categorias como data-attribute para evitar dependência de escopo no onclick
+  const catsEncoded = [..._catsSelecionadas].map(c => encodeURIComponent(c)).join(',');
   const barHtml = nCats > 0 ? `
     <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);
         display:flex;align-items:center;justify-content:space-between;gap:12px;
-        box-shadow:0 -4px 16px rgba(0,0,0,.08);z-index:100">
+        box-shadow:0 -4px 16px rgba(0,0,0,.08);z-index:100" id="ctgBarFix">
       <div style="font-size:var(--text-sm);color:var(--text2)">
         <strong style="color:var(--purple)">${nCats}</strong> categoria${nCats > 1 ? 's' : ''} ·
         <strong>${totalSel}</strong> itens
       </div>
-      <button onclick="_iniciarContagem()"
+      <button id="ctgBtnIniciar" data-cats="${catsEncoded}"
         style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
           font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;min-height:44px">
         ${lc('play-circle',15,'#fff')} Iniciar contagem
@@ -216,7 +218,20 @@ function _renderCatCards(el) {
     </div>
     ${barHtml}`;
 
-  // (botões Histórico e Iniciar contagem usam onclick inline — sem encoding issues)
+  // Botão iniciar: lê categorias do data-cats (evita dependência de escopo)
+  const btnIniciar = document.getElementById('ctgBtnIniciar');
+  if (btnIniciar) {
+    btnIniciar.addEventListener('click', function() {
+      const cats = (this.getAttribute('data-cats') || '')
+        .split(',').filter(Boolean).map(c => decodeURIComponent(c));
+      if (cats.length === 0) { toast('Selecione pelo menos uma categoria', 'err'); return; }
+      _contagemAtiva      = true;
+      _categoriasContando = cats;
+      _catsSelecionadas   = new Set();
+      _contagem           = {};
+      _renderContagemAtiva();
+    });
+  }
 
   // Delegação: qualquer clique num card com data-cat
   el.querySelector('#catGrid')?.addEventListener('click', e => {
