@@ -869,6 +869,41 @@
         <label>Aviso interno</label>
         <input class="inp" id="sfAviso" placeholder="Ex: Pedir embalagens no início do mês. Gráfica precisa 20 dias.">
       </div>
+      <hr class="sdiv"><div class="slbl">Condições Comerciais</div>
+      <div class="field">
+        <label>Formas de pagamento aceitas</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8)">
+          <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;padding:5px 10px;border-radius:var(--r6);cursor:pointer;background:var(--surface);border:1.5px solid var(--border)"><input type="checkbox" id="sfPgto_pix" style="accent-color:var(--purple)"> PIX</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;padding:5px 10px;border-radius:var(--r6);cursor:pointer;background:var(--surface);border:1.5px solid var(--border)"><input type="checkbox" id="sfPgto_especie" style="accent-color:var(--purple)"> Espécie</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;padding:5px 10px;border-radius:var(--r6);cursor:pointer;background:var(--surface);border:1.5px solid var(--border)"><input type="checkbox" id="sfPgto_boleto" style="accent-color:var(--purple)"> Boleto</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;padding:5px 10px;border-radius:var(--r6);cursor:pointer;background:var(--surface);border:1.5px solid var(--border)"><input type="checkbox" id="sfPgto_cartao" style="accent-color:var(--purple)"> Cartão</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;padding:5px 10px;border-radius:var(--r6);cursor:pointer;background:var(--surface);border:1.5px solid var(--border)"><input type="checkbox" id="sfPgto_cheque" style="accent-color:var(--purple)"> Cheque</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;padding:5px 10px;border-radius:var(--r6);cursor:pointer;background:var(--surface);border:1.5px solid var(--border)"><input type="checkbox" id="sfPgto_crediario" style="accent-color:var(--purple)"> Crediário</label>
+        </div>
+      </div>
+      <div class="f2">
+        <div class="field">
+          <label>Prazo de pagamento (dias após entrega)</label>
+          <input class="inp" id="sfPrazoPagamento" type="number" min="0" max="120" placeholder="Ex: 30 (0 = à vista)">
+          <span style="font-size:.68rem;color:var(--muted);margin-top:3px">0 ou vazio = pagamento à vista na entrega</span>
+        </div>
+        <div class="field">
+          <label>Taxa de entrega</label>
+          <select class="inp" id="sfTaxaEntregaTipo" onchange="toggleTaxaEntrega()">
+            <option value="gratis">Sem taxa / Frete grátis</option>
+            <option value="fixo">Taxa fixa (R$)</option>
+            <option value="variavel">Variável / A combinar</option>
+          </select>
+        </div>
+      </div>
+      <div id="sfTaxaEntregaFixo" style="display:none" class="field">
+        <label>Valor fixo da taxa de entrega (R$)</label>
+        <input class="inp" id="sfTaxaEntregaValor" type="number" min="0" step="0.01" placeholder="Ex: 15.00">
+      </div>
+      <div id="sfTaxaEntregaVar" style="display:none" class="field">
+        <label>Observação sobre a taxa variável</label>
+        <input class="inp" id="sfTaxaEntregaObs" placeholder="Ex: Taxa conforme região de entrega, mín. R$ 10">
+      </div>
       <div class="field">
         <label>Status de confiança</label>
         <select class="inp" id="sfConfianca">
@@ -1354,9 +1389,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/db.js?v=9"></script>
+<script src="js/db.js?v=10"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=9"></script>
+<script src="js/init.js?v=10"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">

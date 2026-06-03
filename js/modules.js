@@ -640,6 +640,21 @@ function generatePDF() {
 // FORNECEDORES
 // ══════════════════════════════════════════════════════════════
 
+// Helper: descrição resumida das condições comerciais de um fornecedor
+function _supCondicoesLabel(s) {
+  const pgtos = Array.isArray(s.formasPagamento) ? s.formasPagamento : [];
+  const prazo = s.prazoPagamento != null && s.prazoPagamento !== '' ? parseInt(s.prazoPagamento) : null;
+  const taxa  = s.taxaEntrega || {};
+  const parts = [];
+  if (pgtos.length) parts.push(pgtos.map(p => p.toUpperCase()).join(' · '));
+  if (prazo === 0) parts.push('À vista');
+  else if (prazo > 0) parts.push(`${prazo}d p/ pagar`);
+  if (taxa.tipo === 'fixo' && taxa.valor > 0)     parts.push(`Frete R$ ${fmt(taxa.valor)}`);
+  else if (taxa.tipo === 'variavel')               parts.push('Frete variável');
+  else if (taxa.tipo === 'gratis' || !taxa.tipo)   parts.push('Frete grátis');
+  return parts.join(' · ');
+}
+
 function renderFornecedores() {
   const el = document.getElementById('supGrid');
   if (!suppliers.length) {
@@ -647,7 +662,9 @@ function renderFornecedores() {
     return;
   }
   el.innerHTML = suppliers.map(s => {
-    const si = items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(s.id); });
+    const si   = items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(s.id); });
+    const cond = _supCondicoesLabel(s);
+    const pgtos = Array.isArray(s.formasPagamento) ? s.formasPagamento : [];
     return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r12);padding:16px;cursor:pointer;transition:border-color .15s" onclick="openEditSup(${s.id})">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
         <div>
@@ -661,11 +678,45 @@ function renderFornecedores() {
         ${s.email ? `<div style="font-size:var(--text-sm);color:var(--text2)">${lc("mail",14,"currentColor")} ${s.email}</div>` : ''}
         ${s.cats  ? `<div style="font-size:var(--text-xs);color:var(--muted)">${s.cats}</div>` : ''}
       </div>
+      ${cond ? `
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+          ${pgtos.map(p => `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">${p.toUpperCase()}</span>`).join('')}
+          ${s.prazoPagamento != null && s.prazoPagamento !== '' ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light)">${parseInt(s.prazoPagamento)===0?'À vista':parseInt(s.prazoPagamento)+'d p/ pagar'}</span>` : ''}
+          ${(s.taxaEntrega?.tipo==='fixo'&&s.taxaEntrega?.valor>0) ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--yellow-light);color:var(--orange-dark);border:1px solid #FCD34D">Frete R$ ${fmt(s.taxaEntrega.valor)}</span>` : s.taxaEntrega?.tipo==='variavel' ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--yellow-light);color:var(--orange-dark);border:1px solid #FCD34D">Frete variável</span>` : `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">Frete grátis</span>`}
+        </div>` : ''}
       ${si.length
         ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${si.map(i => `<span class="badge b-purple" style="font-size:var(--text-2xs)">${i.name}</span>`).join('')}</div>`
         : '<div style="font-size:var(--text-xs);color:var(--muted)">Sem insumos vinculados</div>'}
     </div>`;
   }).join('');
+}
+
+function toggleTaxaEntrega() {
+  const tipo = document.getElementById('sfTaxaEntregaTipo')?.value;
+  const fixo = document.getElementById('sfTaxaEntregaFixo');
+  const varr = document.getElementById('sfTaxaEntregaVar');
+  if (fixo) fixo.style.display = tipo === 'fixo'     ? '' : 'none';
+  if (varr) varr.style.display = tipo === 'variavel' ? '' : 'none';
+}
+
+function _supLoadPagamento(s) {
+  // Formas de pagamento
+  ['pix','especie','boleto','cartao','cheque','crediario'].forEach(k => {
+    const el = document.getElementById(`sfPgto_${k}`);
+    if (el) el.checked = Array.isArray(s?.formasPagamento) && s.formasPagamento.includes(k);
+  });
+  // Prazo
+  const prazoEl = document.getElementById('sfPrazoPagamento');
+  if (prazoEl) prazoEl.value = s?.prazoPagamento ?? '';
+  // Taxa entrega
+  const taxa = s?.taxaEntrega || {};
+  const tipoEl = document.getElementById('sfTaxaEntregaTipo');
+  if (tipoEl) tipoEl.value = taxa.tipo || 'gratis';
+  const valEl = document.getElementById('sfTaxaEntregaValor');
+  if (valEl) valEl.value = taxa.valor > 0 ? taxa.valor : '';
+  const obsEl = document.getElementById('sfTaxaEntregaObs');
+  if (obsEl) obsEl.value = taxa.obs || '';
+  toggleTaxaEntrega();
 }
 
 function openSupModal() {
@@ -678,6 +729,7 @@ function openSupModal() {
   const srch = document.getElementById('sfItemSearch'); if(srch) srch.value = '';
   renderSupCbx([]);
   renderCatTags([]);
+  _supLoadPagamento(null);
   document.getElementById('ovSup').classList.add('open');
   setTimeout(() => document.getElementById('sfName').focus(), 80);
 }
@@ -699,6 +751,7 @@ function openEditSup(id) {
   // Carrega categorias salvas como array
   const cats = Array.isArray(s.cats) ? s.cats : (s.cats ? s.cats.split(',').map(c => c.trim()).filter(Boolean) : []);
   renderCatTags(cats);
+  _supLoadPagamento(s);
   document.getElementById('ovSup').classList.add('open');
 }
 
@@ -784,13 +837,27 @@ function saveSup() {
   const checked = [...document.querySelectorAll('#sfItems input:checked')].map(c => parseInt(c.value));
   // Pega categorias das tags selecionadas
   const selectedCats = [...document.querySelectorAll('.sup-cat-tag.active')].map(t => t.dataset.cat);
+  // Formas de pagamento (checkboxes múltiplos)
+  const formasPagamento = ['pix','especie','boleto','cartao','cheque','crediario']
+    .filter(k => document.getElementById(`sfPgto_${k}`)?.checked);
+  // Taxa de entrega
+  const taxaTipo  = document.getElementById('sfTaxaEntregaTipo')?.value || 'gratis';
+  const taxaValor = parseFloat(document.getElementById('sfTaxaEntregaValor')?.value) || 0;
+  const taxaObs   = document.getElementById('sfTaxaEntregaObs')?.value.trim() || '';
+  const taxaEntrega = { tipo: taxaTipo, valor: taxaValor, obs: taxaObs };
+
   const data = {
     name,
-    seller:       document.getElementById('sfSeller').value.trim(),
-    phone:        document.getElementById('sfPhone').value.trim(),
-    email:        document.getElementById('sfEmail').value.trim(),
-    cats:         selectedCats.join(', '),
-    formaEntrega: document.getElementById('sfFormaEntrega')?.value || 'entrega',
+    seller:          document.getElementById('sfSeller').value.trim(),
+    phone:           document.getElementById('sfPhone').value.trim(),
+    email:           document.getElementById('sfEmail').value.trim(),
+    cats:            selectedCats.join(', '),
+    formaEntrega:    document.getElementById('sfFormaEntrega')?.value || 'entrega',
+    formasPagamento,
+    prazoPagamento:  document.getElementById('sfPrazoPagamento')?.value !== ''
+                       ? parseInt(document.getElementById('sfPrazoPagamento')?.value) || 0
+                       : null,
+    taxaEntrega,
   };
   if (editSupId) {
     const idx = suppliers.findIndex(s => s.id === editSupId);

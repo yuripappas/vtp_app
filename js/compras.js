@@ -1361,7 +1361,14 @@ function abrirEditarCotacao(itemId, idx) {
   const mem = sup?.ultimasCond || {};
   if (!cot.respondido) {
     if (!cot.formaPagamento && mem.formaPagamento) cot.formaPagamento = mem.formaPagamento;
+    // Se não há memória, usa a primeira forma de pagamento cadastrada no fornecedor
+    if (!cot.formaPagamento && Array.isArray(sup?.formasPagamento) && sup.formasPagamento.length) {
+      const mapPgto = { pix:'pix', especie:'pix', boleto:'boleto', cartao:'cartao', cheque:'boleto', crediario:'parcelado' };
+      cot.formaPagamento = mapPgto[sup.formasPagamento[0]] || '';
+    }
     if (!cot.boletoDias    && mem.boletoDias)    cot.boletoDias    = mem.boletoDias;
+    // Pré-preenche prazo de pagamento do cadastro do fornecedor
+    if (!cot.boletoDias && sup?.prazoPagamento > 0) cot.boletoDias = sup.prazoPagamento;
     if (!cot.parceladoVezes&& mem.parceladoVezes) cot.parceladoVezes = mem.parceladoVezes;
     if (!cot.parceladoFreq && mem.parceladoFreq)  cot.parceladoFreq  = mem.parceladoFreq;
     if (!cot.dataEntrega   && mem.prazoEntregaDias) {
@@ -1412,6 +1419,34 @@ function abrirEditarCotacao(itemId, idx) {
               </label>
              </div>`}
       </div>` : ''}
+
+      <!-- Condições comerciais cadastradas para este fornecedor -->
+      ${(() => {
+        if (!sup) return '';
+        const pgtos = Array.isArray(sup.formasPagamento) && sup.formasPagamento.length ? sup.formasPagamento : [];
+        const prazo = sup.prazoPagamento != null && sup.prazoPagamento !== '' ? parseInt(sup.prazoPagamento) : null;
+        const taxa  = sup.taxaEntrega || {};
+        if (!pgtos.length && prazo === null && !taxa.tipo) return '';
+
+        const pgtoLabels = { pix:'PIX', especie:'Espécie', boleto:'Boleto', cartao:'Cartão', cheque:'Cheque', crediario:'Crediário' };
+
+        return `
+        <div style="padding:10px 20px;background:var(--purple-xlight);border-bottom:1.5px solid var(--purple-light,#C4B5FD);display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--text-2xs);font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);margin-bottom:5px">
+              ${lc('info',10,'currentColor')} Condições cadastradas deste fornecedor
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+              ${pgtos.map(p => `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:#fff;color:var(--purple);border:1.5px solid var(--purple-light)">${pgtoLabels[p]||p}</span>`).join('')}
+              ${prazo === 0 ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:#fff;color:var(--purple);border:1.5px solid var(--purple-light)">À vista</span>`
+                : prazo > 0 ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:#fff;color:var(--purple);border:1.5px solid var(--purple-light)">${prazo} dias p/ pagar</span>` : ''}
+              ${taxa.tipo === 'fixo' && taxa.valor > 0 ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:#FEF3C7;color:#D97706;border:1.5px solid #FCD34D">Frete R$ ${fmt(taxa.valor)}</span>`
+                : taxa.tipo === 'variavel' ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:#FEF3C7;color:#D97706;border:1.5px solid #FCD34D">Frete variável${taxa.obs?' · '+taxa.obs:''}</span>`
+                : `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:var(--green-light);color:var(--green);border:1.5px solid var(--green)">Frete grátis</span>`}
+            </div>
+          </div>
+        </div>`;
+      })()}
 
       <div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px">
 
