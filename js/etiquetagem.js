@@ -82,14 +82,20 @@ const ETQ_CAT_ICONS = {
 // Retorna o ícone para qualquer categoria, com fallback genérico
 function _etqIconCat(cat) {
   if (!cat) return 'package';
-  // Busca exata
   if (ETQ_CAT_ICONS[cat]) return ETQ_CAT_ICONS[cat];
-  // Busca parcial (case-insensitive)
   const lower = cat.toLowerCase();
   for (const [key, icon] of Object.entries(ETQ_CAT_ICONS)) {
     if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) return icon;
   }
   return 'package';
+}
+
+// Normaliza o nome da categoria para exibição no wizard.
+// "Produção Interna" (nome interno do CW) é exibido como "Preparados".
+function _etqCatDisplay(item) {
+  if (!item) return 'Outros';
+  if (item.isProd || (item.cat || '').toLowerCase().includes('produção')) return 'Preparados';
+  return item.cat || 'Outros';
 }
 
 // Estado do módulo
@@ -307,14 +313,15 @@ function _etqStep2(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
   // Categorias habilitadas em Configurações → Etiquetagem → Categorias Visíveis
   const habilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
-  const todasCats   = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
-  // null = todas; array = apenas as selecionadas
+  // Usa o nome normalizado (isProd → "Preparados") para agrupar
+  const todasCats = [...new Set(allItems.map(i => _etqCatDisplay(i)))].filter(Boolean).sort();
   const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
       ${cats.map(cat => {
-        const count = allItems.filter(i => (i.cat || 'Outros') === cat).length;
+        // Conta itens que pertencem a esta categoria normalizada
+        const count = allItems.filter(i => _etqCatDisplay(i) === cat).length;
         const icon  = _etqIconCat(cat);
         return `
           <button onclick="_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
@@ -341,7 +348,8 @@ function _etqStep2(el) {
 function _etqStep3(el) {
   const allItems  = typeof items !== 'undefined' ? items : [];
   const cat       = _etqWizardState.categoria;
-  const catItems  = allItems.filter(i => (i.cat || 'Outros') === cat);
+  // Filtra usando o nome normalizado (compara _etqCatDisplay com a cat selecionada)
+  const catItems  = allItems.filter(i => _etqCatDisplay(i) === cat);
   const busca     = _etqWizardState._buscaProd || '';
   const filtrados = catItems.filter(i => i.name.toLowerCase().includes(busca.toLowerCase()));
   const selId     = _etqWizardState.item?.id;
@@ -364,7 +372,7 @@ function _etqStep3(el) {
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
               text-align:left;font-family:Inter,sans-serif">
             <div style="font-size:.82rem;font-weight:700;color:${isSel ? 'var(--brand-purple)' : 'var(--text)'};line-height:1.3;margin-bottom:4px">${item.name}</div>
-            <div style="font-size:.66rem;color:var(--muted)">${item.cat || (item.isProd ? 'Preparado' : 'Insumo')}</div>
+            <div style="font-size:.66rem;color:var(--muted)">${_etqCatDisplay(item)}</div>
             <div style="font-size:.64rem;color:var(--muted);margin-top:3px">${valids.length} conservação${valids.length !== 1 ? 'ões' : ''} conf.</div>
           </button>
         `;
