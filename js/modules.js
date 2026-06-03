@@ -16,14 +16,16 @@ function renderPreproducao() {
   const okCount    = prod.filter(i => gst(i) === 'ok').length;
   const pendCount  = orFilt.filter(o => o.status === 'pendente').length;
   const prodCount  = orFilt.filter(o => o.status === 'produzido').length;
+  const cwPendCount = orFilt.filter(o => o.status === 'produzido' && o.cwPendente).length;
 
   // KPIs
   document.getElementById('prepKpi').innerHTML = `
-    ${_prepKpi(critCount, 'Críticos',  'var(--red)',        'crit', 'alert-circle')}
-    ${_prepKpi(warnCount, 'Baixo',     'var(--yellow)',     'warn', 'alert-triangle')}
-    ${_prepKpi(okCount,   'OK',        'var(--green)',      'ok',   'check-circle')}
-    ${_prepKpi(pendCount, 'Pendentes', 'var(--orange-dark)','pend', 'clock')}
-    ${_prepKpi(prodCount, 'Produzidos','var(--purple)',     'prod', 'check-circle')}`;
+    ${_prepKpi(critCount,   'Críticos',     'var(--red)',        'crit',  'alert-circle')}
+    ${_prepKpi(warnCount,   'Baixo',        'var(--yellow)',     'warn',  'alert-triangle')}
+    ${_prepKpi(okCount,     'OK',           'var(--green)',      'ok',    'check-circle')}
+    ${_prepKpi(pendCount,   'Pendentes',    'var(--orange-dark)','pend',  'clock')}
+    ${_prepKpi(prodCount,   'Produzidos',   'var(--purple)',     'prod',  'check-circle')}
+    ${cwPendCount > 0 ? _prepKpi(cwPendCount, 'Atualizar CW', '#D97706', 'cw', 'refresh-cw') : ''}`;
 
   // Filtro bar
   _renderPrepFiltros();
@@ -51,12 +53,13 @@ function _renderPrepFiltros() {
   if (!el) return;
   const f = window._prepFiltro || 'all';
   const btns = [
-    { id:'all',  label:'Todos',     icon:'package',        cls:'' },
-    { id:'crit', label:'Críticos',  icon:'alert-circle',   cls:'f-red' },
-    { id:'warn', label:'Baixo',     icon:'alert-triangle', cls:'f-yellow' },
-    { id:'ok',   label:'OK',        icon:'check-circle',   cls:'f-green' },
-    { id:'pend', label:'Pendentes', icon:'clock',          cls:'' },
-    { id:'prod', label:'Produzidos',icon:'check',          cls:'f-green' },
+    { id:'all',  label:'Todos',        icon:'package',        cls:'' },
+    { id:'crit', label:'Críticos',     icon:'alert-circle',   cls:'f-red' },
+    { id:'warn', label:'Baixo',        icon:'alert-triangle', cls:'f-yellow' },
+    { id:'ok',   label:'OK',           icon:'check-circle',   cls:'f-green' },
+    { id:'pend', label:'Pendentes',    icon:'clock',          cls:'' },
+    { id:'prod', label:'Produzidos',   icon:'check',          cls:'f-green' },
+    { id:'cw',   label:'Atualizar CW', icon:'refresh-cw',     cls:'' },
   ];
   el.innerHTML = btns.map(b =>
     `<button class="filter-btn ${b.cls} ${f===b.id?'active':''}" onclick="_setPrepFiltro('${b.id}')">
@@ -84,6 +87,7 @@ function _renderPrepGrid(prod, orFilt) {
     if (f === 'ok')   return s === 'ok';
     if (f === 'pend') return orFilt.some(o => o.itemId === item.id && o.status === 'pendente');
     if (f === 'prod') return orFilt.some(o => o.itemId === item.id && o.status === 'produzido');
+    if (f === 'cw')   return orFilt.some(o => o.itemId === item.id && o.status === 'produzido' && o.cwPendente);
     return true;
   }).sort((a,b) => {
     const order = { crit:0, warn:1, ok:2 };
@@ -102,12 +106,17 @@ function _renderPrepGrid(prod, orFilt) {
 
   grid.style.cssText = 'display:flex;flex-direction:column;gap:6px';
   grid.innerHTML = filtProd.map(item => {
-    const itemOrdens = orFilt.filter(o => o.itemId === item.id).sort((a,b) => b.id - a.id);
-    const s          = gst(item);
-    const pct        = item.ideal <= 0 ? 0 : Math.min(100, Math.round(item.qty / item.ideal * 100));
-    const stColor    = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' }[s];
-    const pendOrdens = itemOrdens.filter(o => o.status === 'pendente');
-    const lastProd   = itemOrdens.find(o => o.status === 'produzido');
+    const itemOrdens  = orFilt.filter(o => o.itemId === item.id).sort((a,b) => b.id - a.id);
+    const s           = gst(item);
+    const pct         = item.ideal <= 0 ? 0 : Math.min(100, Math.round(item.qty / item.ideal * 100));
+    const stColor     = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' }[s];
+    const pendOrdens  = itemOrdens.filter(o => o.status === 'pendente');
+    const cwPendOrdens = itemOrdens.filter(o => o.status === 'produzido' && o.cwPendente);
+    const lastProd    = itemOrdens.find(o => o.status === 'produzido');
+
+    // Projeção: qty CW + ordens em produção pendentes
+    const qtyEmProd   = pendOrdens.reduce((s, o) => s + (o.qty || 0), 0);
+    const qtyProj     = parseFloat((item.qty + qtyEmProd).toFixed(3));
     const rendePizzas = item.medPorcao && item.qty > 0 ? Math.floor(item.qty / item.medPorcao) : null;
 
     return `
@@ -126,11 +135,18 @@ function _renderPrepGrid(prod, orFilt) {
             ${item.cat ? `<div style="font-size:var(--text-2xs);color:var(--muted)">${item.cat}</div>` : ''}
           </div>
 
-          <!-- Qtd atual -->
-          <div style="text-align:center;min-width:56px">
+          <!-- Qtd CW (real) -->
+          <div style="text-align:center;min-width:62px">
             <div style="font-size:1rem;font-weight:800;color:${stColor};font-family:monospace">${fmt(item.qty)}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted)">${item.unit} atual</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">${item.unit} · CW atual</div>
           </div>
+
+          <!-- Projeção (se há ordens em andamento) -->
+          ${qtyEmProd > 0 ? `
+          <div style="text-align:center;min-width:62px">
+            <div style="font-size:1rem;font-weight:800;color:var(--purple);font-family:monospace">~${fmt(qtyProj)}</div>
+            <div style="font-size:var(--text-2xs);color:var(--purple)">projeção</div>
+          </div>` : ''}
 
           <!-- Barra + % -->
           <div style="display:flex;align-items:center;gap:6px;min-width:120px;flex:0 0 160px">
@@ -153,7 +169,13 @@ function _renderPrepGrid(prod, orFilt) {
 
           ${pendOrdens.length ? `
             <span class="chip" style="background:var(--orange-light);color:var(--orange-dark);border:1px solid #FCD34D;flex-shrink:0">
-              ${lc('clock',10,'currentColor')} ${pendOrdens.length} pendente${pendOrdens.length>1?'s':''} ${pendOrdens.length===1 ? '· Prog. '+fmtD(pendOrdens[0].date) : ''}
+              ${lc('clock',10,'currentColor')} ${pendOrdens.length} em prod. ${pendOrdens.length===1 ? '· +'+fmt(pendOrdens[0].qty)+' '+item.unit : ''}
+            </span>` : ''}
+
+          <!-- Badge CW pendente -->
+          ${cwPendOrdens.length ? `
+            <span class="chip" style="background:#FEF3C7;color:#D97706;border:1px solid #FCD34D;flex-shrink:0">
+              ${lc('refresh-cw',10,'currentColor')} Atualizar CW
             </span>` : ''}
 
           <!-- Ações -->
@@ -168,10 +190,10 @@ function _renderPrepGrid(prod, orFilt) {
           </div>
         </div>
 
-        <!-- Ordens pendentes expandidas (só quando há mais de 1) -->
+        <!-- Ordens em produção (pendentes) expandidas -->
         ${pendOrdens.length > 1 ? `
           <div style="padding:0 14px 10px;display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--border)">
-            <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding-top:8px;margin-bottom:2px">Ordens pendentes</div>
+            <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding-top:8px;margin-bottom:2px">Ordens em produção</div>
             ${pendOrdens.map(o => `
               <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--orange-light);border:1px solid #FCD34D;border-radius:var(--r8)">
                 <div style="font-size:var(--text-sm);font-weight:600">${fmt(o.qty)} ${item.unit} · Prog. ${fmtD(o.date)}${o.resp?' · '+o.resp:''}</div>
@@ -179,10 +201,36 @@ function _renderPrepGrid(prod, orFilt) {
               </div>`).join('')}
           </div>` : ''}
 
-        <!-- Última produção concluída -->
-        ${lastProd ? `
+        <!-- Ordens produzidas aguardando atualização no CW -->
+        ${cwPendOrdens.length ? `
+          <div style="padding:0 14px 10px;display:flex;flex-direction:column;gap:4px;border-top:1.5px solid #FCD34D;background:#FFFBEB">
+            <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#D97706;padding-top:8px;margin-bottom:2px">
+              ${lc('refresh-cw',11,'#D97706')} Aguardando atualização no Cardápio Web
+            </div>
+            ${cwPendOrdens.map(o => {
+              const div = o.qtyReal !== undefined && Math.abs(o.qtyReal - o.qty) > 0.01
+                ? `<span style="font-size:var(--text-2xs);color:${o.qtyReal < o.qty ? 'var(--red)' : 'var(--green)'}"> (solicitado ${fmt(o.qty)}, produzido ${fmt(o.qtyReal)} ${item.unit})</span>`
+                : '';
+              return `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:var(--r8);gap:8px;flex-wrap:wrap">
+                <div>
+                  <div style="font-size:var(--text-sm);font-weight:600">+${fmt(o.qtyReal ?? o.qty)} ${item.unit} produzidos${div}</div>
+                  <div style="font-size:var(--text-2xs);color:var(--muted)">Concluído ${o.finishedAt ? fmtDT(o.finishedAt) : '—'}${o.resp ? ' · '+o.resp : ''}</div>
+                </div>
+                <button class="btn btn-sm" onclick="_prepMarcarCW(${o.id})"
+                  style="background:#D97706;color:#fff;border:none;gap:4px;white-space:nowrap">
+                  ${lc('check',11,'#fff')} Marquei no CW
+                </button>
+              </div>`;}).join('')}
+            <div style="font-size:var(--text-2xs);color:#92400e;padding:4px 2px">
+              ${lc('info',10,'#92400e')} Após lançar a produção no Cardápio Web, clique "Marquei no CW". A próxima importação do CW atualizará a quantidade automaticamente.
+            </div>
+          </div>` : ''}
+
+        <!-- Última produção concluída (sem pendência CW) -->
+        ${lastProd && !lastProd.cwPendente ? `
           <div style="padding:4px 14px 8px;font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px;border-top:1px solid var(--border)">
-            ${lc('check-circle',10,'var(--green)')} ${fmt(lastProd.qty)} ${item.unit} · Prog. ${fmtD(lastProd.date)}${lastProd.finishedAt ? ' · Conc. '+fmtDT(lastProd.finishedAt) : ''}${lastProd.resp ? ' · '+lastProd.resp : ''}
+            ${lc('check-circle',10,'var(--green)')} ${fmt(lastProd.qtyReal ?? lastProd.qty)} ${item.unit} produzidos · ${lastProd.finishedAt ? fmtDT(lastProd.finishedAt) : fmtD(lastProd.date)}${lastProd.resp ? ' · '+lastProd.resp : ''}
           </div>` : ''}
 
         <!-- Accordion ficha técnica de custo -->
@@ -430,15 +478,29 @@ function finishOrdem(id) {
   o.qtyReal    = parseFloat(qtyReal.toFixed(3));
   o.obs        = obs;
   o.finishedAt = new Date().toISOString();
+  // Produção registrada — aguarda confirmação no CW para atualizar a quantidade
+  // A quantidade (item.qty) NÃO é alterada aqui; a próxima importação do CW reflete a produção
+  o.cwPendente = true;
 
-  // Atualiza estoque com quantidade REAL produzida
-  item.qty = parseFloat((item.qty + o.qtyReal).toFixed(3));
-  saveI();
   saveO();
   closeModal('ovResponse');
   renderPreproducao();
   renderDashboard();
-  toast(`Produção registrada! ${o.qtyReal} ${item.unit} adicionados ao estoque.`);
+  const div = Math.abs(o.qtyReal - o.qty) > 0.01
+    ? ` (solicitado ${o.qty}, produzido ${o.qtyReal} ${item.unit})`
+    : '';
+  toast(`Produção registrada!${div} Lance no Cardápio Web e marque "Marquei no CW".`, 'ok');
+}
+
+// Marca que o usuário já lançou a produção no Cardápio Web
+function _prepMarcarCW(id) {
+  const o = ordens.find(x => x.id === id);
+  if (!o) return;
+  o.cwPendente  = false;
+  o.cwMarkedAt  = new Date().toISOString();
+  saveO();
+  renderPreproducao();
+  toast('Ótimo! A próxima importação do CW atualizará a quantidade automaticamente.', 'ok');
 }
 
 // ── PDF de ordens ──
