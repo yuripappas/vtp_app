@@ -108,93 +108,103 @@ function _renderContagemTab() {
 
 // ── Cards de categoria ────────────────────────────────────────
 function _renderCatCards(el) {
-  if (!el) { el = document.getElementById('estPanelContagem'); }
+  if (!el) el = document.getElementById('estPanelContagem');
   if (!el) return;
 
-  const allCats = [...new Set(items.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  const allItems   = typeof items !== 'undefined' ? items : [];
+  const allCats    = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
   const ultimaMapa = _ultimaContagemPorItem();
 
-  // Última contagem por categoria
-  function _ultimaContCat(cat) {
-    const catItems = items.filter(i => (i.cat||'Outros') === cat);
-    const datas = catItems.map(i => ultimaMapa[i.id]?.date).filter(Boolean);
-    if (!datas.length) return null;
-    return datas.sort().reverse()[0];
-  }
-  function _divergCat(cat) {
-    const catItems = items.filter(i => (i.cat||'Outros') === cat);
-    return catItems.filter(i => {
-      const u = ultimaMapa[i.id];
-      return u && Math.abs(u.diverg||0) > 0.001;
-    }).length;
-  }
-  function _diasDesde(dateStr) {
-    if (!dateStr) return null;
-    const d = Math.floor((new Date() - new Date(dateStr)) / 864e5);
-    if (d === 0) return 'hoje';
-    if (d === 1) return 'ontem';
-    return d + 'd atrás';
-  }
+  const totalSel = [..._catsSelecionadas].reduce((s,c) =>
+    s + allItems.filter(i => (i.cat||'Outros') === c).length, 0);
 
-  const totalSelecionados = [..._catsSelecionadas].reduce((s,c) =>
-    s + items.filter(i => (i.cat||'Outros') === c).length, 0);
+  // Constrói HTML sem inline onclick — usa data-cat para delegate
+  let cardsHtml = '';
+  allCats.forEach(cat => {
+    const count   = allItems.filter(i => (i.cat||'Outros') === cat).length;
+    const sel     = _catsSelecionadas.has(cat);
+    const icon    = _estIconCat(cat);
+
+    // Última contagem e divergências
+    const catItems = allItems.filter(i => (i.cat||'Outros') === cat);
+    const datas    = catItems.map(i => ultimaMapa[i.id]?.date).filter(Boolean).sort().reverse();
+    const ultima   = datas[0] || null;
+    const diverg   = catItems.filter(i => { const u = ultimaMapa[i.id]; return u && Math.abs(u.diverg||0) > 0.001; }).length;
+
+    let ultimaLabel = 'Nunca contada';
+    if (ultima) {
+      const d = Math.floor((Date.now() - new Date(ultima)) / 864e5);
+      ultimaLabel = d === 0 ? 'hoje' : d === 1 ? 'ontem' : d + 'd atrás';
+      if (diverg > 0) ultimaLabel = diverg + ' diverg. · ' + ultimaLabel;
+    }
+
+    const checkHtml = sel
+      ? '<span style="position:absolute;top:8px;right:8px;width:18px;height:18px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center">' + lc('check',10,'#fff') + '</span>'
+      : '';
+
+    cardsHtml += `
+      <button data-cat="${cat.replace(/"/g,'&quot;')}" style="display:flex;flex-direction:column;align-items:center;padding:16px 10px;border-radius:var(--r12);
+          border:2px solid ${sel ? 'var(--purple)' : 'var(--border)'};
+          background:${sel ? 'var(--purple-xlight)' : 'var(--surface)'};
+          cursor:pointer;text-align:center;gap:8px;transition:all .15s;
+          min-height:110px;font-family:Inter,sans-serif;position:relative;width:100%">
+        ${checkHtml}
+        <div style="width:44px;height:44px;border-radius:50%;background:${sel ? 'var(--purple)' : 'var(--surface2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s">
+          ${lc(icon, 20, sel ? '#fff' : 'var(--muted)')}
+        </div>
+        <div style="font-size:var(--text-xs);font-weight:700;color:${sel ? 'var(--purple)' : 'var(--text)'};line-height:1.2">${cat}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
+        <div style="font-size:.62rem;color:${diverg > 0 ? 'var(--orange-dark)' : 'var(--muted)'}">${ultimaLabel}</div>
+      </button>`;
+  });
+
+  const barHtml = _catsSelecionadas.size > 0 ? `
+    <div style="padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);
+        display:flex;align-items:center;justify-content:space-between;gap:12px;
+        box-shadow:0 -4px 16px rgba(0,0,0,.08)">
+      <div style="font-size:var(--text-sm);color:var(--text2)">
+        <strong style="color:var(--purple)">${_catsSelecionadas.size}</strong> categoria${_catsSelecionadas.size > 1 ? 's' : ''} ·
+        <strong>${totalSel}</strong> itens
+      </div>
+      <button id="btnIniciarContagem"
+        style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
+          font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;min-height:44px">
+        ${lc('play-circle',15,'#fff')} Iniciar contagem
+      </button>
+    </div>` : '';
 
   el.innerHTML = `
     <div style="padding:16px">
-      <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
         <div>
           <div style="font-size:var(--text-base);font-weight:800">${lc('clipboard-list',16,'var(--purple)')} Contagem de Estoque</div>
           <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Selecione uma ou mais categorias para contar</div>
         </div>
-        <button onclick="verHistoricoContagens()"
-          style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2)">
+        <button id="btnHistContagem"
+          style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2);min-height:40px">
           ${lc('clock',13,'currentColor')} Histórico
         </button>
       </div>
-
-      <!-- Grid de categorias -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:${_catsSelecionadas.size > 0 ? '80px' : '0'}">
-        ${allCats.map(cat => {
-          const count   = items.filter(i => (i.cat||'Outros') === cat).length;
-          const sel     = _catsSelecionadas.has(cat);
-          const ultima  = _ultimaContCat(cat);
-          const diverg  = _divergCat(cat);
-          const icon    = _estIconCat(cat);
-          return `
-          <button onclick="_toggleCatSel('${cat.replace(/'/g,"\\'")}'); return false"
-            style="display:flex;flex-direction:column;align-items:center;padding:16px 10px;border-radius:var(--r12);
-              border:2px solid ${sel ? 'var(--purple)' : 'var(--border)'};
-              background:${sel ? 'var(--purple-xlight)' : 'var(--surface)'};
-              cursor:pointer;text-align:center;gap:8px;transition:all .15s;
-              min-height:110px;font-family:Inter,sans-serif;position:relative">
-            ${sel ? `<span style="position:absolute;top:8px;right:8px;width:18px;height:18px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center">${lc('check',10,'#fff')}</span>` : ''}
-            <div style="width:44px;height:44px;border-radius:50%;background:${sel ? 'var(--purple)' : 'var(--surface2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s">
-              ${lc(icon, 20, sel ? '#fff' : 'var(--muted)')}
-            </div>
-            <div style="font-size:var(--text-xs);font-weight:700;color:${sel ? 'var(--purple)' : 'var(--text)'};line-height:1.2">${cat}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
-            ${ultima ? `<div style="font-size:.62rem;color:${diverg > 0 ? 'var(--orange-dark)' : 'var(--muted)'}">
-              ${diverg > 0 ? lc('alert-triangle',9,'currentColor') + ' ' + diverg + ' diverg. · ' : ''}${_diasDesde(ultima)}
-            </div>` : `<div style="font-size:.62rem;color:var(--muted)">Nunca contada</div>`}
-          </button>`;
-        }).join('')}
+      <div id="catGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:${_catsSelecionadas.size > 0 ? '72px' : '8px'}">
+        ${cardsHtml}
       </div>
     </div>
+    ${barHtml}`;
 
-    <!-- Barra de ação sticky (quando há seleção) -->
-    ${_catsSelecionadas.size > 0 ? `
-    <div style="position:sticky;bottom:0;left:0;right:0;padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 16px rgba(0,0,0,.08)">
-      <div style="font-size:var(--text-sm);color:var(--text2)">
-        <strong style="color:var(--purple)">${_catsSelecionadas.size}</strong> categoria${_catsSelecionadas.size > 1 ? 's' : ''} ·
-        <strong>${totalSelecionados}</strong> itens
-      </div>
-      <button onclick="_iniciarContagem()"
-        style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap">
-        ${lc('play-circle',15,'#fff')} Iniciar contagem
-      </button>
-    </div>` : ''}
-  `;
+  // Event listeners — sem onclick inline
+  el.querySelector('#btnHistContagem')?.addEventListener('click', verHistoricoContagens);
+  el.querySelector('#btnIniciarContagem')?.addEventListener('click', _iniciarContagem);
+
+  // Delegação: qualquer clique num card com data-cat
+  el.querySelector('#catGrid')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-cat]');
+    if (!btn) return;
+    const cat = btn.getAttribute('data-cat');
+    if (!cat) return;
+    if (_catsSelecionadas.has(cat)) _catsSelecionadas.delete(cat);
+    else _catsSelecionadas.add(cat);
+    _renderCatCards(el);
+  });
 }
 
 function _toggleCatSel(cat) {
