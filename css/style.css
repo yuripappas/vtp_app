@@ -419,7 +419,7 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
 .card-body { padding: 16px; }
 
 /* ── TABELA ── */
-.tbl-wrap { border: 1.5px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.tbl-wrap { border: 1.5px solid var(--border); border-radius: var(--radius-md); overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
 
 table { width: 100%; border-collapse: collapse; }
 
@@ -1546,4 +1546,240 @@ svg { display: block; }
     max-width: none !important;
     width: 100% !important;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — GLOBAL ABRANGENTE
+   Cobre todos os módulos: modais JS, grids, flex, tabelas,
+   painéis laterais, inputs e touch targets.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 1. Modais criados via JS (class="modal" com width inline) ── */
+/* Já cobertos pelo @media 540px acima com !important */
+
+/* ── 2. Popups criados como div absolutos/fixos dentro de overlays ── */
+@media (max-width: 600px) {
+  /* Qualquer overlay que contenha um div filho direto com max-width */
+  .overlay > div,
+  [id^="popup"] > div,
+  [id*="Popup"] > div {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    min-width: 0 !important;
+  }
+  /* Previne overflow horizontal global */
+  .page, .main, #dashContent {
+    overflow-x: hidden;
+  }
+}
+
+/* ── 3. KPI grid — mínimo 2 colunas em qualquer tela ── */
+@media (max-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+    gap: 8px !important;
+  }
+  /* KPI cards: valores menores */
+  .kpi-v { font-size: 1.4rem !important; }
+  /* KPI individual em linha (pré-produção, estoque) */
+  #prepKpi, #estKpis {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)) !important;
+    gap: 8px !important;
+  }
+}
+
+/* ── 4. Filtros e barras de botões ── */
+@media (max-width: 600px) {
+  /* Barras de filtro: scroll horizontal */
+  #prepFiltroBar,
+  #estFiltrosBtns,
+  .filter-bar,
+  [id$="FiltroBar"],
+  [id$="FiltrosBtns"] {
+    display: flex !important;
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    gap: 6px !important;
+  }
+  .filter-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: var(--text-xs) !important;
+    padding: 5px 10px !important;
+  }
+}
+
+/* ── 5. Cards de pré-produção (preparados) ── */
+@media (max-width: 600px) {
+  /* Remove flex-wrap de linhas muito densas, força wrap */
+  #prepGrid > div > div:first-child {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+  /* Barra de progresso: esconde em telas muito pequenas */
+  #prepGrid .flex-0.flex-0 { display: none !important; }
+}
+
+/* ── 6. Tabela de estoque — scroll horizontal ── */
+@media (max-width: 768px) {
+  #estConteudo table, .tbl-wrap table {
+    min-width: 480px;
+  }
+  #estConteudo, .tbl-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Esconde colunas supérfluas na tabela de estoque */
+  #estTable th:nth-child(6), #estTable td:nth-child(6),
+  #estTable th:nth-child(7), #estTable td:nth-child(7) {
+    display: none !important;
+  }
+}
+
+/* ── 7. Painel lateral de contagem (estoque) — vira coluna ── */
+@media (max-width: 768px) {
+  #estPanelContagem {
+    width: 100% !important;
+    position: static !important;
+    border-left: none !important;
+    border-top: 1.5px solid var(--border) !important;
+  }
+}
+
+/* ── 8. Inputs e botões — touch target mínimo 44px ── */
+@media (max-width: 768px) {
+  .inp {
+    min-height: 44px !important;
+    font-size: 16px !important; /* evita zoom automático no iOS */
+  }
+  .btn {
+    min-height: 40px;
+  }
+  .btn-sm {
+    min-height: 36px !important;
+    padding: 6px 12px !important;
+  }
+  /* Inputs numéricos de contagem: ainda maiores */
+  input[inputmode="decimal"],
+  input[type="number"] {
+    font-size: 16px !important;
+  }
+}
+
+/* ── 9. Formulários de modal — campos empilhados ── */
+@media (max-width: 600px) {
+  .mf {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  .mf .btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+  /* Header de modal */
+  .mh { padding: 14px 16px !important; }
+  .mb { padding: 16px !important; }
+}
+
+/* ── 10. Grids inline com colunas fixas ── */
+@media (max-width: 600px) {
+  /* Grids de 2-4 colunas declarados via style → 1 coluna */
+  [style*="grid-template-columns:1fr 1fr"],
+  [style*="grid-template-columns: 1fr 1fr"],
+  [style*="grid-template-columns:repeat(2"],
+  [style*="grid-template-columns:repeat(3"],
+  [style*="grid-template-columns:repeat(4"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* Grade de cards de categoria (etiquetagem, pré-produção) */
+  [style*="grid-template-columns:repeat(auto-fill"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── 11. Dashboard ── */
+@media (max-width: 600px) {
+  /* Greeting e topbar */
+  #dashContent { padding: 12px !important; }
+  /* KPIs do dashboard */
+  .dash-kpis {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  /* Cards de alerta: empilhar */
+  #dashAlertas .kpi { min-width: 0 !important; }
+}
+
+/* ── 12. Pré-produção: cards de preparados ── */
+@media (max-width: 600px) {
+  /* Linha principal do card: empilha */
+  #prepGrid > div > div[style*="display:flex"][style*="align-items:center"] {
+    flex-wrap: wrap !important;
+  }
+  /* Barra de progresso nos cards: full-width */
+  #prepGrid [style*="flex:0 0 160px"] {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* ── 13. Compras: filtros e lista ── */
+@media (max-width: 600px) {
+  #comprasContent { padding: 12px !important; }
+  /* Abas de compras */
+  .tab-bar { padding: 0 12px; }
+}
+
+/* ── 14. Módulos: página com padding correto ── */
+@media (max-width: 480px) {
+  .page { padding: 12px !important; }
+  /* Modais: garantir que footer de ações empilhe */
+  .mf { flex-wrap: wrap !important; }
+}
+
+/* ── 15. Fornecedores: grid responsivo ── */
+@media (max-width: 600px) {
+  #supGrid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── 16. Wizard de etiquetagem ── */
+@media (max-width: 480px) {
+  /* Cards de categoria: 2 colunas */
+  #etqTabContent [style*="grid-template-columns:repeat(auto-fill,minmax(130px"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── 17. Checklist ── */
+@media (max-width: 600px) {
+  #page-checklist .page { padding: 12px; }
+}
+
+/* ── 18. Configurações: seção de conteúdo ── */
+@media (max-width: 600px) {
+  .settings-content { padding: 16px !important; }
+  .settings-section-title { font-size: var(--text-base) !important; }
+}
+
+/* ── 19. Popups fixos (toast, banners) — never overflow ── */
+@media (max-width: 480px) {
+  #vtpToast {
+    left: 12px !important;
+    right: 12px !important;
+    max-width: calc(100vw - 24px) !important;
+    transform: none !important;
+    bottom: 16px !important;
+  }
+}
+
+/* ── 20. Overflow horizontal global — última linha de defesa ── */
+@media (max-width: 768px) {
+  body { overflow-x: hidden; }
+  .app { overflow-x: hidden; }
 }

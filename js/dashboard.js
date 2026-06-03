@@ -178,9 +178,9 @@ function _renderDashRotina() {
         ${lc('check-circle',14,'var(--green)')}
         <span style="font-size:var(--text-sm);font-weight:700;color:var(--green)">Tudo em dia — nenhuma ação necessária</span>
       </div>`
-    : `<div class="dash-actions" style="display:grid;grid-template-columns:repeat(${isMobile()?Math.min(ACOES.length,2):ACOES.length},1fr);gap:10px;margin-bottom:16px">
+    : `<div class="dash-actions" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:16px">
         ${ACOES.map(a => `
-          <div onclick="goModule('${a.mod}')" class="action-card" style="background:${a.bg}">
+          <div onclick="goModule('${a.mod}')" class="action-card" style="background:${a.bg};cursor:pointer;border-radius:var(--r12);padding:14px">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
               <div style="width:30px;height:30px;background:rgba(255,255,255,.55);border-radius:var(--r8);display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 ${lc(a.ic,14,a.fg)}
