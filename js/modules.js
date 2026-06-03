@@ -719,17 +719,52 @@ function _supLoadPagamento(s) {
   toggleTaxaEntrega();
 }
 
+// Limpa/popula todos os campos do formulário de fornecedor
+function _supResetForm(s) {
+  // Campos de texto simples
+  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
+  setText('sfName',          s?.name   || '');
+  setText('sfSeller',        s?.seller || '');
+  setText('sfPhone',         s?.phone  || '');
+  setText('sfEmail',         s?.email  || '');
+  setText('sfPedidoMin',     s?.pedidoMin     ?? '');
+  setText('sfPrazoEntrega',  s?.prazoEntrega  ?? '');
+  setText('sfAntecedencia',  s?.antecedencia  ?? '');
+  setText('sfHorarioLimite', s?.horarioLimite ?? '');
+  setText('sfAviso',         s?.aviso         ?? '');
+
+  // Selects
+  const setSelect = (id, val, def) => { const el = document.getElementById(id); if (el) el.value = val || def || ''; };
+  setSelect('sfFormaEntrega',  s?.formaEntrega, 'entrega');
+  setSelect('sfPedidoMinTipo', s?.pedidoMinTipo, '');
+  setSelect('sfConfianca',     s?.confianca, 'backup');
+
+  // Checkboxes de dias da semana
+  ['seg','ter','qua','qui','sex','sab'].forEach(d => {
+    const el = document.getElementById(`sfDia_${d}`);
+    if (el) el.checked = Array.isArray(s?.diasPedido) ? s.diasPedido.includes(d) : false;
+  });
+
+  // Checkboxes de categoria da empresa (sfCat_*)
+  ['alimentos','suprimentos','bebidas'].forEach(c => {
+    const el = document.getElementById(`sfCat_${c}`);
+    if (el) el.checked = Array.isArray(s?.catEmpresa) ? s.catEmpresa.includes(c) : false;
+  });
+
+  // Condições comerciais (pagamento + taxa entrega)
+  _supLoadPagamento(s);
+}
+
 function openSupModal() {
   editSupId = null;
   document.getElementById('supModalTitle').textContent = 'Novo Fornecedor';
-  ['sfName','sfSeller','sfPhone','sfEmail'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  const sfFE = document.getElementById('sfFormaEntrega'); if(sfFE) sfFE.value = 'entrega';
   document.getElementById('eSupId').value = '';
   document.getElementById('delSupBtn').style.display = 'none';
+  document.getElementById('supNotasSection').style.display = 'none';
   const srch = document.getElementById('sfItemSearch'); if(srch) srch.value = '';
-  renderSupCbx([]);
+  _supResetForm(null);          // limpa todos os campos sem exceção
+  renderSupCbx([], true);       // true = reset limpo, sem preservar DOM anterior
   renderCatTags([]);
-  _supLoadPagamento(null);
   document.getElementById('ovSup').classList.add('open');
   setTimeout(() => document.getElementById('sfName').focus(), 80);
 }
@@ -739,25 +774,33 @@ function openEditSup(id) {
   if (!s) return;
   editSupId = id;
   document.getElementById('supModalTitle').innerHTML = `${lc("edit-2",13,"currentColor")} ${s.name}`;
-  document.getElementById('sfName').value   = s.name   || '';
-  document.getElementById('sfSeller').value = s.seller || '';
-  document.getElementById('sfPhone').value  = s.phone  || '';
-  document.getElementById('sfEmail').value  = s.email  || '';
-  const sfFE2 = document.getElementById('sfFormaEntrega'); if(sfFE2) sfFE2.value = s.formaEntrega || 'entrega';
-  document.getElementById('eSupId').value   = id;
+  document.getElementById('eSupId').value = id;
   document.getElementById('delSupBtn').style.display = 'inline-flex';
   const srch = document.getElementById('sfItemSearch'); if(srch) srch.value = '';
-  renderSupCbx(items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(id); }).map(i => i.id));
-  // Carrega categorias salvas como array
+  _supResetForm(s);             // popula todos os campos com os dados deste fornecedor
+  // Insumos vinculados — passa true para reset limpo
+  const vinculados = items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(id); }).map(i => i.id);
+  renderSupCbx(vinculados, true);
+  // Categorias salvas
   const cats = Array.isArray(s.cats) ? s.cats : (s.cats ? s.cats.split(',').map(c => c.trim()).filter(Boolean) : []);
   renderCatTags(cats);
-  _supLoadPagamento(s);
+  // Notas/avaliações
+  const notasSec = document.getElementById('supNotasSection');
+  if (notasSec) notasSec.style.display = (s.notas?.length) ? '' : 'none';
   document.getElementById('ovSup').classList.add('open');
 }
 
-function renderSupCbx(linked, q) {
-  // Preserva checkeds existentes se já renderizado
-  const existingChecked = [...(document.querySelectorAll('#sfItems input:checked') || [])].map(c => parseInt(c.value));
+function renderSupCbx(linked, resetOrQuery) {
+  // resetOrQuery = true → reset limpo (não preserva DOM anterior)
+  //              = string → query de busca
+  //              = undefined → preserva checkeds existentes (comportamento legado para filterSupItems)
+  const isReset = resetOrQuery === true;
+  const q       = typeof resetOrQuery === 'string' ? resetOrQuery : undefined;
+
+  // Só preserva estado do DOM quando NÃO for reset explícito
+  const existingChecked = isReset
+    ? []
+    : [...(document.querySelectorAll('#sfItems input:checked') || [])].map(c => parseInt(c.value));
   const allLinked = [...new Set([...linked, ...existingChecked])];
 
   const query = (q !== undefined ? q : (document.getElementById('sfItemSearch')?.value || '')).toLowerCase().trim();
