@@ -828,6 +828,12 @@ function _renderContagemDiaria() {
 
   if (!itensDiarios.length) {
     document.getElementById('estPanelContagem').innerHTML = `
+      <div style="padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
+        <button onclick="setModoContagem('semanal')"
+          style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)">
+          ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
+        </button>
+      </div>
       <div style="padding:24px;text-align:center">
         <div class="empty-icon">${lc('zap',24,'var(--muted)')}</div>
         <div style="font-size:var(--text-sm);color:var(--muted);margin-top:8px">Nenhum item marcado para contagem diária.</div>
@@ -852,6 +858,13 @@ function _renderContagemDiaria() {
   const snapAnter  = diaAtual[_diariaModo === 'abertura' ? 'abertura' : 'abertura'] || {};
 
   el.innerHTML = `
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
+      <button onclick="setModoContagem('semanal')"
+        style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
+        onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
+        ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
+      </button>
+    </div>
     <div style="padding:14px 16px;background:${modoCor}11;border-bottom:1.5px solid ${modoCor}33;display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:var(--text-sm);font-weight:800;color:${modoCor}">${lc(modoIcon,14,modoCor)} ${modoLabel} — ${hoje.split('-').reverse().join('/')}</div>
@@ -923,6 +936,13 @@ function _renderResumoDiario(diaAtual, itensDiarios, hoje) {
   });
 
   el.innerHTML = `
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface2)">
+      <button onclick="setModoContagem('semanal')"
+        style="display:flex;align-items:center;gap:5px;font-size:var(--text-xs);font-weight:700;color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:var(--r6)"
+        onmouseover="this.style.color='var(--purple)'" onmouseout="this.style.color='var(--muted)'">
+        ${lc('arrow-left',13,'currentColor')} Voltar ao Estoque
+      </button>
+    </div>
     <div style="padding:14px 16px;background:var(--green-light);border-bottom:1.5px solid var(--green);display:flex;align-items:center;justify-content:space-between">
       <div style="font-size:var(--text-sm);font-weight:800;color:var(--green)">${lc('check-circle',14,'currentColor')} Contagem do dia concluída · ${hoje.split('-').reverse().join('/')}</div>
       <button onclick="if(confirm('Refazer a contagem de hoje?')){const d=_getDiariaDados();if(d['${hoje}'])delete d['${hoje}'];_saveDiariaDados(d);_diariaInputs={};_renderContagemDiaria();}"
