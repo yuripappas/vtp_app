@@ -222,29 +222,45 @@ function _toggleCatSel(cat) {
 }
 
 function _iniciarContagem() {
-  if (_catsSelecionadas.size === 0) { toast('Selecione pelo menos uma categoria', 'err'); return; }
-  _contagemAtiva      = true;
-  _categoriasContando = [..._catsSelecionadas];
-  _catsSelecionadas   = new Set();
-  _contagem           = {};
-  _abrirOverlayContagem();
+  try {
+    if (_catsSelecionadas.size === 0) { toast('Selecione pelo menos uma categoria', 'err'); return; }
+    toast('Iniciando contagem...', 'ok');
+    _contagemAtiva      = true;
+    _categoriasContando = [..._catsSelecionadas];
+    _catsSelecionadas   = new Set();
+    _contagem           = {};
+    _abrirOverlayContagem();
+  } catch(e) {
+    console.error('[_iniciarContagem]', e);
+    toast('Erro: ' + e.message, 'err');
+  }
 }
+
+// Alias global explícito para garantir acesso via onclick inline
+window._iniciarContagem = _iniciarContagem;
 
 // ── Contagem ativa — overlay full-screen ─────────────────────
 function _abrirOverlayContagem() {
-  document.getElementById('estContagemOverlay')?.remove();
+  try {
+    document.getElementById('estContagemOverlay')?.remove();
 
-  const ov = document.createElement('div');
-  ov.id = 'estContagemOverlay';
-  ov.style.cssText = 'position:fixed;inset:0;z-index:800;background:var(--bg);display:flex;flex-direction:column;overflow:hidden';
-  document.body.appendChild(ov);
+    const ov = document.createElement('div');
+    ov.id = 'estContagemOverlay';
+    ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2000;background:#FAF7FF;display:flex;flex-direction:column;overflow:hidden';
+    document.body.appendChild(ov);
 
-  _renderContagemAtiva();
+    toast('Overlay criado, renderizando...', 'ok');
+    _renderContagemAtiva();
+  } catch(e) {
+    console.error('[_abrirOverlayContagem]', e);
+    toast('Erro overlay: ' + e.message, 'err');
+  }
 }
 
 function _renderContagemAtiva() {
+  try {
   const ov = document.getElementById('estContagemOverlay');
-  if (!ov) return;
+  if (!ov) { toast('Overlay não encontrado!', 'err'); return; }
 
   const todosItens = _categoriasContando.flatMap(cat =>
     (typeof items !== 'undefined' ? items : []).filter(i => (i.cat||'Outros') === cat)
@@ -339,6 +355,11 @@ function _renderContagemAtiva() {
       _setCont(parseInt(e.target.dataset.item), e.target.value);
     }
   });
+  toast('Contagem pronta! ' + Object.keys(_contagem).length + '/' + todosItens.length + ' itens', 'ok');
+  } catch(e) {
+    console.error('[_renderContagemAtiva]', e);
+    toast('Erro ao renderizar: ' + e.message, 'err');
+  }
 }
 
 function _setCont(itemId, val) {
