@@ -131,15 +131,29 @@ function _renderContagemTab() {
            </div>`}`;
   }
 
+  // Contagem diária tem UX própria (abertura/fechamento)
+  if (_modoContagem === 'diaria') {
+    _diariaInputs = _diariaInputs || {};
+    document.getElementById('estTableBody') && (document.getElementById('estTableBody').closest('table') ? document.getElementById('estTableBody').closest('table').style.display = 'none' : null);
+    const estKpis = document.getElementById('estKpis');
+    if (estKpis) estKpis.style.display = 'none';
+    _renderContagemDiaria();
+    return;
+  }
+
+  // Contagem semanal — restaura tabela e kpis
+  const tbl = document.getElementById('estTableBody')?.closest('table');
+  if (tbl) tbl.style.display = '';
+  const estKpis2 = document.getElementById('estKpis');
+  if (estKpis2) estKpis2.style.display = '';
+
   const thFis   = document.getElementById('estThFisico');
   const thDiv   = document.getElementById('estThDiverg');
   if (thFis)   thFis.textContent   = _contagemAtiva ? 'Físico'       : 'Últ. Contagem';
   if (thDiv)   thDiv.style.display = _contagemAtiva ? ''             : 'none';
 
   const todosInsumos = items.filter(i => !i.isProd);
-  const insumos = _modoContagem === 'diaria'
-    ? todosInsumos.filter(i => i.contagemDiaria)
-    : todosInsumos;
+  const insumos = todosInsumos;
 
   const cats = [...new Set(insumos.map(i => i.cat))].sort();
   const catEl = document.getElementById('estCatFil');
@@ -539,34 +553,428 @@ function concluirContagemEstoque() {
     return;
   }
 
-  // Monta snapshot da contagem
   const snapshot = insumos.map(i => ({
-    id:       i.id,
-    name:     i.name,
-    unit:     i.unit,
-    cat:      i.cat,
-    digital:  i.qty,
-    fisico:   _contagem[i.id] ?? null,
-    diverg:   _contagem[i.id] !== undefined ? parseFloat((_contagem[i.id] - i.qty).toFixed(3)) : null,
-    min:      i.min,
-    ideal:    i.ideal,
+    id:         i.id,
+    name:       i.name,
+    unit:       i.unit,
+    cat:        i.cat,
+    debitoAuto: !!i.debitoAuto,
+    digital:    i.qty,
+    fisico:     _contagem[i.id] ?? null,
+    diverg:     _contagem[i.id] !== undefined ? parseFloat((_contagem[i.id] - i.qty).toFixed(3)) : null,
+    min:        i.min,
+    ideal:      i.ideal,
   })).filter(x => x.fisico !== null);
 
   const hist = _getHistContagens();
-  hist.push({
-    id:        `CNT-${String(hist.length+1).padStart(4,'0')}`,
-    date:      new Date().toISOString(),
-    user:      u?.name || 'Sistema',
-    total:     contados,
-    divergs:   snapshot.filter(x => Math.abs(x.diverg) > 0.001).length,
-    itens:     snapshot,
-  });
+  const novaContagem = {
+    id:      `CNT-${String(hist.length+1).padStart(4,'0')}`,
+    date:    new Date().toISOString(),
+    tipo:    _modoContagem,
+    user:    u?.name || 'Sistema',
+    total:   contados,
+    divergs: snapshot.filter(x => Math.abs(x.diverg) > 0.001).length,
+    itens:   snapshot,
+  };
+  hist.push(novaContagem);
   _saveHistContagens(hist);
 
-  _contagem = {};
+  _contagem      = {};
   _contagemAtiva = false;
+
+  // Mostra resumo inteligente pós-contagem
+  _abrirResumoPosContagem(novaContagem);
+}
+
+// ── Resumo inteligente pós-contagem ──────────────────────────
+function _abrirResumoPosContagem(contagem) {
+  const cfg       = typeof getConfig === 'function' ? getConfig() : {};
+  const tolerancia = parseFloat(cfg.toleranciaDiverg ?? 10) / 100; // ex: 0.10
+
+  // Data da contagem anterior para buscar desperdícios no período
+  const hist       = _getHistContagens();
+  const anterior   = [...hist].sort((a,b) => new Date(b.date)-new Date(a.date))[1]; // segunda mais recente
+  const dataAnterior = anterior ? anterior.date.slice(0,10) : null;
+  const dataHoje     = contagem.date.slice(0,10);
+
+  // Desperdícios registrados no VTP no período desde a última contagem
+  const despsRaw = typeof desperdicios !== 'undefined' ? desperdicios : [];
+  const despsPeriodo = despsRaw.filter(d => {
+    if (!d.itemId) return false;
+    const dDate = d.date || (d.createdAt||'').slice(0,10);
+    if (dataAnterior && dDate < dataAnterior) return false;
+    if (dDate > dataHoje) return false;
+    return true;
+  });
+
+  // Classifica cada item com divergência
+  const grupos = { ok: [], manual: [], varNormal: [], explicado: [], parcial: [], anomalia: [] };
+
+  contagem.itens.forEach(x => {
+    const divAbs = Math.abs(x.diverg ?? 0);
+    if (divAbs <= 0.001) { grupos.ok.push(x); return; }
+
+    // Soma desperdícios do item no período
+    const despItem = despsPeriodo.filter(d => d.itemId === x.id);
+    const qtdDesp  = despItem.reduce((s, d) => s + (parseFloat(d.qty) || 0), 0);
+    const sobra    = parseFloat((divAbs - qtdDesp).toFixed(3));
+    const pctDiv   = x.digital > 0 ? divAbs / x.digital : 0;
+
+    x._despQty  = qtdDesp;
+    x._sobra    = sobra;
+    x._pctDiv   = pctDiv;
+    x._despDocs = despItem;
+
+    if (!x.debitoAuto) {
+      // Item manual → sempre precisa atualizar CW (seja qual for a causa)
+      grupos.manual.push(x);
+    } else if (qtdDesp > 0 && sobra <= 0.001) {
+      // Divergência totalmente explicada pelo desperdício registrado no VTP
+      grupos.explicado.push(x);
+    } else if (qtdDesp > 0 && sobra > 0.001) {
+      // Desperdício explica parte — resto é anomalia
+      grupos.parcial.push(x);
+    } else if (pctDiv <= tolerancia) {
+      // Sem desperdício, dentro da tolerância → variação normal da ficha técnica
+      grupos.varNormal.push(x);
+    } else {
+      // Sem desperdício, acima da tolerância → anomalia real
+      grupos.anomalia.push(x);
+    }
+  });
+
+  const total = contagem.itens.length;
+  const popup = document.createElement('div');
+  popup.id = 'popupPosContagem';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:650;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+
+  const _secao = (icon, cor, titulo, lista, extra='') => {
+    if (!lista.length) return '';
+    return `
+      <div style="border:1.5px solid ${cor}33;border-radius:var(--r10);overflow:hidden;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:${cor}11">
+          <div style="display:flex;align-items:center;gap:7px;font-size:var(--text-sm);font-weight:700;color:${cor}">
+            ${lc(icon,14,cor)} ${titulo}
+          </div>
+          <span style="background:${cor};color:#fff;border-radius:20px;padding:1px 9px;font-size:var(--text-xs);font-weight:800">${lista.length}</span>
+        </div>
+        ${extra}
+        <div style="display:flex;flex-direction:column;gap:0">
+          ${lista.map((x,i) => {
+            const d = x.diverg > 0 ? `+${fmt(x.diverg)}` : fmt(x.diverg);
+            const despInfo = x._despQty > 0
+              ? `<span style="font-size:var(--text-2xs);color:var(--muted)"> · ${lc('trash-2',9,'currentColor')} Desp. registrado: ${fmt(x._despQty)} ${x.unit}</span>`
+              : '';
+            const sobraInfo = x._sobra > 0.001
+              ? `<span style="font-size:var(--text-2xs);color:var(--red)"> · Saldo não explicado: ${fmt(x._sobra)} ${x.unit}</span>`
+              : '';
+            return `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:${i>0?'1px solid var(--border)':'none'};gap:8px;flex-wrap:wrap">
+              <div style="min-width:0">
+                <div style="font-size:var(--text-sm);font-weight:600">${x.name}</div>
+                <div style="font-size:var(--text-xs);color:var(--muted)">CW: ${fmt(x.digital)} → Físico: ${fmt(x.fisico)} ${x.unit}${despInfo}${sobraInfo}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                <span style="font-family:monospace;font-weight:700;font-size:var(--text-sm);color:${x.diverg<0?'var(--red)':'var(--green)'}">
+                  ${d} ${x.unit}
+                </span>
+                ${!x.debitoAuto ? `<button onclick="_marcarAtualizouCW(this,'${contagem.id}',${x.id})"
+                  style="font-size:var(--text-2xs);padding:3px 8px;border:1px solid var(--muted);border-radius:var(--r6);background:var(--surface);cursor:pointer;color:var(--text2)">
+                  ✓ Atualizei CW
+                </button>` : ''}
+                ${(grupos.anomalia.includes(x) || grupos.parcial.includes(x)) ? `<button onclick="_registrarDesperdicioDiverg(${x.id},${Math.abs(x._sobra||x.diverg)})"
+                  style="font-size:var(--text-2xs);padding:3px 8px;border:1px solid var(--red);border-radius:var(--r6);background:var(--red-light);cursor:pointer;color:var(--red)">
+                  + Registrar desperdício
+                </button>` : ''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  };
+
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:680px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:auto">
+      <!-- Header -->
+      <div style="padding:18px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:var(--text-md);font-weight:800">${lc('check-circle',16,'var(--purple)')} Contagem concluída!</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${contagem.id} · ${total} itens contados · por ${contagem.user}</div>
+        </div>
+        <button onclick="document.getElementById('popupPosContagem').remove();renderEstoque()"
+          style="background:none;border:none;cursor:pointer;padding:6px">${lc('x',18,'var(--muted)')}</button>
+      </div>
+
+      <!-- Resumo em chips -->
+      <div style="padding:14px 20px;display:flex;flex-wrap:wrap;gap:8px;border-bottom:1.5px solid var(--border)">
+        ${grupos.ok.length       ? `<span style="padding:4px 12px;border-radius:20px;background:var(--green-light);border:1px solid var(--green);font-size:var(--text-xs);font-weight:700;color:var(--green)">${lc('check-circle',11,'currentColor')} OK sem divergência: ${grupos.ok.length}</span>` : ''}
+        ${grupos.varNormal.length ? `<span style="padding:4px 12px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);font-size:var(--text-xs);font-weight:700;color:var(--muted)">${lc('minus-circle',11,'currentColor')} Variação normal: ${grupos.varNormal.length}</span>` : ''}
+        ${grupos.explicado.length ? `<span style="padding:4px 12px;border-radius:20px;background:var(--green-light);border:1px solid var(--green);font-size:var(--text-xs);font-weight:700;color:var(--green)">${lc('clipboard',11,'currentColor')} Explicado por desperdício: ${grupos.explicado.length}</span>` : ''}
+        ${grupos.parcial.length   ? `<span style="padding:4px 12px;border-radius:20px;background:var(--yellow-light);border:1px solid var(--yellow);font-size:var(--text-xs);font-weight:700;color:var(--orange-dark)">${lc('alert-triangle',11,'currentColor')} Parcialmente explicado: ${grupos.parcial.length}</span>` : ''}
+        ${grupos.manual.length    ? `<span style="padding:4px 12px;border-radius:20px;background:#FEF3C7;border:1px solid #FCD34D;font-size:var(--text-xs);font-weight:700;color:#D97706">${lc('refresh-cw',11,'currentColor')} Atualizar no CW: ${grupos.manual.length}</span>` : ''}
+        ${grupos.anomalia.length  ? `<span style="padding:4px 12px;border-radius:20px;background:var(--red-light);border:1px solid var(--red);font-size:var(--text-xs);font-weight:700;color:var(--red)">${lc('alert-circle',11,'currentColor')} Anomalia — investigar: ${grupos.anomalia.length}</span>` : ''}
+      </div>
+
+      <!-- Detalhes por grupo -->
+      <div style="padding:16px 20px;max-height:55vh;overflow-y:auto">
+
+        ${_secao('alert-circle','var(--red)','Anomalia — Investigar',grupos.anomalia,
+          `<div style="padding:6px 14px;background:var(--red-light);font-size:var(--text-xs);color:var(--red)">
+            ${lc('info',10,'currentColor')} Débito automático no CW, divergência acima de ${Math.round(tolerancia*100)}% e sem desperdício registrado. Pode ser sumiço, perda não registrada ou erro de ficha técnica.
+          </div>`)}
+
+        ${_secao('alert-triangle','var(--orange-dark)','Parcialmente Explicado por Desperdício',grupos.parcial,
+          `<div style="padding:6px 14px;background:var(--yellow-light);font-size:var(--text-xs);color:var(--orange-dark)">
+            ${lc('info',10,'currentColor')} O desperdício registrado no VTP explica parte da diferença. Há um saldo não explicado que pode ser anomalia.
+          </div>`)}
+
+        ${_secao('refresh-cw','#D97706','Atualizar no Cardápio Web',grupos.manual,
+          `<div style="padding:6px 14px;background:#FEF3C7;font-size:var(--text-xs);color:#D97706">
+            ${lc('info',10,'currentColor')} Estes itens são de débito manual no CW. Atualize as quantidades no Cardápio Web e marque como feito.
+          </div>`)}
+
+        ${_secao('clipboard','var(--green)','Explicado por Desperdício no VTP',grupos.explicado)}
+        ${_secao('minus-circle','var(--muted)','Variação Normal (dentro da tolerância)',grupos.varNormal)}
+        ${_secao('check-circle','var(--green)','Sem Divergência',grupos.ok.slice(0,5))}
+        ${grupos.ok.length > 5 ? `<div style="text-align:center;font-size:var(--text-xs);color:var(--muted);padding:4px">+${grupos.ok.length-5} itens sem divergência</div>` : ''}
+      </div>
+
+      <!-- Rodapé -->
+      <div style="padding:14px 20px;border-top:1.5px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <button onclick="_enviarResumoWA('${contagem.id}')"
+          style="padding:9px 16px;background:#25D366;color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
+          ${lc('message-circle',14,'#fff')} Enviar resumo WA
+        </button>
+        <button onclick="document.getElementById('popupPosContagem').remove();renderEstoque()"
+          style="padding:9px 16px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-sm);font-weight:700;cursor:pointer">
+          Fechar
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) { popup.remove(); renderEstoque(); } });
+}
+
+function _marcarAtualizouCW(btn, contagemId, itemId) {
+  btn.textContent  = '✓ Feito!';
+  btn.style.background    = 'var(--green-light)';
+  btn.style.borderColor   = 'var(--green)';
+  btn.style.color         = 'var(--green)';
+  btn.disabled = true;
+}
+
+function _registrarDesperdicioDiverg(itemId, qty) {
+  document.getElementById('popupPosContagem')?.remove();
   renderEstoque();
-  toast(`Contagem concluída! ${snapshot.filter(x=>Math.abs(x.diverg)>0.001).length} divergências registradas.`, 'ok');
+  // Abre modal de desperdício pré-preenchido
+  if (typeof abrirDesperdicio === 'function') {
+    setTimeout(() => abrirDesperdicio({ itemId, qty }), 300);
+  } else {
+    toast('Vá ao módulo Desperdício para registrar a perda.', 'info');
+  }
+}
+
+function _enviarResumoWA(contagemId) {
+  const hist = _getHistContagens();
+  const c    = hist.find(x => x.id === contagemId);
+  if (!c) return;
+  const cfg  = typeof getConfig === 'function' ? getConfig() : {};
+  const tolerancia = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+
+  const divs  = c.itens.filter(x => Math.abs(x.diverg ?? 0) > 0.001);
+  const anom  = divs.filter(x => x.debitoAuto && (x.digital > 0 ? Math.abs(x.diverg)/x.digital : 0) > tolerancia);
+
+  let msg = `📋 *Contagem de Estoque — ${fmtD(c.date)}*\n`;
+  msg    += `Por: ${c.user}\n`;
+  msg    += `Total: ${c.total} itens · ${divs.length} divergências\n\n`;
+
+  if (anom.length) {
+    msg += `🔴 *Anomalias a investigar:*\n`;
+    anom.forEach(x => { msg += `• ${x.name}: CW ${fmt(x.digital)} → Físico ${fmt(x.fisico)} ${x.unit} (${x.diverg > 0 ? '+' : ''}${fmt(x.diverg)})\n`; });
+    msg += '\n';
+  }
+
+  const manuais = divs.filter(x => !x.debitoAuto);
+  if (manuais.length) {
+    msg += `🟡 *Atualizar no Cardápio Web:*\n`;
+    manuais.forEach(x => { msg += `• ${x.name}: CW ${fmt(x.digital)} → Físico ${fmt(x.fisico)} ${x.unit}\n`; });
+  }
+
+  const waNum = cfg.whatsapp || '';
+  const url   = `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`;
+  window.open(url, '_blank');
+}
+
+// ── Contagem Diária: Abertura & Fechamento ────────────────────
+let _diariaModo   = 'abertura'; // 'abertura' | 'fechamento'
+let _diariaInputs = {};         // { itemId: qty } do momento atual
+
+const _getDiariaDados  = ()  => db._get('vtp_contagem_diaria', {});
+const _saveDiariaDados = (d) => db._set('vtp_contagem_diaria', d);
+
+function _renderContagemDiaria() {
+  const hoje      = new Date().toISOString().slice(0,10);
+  const dados     = _getDiariaDados();
+  const diaAtual  = dados[hoje] || {};
+  const temAbert  = diaAtual.abertura && Object.keys(diaAtual.abertura).length > 0;
+  const temFech   = diaAtual.fechamento && Object.keys(diaAtual.fechamento).length > 0;
+
+  // Se já tem abertura, vai para fechamento automaticamente
+  if (temAbert && !temFech) _diariaModo = 'fechamento';
+  else if (!temAbert)       _diariaModo = 'abertura';
+
+  const itensDiarios = items.filter(i => !i.isProd && i.contagemDiaria);
+
+  if (!itensDiarios.length) {
+    document.getElementById('estPanelContagem').innerHTML = `
+      <div style="padding:24px;text-align:center">
+        <div class="empty-icon">${lc('zap',24,'var(--muted)')}</div>
+        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:8px">Nenhum item marcado para contagem diária.</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px">Vá em Cadastros → Insumos e marque os itens com "Incluir na Contagem Diária".</div>
+        <button onclick="goModule('cadastros')" class="btn btn-outline btn-sm" style="margin-top:12px">Ir para Cadastros</button>
+      </div>`;
+    return;
+  }
+
+  const el = document.getElementById('estPanelContagem');
+  if (!el) return;
+
+  // Se ambos já feitos, mostra resumo do dia
+  if (temAbert && temFech) {
+    _renderResumoDiario(diaAtual, itensDiarios, hoje);
+    return;
+  }
+
+  const modoLabel  = _diariaModo === 'abertura' ? 'Abertura' : 'Fechamento';
+  const modoCor    = _diariaModo === 'abertura' ? 'var(--orange-dark)' : 'var(--purple)';
+  const modoIcon   = _diariaModo === 'abertura' ? 'sunrise' : 'sunset';
+  const snapAnter  = diaAtual[_diariaModo === 'abertura' ? 'abertura' : 'abertura'] || {};
+
+  el.innerHTML = `
+    <div style="padding:14px 16px;background:${modoCor}11;border-bottom:1.5px solid ${modoCor}33;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:var(--text-sm);font-weight:800;color:${modoCor}">${lc(modoIcon,14,modoCor)} ${modoLabel} — ${hoje.split('-').reverse().join('/')}</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:1px">${itensDiarios.length} itens · toque no campo e digite a quantidade</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        ${!temAbert ? '' : `<button onclick="_diariaModo='abertura';_renderContagemDiaria()" style="font-size:var(--text-xs);padding:4px 10px;border:1px solid var(--border);border-radius:var(--r6);background:${_diariaModo==='abertura'?modoCor:'var(--surface)'};color:${_diariaModo==='abertura'?'#fff':'var(--muted)'};cursor:pointer">Abertura</button>`}
+        ${temAbert ? `<button onclick="_diariaModo='fechamento';_renderContagemDiaria()" style="font-size:var(--text-xs);padding:4px 10px;border:1px solid var(--border);border-radius:var(--r6);background:${_diariaModo==='fechamento'?modoCor:'var(--surface)'};color:${_diariaModo==='fechamento'?'#fff':'var(--muted)'};cursor:pointer">Fechamento</button>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0">
+      ${itensDiarios.map((item, idx) => {
+        const valAnterior = _diariaModo === 'fechamento' ? (diaAtual.abertura?.[item.id] ?? null) : null;
+        return `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);background:${idx%2===0?'var(--surface)':'var(--surface2)'}">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--text-sm);font-weight:600">${item.name}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">${valAnterior !== null ? `Abertura: ${fmt(valAnterior)} ${item.unit}` : `CW: ${fmt(item.qty)} ${item.unit}`}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <input type="number" inputmode="decimal" min="0" step="0.01"
+              value="${_diariaInputs[item.id] !== undefined ? _diariaInputs[item.id] : ''}"
+              placeholder="0"
+              style="width:80px;padding:10px 8px;border:2px solid ${_diariaInputs[item.id]!==undefined?modoCor:'var(--border)'};border-radius:var(--r8);font-size:1rem;font-weight:700;text-align:center;font-family:monospace"
+              oninput="_diariaInputs[${item.id}]=this.value===''?undefined:parseFloat(this.value);this.style.borderColor=this.value?'${modoCor}':'var(--border)'"
+              onfocus="this.select()">
+            <span style="font-size:var(--text-xs);color:var(--muted);min-width:20px">${item.unit}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="padding:14px 16px">
+      <button onclick="_salvarDiaria('${hoje}','${_diariaModo}')"
+        style="width:100%;padding:12px;background:${modoCor};color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-md);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        ${lc('check-circle',16,'#fff')} Salvar ${modoLabel}
+      </button>
+    </div>`;
+}
+
+function _salvarDiaria(hoje, momento) {
+  const itensDiarios = items.filter(i => !i.isProd && i.contagemDiaria);
+  const contados     = Object.entries(_diariaInputs).filter(([,v]) => v !== undefined && !isNaN(v));
+  if (!contados.length) { toast('Digite pelo menos uma quantidade antes de salvar.', 'err'); return; }
+
+  const dados   = _getDiariaDados();
+  if (!dados[hoje]) dados[hoje] = {};
+  dados[hoje][momento] = {};
+  itensDiarios.forEach(i => {
+    if (_diariaInputs[i.id] !== undefined) dados[hoje][momento][i.id] = parseFloat(_diariaInputs[i.id]);
+  });
+  _saveDiariaDados(dados);
+  _diariaInputs = {};
+  toast(`${momento === 'abertura' ? 'Abertura' : 'Fechamento'} salvo!`, 'ok');
+  _renderContagemDiaria();
+}
+
+function _renderResumoDiario(diaAtual, itensDiarios, hoje) {
+  const el = document.getElementById('estPanelContagem');
+  if (!el) return;
+
+  const ab  = diaAtual.abertura   || {};
+  const fe  = diaAtual.fechamento || {};
+
+  const linhas = itensDiarios.map(item => {
+    const qAb   = ab[item.id]  ?? null;
+    const qFe   = fe[item.id]  ?? null;
+    const cons  = (qAb !== null && qFe !== null) ? parseFloat((qAb - qFe).toFixed(3)) : null;
+    return { item, qAb, qFe, cons };
+  });
+
+  el.innerHTML = `
+    <div style="padding:14px 16px;background:var(--green-light);border-bottom:1.5px solid var(--green);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:var(--text-sm);font-weight:800;color:var(--green)">${lc('check-circle',14,'currentColor')} Contagem do dia concluída · ${hoje.split('-').reverse().join('/')}</div>
+      <button onclick="if(confirm('Refazer a contagem de hoje?')){const d=_getDiariaDados();if(d['${hoje}'])delete d['${hoje}'];_saveDiariaDados(d);_diariaInputs={};_renderContagemDiaria();}"
+        style="font-size:var(--text-xs);padding:3px 8px;border:1px solid var(--muted);border-radius:var(--r6);background:var(--surface);cursor:pointer;color:var(--muted)">Refazer</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:var(--text-sm)">
+        <thead>
+          <tr style="background:var(--surface2)">
+            <th style="padding:8px 14px;text-align:left;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Item</th>
+            <th style="padding:8px 10px;text-align:center;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Abertura</th>
+            <th style="padding:8px 10px;text-align:center;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Fechamento</th>
+            <th style="padding:8px 10px;text-align:center;font-size:var(--text-xs);color:var(--muted);font-weight:700;text-transform:uppercase">Consumo</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${linhas.map((l,i) => `
+            <tr style="border-top:1px solid var(--border);background:${i%2===0?'var(--surface)':'var(--surface2)'}">
+              <td style="padding:8px 14px;font-weight:600">${l.item.name}</td>
+              <td style="padding:8px 10px;text-align:center;font-family:monospace">${l.qAb !== null ? fmt(l.qAb) : '—'} ${l.item.unit}</td>
+              <td style="padding:8px 10px;text-align:center;font-family:monospace">${l.qFe !== null ? fmt(l.qFe) : '—'} ${l.item.unit}</td>
+              <td style="padding:8px 10px;text-align:center;font-family:monospace;font-weight:700;color:${l.cons!==null&&l.cons>0?'var(--red)':l.cons===0?'var(--green)':'var(--muted)'}">
+                ${l.cons !== null ? (l.cons > 0 ? '-' : '') + fmt(l.cons) + ' ' + l.item.unit : '—'}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding:14px 16px">
+      <button onclick="_enviarResumoDiarioWA('${hoje}')"
+        style="width:100%;padding:11px;background:#25D366;color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">
+        ${lc('message-circle',14,'#fff')} Enviar para o grupo WA
+      </button>
+    </div>`;
+}
+
+function _enviarResumoDiarioWA(hoje) {
+  const dados        = _getDiariaDados();
+  const diaAtual     = dados[hoje] || {};
+  const itensDiarios = items.filter(i => !i.isProd && i.contagemDiaria);
+  const cfg          = typeof getConfig === 'function' ? getConfig() : {};
+
+  let msg = `🍕 *Vai Ter Pizza! — Contagem Diária ${hoje.split('-').reverse().join('/')}*\n\n`;
+  itensDiarios.forEach(item => {
+    const qAb  = diaAtual.abertura?.[item.id]   ?? null;
+    const qFe  = diaAtual.fechamento?.[item.id] ?? null;
+    const cons = (qAb !== null && qFe !== null) ? parseFloat((qAb - qFe).toFixed(3)) : null;
+    msg += `• ${item.name}: Abertura ${qAb !== null ? fmt(qAb) : '—'} | Fechamento ${qFe !== null ? fmt(qFe) : '—'} | Consumo ${cons !== null ? fmt(cons) : '—'} ${item.unit}\n`;
+  });
+
+  const waNum = cfg.whatsapp || '';
+  window.open(`https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 // ── Histórico de contagens ────────────────────────────────────

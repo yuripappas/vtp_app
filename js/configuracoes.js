@@ -343,6 +343,27 @@ function _renderCfgSecEstoque(el) {
       </div>
     </div>
 
+    <div style="margin-bottom:22px">
+      ${_secTitle('Contagem de Estoque — Tolerância de Divergência', null)}
+      <div style="border:1.5px solid var(--border);border-radius:var(--r8);padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px;font-size:var(--text-sm);color:var(--text2);line-height:1.6">
+            Para itens com <strong>débito automático no CW</strong>, divergências abaixo de
+            <strong id="cfgTolDivDisplay">${cfg.toleranciaDiverg ?? 10}%</strong>
+            são classificadas como <span style="color:var(--muted);font-weight:600">variação normal</span>.
+            Acima disso, geram alerta de <span style="color:var(--red);font-weight:600">anomalia</span>.
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <input class="inp" type="number" id="cfgTolDiv" value="${cfg.toleranciaDiverg ?? 10}" min="1" max="50"
+              style="width:64px;text-align:center;font-size:var(--text-md);font-weight:700"
+              oninput="const d=document.getElementById('cfgTolDivDisplay');if(d)d.textContent=(this.value||10)+'%'">
+            <span style="font-size:var(--text-sm);color:var(--text2)">% de tolerância</span>
+            <button class="btn btn-primary btn-sm" onclick="saveConfiguracoes()">Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     ${_block(_secTitle('Categorias de Insumo', null), _addBar(`
       <input class="inp" id="cfgNewCatInsumo" placeholder="Nova categoria" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddCatInsumo()">
       <button class="btn btn-primary" style="font-size:var(--text-sm);white-space:nowrap" onclick="_cfgAddCatInsumo()">${lc('plus',13,'#fff')} Add</button>`), 'cfgCatInsumoList')}
@@ -1460,7 +1481,8 @@ function saveConfiguracoes() {
   const endereco   = g('cfgEndereco');    if (endereco   !== null) cfg.endereco    = endereco.trim();
   const whatsapp   = g('cfgWhatsapp');    if (whatsapp   !== null) cfg.whatsapp    = whatsapp.replace(/\D/g,'');
   const codLoja    = g('cfgCodLoja');     if (codLoja    !== null) cfg.codLoja     = codLoja.trim();
-  const pctCrit    = g('cfgPctCrit');     if (pctCrit    !== null) cfg.pctCrit     = pctCrit;
+  const pctCrit    = g('cfgPctCrit');     if (pctCrit    !== null) cfg.pctCrit          = pctCrit;
+  const tolDiv     = g('cfgTolDiv');      if (tolDiv     !== null) cfg.toleranciaDiverg  = parseFloat(tolDiv) || 10;
 
   db._set('vtp_config', cfg);
   _updateSidebarLogo();

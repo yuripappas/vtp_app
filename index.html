@@ -554,6 +554,13 @@
           <div style="font-size:.66rem;color:var(--muted);margin-top:1px">Este insumo aparece no modo de contagem rápida diária</div>
         </div>
       </label>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--purple-xlight);border:1.5px solid var(--purple-light,#C4B5FD);border-radius:var(--r8);cursor:pointer;margin-top:6px">
+        <input type="checkbox" id="fDebitoAuto" style="width:16px;height:16px;accent-color:var(--purple);flex-shrink:0">
+        <div>
+          <div style="font-size:.8rem;font-weight:700;color:var(--purple)">Débito automático no Cardápio Web</div>
+          <div style="font-size:.66rem;color:var(--muted);margin-top:1px">O CW debita este insumo automaticamente via ficha técnica de produto</div>
+        </div>
+      </label>
       <hr class="sdiv"><div class="slbl">Quantidades & Custos</div>
       <div class="field">
         <label>Fornecedores vinculados</label>
@@ -1347,9 +1354,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/db.js?v=7"></script>
+<script src="js/db.js?v=8"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=7"></script>
+<script src="js/init.js?v=8"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">

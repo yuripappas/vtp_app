@@ -249,6 +249,7 @@ function openEditItem(id) {
   const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
   populateSupChecks(supIds);
   const cd = document.getElementById('fContagemDiaria'); if (cd) cd.checked = !!item.contagemDiaria;
+  const da = document.getElementById('fDebitoAuto');     if (da) da.checked = !!item.debitoAuto;
   document.getElementById('delItemBtn').style.display = 'inline-flex';
   document.getElementById('ovItem').classList.add('open');
 }
@@ -385,6 +386,7 @@ function saveItem() {
     ],
     isProd:          false,
     contagemDiaria:  document.getElementById('fContagemDiaria')?.checked || false,
+    debitoAuto:      document.getElementById('fDebitoAuto')?.checked     || false,
   };
   if (editItemId) {
     const idx = items.findIndex(i => i.id === editItemId);
