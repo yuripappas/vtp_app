@@ -26,12 +26,17 @@ let items = db._get('vtp_items', null) || [
 ];
 
 // Migração automática: renomeia 'Produção Interna' → 'Preparados' em todos os itens salvos
+// e limpa o filtro de categorias da etiquetagem (pode ter nomes antigos)
 (function _migrarCatPreparados() {
   let changed = false;
   items.forEach(i => {
     if (i.cat === 'Produção Interna') { i.cat = 'Preparados'; changed = true; }
   });
-  if (changed) db._set('vtp_items', items);
+  if (changed) {
+    db._set('vtp_items', items);
+    // Apaga o filtro de categorias salvo para forçar recarga com nomes atuais
+    db._set('vtp_etiq_categorias', null);
+  }
 })();
 
 let suppliers    = db._get('vtp_suppliers', []);

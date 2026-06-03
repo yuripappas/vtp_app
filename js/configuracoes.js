@@ -2599,14 +2599,9 @@ function _renderCfgSecEtiquetagem(el) {
 
 function _cfgEtqCategorias(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
-  // Usa nome normalizado: 'Produção Interna' → 'Preparados'
-  const normCat = c => (c === 'Produção Interna' || (c||'').toLowerCase().includes('produção')) ? 'Preparados' : (c || 'Outros');
-  const todasCats = [...new Set(allItems.map(i => normCat(i.cat)))].filter(Boolean).sort();
-  const rawHabilitadas = db._get('vtp_etiq_categorias', null);
-  // Normaliza lista salva também (migração de 'Produção Interna' → 'Preparados')
-  const habilitadas = rawHabilitadas !== null
-    ? rawHabilitadas.map(c => normCat(c))
-    : null;
+  // Categorias exatamente como estão em item.cat — sem mapeamento
+  const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  const habilitadas = db._get('vtp_etiq_categorias', null);
   const sel = habilitadas !== null ? new Set(habilitadas) : new Set(todasCats);
 
   el.innerHTML = `
@@ -2625,7 +2620,7 @@ function _cfgEtqCategorias(el) {
           </div>
         </div>
         ${todasCats.map(cat => {
-          const count   = allItems.filter(i => normCat(i.cat) === cat).length;
+          const count   = allItems.filter(i => (i.cat || 'Outros') === cat).length;
           const checked = sel.has(cat);
           return `
           <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;
