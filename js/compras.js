@@ -5408,17 +5408,13 @@ async function _uploadNF(input, supKey, listaCodigo, supNome) {
   try {
     const b64 = await _fileToBase64(file);
     const u   = typeof getCurrentUser==='function' ? getCurrentUser() : null;
-    const res = await fetch(_DRIVE_URL, {
-      method: 'POST',
-      body: JSON.stringify({
+    const json = await _postToGAS(_DRIVE_URL, {
         fileName:    listaCodigo + '_' + supNome.replace(/\s/g,'_') + '_' + file.name,
         fileContent: b64,
         mimeType:    file.type,
         listaCodigo,
         fornecedor:  supNome,
-      }),
-    });
-    const json = await res.json();
+      });
     if (!json.ok) throw new Error(json.error);
 
     // Salva referência na lista
@@ -5451,17 +5447,13 @@ async function _uploadNFItem(input, itemId, listaCodigo) {
   try {
     const b64 = await _fileToBase64(file);
     const u   = typeof getCurrentUser==='function' ? getCurrentUser() : null;
-    const res = await fetch(_DRIVE_URL, {
-      method: 'POST',
-      body: JSON.stringify({
+    const json = await _postToGAS(_DRIVE_URL, {
         fileName:    listaCodigo + '_' + (item.nome||'item') + '_' + file.name,
         fileContent: b64,
         mimeType:    file.type,
         listaCodigo,
         fornecedor:  item.nome || 'item',
-      }),
-    });
-    const json = await res.json();
+      });
     if (!json.ok) throw new Error(json.error);
 
     if (!item.anexos) item.anexos = [];
@@ -5484,6 +5476,28 @@ function _fileToBase64(file) {
     r.onload  = () => resolve(r.result.split(',')[1]);
     r.onerror = reject;
     r.readAsDataURL(file);
+  });
+}
+
+// POST para Google Apps Script com XMLHttpRequest (evita problema de CORS/preflight do fetch)
+function _postToGAS(url, data) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url, true);
+    xhr.withCredentials = false;
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status >= 200 && xhr.status < 400) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch(e) { resolve({ ok: true, raw: xhr.responseText }); }
+      } else {
+        reject(new Error('Erro HTTP ' + xhr.status + ': ' + xhr.responseText));
+      }
+    };
+    xhr.onerror   = () => reject(new Error('Falha de rede. Verifique a conexão.'));
+    xhr.ontimeout = () => reject(new Error('Tempo esgotado. Tente novamente.'));
+    xhr.timeout   = 60000; // 60s para arquivos grandes
+    xhr.send(JSON.stringify(data));
   });
 }
 
