@@ -902,23 +902,24 @@ function abrirDetalheContagem(id) {
           </div>
           <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">${x.cat || '—'}</div>
         </div>
-        <!-- Valores -->
-        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-          <div style="text-align:center;min-width:44px">
-            <div style="font-size:var(--text-2xs);color:var(--muted)">CW</div>
-            <div style="font-size:var(--text-sm);font-family:monospace;font-weight:600">${fmt(x.digital)}</div>
+        <!-- Valores: Físico em destaque, CW como referência -->
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          <!-- FÍSICO — valor principal a atualizar no CW -->
+          <div style="text-align:center;padding:6px 10px;background:${feito?'transparent':'var(--purple-xlight)'};border:1.5px solid ${feito?'transparent':'var(--purple-light)'};border-radius:var(--r8);">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.5px">Colocar no CW</div>
+            <div style="font-size:1rem;font-family:monospace;font-weight:800;color:var(--purple)">${fmt(x.fisico)} <span style="font-size:var(--text-2xs);font-weight:600">${x.unit}</span></div>
           </div>
+          <!-- Separador -->
+          <div style="font-size:var(--text-2xs);color:var(--muted)">era</div>
+          <!-- CW — referência secundária -->
           <div style="text-align:center;min-width:44px">
-            <div style="font-size:var(--text-2xs);color:var(--muted)">Físico</div>
-            <div style="font-size:var(--text-sm);font-family:monospace;font-weight:600">${fmt(x.fisico)}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">CW atual</div>
+            <div style="font-size:var(--text-sm);font-family:monospace;font-weight:600;color:var(--muted);text-decoration:line-through">${fmt(x.digital)}</div>
           </div>
-          <div style="text-align:center;min-width:56px">
+          <!-- Diferença -->
+          <div style="text-align:center;min-width:44px">
             <div style="font-size:var(--text-2xs);color:var(--muted)">Dif.</div>
             <div style="font-size:var(--text-sm);font-family:monospace;font-weight:700;color:${corDif}">${difStr}</div>
-          </div>
-          <div style="text-align:center;min-width:36px">
-            <div style="font-size:var(--text-2xs);color:var(--muted)">%</div>
-            <div style="font-size:var(--text-xs);font-weight:700;color:${corDif}">${x.diverg>0?'+':''}${pctDiv}%</div>
           </div>
         </div>
       </div>`;
@@ -957,7 +958,7 @@ function abrirDetalheContagem(id) {
         <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
           <div style="height:100%;width:${pct}%;background:var(--green);border-radius:3px;transition:width .3s"></div>
         </div>
-        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:5px">Marque cada item após atualizar no Cardápio Web</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:5px">Use o valor <strong>Colocar no CW</strong> para atualizar cada item no Cardápio Web · Marque após concluir</div>
       </div>` : ''}
 
       <!-- Lista de itens -->
