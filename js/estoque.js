@@ -194,7 +194,7 @@ function _renderCatCards(el) {
         <strong>${totalSel}</strong> itens
       </div>
       <button data-cats="${catsEncoded}"
-        onclick="alert('CLICOU! cats=' + this.getAttribute('data-cats')); window._ctgIniciar(this);"
+        onclick="window._ctgIniciar(this);"
         style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
           font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;min-height:44px">
         ${lc('play-circle',15,'#fff')} Iniciar contagem
@@ -266,17 +266,24 @@ window._ctgIniciar = function(btn) {
 };
 
 function _renderContagemAtiva() {
-  alert('_renderContagemAtiva iniciou, cats: ' + _categoriasContando.join(','));
+  console.log('[CTG] iniciou cats:', _categoriasContando);
   const el = document.getElementById('estPanelContagem');
-  if (!el) { alert('el NAO ENCONTRADO!'); return; }
-  alert('el encontrado: ' + el.id + ', parentVisible: ' + (el.offsetParent !== null));
+  if (!el) { console.error('[CTG] el nao encontrado!'); return; }
+  console.log('[CTG] el encontrado, offsetParent:', el.offsetParent?.id || el.offsetParent?.tagName);
+
+  // TESTE SIMPLES: muda fundo para vermelho para confirmar que el é visível
+  el.style.background = 'red';
+  el.style.minHeight = '200px';
+  el.innerHTML = '<h1 style="color:white;padding:20px;font-size:24px;">CONTAGEM INICIADA!</h1>';
+  console.log('[CTG] innerHTML setado, offsetHeight:', el.offsetHeight);
+  return; // PARAR AQUI PARA TESTAR
 
   const allItems = typeof items !== 'undefined' ? items : [];
   const todosItens = [];
   _categoriasContando.forEach(cat => {
     allItems.filter(i => (i.cat||'Outros') === cat).forEach(i => todosItens.push(i));
   });
-  alert('todosItens: ' + todosItens.length);
+  console.log('[CTG] todosItens:', todosItens.length);
 
   const total    = todosItens.length;
   const contados = Object.keys(_contagem).length;
@@ -325,9 +332,9 @@ function _renderContagemAtiva() {
   html += '<button onclick="concluirContagemEstoque()" style="width:100%;padding:14px;background:' + (contados>0?'#16a34a':'#ddd') + ';color:' + (contados>0?'#fff':'#999') + ';border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">';
   html += 'Concluir' + (contados>0?' · '+contados+' itens':'') + '</button></div>';
 
-  alert('ANTES de innerHTML, html length: ' + html.length);
+  console.log('[CTG] ANTES innerHTML len:', html.length);
   el.innerHTML = html;
-  alert('DEPOIS de innerHTML, el.innerHTML length: ' + el.innerHTML.length + ', offsetHeight: ' + el.offsetHeight);
+  console.log('[CTG] DEPOIS innerHTML, offsetHeight:', el.offsetHeight, 'offsetParent:', el.offsetParent?.id);
 
   // Input handler via delegation
   el.addEventListener('input', function(e) {
