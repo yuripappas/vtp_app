@@ -278,17 +278,22 @@ window._ctgIniciar = function(btn) {
 };
 
 function _renderContagemAtiva() {
-  console.log('[CTG] iniciou cats:', _categoriasContando);
-  const el = document.getElementById('estPanelContagem');
-  if (!el) { console.error('[CTG] el nao encontrado!'); return; }
-  console.log('[CTG] el encontrado, offsetParent:', el.offsetParent?.id || el.offsetParent?.tagName);
+  console.log('[CTG] _renderContagemAtiva chamado, cats:', _categoriasContando);
+  // Força visibilidade do page-estoque
+  const pageEl = document.getElementById('page-estoque');
+  console.log('[CTG] page-estoque active:', pageEl?.classList.contains('active'), 'display:', pageEl ? getComputedStyle(pageEl).display : 'N/A');
 
-  // TESTE SIMPLES: muda fundo para vermelho para confirmar que el é visível
-  el.style.background = 'red';
-  el.style.minHeight = '200px';
-  el.innerHTML = '<h1 style="color:white;padding:20px;font-size:24px;">CONTAGEM INICIADA!</h1>';
-  console.log('[CTG] innerHTML setado, offsetHeight:', el.offsetHeight);
-  return; // PARAR AQUI PARA TESTAR
+  const el = document.getElementById('estPanelContagem');
+  console.log('[CTG] estPanelContagem found:', !!el, 'offsetHeight:', el?.offsetHeight, 'display:', el ? getComputedStyle(el).display : 'N/A');
+
+  if (!el) { console.error('[CTG] EL NULO!'); return; }
+
+  // TESTE DEFINITIVO — fundo vermelho + texto branco
+  el.setAttribute('style', 'background:red;min-height:400px;display:block;position:relative;z-index:1');
+  el.innerHTML = '<div style="padding:40px;color:white;font-size:28px;font-weight:bold;">CONTAGEM INICIADA ✓</div>';
+  console.log('[CTG] Red test done, offsetHeight:', el.offsetHeight);
+  window.scrollTo(0,0);
+  return; // <<< REMOVE QUANDO FUNCIONAR
 
   const allItems = typeof items !== 'undefined' ? items : [];
   const todosItens = [];
