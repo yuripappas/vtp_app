@@ -879,7 +879,29 @@ function saveSup() {
   const name = document.getElementById('sfName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
   const checked = [...document.querySelectorAll('#sfItems input:checked')].map(c => parseInt(c.value));
-  // Pega categorias das tags selecionadas
+
+  // Proteção: se está editando e havia insumos vinculados mas agora nenhum está marcado → confirma
+  if (editSupId && checked.length === 0) {
+    const vinculadosAntes = items.filter(i => {
+      const ids = i.supIds?.length ? i.supIds : (i.supId ? [i.supId] : []);
+      return ids.includes(editSupId);
+    });
+    if (vinculadosAntes.length > 0) {
+      const nomes = vinculadosAntes.slice(0,3).map(i => i.name).join(', ');
+      const mais  = vinculadosAntes.length > 3 ? ` e mais ${vinculadosAntes.length - 3}` : '';
+      vtpConfirm({
+        title: 'Nenhum insumo selecionado',
+        message: `Este fornecedor está vinculado a ${vinculadosAntes.length} insumo(s): ${nomes}${mais}.\n\nSalvar assim vai remover todos os vínculos. Tem certeza?`,
+        confirmLabel: 'Salvar sem insumos',
+        onConfirm: () => _salvarSupConfirmado(checked, name),
+      });
+      return;
+    }
+  }
+  _salvarSupConfirmado(checked, name);
+}
+
+function _salvarSupConfirmado(checked, name) {
   const selectedCats = [...document.querySelectorAll('.sup-cat-tag.active')].map(t => t.dataset.cat);
   // Formas de pagamento (checkboxes múltiplos)
   const formasPagamento = ['pix','especie','boleto','cartao','cheque','crediario']
