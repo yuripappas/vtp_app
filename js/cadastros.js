@@ -363,7 +363,39 @@ function getSupCheckedIds() {
 function saveItem() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
-  const supIds     = getSupCheckedIds();
+  const supIds    = getSupCheckedIds();
+  const newBrands = [
+    document.getElementById('fB0').value.trim(),
+    document.getElementById('fB1').value.trim(),
+    document.getElementById('fB2').value.trim(),
+  ].filter(Boolean);
+
+  // Proteção: avisa se dados importantes serão apagados
+  if (editItemId) {
+    const itemAntes = items.find(i => i.id === editItemId);
+    if (itemAntes) {
+      const alertas = [];
+      const supAntes = itemAntes.supIds?.length || (itemAntes.supId ? 1 : 0);
+      if (supAntes > 0 && supIds.length === 0)
+        alertas.push(supAntes + ' fornecedor(es) vinculado(s) serão removidos');
+      const brandsAntes = (itemAntes.brands || []).filter(Boolean);
+      if (brandsAntes.length > 0 && newBrands.length === 0)
+        alertas.push('marcas configuradas (' + brandsAntes.join(', ') + ') serão apagadas');
+      if (alertas.length > 0) {
+        vtpConfirm({
+          title: 'Atenção — dados serão perdidos',
+          message: 'Ao salvar:\n• ' + alertas.join('\n• ') + '\n\nDeseja continuar?',
+          confirmLabel: 'Salvar mesmo assim',
+          onConfirm: () => _saveItemConfirmado(name, supIds),
+        });
+        return;
+      }
+    }
+  }
+  _saveItemConfirmado(name, supIds);
+}
+
+function _saveItemConfirmado(name, supIds) {
   const unidCompra = document.getElementById('fUnidCompra')?.value.trim() || '';
   const qtdEmb     = parseFloat(document.getElementById('fQtdEmb')?.value) || 0;
   const data = {
@@ -376,15 +408,15 @@ function saveItem() {
     code:       document.getElementById('fCode').value.trim(),
     supIds,
     supId:      supIds[0] ?? null,
-    unidCompra, // nome da embalagem (ex: "Barra", "Pacote")
-    qtdEmb,     // qtd da unidade base por embalagem (ex: 25 para barra de 25kg)
+    unidCompra,
+    qtdEmb,
     brands: [
       document.getElementById('fB0').value.trim(),
       document.getElementById('fB1').value.trim(),
       document.getElementById('fB2').value.trim(),
     ],
     isProd:          false,
-    debitoAuto:      document.getElementById('fDebitoAuto')?.checked     || false,
+    debitoAuto:      document.getElementById('fDebitoAuto')?.checked || false,
   };
   if (editItemId) {
     const idx = items.findIndex(i => i.id === editItemId);
@@ -723,13 +755,27 @@ function openEditPreparo(id) {
 function savePreparo() {
   const name = document.getElementById('fpName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
-  // Ficha Técnica — build from current _ftRows
   const rendimento_kg = parseFloat(document.getElementById('ftRendimento').value) || 0;
-  const fichaTecnica = {
-    ingredientes: _ftRows.filter(r => r.item_id),
-    rendimento_kg,
-  };
-  // Custo calculado (já atualizado em fpCost pelo _ftRecalc)
+  const novaFT = { ingredientes: _ftRows.filter(r => r.item_id), rendimento_kg };
+
+  // Proteção: avisa se ficha técnica existente será apagada
+  if (editPreparoId) {
+    const itemAntes = items.find(i => i.id === editPreparoId);
+    const ftAntes = itemAntes?.fichaTecnica?.ingredientes?.length || 0;
+    if (ftAntes > 0 && novaFT.ingredientes.length === 0) {
+      vtpConfirm({
+        title: 'Ficha Técnica será apagada',
+        message: `A ficha técnica de "${itemAntes.name}" tem ${ftAntes} ingrediente(s) configurado(s).\n\nSalvar sem ingredientes vai apagar toda a ficha técnica. Deseja continuar?`,
+        confirmLabel: 'Apagar ficha e salvar',
+        onConfirm: () => _savePreparoConfirmado(name, novaFT),
+      });
+      return;
+    }
+  }
+  _savePreparoConfirmado(name, novaFT);
+}
+
+function _savePreparoConfirmado(name, fichaTecnica) {
   const custoKg = parseFloat(document.getElementById('fpCost').value) || 0;
   const data = {
     name,
