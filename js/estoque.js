@@ -266,14 +266,17 @@ window._ctgIniciar = function(btn) {
 };
 
 function _renderContagemAtiva() {
+  alert('_renderContagemAtiva iniciou, cats: ' + _categoriasContando.join(','));
   const el = document.getElementById('estPanelContagem');
-  if (!el) return;
+  if (!el) { alert('el NAO ENCONTRADO!'); return; }
+  alert('el encontrado: ' + el.id + ', parentVisible: ' + (el.offsetParent !== null));
 
   const allItems = typeof items !== 'undefined' ? items : [];
   const todosItens = [];
   _categoriasContando.forEach(cat => {
     allItems.filter(i => (i.cat||'Outros') === cat).forEach(i => todosItens.push(i));
   });
+  alert('todosItens: ' + todosItens.length);
 
   const total    = todosItens.length;
   const contados = Object.keys(_contagem).length;
@@ -322,7 +325,9 @@ function _renderContagemAtiva() {
   html += '<button onclick="concluirContagemEstoque()" style="width:100%;padding:14px;background:' + (contados>0?'#16a34a':'#ddd') + ';color:' + (contados>0?'#fff':'#999') + ';border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">';
   html += 'Concluir' + (contados>0?' · '+contados+' itens':'') + '</button></div>';
 
+  alert('ANTES de innerHTML, html length: ' + html.length);
   el.innerHTML = html;
+  alert('DEPOIS de innerHTML, el.innerHTML length: ' + el.innerHTML.length + ', offsetHeight: ' + el.offsetHeight);
 
   // Input handler via delegation
   el.addEventListener('input', function(e) {
