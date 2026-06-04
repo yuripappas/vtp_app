@@ -39,6 +39,100 @@ let items = db._get('vtp_items', null) || [
   }
 })();
 
+// Migração: vincula marcas e fornecedores nos insumos de compra
+// Roda uma única vez (flag vtp_v_migr_brands). Nunca toca em preparados (isProd:true).
+(function _migrarBrandsSuppliers() {
+  if (db._get('vtp_v_migr_brands', false)) return;
+  // Aguarda suppliers estar disponível — roda após inicialização
+  setTimeout(function() {
+    try {
+      var supp = db._get('vtp_suppliers', []);
+      if (!supp.length) return; // fornecedores ainda não carregados
+      var itens = db._get('vtp_items', []);
+      if (!itens.length) return;
+
+      function n(s) { return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim(); }
+      function findSup(nome) { return supp.find(function(s) { return n(s.name).indexOf(n(nome)) >= 0 || n(nome).indexOf(n(s.name)) >= 0; }); }
+
+      var DATA = [
+        // Laticínios
+        {b:'mussarela em barra',  brands:['DULAC','SERRA DOS VENTOS'],         sups:['DULAC','GALVAO FRIOS','FRIOS E SECOS']},
+        {b:'parmesao in natura',  brands:['VIGOR','SCALA/NERO'],               sups:['UP DISTRIBUIDORA','FRIOS E SECOS']},
+        {b:'parmesao triturado',  brands:['SANTA MARIA'],                      sups:[]},
+        {b:'requeijao',           brands:['SANTA MARIA','DALLORA PREMIUM'],    sups:['LATICINIO SANTA MARIA','UP DISTRIBUIDORA']},
+        {b:'gorgonzola',          brands:['SAO VICENTE','VIGOR'],              sups:['EXPORFRIOS','TARGUZ']},
+        {b:'creme culinario',     brands:['LECO'],                             sups:['UP DISTRIBUIDORA']},
+        {b:'queijo coalho',       brands:['CONFIANCA','JOAZEIRO'],             sups:['GALVAO FRIOS','FRIOS E SECOS']},
+        {b:'cream cheese',        brands:['SANTA MARIA','CATUPIRY/POLENGHI'], sups:['LATICINIO SANTA MARIA','UP DISTRIBUIDORA','ATACADAO']},
+        // Carnes e Frios
+        {b:'calabresa',           brands:['DALIA','SADIA-SEARA'],              sups:['GALVAO FRIOS','CASA DAS CARNES BOMPRECO','FRIOS E SECOS']},
+        {b:'file de frango',      brands:['JAGUA','SADIA FILES SOLTOS'],       sups:['EXPORFRIOS','UP DISTRIBUIDORA']},
+        {b:'lombinho',            brands:['AURORA','SEARA'],                   sups:['GALVAO FRIOS','FRIOS E SECOS']},
+        {b:'bacon em cubos',      brands:['AURORA','SEARA'],                   sups:['EXPORFRIOS','GALVAO FRIOS']},
+        {b:'bacon em pedacos',    brands:['AURORA','SEARA'],                   sups:['FRIOS E SECOS']},
+        {b:'ponta de alcatra',    brands:['FRESCA'],                           sups:['CASA DAS CARNES BOMPRECO']},
+        {b:'carne de sol',        brands:['FRESCA'],                           sups:['CASA DAS CARNES BOMPRECO']},
+        {b:'costela bovina',      brands:['FRESCA'],                           sups:['CASA DAS CARNES BOMPRECO']},
+        {b:'acem bovino',         brands:['FRESCA'],                           sups:['CASA DAS CARNES BOMPRECO']},
+        {b:'presunto',            brands:['SEM CAPA DE GORDURA'],              sups:['GALVAO FRIOS','FRIOS E SECOS']},
+        // Horti-Fruti
+        {b:'tomate',              brands:['IN NATURA'],                        sups:['MG HORTIFRUTI']},
+        {b:'cebola',              brands:['IN NATURA'],                        sups:['MG HORTIFRUTI']},
+        {b:'manjericao',          brands:['IN NATURA'],                        sups:['MG HORTIFRUTI']},
+        {b:'alho descascado',     brands:['IN NATURA'],                        sups:['MG HORTIFRUTI']},
+        {b:'pimentao verde',      brands:['IN NATURA'],                        sups:['MG HORTIFRUTI']},
+        {b:'banana',              brands:['IN NATURA'],                        sups:['MG HORTIFRUTI']},
+        {b:'morango congelado',   brands:[],                                   sups:['MORANGO SALVADOR','MULTIFRUTAS POLPAS','EXPORFRIOS']},
+        // Temperos e Enlatados
+        {b:'vinagre branco',      brands:[],                                   sups:['UP DISTRIBUIDORA','ATACADAO']},
+        {b:'oregano',             brands:[],                                   sups:['MG HORTIFRUTI']},
+        {b:'chimichurre',         brands:[],                                   sups:[]},
+        {b:'sal',                 brands:['LEBRE'],                            sups:['UP DISTRIBUIDORA']},
+        {b:'pimenta do reino',    brands:['MOIDA'],                            sups:[]},
+        {b:'milho verde',         brands:['BONNARE','FUGINI'],                 sups:['UP DISTRIBUIDORA','ATACADAO']},
+        {b:'ervilha',             brands:['BONNARE','FUGINI'],                 sups:['UP DISTRIBUIDORA','ATACADAO']},
+        {b:'ajinomoto',           brands:['ORIGINAL'],                         sups:['ATACADAO']},
+        {b:'acucar',              brands:[],                                   sups:['ATACADAO','UP DISTRIBUIDORA']},
+        // Molhos e Bases
+        {b:'molho de tomate',     brands:['HEINZ','TAMBAU PIZZA'],             sups:['ASA BRANCA','UP DISTRIBUIDORA']},
+        {b:'molho barbecue',      brands:['TAMBAU','ARRIFANA'],                sups:['UP DISTRIBUIDORA']},
+        {b:'goiabada cremosa',    brands:['TAMBAU'],                           sups:['UP DISTRIBUIDORA']},
+        // Massas e Complementos
+        {b:'farinha de trigo',    brands:['ROSA BRANCA/DONA BENTA','DONA MARIA'], sups:['UP DISTRIBUIDORA','ATACADAO']},
+        {b:'fermento biologico',  brands:['SAF-INSTANT'],                      sups:['ATACADAO']},
+        {b:'oleo de soja',        brands:['SOYA'],                             sups:['UP DISTRIBUIDORA','ATACADAO']},
+        // Doces
+        {b:'leite condensado',    brands:['PIRACANJUBA 6%','CEMIL 8%'],        sups:['TARGUZ','EXPORFRIOS']},
+        {b:'cacau em po',         brands:['GENUINE','MELKEN'],                 sups:[]},
+        {b:'leite em po',         brands:['NINHO'],                            sups:[]},
+        {b:'granulado de chocolate', brands:['MAVALÉRIO CROCANTE'],            sups:['TARGUZ']},
+        {b:'m&m',                 brands:['M&M'],                              sups:[]},
+        {b:'biscoito amanteigado',brands:['MARILAN','TODESCHINI'],             sups:[]},
+        {b:'marshmallow em po',   brands:['MAVALÉRIO'],                        sups:[]},
+        {b:'leitinho alispec',    brands:['ALISPEC'],                          sups:['UP DISTRIBUIDORA']},
+        {b:'nutella',             brands:['NUTELLA','FERRERO'],                sups:['TARGUZ','UP DISTRIBUIDORA']},
+        {b:'doce de leite',       brands:['LATICINIO SANTA MARIA','DUCAMP'],   sups:[]},
+        {b:'creme de valsa',      brands:['DOREMUS'],                          sups:['TARGUZ']},
+        {b:'bombons sonho de valsa', brands:['LACTA'],                         sups:[]},
+      ];
+
+      var changed = false;
+      DATA.forEach(function(d) {
+        var item = itens.find(function(i) { return !i.isProd && n(i.name).indexOf(n(d.b)) >= 0; });
+        if (!item) return;
+        item.brands = d.brands.slice(0, 3);
+        var ids = d.sups.map(function(sn) { var s = findSup(sn); return s ? s.id : null; }).filter(Boolean);
+        item.supIds = ids;
+        item.supId  = ids[0] || null;
+        changed = true;
+      });
+
+      if (changed) { db._set('vtp_items', itens); }
+      db._set('vtp_v_migr_brands', true);
+    } catch(e) { console.warn('[migr_brands]', e.message); }
+  }, 1500); // aguarda suppliers carregarem
+})();
+
 let suppliers    = db._get('vtp_suppliers', []);
 let users        = db._get('vtp_users', null) || [
   { id:1, name:'Yuri Pappas',   email:'gerente@vaiterpizza.com',      role:'gerente',     active:true },
