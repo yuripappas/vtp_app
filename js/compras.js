@@ -4552,6 +4552,11 @@ function _renderEtapa4OC() {
               background:var(--green-light);color:var(--green);font-size:var(--text-xs);font-weight:600;cursor:pointer">
               ${lc('check-check',11,'currentColor')} Conferir todos
             </button>
+            <button onclick="_abrirAnexoNF('${supKey}','${_listaAtual?.codigo||'LC'}')"
+              style="padding:4px 10px;border-radius:var(--r6);border:1.5px solid var(--purple-light);
+              background:var(--purple-xlight);color:var(--purple);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px">
+              ${lc('file-text',11,'currentColor')} Nota Fiscal
+            </button>
           </div>
         </div>
 
@@ -4610,13 +4615,13 @@ function _renderEtapa4OC() {
                   style="flex:1;padding:4px 7px;border:1.5px solid var(--border);border-radius:var(--r6);
                   font-size:var(--text-xs);background:var(--surface)"
                   onchange="setComentarioConferencia(${i.id},this.value)">
-                <button disabled title="Disponível após integração com banco de dados"
-                  onclick="toast('Anexar arquivos estará disponível após integração com banco de dados','warn')"
+                <button onclick="_abrirAnexoRecebimento(${i.id},'${_listaAtual?.codigo||'LC'}')"
                   style="display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r6);
-                  border:1.5px solid var(--border);background:var(--surface);color:var(--muted);
-                  font-size:var(--text-xs);font-weight:600;cursor:not-allowed;white-space:nowrap;opacity:.7">
-                  ${lc('paperclip',11,'currentColor')} Anexar
-                  ${i.anexos?.length ? `<span style="background:var(--purple);color:#fff;border-radius:99px;padding:0 5px;font-size:var(--text-2xs)">${i.anexos.length}</span>` : ''}
+                  border:1.5px solid ${(i.anexos?.length)?'var(--purple)':'var(--border)'};
+                  background:${(i.anexos?.length)?'var(--purple-xlight)':'var(--surface)'};
+                  color:${(i.anexos?.length)?'var(--purple)':'var(--muted)'};
+                  font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap">
+                  ${lc('paperclip',11,'currentColor')} ${(i.anexos?.length) ? 'Notas ('+i.anexos.length+')' : 'Anexar'}
                 </button>
               </div>
             </div>
@@ -5281,3 +5286,206 @@ function encerrarListaManual() {
 function calcEconomia() {
   return listas.filter(l=>l.status==='concluida').reduce((s,l)=>s+Math.max(0,(l.valorEstimado||0)-(l.valorFinal||0)),0);
 }
+
+// ══════════════════════════════════════════════════════════════
+// INTEGRAÇÃO GOOGLE DRIVE — ANEXAR NOTA FISCAL
+// ══════════════════════════════════════════════════════════════
+
+const _DRIVE_URL = 'https://script.google.com/macros/s/AKfycbxBJqwoZogKJF76yyq6igOJk72Stpc2LsmNw0ONlm724NbrR2AwrhUGi_HJW9Ebn2SA/exec';
+
+// Abre modal para anexar NF do fornecedor (nível do grupo)
+function _abrirAnexoNF(supKey, listaCodigo) {
+  const sup = parseInt(supKey) ? suppliers.find(s => s.id === parseInt(supKey)) : null;
+  const supNome = sup?.name || 'Presencial';
+
+  // Anexos já salvos neste grupo
+  const lista  = _listaAtual;
+  if (!lista._nfAnexos) lista._nfAnexos = {};
+  const anexos = lista._nfAnexos[supKey] || [];
+
+  const popup = document.createElement('div');
+  popup.id = '_popupNF';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;display:flex;align-items:center;justify-content:center;padding:16px';
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:480px;box-shadow:0 16px 60px rgba(0,0,0,.25)">
+      <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:var(--text-md);font-weight:800">${lc('file-text',15,'var(--purple)')} Nota Fiscal — ${supNome}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Lista ${listaCodigo} · Salvo no Google Drive</div>
+        </div>
+        <button onclick="document.getElementById('_popupNF').remove()" style="background:none;border:none;cursor:pointer;padding:6px">${lc('x',18,'var(--muted)')}</button>
+      </div>
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
+        <!-- Upload -->
+        <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px;border:2px dashed var(--purple-light);border-radius:var(--r10);cursor:pointer;background:var(--purple-xlight)">
+          ${lc('upload',24,'var(--purple)')}
+          <span style="font-size:var(--text-sm);font-weight:600;color:var(--purple)">Selecionar arquivo</span>
+          <span style="font-size:var(--text-xs);color:var(--muted)">PDF, JPG, PNG — máx. 10MB</span>
+          <input type="file" id="_nfFileInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
+            onchange="_uploadNF(this,'${supKey}','${listaCodigo}','${supNome}')">
+        </label>
+        <!-- Status upload -->
+        <div id="_nfStatus" style="display:none;padding:10px 14px;border-radius:var(--r8);font-size:var(--text-sm);font-weight:600"></div>
+        <!-- Lista de anexos -->
+        ${anexos.length > 0 ? `
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Arquivos enviados</div>
+          ${anexos.map(a => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface2);border-radius:var(--r8);border:1px solid var(--border)">
+              ${lc('file-text',14,'var(--purple)')}
+              <div style="flex:1;min-width:0">
+                <div style="font-size:var(--text-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.fileName}</div>
+                <div style="font-size:var(--text-2xs);color:var(--muted)">${a.data ? new Date(a.data).toLocaleString('pt-BR') : ''}</div>
+              </div>
+              <a href="${a.viewUrl}" target="_blank"
+                style="padding:4px 10px;border:1.5px solid var(--purple);border-radius:var(--r6);color:var(--purple);font-size:var(--text-xs);font-weight:600;text-decoration:none;white-space:nowrap">
+                ${lc('external-link',11,'currentColor')} Ver
+              </a>
+            </div>`).join('')}
+        </div>` : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+// Anexar arquivo a um item específico do recebimento
+function _abrirAnexoRecebimento(itemId, listaCodigo) {
+  const item = _listaAtual?.itens?.find(i => i.id === itemId);
+  if (!item) return;
+  const supNome = item.nome || item.name || 'Item';
+
+  const popup = document.createElement('div');
+  popup.id = '_popupAnexoItem';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:800;display:flex;align-items:center;justify-content:center;padding:16px';
+  const anexos = item.anexos || [];
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:480px;box-shadow:0 16px 60px rgba(0,0,0,.25)">
+      <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:var(--text-md);font-weight:800">${lc('paperclip',15,'var(--purple)')} Anexar documento</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${supNome} · Lista ${listaCodigo}</div>
+        </div>
+        <button onclick="document.getElementById('_popupAnexoItem').remove()" style="background:none;border:none;cursor:pointer;padding:6px">${lc('x',18,'var(--muted)')}</button>
+      </div>
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
+        <label style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px;border:2px dashed var(--purple-light);border-radius:var(--r10);cursor:pointer;background:var(--purple-xlight)">
+          ${lc('upload',24,'var(--purple)')}
+          <span style="font-size:var(--text-sm);font-weight:600;color:var(--purple)">Selecionar arquivo</span>
+          <span style="font-size:var(--text-xs);color:var(--muted)">PDF, JPG, PNG — máx. 10MB</span>
+          <input type="file" id="_nfFileInputItem" accept=".pdf,.jpg,.jpeg,.png" style="display:none"
+            onchange="_uploadNFItem(this,${itemId},'${listaCodigo}')">
+        </label>
+        <div id="_nfStatusItem" style="display:none;padding:10px 14px;border-radius:var(--r8);font-size:var(--text-sm);font-weight:600"></div>
+        ${anexos.length > 0 ? `
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Arquivos enviados</div>
+          ${anexos.map(a => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface2);border-radius:var(--r8);border:1px solid var(--border)">
+              ${lc('file-text',14,'var(--purple)')}
+              <div style="flex:1;min-width:0">
+                <div style="font-size:var(--text-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.fileName}</div>
+                <div style="font-size:var(--text-2xs);color:var(--muted)">${a.data ? new Date(a.data).toLocaleString('pt-BR') : ''}</div>
+              </div>
+              <a href="${a.viewUrl}" target="_blank" style="padding:4px 10px;border:1.5px solid var(--purple);border-radius:var(--r6);color:var(--purple);font-size:var(--text-xs);font-weight:600;text-decoration:none">${lc('external-link',11,'currentColor')} Ver</a>
+            </div>`).join('')}
+        </div>` : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+// Upload da NF do fornecedor (nível grupo)
+async function _uploadNF(input, supKey, listaCodigo, supNome) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { toast('Arquivo muito grande (máx. 10MB)', 'err'); return; }
+
+  const statusEl = document.getElementById('_nfStatus');
+  if (statusEl) { statusEl.style.display='block'; statusEl.style.background='var(--yellow-light)'; statusEl.style.color='var(--orange-dark)'; statusEl.textContent='⏳ Enviando para o Google Drive...'; }
+
+  try {
+    const b64 = await _fileToBase64(file);
+    const u   = typeof getCurrentUser==='function' ? getCurrentUser() : null;
+    const res = await fetch(_DRIVE_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        fileName:    listaCodigo + '_' + supNome.replace(/\s/g,'_') + '_' + file.name,
+        fileContent: b64,
+        mimeType:    file.type,
+        listaCodigo,
+        fornecedor:  supNome,
+      }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    // Salva referência na lista
+    if (!_listaAtual._nfAnexos) _listaAtual._nfAnexos = {};
+    if (!_listaAtual._nfAnexos[supKey]) _listaAtual._nfAnexos[supKey] = [];
+    _listaAtual._nfAnexos[supKey].push({ fileName: json.fileName, viewUrl: json.viewUrl, data: new Date().toISOString(), user: u?.name||'Sistema' });
+    saveListas();
+
+    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Salvo em <strong>${json.pasta}</strong> · <a href="${json.viewUrl}" target="_blank" style="color:var(--purple)">Abrir no Drive</a>`; }
+    toast('Nota fiscal enviada ao Google Drive!', 'ok');
+    setTimeout(() => { document.getElementById('_popupNF')?.remove(); _renderEtapa4Recebimento(); }, 2000);
+  } catch(e) {
+    if (statusEl) { statusEl.style.background='var(--red-light)'; statusEl.style.color='var(--red)'; statusEl.textContent='❌ Erro: ' + e.message; }
+    toast('Erro ao enviar: ' + e.message, 'err');
+  }
+}
+
+// Upload de documento de item individual
+async function _uploadNFItem(input, itemId, listaCodigo) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { toast('Arquivo muito grande (máx. 10MB)', 'err'); return; }
+
+  const item = _listaAtual?.itens?.find(i => i.id === itemId);
+  if (!item) return;
+
+  const statusEl = document.getElementById('_nfStatusItem');
+  if (statusEl) { statusEl.style.display='block'; statusEl.style.background='var(--yellow-light)'; statusEl.style.color='var(--orange-dark)'; statusEl.textContent='⏳ Enviando para o Google Drive...'; }
+
+  try {
+    const b64 = await _fileToBase64(file);
+    const u   = typeof getCurrentUser==='function' ? getCurrentUser() : null;
+    const res = await fetch(_DRIVE_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        fileName:    listaCodigo + '_' + (item.nome||'item') + '_' + file.name,
+        fileContent: b64,
+        mimeType:    file.type,
+        listaCodigo,
+        fornecedor:  item.nome || 'item',
+      }),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    if (!item.anexos) item.anexos = [];
+    item.anexos.push({ fileName: json.fileName, viewUrl: json.viewUrl, data: new Date().toISOString(), user: u?.name||'Sistema' });
+    saveListas();
+
+    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Enviado! <a href="${json.viewUrl}" target="_blank" style="color:var(--purple)">Abrir no Drive</a>`; }
+    toast('Documento enviado!', 'ok');
+    setTimeout(() => { document.getElementById('_popupAnexoItem')?.remove(); _renderEtapa4Recebimento(); }, 2000);
+  } catch(e) {
+    if (statusEl) { statusEl.style.background='var(--red-light)'; statusEl.style.color='var(--red)'; statusEl.textContent='❌ Erro: ' + e.message; }
+    toast('Erro ao enviar: ' + e.message, 'err');
+  }
+}
+
+// Converte File para base64
+function _fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload  = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// Alias para compatibilidade
+function _renderEtapa4Recebimento() { _renderRecebimento?.() || _renderEtapa4?.(); }
