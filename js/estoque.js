@@ -851,82 +851,242 @@ function abrirDetalheContagem(id) {
   const c    = hist.find(x => x.id === id);
   if (!c) return;
 
-  const cats    = c.categorias || (c.tipo ? [c.tipo] : ['—']);
+  const el = document.getElementById('estPanelHistorico');
+  if (!el) return;
+
+  const cfg  = typeof getConfig === 'function' ? getConfig() : {};
+  const tol  = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+  const cats = c.categorias || (c.tipo ? [c.tipo] : ['—']);
+
+  // Items com divergência — precisam atenção
   const divItems = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
   const okItems  = (c.itens||[]).filter(x => Math.abs(x.diverg||0) <= 0.001);
 
-  const popup2 = document.createElement('div');
-  popup2.id = 'popupDetalheContagem';
-  popup2.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:700;display:flex;align-items:flex-start;justify-content:center;padding:12px;overflow-y:auto';
+  // Estado de checkboxes salvo no registro
+  const cwSub  = c.cwSubido || {};
+  const marcados = divItems.filter(x => cwSub[x.id]).length;
+  const total    = divItems.length;
+  const pct      = total > 0 ? Math.round(marcados / total * 100) : 100;
+  const todos    = marcados >= total;
 
-  popup2.innerHTML = `
-    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:680px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:auto">
-      <div style="padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
-        <div>
-          <div style="font-size:var(--text-base);font-weight:800">${c.id} — Detalhe</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${fmtDT(c.date)} · ${c.user}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
-            ${cats.map(cat => `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:var(--purple);color:#fff">${cat}</span>`).join('')}
+  // Build item rows — mobile cards + desktop table
+  const buildItems = () => {
+    if (!divItems.length) return `
+      <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r10);padding:16px;text-align:center;font-size:var(--text-sm);font-weight:600;color:var(--green)">
+        ${lc('check-circle',16,'currentColor')} Nenhuma divergência nesta contagem!
+      </div>`;
+
+    return divItems.map(x => {
+      const feito    = !!cwSub[x.id];
+      const isAnom   = x.digital > 0 && Math.abs(x.diverg) / x.digital > tol;
+      const pctDiv   = x.digital > 0 ? ((x.diverg / x.digital) * 100).toFixed(1) : '—';
+      const corDif   = x.diverg < 0 ? 'var(--red)' : 'var(--green)';
+      const difStr   = (x.diverg > 0 ? '+' : '') + fmt(x.diverg) + ' ' + x.unit;
+      const bgRow    = feito ? 'var(--green-light)' : 'var(--surface)';
+      const opacity  = feito ? 'opacity:.55' : '';
+
+      return `
+      <div id="cwrow_${c.id}_${x.id}" style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--border);background:${bgRow};transition:background .2s;${opacity}">
+        <!-- Checkbox -->
+        <label style="display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;width:28px;height:28px">
+          <input type="checkbox" ${feito?'checked':''} data-cw-id="${c.id}" data-item-id="${x.id}"
+            onchange="_toggleCwCheck('${c.id}', '${x.id}', this.checked)"
+            style="width:20px;height:20px;accent-color:var(--green);cursor:pointer">
+        </label>
+        <!-- Info item -->
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-size:var(--text-sm);font-weight:600;${feito?'text-decoration:line-through;color:var(--muted)':''}">${x.name}</span>
+            ${isAnom && !feito ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--red)">${lc('alert-triangle',9,'currentColor')} ⚠️</span>` : ''}
+            ${feito ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--green)">${lc('check-circle',9,'currentColor')} Subiu no CW</span>` : ''}
+          </div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">${x.cat || '—'}</div>
+        </div>
+        <!-- Valores -->
+        <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          <div style="text-align:center;min-width:44px">
+            <div style="font-size:var(--text-2xs);color:var(--muted)">CW</div>
+            <div style="font-size:var(--text-sm);font-family:monospace;font-weight:600">${fmt(x.digital)}</div>
+          </div>
+          <div style="text-align:center;min-width:44px">
+            <div style="font-size:var(--text-2xs);color:var(--muted)">Físico</div>
+            <div style="font-size:var(--text-sm);font-family:monospace;font-weight:600">${fmt(x.fisico)}</div>
+          </div>
+          <div style="text-align:center;min-width:56px">
+            <div style="font-size:var(--text-2xs);color:var(--muted)">Dif.</div>
+            <div style="font-size:var(--text-sm);font-family:monospace;font-weight:700;color:${corDif}">${difStr}</div>
+          </div>
+          <div style="text-align:center;min-width:36px">
+            <div style="font-size:var(--text-2xs);color:var(--muted)">%</div>
+            <div style="font-size:var(--text-xs);font-weight:700;color:${corDif}">${x.diverg>0?'+':''}${pctDiv}%</div>
           </div>
         </div>
-        <div style="display:flex;gap:8px;flex-shrink:0">
-          <button onclick="_gerarPDFContagem('${c.id}')"
-            style="padding:7px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);color:var(--text2);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;min-height:40px">
-            ${lc('printer',12,'currentColor')} PDF
-          </button>
-          <button onclick="document.getElementById('popupDetalheContagem').remove()"
-            style="background:none;border:none;cursor:pointer;padding:8px;min-height:44px;display:flex;align-items:center">
-            ${lc('x',18,'var(--muted)')}
-          </button>
+      </div>`;
+    }).join('');
+  };
+
+  el.innerHTML = `
+    <div style="padding:16px">
+      <!-- Cabeçalho com navegação -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">
+        <button onclick="_histAbaTab='contagens';_renderHistoricoAba()"
+          style="display:flex;align-items:center;gap:6px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:700;cursor:pointer;color:var(--text2);min-height:40px">
+          ${lc('arrow-left',13,'currentColor')} Contagens
+        </button>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${cats.map(cat => `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:20px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light)">${cat}</span>`).join('')}
+          <span style="font-size:var(--text-xs);color:var(--muted)">${fmtDT(c.date)} · ${c.user}</span>
         </div>
+        <button onclick="_imprimirGuiaCW('${id}')"
+          style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2);min-height:40px">
+          ${lc('printer',13,'currentColor')} Imprimir guia
+        </button>
       </div>
-      <div style="padding:16px 20px;max-height:65vh;overflow-y:auto">
-        ${divItems.length > 0 ? `
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--orange-dark);margin-bottom:8px">
-            ${lc('alert-triangle',12,'var(--orange-dark)')} Divergências (${divItems.length})
-          </div>
-          <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden;margin-bottom:16px;overflow-x:auto">
-            <table style="width:100%;border-collapse:collapse;min-width:400px">
-              <thead><tr style="background:var(--surface2)">
-                <th style="padding:8px 12px;text-align:left;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Item</th>
-                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">CW</th>
-                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Físico</th>
-                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Dif.</th>
-                <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">%</th>
-              </tr></thead>
-              <tbody>
-                ${divItems.map((x,idx) => {
-                  const pct = x.digital > 0 ? ((x.diverg/x.digital)*100).toFixed(1) : '—';
-                  return `<tr style="border-top:1px solid var(--border);background:${idx%2===0?'var(--surface)':'var(--surface2)'}">
-                    <td style="padding:7px 12px">
-                      <div style="font-size:var(--text-sm);font-weight:600">${x.name}</div>
-                      <div style="font-size:var(--text-2xs);color:var(--muted)">${x.cat}</div>
-                    </td>
-                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.digital)}</td>
-                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.fisico)}</td>
-                    <td style="padding:7px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm);font-weight:700;color:${x.diverg<0?'var(--red)':'var(--green)'}">${x.diverg>0?'+':''}${fmt(x.diverg)} ${x.unit}</td>
-                    <td style="padding:7px 12px;text-align:center;font-size:var(--text-sm);font-weight:600;color:${x.diverg<0?'var(--red)':'var(--green)'}">${x.diverg>0?'+':''}${pct}%</td>
-                  </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
-          </div>` : `
-          <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r8);padding:12px;text-align:center;margin-bottom:16px;font-size:var(--text-sm);font-weight:600;color:var(--green)">
-            ${lc('check-circle',14,'currentColor')} Nenhuma divergência nesta contagem!
-          </div>`}
+
+      <!-- Banner todos concluídos -->
+      ${todos && total > 0 ? `
+      <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r10);padding:12px 16px;display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:var(--text-sm);font-weight:700;color:var(--green)">
+        ${lc('check-circle',16,'currentColor')} Todos os itens foram atualizados no CW!
+      </div>` : total > 0 ? `
+      <!-- Barra de progresso CW -->
+      <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:var(--text-xs);font-weight:700;color:var(--text2)">${lc('refresh-cw',12,'currentColor')} Guia de atualização no CW</span>
+          <span style="font-size:var(--text-xs);font-weight:700;color:${todos?'var(--green)':'var(--muted)'}">${marcados}/${total} marcados</span>
+        </div>
+        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--green);border-radius:3px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:5px">Marque cada item após atualizar no Cardápio Web</div>
+      </div>` : ''}
+
+      <!-- Lista de itens -->
+      <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden">
+        ${total > 0 ? `
+        <div style="padding:8px 16px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px">
+          ${lc('alert-triangle',12,'var(--orange-dark)')}
+          <span style="font-size:var(--text-xs);font-weight:700;color:var(--orange-dark)">Divergências — ${total} item${total>1?'ns':''} para atualizar no CW</span>
+        </div>` : ''}
+        ${buildItems()}
         ${okItems.length > 0 ? `
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:8px">
-            ${lc('check-circle',12,'var(--green)')} OK (${okItems.length})
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:5px">
-            ${okItems.map(x => `<span style="font-size:var(--text-2xs);padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">${x.name}: ${fmt(x.fisico)} ${x.unit}</span>`).join('')}
-          </div>` : ''}
+        <div style="padding:8px 16px;background:var(--surface2);border-top:1.5px solid var(--border);border-bottom:${okItems.length>0?'1px solid var(--border)':'none'}">
+          <span style="font-size:var(--text-xs);font-weight:700;color:var(--green)">${lc('check-circle',12,'currentColor')} Sem divergência — ${okItems.length} item${okItems.length>1?'ns':''}</span>
+        </div>
+        <div style="padding:8px 16px;display:flex;flex-wrap:wrap;gap:5px">
+          ${okItems.map(x => `<span style="font-size:var(--text-2xs);padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">${x.name}: ${fmt(x.fisico)} ${x.unit}</span>`).join('')}
+        </div>` : ''}
       </div>
     </div>`;
-
-  document.body.appendChild(popup2);
-  popup2.addEventListener('click', e => { if(e.target===popup2) popup2.remove(); });
 }
+
+function _toggleCwCheck(contagemId, itemId, checked) {
+  const hist = _getHistContagens();
+  const c    = hist.find(x => x.id === contagemId);
+  if (!c) return;
+  if (!c.cwSubido) c.cwSubido = {};
+  if (checked) c.cwSubido[itemId] = true;
+  else delete c.cwSubido[itemId];
+  _saveHistContagens(hist);
+
+  // Atualiza visual da linha sem re-render
+  const row = document.getElementById('cwrow_' + contagemId + '_' + itemId);
+  if (row) {
+    row.style.background = checked ? 'var(--green-light)' : 'var(--surface)';
+    row.style.opacity    = checked ? '.55' : '1';
+  }
+
+  // Atualiza barra de progresso
+  const divItems = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
+  const marcados = divItems.filter(x => c.cwSubido[x.id]).length;
+  const total    = divItems.length;
+  const pct      = total > 0 ? Math.round(marcados / total * 100) : 100;
+  const barEl    = document.querySelector('#estPanelHistorico [style*="background:var(--green);border-radius:3px;transition"]');
+  if (barEl) barEl.style.width = pct + '%';
+  const countEl  = document.querySelector('#estPanelHistorico [style*="marcados"]');
+
+  // Se todos marcados → mostra banner de sucesso
+  if (marcados >= total && total > 0) {
+    abrirDetalheContagem(contagemId); // re-render para mostrar banner
+  }
+}
+
+function _imprimirGuiaCW(id) {
+  const hist = _getHistContagens();
+  const c    = hist.find(x => x.id === id);
+  if (!c) return;
+  const cfg  = typeof getConfig === 'function' ? getConfig() : {};
+  const tol  = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+  const cats = c.categorias || [c.tipo || '—'];
+  const cwSub = c.cwSubido || {};
+  const divItems = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
+  const nowStr   = new Date().toLocaleString('pt-BR', { dateStyle:'short', timeStyle:'short' });
+
+  const rows = divItems.map(x => {
+    const feito  = !!cwSub[x.id];
+    const isAnom = x.digital > 0 && Math.abs(x.diverg) / x.digital > tol;
+    const corDif = x.diverg < 0 ? '#DC2626' : '#16A34A';
+    return `<tr style="border-bottom:1px solid #e5deff;">
+      <td style="padding:8px 10px;">
+        <div style="font-size:13px;font-weight:600;${feito?'text-decoration:line-through;color:#9B91B8':''}">${x.name}</div>
+        <div style="font-size:10px;color:#9B91B8">${x.cat||'—'}${isAnom?' ⚠️':''}</div>
+      </td>
+      <td style="padding:8px 10px;text-align:center;font-size:13px;font-family:monospace">${fmt(x.digital)}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:13px;font-family:monospace">${fmt(x.fisico)}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:13px;font-family:monospace;font-weight:700;color:${corDif}">${x.diverg>0?'+':''}${fmt(x.diverg)} ${x.unit}</td>
+      <td style="padding:8px 10px;text-align:center;">
+        <div style="width:20px;height:20px;border:2px solid ${feito?'#16A34A':'#6B21D4'};border-radius:4px;display:inline-flex;align-items:center;justify-content:center;background:${feito?'#DCFCE7':'#fff'}">
+          ${feito ? '<span style="font-size:13px;color:#16A34A;font-weight:900">✓</span>' : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Guia CW — ${cats.join(', ')} — ${fmtD(c.date)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#1a0a2e;padding:20px;font-size:12px}
+    .header{border-bottom:2px solid #6b21d4;padding-bottom:10px;margin-bottom:16px}
+    .logo{font-size:16px;font-weight:800;color:#6b21d4}
+    table{width:100%;border-collapse:collapse}
+    thead th{background:#6b21d4;color:#fff;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    .footer{margin-top:20px;font-size:10px;color:#9B91B8;border-top:1px solid #e5deff;padding-top:8px;display:flex;justify-content:space-between}
+    @media print{body{padding:10px}}
+  </style></head><body>
+  <div class="header">
+    <div class="logo">Vai Ter Pizza! — Guia de Atualização CW</div>
+    <div style="font-size:11px;color:#9B91B8;margin-top:4px">
+      Contagem: ${fmtDT(c.date)} · Responsável: ${c.user} · Categorias: ${cats.join(', ')}
+    </div>
+    <div style="font-size:11px;color:#9B91B8">Impresso em: ${nowStr}</div>
+  </div>
+  <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:#92400e">
+    <strong>Instrução:</strong> Para cada item abaixo, atualize a quantidade no Cardápio Web e marque o checkbox ✓ após concluir.
+    Itens marcados com ⚠️ têm divergência acima da tolerância configurada — verificar causa.
+  </div>
+  <table>
+    <thead><tr>
+      <th>Item / Categoria</th>
+      <th style="text-align:center">CW</th>
+      <th style="text-align:center">Físico</th>
+      <th style="text-align:center">Diferença</th>
+      <th style="text-align:center;width:60px">Subiu no CW</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">
+    <span>Vai Ter Pizza! · Sistema de Operações</span>
+    <span>${divItems.length} item(ns) · ${divItems.filter(x=>cwSub[x.id]).length} já atualizados</span>
+  </div>
+  <script>window.onload=()=>window.print()<\/script>
+  </body></html>`;
+
+  const win = window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
+}
+
+
 
 // ── Gerador de PDF ────────────────────────────────────────────
 function _gerarPDFContagem(id) {
