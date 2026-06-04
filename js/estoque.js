@@ -123,18 +123,7 @@ function _renderCatCards(el) {
     console.error('[_renderCatCards] estPanelContagem não encontrado!');
     return;
   }
-  // Diagnóstico: força visibilidade do elemento e seus pais
-  el.style.display = 'block';
-  el.style.minHeight = '300px';
-  let p = el.parentElement;
-  while (p && p !== document.body) {
-    if (getComputedStyle(p).display === 'none') {
-      console.error('[_renderCatCards] pai com display:none:', p.id || p.className);
-      p.style.display = 'block';
-    }
-    p = p.parentElement;
-  }
-  console.log('[_renderCatCards] el encontrado, items:', typeof items !== 'undefined' ? items.length : 'undefined');
+
 
   const allItems   = typeof items !== 'undefined' ? items : [];
   const allCats    = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
@@ -218,25 +207,14 @@ function _renderCatCards(el) {
       </button>`;
     document.body.appendChild(bar);
 
-    // Listener direto no botão — criado via JS, sem onclick inline
+    // Listener direto no botão
     document.getElementById('_ctgBtnIniciar').addEventListener('click', function() {
-      console.log('[CTG] 1 CLICOU, cats:', catsArr);
       document.getElementById('_ctgBarExt')?.remove();
-      console.log('[CTG] 2 bar removida');
-      _contagemAtiva = true;
+      _contagemAtiva      = true;
       _categoriasContando = catsArr;
-      _catsSelecionadas = new Set();
-      _contagem = {};
-      console.log('[CTG] 3 typeof _renderEstContagemAtiva:', typeof _renderEstContagemAtiva);
-      console.log('[CTG] 3.5 codigo:', _renderEstContagemAtiva.toString().substring(0,120));
-      console.log('[CTG] 4 el existe?', !!document.getElementById('estPanelContagem'));
-      try {
-        _renderEstContagemAtiva();
-        console.log('[CTG] 5 _renderEstContagemAtiva retornou');
-      } catch(err) {
-        console.error('[CTG] ERRO em _renderEstContagemAtiva:', err);
-      }
-      console.log('[CTG] 6 FIM do handler');
+      _catsSelecionadas   = new Set();
+      _contagem           = {};
+      _renderEstContagemAtiva();
     });
   }
 
@@ -288,29 +266,15 @@ window._ctgIniciar = function(btn) {
 };
 
 function _renderEstContagemAtiva() {
-  console.log('[CTG] _renderEstContagemAtiva chamado, cats:', _categoriasContando);
-  // Força visibilidade do page-estoque
-  const pageEl = document.getElementById('page-estoque');
-  console.log('[CTG] page-estoque active:', pageEl?.classList.contains('active'), 'display:', pageEl ? getComputedStyle(pageEl).display : 'N/A');
-
   const el = document.getElementById('estPanelContagem');
-  console.log('[CTG] estPanelContagem found:', !!el, 'offsetHeight:', el?.offsetHeight, 'display:', el ? getComputedStyle(el).display : 'N/A');
-
-  if (!el) { console.error('[CTG] EL NULO!'); return; }
-
-  // TESTE DEFINITIVO — fundo vermelho + texto branco
-  el.setAttribute('style', 'background:red;min-height:400px;display:block;position:relative;z-index:1');
-  el.innerHTML = '<div style="padding:40px;color:white;font-size:28px;font-weight:bold;">CONTAGEM INICIADA ✓</div>';
-  console.log('[CTG] Red test done, offsetHeight:', el.offsetHeight);
-  window.scrollTo(0,0);
-  return; // <<< REMOVE QUANDO FUNCIONAR
+  if (!el) return;
+  el.removeAttribute('style'); // limpa estilos de debug
 
   const allItems = typeof items !== 'undefined' ? items : [];
   const todosItens = [];
   _categoriasContando.forEach(cat => {
     allItems.filter(i => (i.cat||'Outros') === cat).forEach(i => todosItens.push(i));
   });
-  console.log('[CTG] todosItens:', todosItens.length);
 
   const total    = todosItens.length;
   const contados = Object.keys(_contagem).length;
@@ -359,9 +323,7 @@ function _renderEstContagemAtiva() {
   html += '<button onclick="concluirContagemEstoque()" style="width:100%;padding:14px;background:' + (contados>0?'#16a34a':'#ddd') + ';color:' + (contados>0?'#fff':'#999') + ';border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">';
   html += 'Concluir' + (contados>0?' · '+contados+' itens':'') + '</button></div>';
 
-  console.log('[CTG] ANTES innerHTML len:', html.length);
   el.innerHTML = html;
-  console.log('[CTG] DEPOIS innerHTML, offsetHeight:', el.offsetHeight, 'offsetParent:', el.offsetParent?.id);
 
   // Input handler via delegation
   el.addEventListener('input', function(e) {
