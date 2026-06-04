@@ -5424,9 +5424,13 @@ async function _uploadNF(input, supKey, listaCodigo, supNome) {
     _listaAtual._nfAnexos[supKey].push({ fileName: nfNome, viewUrl: 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT', data: new Date().toISOString(), user: u?.name||'Sistema' });
     saveListas();
 
-    const pastaUrl = 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT';
-    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Enviado para o Google Drive! <a href="${pastaUrl}" target="_blank" style="color:var(--purple)">Ver pasta COMPRAS/${listaCodigo}/NOTAS →</a>`; }
-    toast('Nota fiscal enviada ao Google Drive!', 'ok');
+    const driveUrl = json.viewUrl || 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT';
+    const pasta    = json.pasta || ('COMPRAS/' + listaCodigo + '/NOTAS/');
+    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Salvo em <strong>${pasta}</strong> · <a href="${driveUrl}" target="_blank" style="color:var(--purple)">Abrir no Drive →</a>`; }
+    toast('Nota fiscal salva no Google Drive!', 'ok');
+    // Atualiza URL com a real retornada pelo Drive
+    if (json.viewUrl) _listaAtual._nfAnexos[supKey].slice(-1)[0].viewUrl = json.viewUrl;
+    saveListas();
     setTimeout(() => { document.getElementById('_popupNF')?.remove(); _renderEtapa4Recebimento(); }, 3000);
   } catch(e) {
     if (statusEl) { statusEl.style.background='var(--red-light)'; statusEl.style.color='var(--red)'; statusEl.textContent='❌ Erro: ' + e.message; }
@@ -5463,9 +5467,11 @@ async function _uploadNFItem(input, itemId, listaCodigo) {
     item.anexos.push({ fileName: itemNome, viewUrl: 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT', data: new Date().toISOString(), user: u?.name||'Sistema' });
     saveListas();
 
-    const pastaUrl2 = 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT';
-    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Enviado! <a href="${pastaUrl2}" target="_blank" style="color:var(--purple)">Ver no Drive →</a>`; }
+    const driveUrl2 = json.viewUrl || 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT';
+    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Enviado! <a href="${driveUrl2}" target="_blank" style="color:var(--purple)">Abrir no Drive →</a>`; }
     toast('Documento enviado!', 'ok');
+    if (json.viewUrl) item.anexos.slice(-1)[0].viewUrl = json.viewUrl;
+    saveListas();
     setTimeout(() => { document.getElementById('_popupAnexoItem')?.remove(); _renderEtapa4Recebimento(); }, 3000);
   } catch(e) {
     if (statusEl) { statusEl.style.background='var(--red-light)'; statusEl.style.color='var(--red)'; statusEl.textContent='❌ Erro: ' + e.message; }
@@ -5483,17 +5489,21 @@ function _fileToBase64(file) {
   });
 }
 
-// POST para Google Apps Script com mode:no-cors
-// O arquivo CHEGA no GAS e é salvo no Drive, mas não conseguimos ler a resposta (limitação de CORS do browser)
+// POST para Google Apps Script como form-encoded (simple request — sem CORS preflight)
+// GAS lê via e.parameter.payload
 async function _postToGAS(url, data) {
-  await fetch(url, {
+  const params = new URLSearchParams();
+  params.append('payload', JSON.stringify(data));
+
+  const res = await fetch(url, {
     method: 'POST',
-    mode: 'no-cors',  // necessário — GAS não suporta CORS preflight
-    body: JSON.stringify(data),
+    body: params,
+    // Content-Type: application/x-www-form-urlencoded → simple request, sem preflight
+    redirect: 'follow',
   });
-  // Com no-cors o fetch sempre "resolve" (sem erro mesmo se falhar)
-  // O arquivo aparecerá no Drive se o GAS executou com sucesso
-  return { ok: true, nocors: true };
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch(e) { return { ok: true, raw: text }; }
 }
 
 // Alias para compatibilidade
