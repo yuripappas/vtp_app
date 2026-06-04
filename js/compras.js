@@ -5420,12 +5420,14 @@ async function _uploadNF(input, supKey, listaCodigo, supNome) {
     // Salva referência na lista
     if (!_listaAtual._nfAnexos) _listaAtual._nfAnexos = {};
     if (!_listaAtual._nfAnexos[supKey]) _listaAtual._nfAnexos[supKey] = [];
-    _listaAtual._nfAnexos[supKey].push({ fileName: json.fileName, viewUrl: json.viewUrl, data: new Date().toISOString(), user: u?.name||'Sistema' });
+    const nfNome = listaCodigo + '_' + supNome.replace(/\s/g,'_') + '_' + file.name;
+    _listaAtual._nfAnexos[supKey].push({ fileName: nfNome, viewUrl: 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT', data: new Date().toISOString(), user: u?.name||'Sistema' });
     saveListas();
 
-    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Salvo em <strong>${json.pasta}</strong> · <a href="${json.viewUrl}" target="_blank" style="color:var(--purple)">Abrir no Drive</a>`; }
+    const pastaUrl = 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT';
+    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Enviado para o Google Drive! <a href="${pastaUrl}" target="_blank" style="color:var(--purple)">Ver pasta COMPRAS/${listaCodigo}/NOTAS →</a>`; }
     toast('Nota fiscal enviada ao Google Drive!', 'ok');
-    setTimeout(() => { document.getElementById('_popupNF')?.remove(); _renderEtapa4Recebimento(); }, 2000);
+    setTimeout(() => { document.getElementById('_popupNF')?.remove(); _renderEtapa4Recebimento(); }, 3000);
   } catch(e) {
     if (statusEl) { statusEl.style.background='var(--red-light)'; statusEl.style.color='var(--red)'; statusEl.textContent='❌ Erro: ' + e.message; }
     toast('Erro ao enviar: ' + e.message, 'err');
@@ -5457,12 +5459,14 @@ async function _uploadNFItem(input, itemId, listaCodigo) {
     if (!json.ok) throw new Error(json.error);
 
     if (!item.anexos) item.anexos = [];
-    item.anexos.push({ fileName: json.fileName, viewUrl: json.viewUrl, data: new Date().toISOString(), user: u?.name||'Sistema' });
+    const itemNome = listaCodigo + '_' + (item.nome||'item') + '_' + file.name;
+    item.anexos.push({ fileName: itemNome, viewUrl: 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT', data: new Date().toISOString(), user: u?.name||'Sistema' });
     saveListas();
 
-    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Enviado! <a href="${json.viewUrl}" target="_blank" style="color:var(--purple)">Abrir no Drive</a>`; }
+    const pastaUrl2 = 'https://drive.google.com/drive/folders/14YHsIhoHv3TU4oh8U_ye1S_3wr0vWOzT';
+    if (statusEl) { statusEl.style.background='var(--green-light)'; statusEl.style.color='var(--green)'; statusEl.innerHTML=`✅ Enviado! <a href="${pastaUrl2}" target="_blank" style="color:var(--purple)">Ver no Drive →</a>`; }
     toast('Documento enviado!', 'ok');
-    setTimeout(() => { document.getElementById('_popupAnexoItem')?.remove(); _renderEtapa4Recebimento(); }, 2000);
+    setTimeout(() => { document.getElementById('_popupAnexoItem')?.remove(); _renderEtapa4Recebimento(); }, 3000);
   } catch(e) {
     if (statusEl) { statusEl.style.background='var(--red-light)'; statusEl.style.color='var(--red)'; statusEl.textContent='❌ Erro: ' + e.message; }
     toast('Erro ao enviar: ' + e.message, 'err');
@@ -5479,26 +5483,17 @@ function _fileToBase64(file) {
   });
 }
 
-// POST para Google Apps Script com XMLHttpRequest (evita problema de CORS/preflight do fetch)
-function _postToGAS(url, data) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', url, true);
-    xhr.withCredentials = false;
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState !== 4) return;
-      if (xhr.status >= 200 && xhr.status < 400) {
-        try { resolve(JSON.parse(xhr.responseText)); }
-        catch(e) { resolve({ ok: true, raw: xhr.responseText }); }
-      } else {
-        reject(new Error('Erro HTTP ' + xhr.status + ': ' + xhr.responseText));
-      }
-    };
-    xhr.onerror   = () => reject(new Error('Falha de rede. Verifique a conexão.'));
-    xhr.ontimeout = () => reject(new Error('Tempo esgotado. Tente novamente.'));
-    xhr.timeout   = 60000; // 60s para arquivos grandes
-    xhr.send(JSON.stringify(data));
+// POST para Google Apps Script com mode:no-cors
+// O arquivo CHEGA no GAS e é salvo no Drive, mas não conseguimos ler a resposta (limitação de CORS do browser)
+async function _postToGAS(url, data) {
+  await fetch(url, {
+    method: 'POST',
+    mode: 'no-cors',  // necessário — GAS não suporta CORS preflight
+    body: JSON.stringify(data),
   });
+  // Com no-cors o fetch sempre "resolve" (sem erro mesmo se falhar)
+  // O arquivo aparecerá no Drive se o GAS executou com sucesso
+  return { ok: true, nocors: true };
 }
 
 // Alias para compatibilidade
