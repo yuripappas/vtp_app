@@ -47,6 +47,7 @@ const MOV_TIPOS = {
 // RENDER PRINCIPAL + TABS
 // ══════════════════════════════════════════════════════════════
 function renderEstoque() {
+  document.getElementById('_ctgBarExt')?.remove(); // limpa barra externa ao navegar
   try {
     _atualizarEstTabs();
     if (_estTab === 'movimentacoes') {
@@ -183,45 +184,56 @@ function _renderCatCards(el) {
   });
 
   const nCats = _catsSelecionadas.size;
-  // Passa as categorias como data-attribute para evitar dependência de escopo no onclick
-  const catsEncoded = [..._catsSelecionadas].map(c => encodeURIComponent(c)).join(',');
-  const barHtml = nCats > 0 ? `
-    <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:var(--surface);border-top:1.5px solid var(--border);
-        display:flex;align-items:center;justify-content:space-between;gap:12px;
-        box-shadow:0 -4px 16px rgba(0,0,0,.08);z-index:100" id="ctgBarFix">
-      <div style="font-size:var(--text-sm);color:var(--text2)">
-        <strong style="color:var(--purple)">${nCats}</strong> categoria${nCats > 1 ? 's' : ''} ·
-        <strong>${totalSel}</strong> itens
-      </div>
-      <button data-cats="${catsEncoded}"
-        onclick="window._ctgIniciar(this);"
-        style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
-          font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;min-height:44px">
-        ${lc('play-circle',15,'#fff')} Iniciar contagem
-      </button>
-    </div>` : '';
+  const catsArr = [..._catsSelecionadas];
 
   el.innerHTML = `
-    <div style="padding:16px">
+    <div style="padding:16px;padding-bottom:${nCats > 0 ? '80px' : '16px'}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
         <div>
           <div style="font-size:var(--text-base);font-weight:800">${lc('clipboard-list',16,'var(--purple)')} Contagem de Estoque</div>
           <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Selecione uma ou mais categorias para contar</div>
         </div>
-        <button onclick="verHistoricoContagens()"
+        <button id="btnHistContagem2"
           style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2);min-height:40px">
           ${lc('clock',13,'currentColor')} Histórico
         </button>
       </div>
-      <div id="catGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:${_catsSelecionadas.size > 0 ? '72px' : '8px'}">
+      <div id="catGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">
         ${cardsHtml}
       </div>
-    </div>
-    ${barHtml}`;
+    </div>`;
 
-  // Função global para o botão — não depende de addEventListener pós-render
+  // Barra de ação: criada via JS e appendada ao body para evitar problemas de inline
+  document.getElementById('_ctgBarExt')?.remove();
+  if (nCats > 0) {
+    const bar = document.createElement('div');
+    bar.id = '_ctgBarExt';
+    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:12px 16px;background:#fff;border-top:2px solid #e5deff;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 16px rgba(0,0,0,.08);z-index:500;';
+    bar.innerHTML = `
+      <div style="font-size:14px;color:#4b4569;">
+        <strong style="color:#6b21d4;">${nCats}</strong> categoria${nCats > 1 ? 's' : ''} · <strong>${totalSel}</strong> itens
+      </div>
+      <button id="_ctgBtnIniciar" style="padding:11px 20px;background:#6b21d4;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;">
+        ▶ Iniciar contagem
+      </button>`;
+    document.body.appendChild(bar);
 
-  // Delegação: qualquer clique num card com data-cat
+    // Listener direto no botão — criado via JS, sem onclick inline
+    document.getElementById('_ctgBtnIniciar').addEventListener('click', function() {
+      console.log('[CTG] CLICOU Iniciar, cats:', catsArr);
+      document.getElementById('_ctgBarExt')?.remove();
+      _contagemAtiva      = true;
+      _categoriasContando = catsArr;
+      _catsSelecionadas   = new Set();
+      _contagem           = {};
+      _renderContagemAtiva();
+    });
+  }
+
+  // Histórico
+  document.getElementById('btnHistContagem2')?.addEventListener('click', verHistoricoContagens);
+
+  // Cards: delegação por data-cat
   el.querySelector('#catGrid')?.addEventListener('click', e => {
     const btn = e.target.closest('[data-cat]');
     if (!btn) return;
