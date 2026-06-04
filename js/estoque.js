@@ -112,7 +112,7 @@ function _estIconCat(cat) {
 function _renderContagemTab() {
   const el = document.getElementById('estPanelContagem');
   if (!el) return;
-  if (_contagemAtiva) _renderContagemAtiva(el);
+  if (_contagemAtiva) _renderEstContagemAtiva(el);
   else                _renderCatCards(el);
 }
 
@@ -227,14 +227,14 @@ function _renderCatCards(el) {
       _categoriasContando = catsArr;
       _catsSelecionadas = new Set();
       _contagem = {};
-      console.log('[CTG] 3 typeof _renderContagemAtiva:', typeof _renderContagemAtiva);
-      console.log('[CTG] 3.5 codigo:', _renderContagemAtiva.toString().substring(0,120));
+      console.log('[CTG] 3 typeof _renderEstContagemAtiva:', typeof _renderEstContagemAtiva);
+      console.log('[CTG] 3.5 codigo:', _renderEstContagemAtiva.toString().substring(0,120));
       console.log('[CTG] 4 el existe?', !!document.getElementById('estPanelContagem'));
       try {
-        _renderContagemAtiva();
-        console.log('[CTG] 5 _renderContagemAtiva retornou');
+        _renderEstContagemAtiva();
+        console.log('[CTG] 5 _renderEstContagemAtiva retornou');
       } catch(err) {
-        console.error('[CTG] ERRO em _renderContagemAtiva:', err);
+        console.error('[CTG] ERRO em _renderEstContagemAtiva:', err);
       }
       console.log('[CTG] 6 FIM do handler');
     });
@@ -267,7 +267,7 @@ function _iniciarContagem() {
   _categoriasContando = [..._catsSelecionadas];
   _catsSelecionadas   = new Set();
   _contagem           = {};
-  _renderContagemAtiva();
+  _renderEstContagemAtiva();
 }
 window._iniciarContagem = _iniciarContagem;
 
@@ -281,14 +281,14 @@ window._ctgIniciar = function(btn) {
     _categoriasContando = cats;
     _catsSelecionadas   = new Set();
     _contagem           = {};
-    _renderContagemAtiva();
+    _renderEstContagemAtiva();
   } catch(e) {
     alert('ERRO _ctgIniciar: ' + e.message);
   }
 };
 
-function _renderContagemAtiva() {
-  console.log('[CTG] _renderContagemAtiva chamado, cats:', _categoriasContando);
+function _renderEstContagemAtiva() {
+  console.log('[CTG] _renderEstContagemAtiva chamado, cats:', _categoriasContando);
   // Força visibilidade do page-estoque
   const pageEl = document.getElementById('page-estoque');
   console.log('[CTG] page-estoque active:', pageEl?.classList.contains('active'), 'display:', pageEl ? getComputedStyle(pageEl).display : 'N/A');
