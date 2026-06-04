@@ -194,7 +194,7 @@ function _renderCatCards(el) {
         <strong>${totalSel}</strong> itens
       </div>
       <button data-cats="${catsEncoded}"
-        onclick="window._ctgIniciar(this)"
+        onclick="alert('CLICOU! cats=' + this.getAttribute('data-cats')); window._ctgIniciar(this);"
         style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
           font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;min-height:44px">
         ${lc('play-circle',15,'#fff')} Iniciar contagem
