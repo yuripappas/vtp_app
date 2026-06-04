@@ -192,7 +192,7 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   border: 1.5px solid var(--nav-bg);
 }
 
-.sb-bottom { padding: 8px; border-top: 1px solid var(--nav-border); }
+.sb-bottom { padding: 8px; border-top: 1px solid var(--nav-border); flex-shrink: 0; }
 
 .sb-user {
   display: flex;
@@ -1779,7 +1779,43 @@ svg { display: block; }
 }
 
 /* ── 20. Overflow horizontal global — última linha de defesa ── */
+/* ATENÇÃO: overflow no .app quebra stacking context e interfere nos z-indexes do sidebar/backdrop */
+/* Aplicar apenas no body e apenas overflow-x, nunca overflow: hidden completo */
 @media (max-width: 768px) {
-  body { overflow-x: hidden; }
-  .app { overflow-x: hidden; }
+  body { overflow-x: clip; } /* clip não cria stacking context, diferente de hidden */
+}
+
+/* ── 21. Sidebar mobile — fixes de navegação ── */
+@media (max-width: 768px) {
+  /* Sidebar: garante que todo o conteúdo seja rolável */
+  #sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Backdrop: pointer-events garante bloqueio de cliques na página */
+  .mobile-backdrop {
+    pointer-events: auto;
+    cursor: pointer;
+    /* z-index deve ser menor que sidebar (950) mas maior que todo conteúdo */
+    z-index: 945 !important;
+  }
+
+  /* sb-nav: ocupa espaço disponível mas permite rolagem */
+  #sidebar .sb-nav {
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    min-height: 0 !important; /* essencial para flex+overflow funcionar */
+  }
+
+  /* sb-bottom e sb-user: nunca encolhem, sempre visíveis */
+  #sidebar .sb-bottom {
+    flex-shrink: 0 !important;
+    position: sticky !important;
+    bottom: 0 !important;
+    background: var(--nav-bg) !important;
+    z-index: 1 !important;
+  }
 }

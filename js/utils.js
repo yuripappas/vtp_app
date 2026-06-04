@@ -61,10 +61,14 @@ function toggleMobileMenu() {
     sidebar.classList.add('mobile-open');
     backdrop.classList.add('visible');
     btn.innerHTML = _MB_CLOSE;
+    // Trava scroll do body para evitar scroll-behind
+    document.body.style.overflow = 'hidden';
   } else {
     sidebar.classList.remove('mobile-open');
     backdrop.classList.remove('visible');
     btn.innerHTML = _MB_HAMBURGER;
+    // Restaura scroll
+    document.body.style.overflow = '';
     if (_mobileSubmenuActive) _closeMobileSubmenu();
   }
 }
