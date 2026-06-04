@@ -228,6 +228,7 @@ function _renderCatCards(el) {
       _catsSelecionadas = new Set();
       _contagem = {};
       console.log('[CTG] 3 typeof _renderContagemAtiva:', typeof _renderContagemAtiva);
+      console.log('[CTG] 3.5 codigo:', _renderContagemAtiva.toString().substring(0,120));
       console.log('[CTG] 4 el existe?', !!document.getElementById('estPanelContagem'));
       try {
         _renderContagemAtiva();
