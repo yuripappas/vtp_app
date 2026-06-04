@@ -66,7 +66,7 @@
     'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=45');
+    await loadScript(src + '?v=46');
   }
 
   // First run: push all initialized data to Supabase

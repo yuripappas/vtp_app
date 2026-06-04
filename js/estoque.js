@@ -116,11 +116,30 @@ function _renderContagemTab() {
   else                _renderCatCards(el);
 }
 
+// ── Data da última importação CW por categoria ────────────────
+function _ultimaImportCWporCat() {
+  const histCW = db._get('vtp_hist_imports_cw', []);
+  if (!histCW.length) return {};
+  // Última importação global (qualquer item)
+  const ultima = [...histCW].sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+  // Mapa: catName → date string da última importação que afetou itens desta categoria
+  const mapa = {};
+  const allItems = typeof items !== 'undefined' ? items : [];
+  histCW.forEach(h => {
+    (h.itens || []).forEach(hi => {
+      const item = allItems.find(i => i.id === hi.id);
+      if (!item) return;
+      const cat = item.cat || 'Outros';
+      if (!mapa[cat] || h.date > mapa[cat]) mapa[cat] = h.date;
+    });
+  });
+  return mapa;
+}
+
 // ── Cards de categoria ────────────────────────────────────────
 function _renderCatCards(el) {
   if (!el) el = document.getElementById('estPanelContagem');
   if (!el) {
-    console.error('[_renderCatCards] estPanelContagem não encontrado!');
     return;
   }
 
@@ -128,6 +147,16 @@ function _renderCatCards(el) {
   const allItems   = typeof items !== 'undefined' ? items : [];
   const allCats    = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
   const ultimaMapa = _ultimaContagemPorItem();
+  const ultimaCWMapa = _ultimaImportCWporCat();
+
+  // Última importação CW global
+  const histCW = db._get('vtp_hist_imports_cw', []);
+  const ultimaCWGlobal = histCW.length ? [...histCW].sort((a,b) => new Date(b.date)-new Date(a.date))[0] : null;
+  const _diasStr = dateStr => {
+    if (!dateStr) return null;
+    const d = Math.floor((Date.now() - new Date(dateStr)) / 864e5);
+    return d === 0 ? 'hoje' : d === 1 ? 'ontem' : d + 'd atrás';
+  };
 
   const totalSel = [..._catsSelecionadas].reduce((s,c) =>
     s + allItems.filter(i => (i.cat||'Outros') === c).length, 0);
@@ -152,6 +181,10 @@ function _renderCatCards(el) {
       if (diverg > 0) ultimaLabel = diverg + ' diverg. · ' + ultimaLabel;
     }
 
+    // Última atualização CW desta categoria
+    const cwDate = ultimaCWMapa[cat] || null;
+    const cwLabel = cwDate ? ('CW: ' + _diasStr(cwDate)) : 'CW: nunca';
+
     const checkHtml = sel
       ? '<span style="position:absolute;top:8px;right:8px;width:18px;height:18px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center">' + lc('check',10,'#fff') + '</span>'
       : '';
@@ -169,6 +202,7 @@ function _renderCatCards(el) {
         <div style="font-size:var(--text-xs);font-weight:700;color:${sel ? 'var(--purple)' : 'var(--text)'};line-height:1.2">${cat}</div>
         <div style="font-size:var(--text-2xs);color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
         <div style="font-size:.62rem;color:${diverg > 0 ? 'var(--orange-dark)' : 'var(--muted)'}">${ultimaLabel}</div>
+        <div style="font-size:.60rem;color:var(--muted);opacity:.75">${cwLabel}</div>
       </button>`;
   });
 
@@ -181,6 +215,7 @@ function _renderCatCards(el) {
         <div>
           <div style="font-size:var(--text-base);font-weight:800">${lc('clipboard-list',16,'var(--purple)')} Contagem de Estoque</div>
           <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Selecione uma ou mais categorias para contar</div>
+          ${ultimaCWGlobal ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:4px">${lc('upload',10,'var(--muted)')} Última importação CW: <strong>${_diasStr(ultimaCWGlobal.date)}</strong> · ${ultimaCWGlobal.user}</div>` : ''}
         </div>
         <button id="btnHistContagem2"
           style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2);min-height:40px">
@@ -653,71 +688,160 @@ function _enviarResumoWA(contagemId) {
 }
 
 // ── Histórico de contagens ────────────────────────────────────
-function verHistoricoContagens() {
-  const hist  = _getHistContagens();
+let _histTab = 'contagens'; // 'contagens' | 'cw'
+
+function verHistoricoContagens(tab) {
+  if (tab) _histTab = tab;
+  document.getElementById('popupHistContagem')?.remove();
+
+  const hist    = _getHistContagens();
+  const histCW  = db._get('vtp_hist_imports_cw', []);
+  const cfg     = typeof getConfig === 'function' ? getConfig() : {};
+  const tol     = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+
+  const _catChips = cats => (Array.isArray(cats) ? cats : [cats || '—']).map(c =>
+    `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light)">${c}</span>`
+  ).join('');
+
+  // ── Aba Contagens ──
+  const abaContagens = hist.length === 0
+    ? `<div style="text-align:center;padding:40px;color:var(--muted);font-size:var(--text-sm)">Nenhuma contagem registrada ainda.</div>`
+    : [...hist].reverse().map(c => {
+        const cats   = c.categorias || (c.tipo ? [c.tipo] : ['—']);
+        const divs   = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
+        const anom   = divs.filter(x => x.digital > 0 && Math.abs(x.diverg)/x.digital > tol);
+        const cor    = anom.length > 0 ? 'var(--red)' : divs.length > 0 ? 'var(--orange-dark)' : 'var(--green)';
+        const bg     = anom.length > 0 ? 'var(--red-light)' : divs.length > 0 ? 'var(--yellow-light)' : 'var(--surface2)';
+        return `
+        <div style="border:1.5px solid ${anom.length>0?'var(--red)':divs.length>0?'var(--yellow)':'var(--border)'};border-radius:var(--r10);overflow:hidden">
+          <div style="padding:12px 14px;background:${bg};display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:4px">${fmtDT(c.date)} · <strong>${c.user}</strong></div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px">${_catChips(cats)}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <div style="text-align:center;padding:3px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
+                <div style="font-size:var(--text-md);font-weight:800;color:var(--purple)">${c.total}</div>
+                <div style="font-size:var(--text-2xs);color:var(--muted)">itens</div>
+              </div>
+              <div style="text-align:center;padding:3px 8px;background:${bg};border:1px solid ${cor}33;border-radius:var(--r6)">
+                <div style="font-size:var(--text-md);font-weight:800;color:${cor}">${divs.length}</div>
+                <div style="font-size:var(--text-2xs);color:var(--muted)">diverg.</div>
+              </div>
+              ${anom.length > 0 ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--red)">${lc('alert-triangle',11,'currentColor')} ${anom.length} ⚠️</span>` : ''}
+            </div>
+          </div>
+          <div style="padding:8px 14px;display:flex;gap:6px">
+            <button onclick="abrirDetalheContagem('${c.id}')"
+              style="flex:1;padding:7px;border:1.5px solid var(--purple);border-radius:var(--r6);background:var(--surface);color:var(--purple);font-size:var(--text-xs);font-weight:600;cursor:pointer;min-height:40px">
+              ${lc('search',11,'currentColor')} Ver detalhe
+            </button>
+            <button onclick="_gerarPDFContagem('${c.id}')"
+              style="flex:1;padding:7px;border:1.5px solid var(--border);border-radius:var(--r6);background:var(--surface);color:var(--text2);font-size:var(--text-xs);font-weight:600;cursor:pointer;min-height:40px">
+              ${lc('printer',11,'currentColor')} PDF
+            </button>
+          </div>
+        </div>`;
+      }).join('');
+
+  // ── Aba Importações CW ──
+  const abaCW = histCW.length === 0
+    ? `<div style="text-align:center;padding:40px;color:var(--muted);font-size:var(--text-sm)">Nenhuma importação CW registrada ainda.<br><small>As próximas importações via CSV serão registradas aqui.</small></div>`
+    : [...histCW].reverse().map(h => {
+        const atualizados = (h.itens||[]).filter(x => Math.abs(x.diff||0) > 0.001);
+        return `
+        <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden">
+          <div style="padding:12px 14px;background:var(--surface2);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:var(--text-xs);color:var(--muted)">${fmtDT(h.date)} · <strong>${h.user}</strong></div>
+              <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">${h.total} itens importados · ${atualizados.length} com alteração</div>
+            </div>
+            <button onclick="_abrirDetalheCW('${h.id}')"
+              style="padding:6px 12px;border:1.5px solid var(--purple);border-radius:var(--r6);background:var(--surface);color:var(--purple);font-size:var(--text-xs);font-weight:600;cursor:pointer;min-height:36px">
+              ${lc('search',11,'currentColor')} Ver itens
+            </button>
+          </div>
+          ${atualizados.length > 0 ? `
+          <div style="padding:6px 14px;display:flex;flex-wrap:wrap;gap:4px">
+            ${atualizados.slice(0,5).map(x => `
+              <span style="font-size:var(--text-2xs);padding:2px 7px;border-radius:20px;background:${x.diff>0?'var(--green-light)':'var(--red-light)'};color:${x.diff>0?'var(--green)':'var(--red)'};border:1px solid ${x.diff>0?'var(--green)':'var(--red)'}">
+                ${x.name}: ${x.diff>0?'+':''}${fmt(x.diff)}
+              </span>`).join('')}
+            ${atualizados.length > 5 ? `<span style="font-size:var(--text-2xs);color:var(--muted)">+${atualizados.length-5} mais</span>` : ''}
+          </div>` : ''}
+        </div>`;
+      }).join('');
+
   const popup = document.createElement('div');
   popup.id = 'popupHistContagem';
   popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:12px;overflow-y:auto';
-
-  const _catChips = (cats) => {
-    if (!cats?.length) return '';
-    return (Array.isArray(cats) ? cats : [cats]).map(c =>
-      `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light)">${c}</span>`
-    ).join('');
-  };
-
   popup.innerHTML = `
     <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:720px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0;position:sticky;top:0;z-index:1">
-        <div>
-          <div style="font-size:var(--text-base);font-weight:800">${lc('clock',16,'var(--purple)')} Histórico de Contagens</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${hist.length} contagem(ns) · todas as categorias</div>
-        </div>
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0">
+        <div style="font-size:var(--text-base);font-weight:800">${lc('clock',16,'var(--purple)')} Histórico de Estoque</div>
         <button onclick="document.getElementById('popupHistContagem').remove()"
           style="background:none;border:none;cursor:pointer;padding:8px;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center">
           ${lc('x',20,'var(--muted)')}
         </button>
       </div>
-      <div style="padding:16px;display:flex;flex-direction:column;gap:10px;max-height:75vh;overflow-y:auto">
-        ${hist.length === 0
-          ? `<div style="text-align:center;padding:40px;color:var(--muted);font-size:var(--text-sm)">Nenhuma contagem registrada ainda.</div>`
-          : [...hist].reverse().map(c => {
-              const cats    = c.categorias || (c.tipo ? [c.tipo] : ['—']);
-              const divs    = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
-              const temDiv  = divs.length > 0;
-              return `
-              <div style="border:1.5px solid ${temDiv ? 'var(--yellow)' : 'var(--border)'};border-radius:var(--r10);overflow:hidden;background:var(--surface)">
-                <div style="padding:12px 14px;background:${temDiv ? 'var(--yellow-light)' : 'var(--surface2)'};display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
-                  <div>
-                    <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:4px">${fmtDT(c.date)} · ${c.user}</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px">${_catChips(cats)}</div>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-                    <div style="text-align:center;padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
-                      <div style="font-size:var(--text-md);font-weight:800;color:var(--purple)">${c.total}</div>
-                      <div style="font-size:var(--text-2xs);color:var(--muted)">contados</div>
-                    </div>
-                    <div style="text-align:center;padding:4px 8px;background:${temDiv?'var(--yellow-light)':'var(--green-light)'};border:1px solid ${temDiv?'var(--yellow)':'var(--green)'};border-radius:var(--r6)">
-                      <div style="font-size:var(--text-md);font-weight:800;color:${temDiv?'var(--orange-dark)':'var(--green)'}">${divs.length}</div>
-                      <div style="font-size:var(--text-2xs);color:var(--muted)">diverg.</div>
-                    </div>
-                  </div>
-                </div>
-                <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap">
-                  <button onclick="abrirDetalheContagem('${c.id}')"
-                    style="flex:1;min-width:100px;padding:8px;border:1.5px solid var(--purple);border-radius:var(--r8);background:var(--surface);color:var(--purple);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;min-height:40px">
-                    ${lc('search',12,'currentColor')} Ver detalhe
-                  </button>
-                  <button onclick="_gerarPDFContagem('${c.id}')"
-                    style="flex:1;min-width:100px;padding:8px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface);color:var(--text2);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;min-height:40px">
-                    ${lc('printer',12,'currentColor')} Imprimir / PDF
-                  </button>
-                </div>
-              </div>`;
-            }).join('')}
+      <!-- Abas -->
+      <div style="display:flex;border-bottom:1.5px solid var(--border);background:var(--surface)">
+        <button onclick="verHistoricoContagens('contagens')"
+          style="flex:1;padding:10px;border:none;background:none;font-size:var(--text-sm);font-weight:700;cursor:pointer;border-bottom:2.5px solid ${_histTab==='contagens'?'var(--purple)':'transparent'};color:${_histTab==='contagens'?'var(--purple)':'var(--muted)'}">
+          ${lc('clipboard-list',13,'currentColor')} Contagens (${hist.length})
+        </button>
+        <button onclick="verHistoricoContagens('cw')"
+          style="flex:1;padding:10px;border:none;background:none;font-size:var(--text-sm);font-weight:700;cursor:pointer;border-bottom:2.5px solid ${_histTab==='cw'?'var(--purple)':'transparent'};color:${_histTab==='cw'?'var(--purple)':'var(--muted)'}">
+          ${lc('upload',13,'currentColor')} Importações CW (${histCW.length})
+        </button>
+      </div>
+      <!-- Conteúdo -->
+      <div style="padding:14px;display:flex;flex-direction:column;gap:10px;max-height:65vh;overflow-y:auto">
+        ${_histTab === 'contagens' ? abaContagens : abaCW}
       </div>
     </div>`;
 
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+function _abrirDetalheCW(id) {
+  const histCW = db._get('vtp_hist_imports_cw', []);
+  const h = histCW.find(x => x.id === id);
+  if (!h) return;
+  const popup = document.createElement('div');
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:700;display:flex;align-items:flex-start;justify-content:center;padding:12px;overflow-y:auto';
+  const rows = (h.itens||[]).map((x,i) => `
+    <tr style="border-top:1px solid var(--border);background:${i%2===0?'var(--surface)':'var(--surface2)'}">
+      <td style="padding:8px 12px;font-size:var(--text-sm);font-weight:600">${x.name}</td>
+      <td style="padding:8px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.oldQty)}</td>
+      <td style="padding:8px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm)">${fmt(x.newQty)}</td>
+      <td style="padding:8px 12px;text-align:center;font-family:monospace;font-size:var(--text-sm);font-weight:700;color:${x.diff>0?'var(--green)':x.diff<0?'var(--red)':'var(--muted)'}">
+        ${x.diff>0?'+':''}${fmt(x.diff)}
+      </td>
+    </tr>`).join('');
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:600px;margin:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0">
+        <div>
+          <div style="font-size:var(--text-md);font-weight:800">Importação CW — ${fmtD(h.date)}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${h.user} · ${h.total} itens</div>
+        </div>
+        <button onclick="this.closest('[style]').remove()" style="background:none;border:none;cursor:pointer;padding:8px">${lc('x',18,'var(--muted)')}</button>
+      </div>
+      <div style="overflow-x:auto;max-height:60vh;overflow-y:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--surface2)">
+            <th style="padding:8px 12px;text-align:left;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Item</th>
+            <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Antes</th>
+            <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Depois</th>
+            <th style="padding:8px 12px;text-align:center;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Diferença</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--muted)">Sem alterações nesta importação</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>`;
   document.body.appendChild(popup);
   popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
 }
@@ -1035,6 +1159,24 @@ function parseCSV(file) {
 }
 
 function confirmImport() {
+  // Salva registro no histórico de importações CW
+  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  const histCW = db._get('vtp_hist_imports_cw', []);
+  histCW.push({
+    id:      'CW-' + Date.now(),
+    date:    new Date().toISOString(),
+    user:    u?.name || 'Sistema',
+    total:   importData.length,
+    itens:   importData.map(d => ({
+      id:       d.id,
+      name:     d.name,
+      oldQty:   d.oldQty,
+      newQty:   d.newQty,
+      diff:     parseFloat((d.newQty - d.oldQty).toFixed(3)),
+    })),
+  });
+  db._set('vtp_hist_imports_cw', histCW);
+
   // Registra movimentações antes de alterar os itens
   registrarImportacaoCW(importData);
 

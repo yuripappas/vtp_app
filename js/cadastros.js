@@ -248,7 +248,6 @@ function openEditItem(id) {
   // Suporta supIds (array novo) e supId (legado)
   const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
   populateSupChecks(supIds);
-  const cd = document.getElementById('fContagemDiaria'); if (cd) cd.checked = !!item.contagemDiaria;
   const da = document.getElementById('fDebitoAuto');     if (da) da.checked = !!item.debitoAuto;
   document.getElementById('delItemBtn').style.display = 'inline-flex';
   document.getElementById('ovItem').classList.add('open');
@@ -385,7 +384,6 @@ function saveItem() {
       document.getElementById('fB2').value.trim(),
     ],
     isProd:          false,
-    contagemDiaria:  document.getElementById('fContagemDiaria')?.checked || false,
     debitoAuto:      document.getElementById('fDebitoAuto')?.checked     || false,
   };
   if (editItemId) {

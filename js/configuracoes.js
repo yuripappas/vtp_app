@@ -966,8 +966,7 @@ function _cfgContagemPermsHtml() {
   return `<div style="margin-bottom:22px;margin-top:22px">
     <div style="font-size:var(--text-xs);font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Permissões de Contagem</div>
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
-      ${_row('diaria',  'Contagem Diária',  'Quem pode realizar a contagem diária de estoque')}
-      ${_row('semanal', 'Contagem Semanal', 'Quem pode realizar a contagem semanal completa')}
+      ${_row('semanal', 'Contagem de Estoque', 'Quem pode realizar a contagem de estoque por categoria')}
       <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--surface2);display:flex;justify-content:flex-end">
         <button class="btn btn-primary btn-sm" onclick="saveContagemPerms()">Salvar permissões</button>
       </div>
