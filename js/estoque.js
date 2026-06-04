@@ -193,7 +193,8 @@ function _renderCatCards(el) {
         <strong style="color:var(--purple)">${nCats}</strong> categoria${nCats > 1 ? 's' : ''} ·
         <strong>${totalSel}</strong> itens
       </div>
-      <button id="ctgBtnIniciar" data-cats="${catsEncoded}"
+      <button data-cats="${catsEncoded}"
+        onclick="window._ctgIniciar(this)"
         style="padding:11px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
           font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;min-height:44px">
         ${lc('play-circle',15,'#fff')} Iniciar contagem
@@ -218,20 +219,7 @@ function _renderCatCards(el) {
     </div>
     ${barHtml}`;
 
-  // Botão iniciar: lê categorias do data-cats (evita dependência de escopo)
-  const btnIniciar = document.getElementById('ctgBtnIniciar');
-  if (btnIniciar) {
-    btnIniciar.addEventListener('click', function() {
-      const cats = (this.getAttribute('data-cats') || '')
-        .split(',').filter(Boolean).map(c => decodeURIComponent(c));
-      if (cats.length === 0) { toast('Selecione pelo menos uma categoria', 'err'); return; }
-      _contagemAtiva      = true;
-      _categoriasContando = cats;
-      _catsSelecionadas   = new Set();
-      _contagem           = {};
-      _renderContagemAtiva();
-    });
-  }
+  // Função global para o botão — não depende de addEventListener pós-render
 
   // Delegação: qualquer clique num card com data-cat
   el.querySelector('#catGrid')?.addEventListener('click', e => {
@@ -260,6 +248,22 @@ function _iniciarContagem() {
   _renderContagemAtiva();
 }
 window._iniciarContagem = _iniciarContagem;
+
+// Chamado diretamente pelo onclick do botão — recebe o elemento e lê data-cats
+window._ctgIniciar = function(btn) {
+  try {
+    const raw  = btn ? btn.getAttribute('data-cats') : '';
+    const cats = (raw || '').split(',').filter(Boolean).map(function(c) { return decodeURIComponent(c); });
+    if (cats.length === 0) { toast('Nenhuma categoria no botão — raw: ' + raw, 'err'); return; }
+    _contagemAtiva      = true;
+    _categoriasContando = cats;
+    _catsSelecionadas   = new Set();
+    _contagem           = {};
+    _renderContagemAtiva();
+  } catch(e) {
+    alert('ERRO _ctgIniciar: ' + e.message);
+  }
+};
 
 function _renderContagemAtiva() {
   const el = document.getElementById('estPanelContagem');
