@@ -220,13 +220,22 @@ function _renderCatCards(el) {
 
     // Listener direto no botão — criado via JS, sem onclick inline
     document.getElementById('_ctgBtnIniciar').addEventListener('click', function() {
-      console.log('[CTG] CLICOU Iniciar, cats:', catsArr);
+      console.log('[CTG] 1 CLICOU, cats:', catsArr);
       document.getElementById('_ctgBarExt')?.remove();
-      _contagemAtiva      = true;
+      console.log('[CTG] 2 bar removida');
+      _contagemAtiva = true;
       _categoriasContando = catsArr;
-      _catsSelecionadas   = new Set();
-      _contagem           = {};
-      _renderContagemAtiva();
+      _catsSelecionadas = new Set();
+      _contagem = {};
+      console.log('[CTG] 3 typeof _renderContagemAtiva:', typeof _renderContagemAtiva);
+      console.log('[CTG] 4 el existe?', !!document.getElementById('estPanelContagem'));
+      try {
+        _renderContagemAtiva();
+        console.log('[CTG] 5 _renderContagemAtiva retornou');
+      } catch(err) {
+        console.error('[CTG] ERRO em _renderContagemAtiva:', err);
+      }
+      console.log('[CTG] 6 FIM do handler');
     });
   }
 
