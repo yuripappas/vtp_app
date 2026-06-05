@@ -199,6 +199,10 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               Histórico
             </button>
+            <button onclick="setEstTab('movcw')" id="estTab-movcw" class="tab-btn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Movimentações
+            </button>
           </div>
           <div style="display:flex;gap:8px;padding:8px 0;flex-shrink:0">
             <button onclick="openImportModal()" id="estBtnImport" class="btn btn-outline btn-sm" style="gap:6px">
@@ -216,6 +220,9 @@
 
           <!-- ABA: HISTÓRICO — renderizada dinamicamente por JS -->
           <div id="estPanelHistorico" style="display:none"></div>
+
+          <!-- ABA: MOVIMENTAÇÕES CW — renderizada dinamicamente por JS -->
+          <div id="estPanelMovCW" style="display:none"></div>
 
         </div>
       </div><!-- /page-estoque -->

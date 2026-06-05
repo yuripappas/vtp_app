@@ -4,7 +4,8 @@
  * Objetivo: comparar estoque físico vs digital, detectar divergências
  */
 
-let _estTab          = 'contagem';   // 'contagem' | 'historico'
+let _estTab          = 'contagem';   // 'contagem' | 'historico' | 'movcw'
+let _movCWFiltro     = { de: '', ate: '', status: 'todos' }; // filtros da aba movimentações
 let _contagem        = {};           // { itemId: qtyFisico }
 let _contagemAtiva   = false;
 let _catsSelecionadas = new Set();   // categories selected for current count
@@ -69,19 +70,15 @@ function renderEstoque() {
 function setEstTab(tab) {
   _estTab = tab;
   _atualizarEstTabs();
-  if (tab === 'historico') {
-    document.getElementById('estPanelContagem').style.display = 'none';
-    document.getElementById('estPanelHistorico').style.display = '';
-    _renderHistoricoAba();
-  } else {
-    document.getElementById('estPanelContagem').style.display = '';
-    document.getElementById('estPanelHistorico').style.display = 'none';
-    _renderContagemTab();
-  }
+  const panels = { contagem:'estPanelContagem', historico:'estPanelHistorico', movcw:'estPanelMovCW' };
+  Object.entries(panels).forEach(([t,id]) => { const p=document.getElementById(id); if(p) p.style.display = t===tab?'':'none'; });
+  if (tab === 'historico') _renderHistoricoAba();
+  else if (tab === 'movcw') _renderMovCW();
+  else _renderContagemTab();
 }
 
 function _atualizarEstTabs() {
-  ['contagem','historico'].forEach(t => {
+  ['contagem','historico','movcw'].forEach(t => {
     document.getElementById(`estTab-${t}`)?.classList.toggle('active', _estTab === t);
   });
   const btnImport = document.getElementById('estBtnImport');
@@ -176,9 +173,16 @@ function _renderCatCards(el) {
 
     let ultimaLabel = 'Nunca contada';
     if (ultima) {
-      const d = Math.floor((Date.now() - new Date(ultima)) / 864e5);
-      ultimaLabel = d === 0 ? 'hoje' : d === 1 ? 'ontem' : d + 'd atrás';
-      if (diverg > 0) ultimaLabel = diverg + ' diverg. · ' + ultimaLabel;
+      // Comparação por data apenas (sem horário) — evita bug de "hoje" quando foi ontem
+      const hoje    = new Date().toISOString().slice(0,10);
+      const ontem   = new Date(Date.now() - 864e5).toISOString().slice(0,10);
+      const dCont   = ultima.slice(0,10);
+      if      (dCont === hoje)  ultimaLabel = 'hoje';
+      else if (dCont === ontem) ultimaLabel = 'ontem';
+      else {
+        const d = Math.floor((Date.now() - new Date(dCont)) / 864e5);
+        ultimaLabel = d + 'd atrás';
+      }
     }
 
     // Última atualização CW desta categoria
@@ -1550,6 +1554,190 @@ function registrarImportacaoCW(importData) {
     });
   });
   _saveMov(movs);
+}
+
+// ── Render da aba Movimentações CW ───────────────────────────
+function _renderMovCW() {
+  const el = document.getElementById('estPanelMovCW');
+  if (!el) return;
+
+  const f    = _movCWFiltro;
+  const hoje = new Date().toISOString().slice(0,10);
+  const _30d = new Date(Date.now() - 30*864e5).toISOString().slice(0,10);
+  if (!f.de)  f.de  = _30d;
+  if (!f.ate) f.ate = hoje;
+
+  // Agrega entradas de contagens + recebimentos
+  const entries = [];
+
+  // 1. Contagens: itens com divergência
+  const histCont = _getHistContagens();
+  histCont.forEach(c => {
+    (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001).forEach(x => {
+      entries.push({
+        id:         'cnt_' + c.id + '_' + x.id,
+        tipo:       'contagem',
+        date:       c.date,
+        user:       c.user,
+        cats:       c.categorias || [],
+        nome:       x.name,
+        cat:        x.cat,
+        unit:       x.unit,
+        cwQtd:      x.fisico,
+        cwPreco:    null,
+        diverg:     x.diverg,
+        atualizado: !!(c.cwSubido?.[x.id]),
+        // refs para toggle
+        _contagemId: c.id,
+        _itemId:     x.id,
+      });
+    });
+  });
+
+  // 2. Recebimentos: itens conferidos
+  const listas = typeof db !== 'undefined' ? db._get('vtp_listas', []) : [];
+  listas.forEach(lista => {
+    (lista.itens||[]).filter(i => i.conferido).forEach(i => {
+      const cw = typeof _calcDadosCW === 'function' ? _calcDadosCW(i) : null;
+      const supNome = (typeof suppliers !== 'undefined' ? suppliers : []).find(s => s.id === i.fornecedorId)?.name || '';
+      entries.push({
+        id:         'rec_' + lista.id + '_' + i.id,
+        tipo:       'recebimento',
+        date:       i.dataRecebimentoItem || lista.dataCriacao || lista.createdAt || '',
+        user:       i.conferidoPorItem || '',
+        cats:       [],
+        nome:       i.nome,
+        cat:        i.categoria,
+        unit:       i.unidade,
+        cwQtd:      cw?.qtd,
+        cwPreco:    cw?.preco,
+        diverg:     null,
+        listaCodigo: lista.codigo,
+        fornecedor: supNome,
+        atualizado: !!i.cwAtualizado,
+        // refs para toggle
+        _listaId:    lista.id,
+        _itemListaId: i.id,
+      });
+    });
+  });
+
+  // Aplica filtros
+  let filt = entries.filter(e => {
+    const d = e.date ? e.date.slice(0,10) : '';
+    if (f.de  && d < f.de)  return false;
+    if (f.ate && d > f.ate) return false;
+    if (f.status === 'pendente'   && e.atualizado)  return false;
+    if (f.status === 'atualizado' && !e.atualizado) return false;
+    return true;
+  }).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+  const pendentes   = filt.filter(e => !e.atualizado).length;
+  const atualizados = filt.filter(e => e.atualizado).length;
+
+  const _chip = (tipo) => tipo === 'contagem'
+    ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:20px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light)">${lc('clipboard-list',9,'currentColor')} Contagem</span>`
+    : `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">${lc('package',9,'currentColor')} Recebimento</span>`;
+
+  const _row = e => {
+    const feito = e.atualizado;
+    return `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);
+      background:${feito?'var(--green-light)':'var(--surface)'};opacity:${feito?'.75':'1'}">
+      <!-- Checkbox -->
+      <input type="checkbox" ${feito?'checked':''} data-movcw-id="${e.id}"
+        style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;margin-top:2px;cursor:pointer"
+        onchange="_toggleMovCW('${e.id}',this.checked)">
+      <!-- Info -->
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+          ${_chip(e.tipo)}
+          <span style="font-size:var(--text-xs);font-weight:700;${feito?'text-decoration:line-through;color:var(--muted)':''}">${e.nome}</span>
+          ${e.cat ? `<span style="font-size:var(--text-2xs);color:var(--muted)">${e.cat}</span>` : ''}
+        </div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);display:flex;gap:8px;flex-wrap:wrap">
+          <span>${fmtD(e.date)}</span>
+          ${e.user ? `<span>${lc('user',8,'currentColor')} ${e.user}</span>` : ''}
+          ${e.listaCodigo ? `<span>${e.listaCodigo}${e.fornecedor?' · '+e.fornecedor:''}</span>` : ''}
+          ${e.cats?.length ? `<span>${e.cats.join(', ')}</span>` : ''}
+        </div>
+      </div>
+      <!-- Valores CW -->
+      <div style="text-align:right;flex-shrink:0">
+        ${e.cwQtd != null ? `<div style="font-size:var(--text-xs);font-weight:700;font-family:monospace;color:${feito?'var(--muted)':'var(--purple)'}">${fmt(e.cwQtd)} ${e.unit||''}</div>` : ''}
+        ${e.cwPreco != null ? `<div style="font-size:var(--text-2xs);color:var(--muted)">R$ ${fmt(e.cwPreco)}/${e.unit||''}</div>` : ''}
+        ${e.diverg != null ? `<div style="font-size:var(--text-2xs);color:${e.diverg<0?'var(--red)':'var(--green)'};font-family:monospace">${e.diverg>0?'+':''}${fmt(e.diverg)} ${e.unit||''}</div>` : ''}
+        ${feito ? `<div style="font-size:var(--text-2xs);color:var(--green);font-weight:700">${lc('check-circle',9,'currentColor')} Atualizado</div>` : ''}
+      </div>
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div style="padding:16px">
+      <!-- Filtros -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
+        <div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-bottom:3px">De</div>
+          <input type="date" class="inp" value="${f.de}" style="padding:6px 8px"
+            onchange="_movCWFiltro.de=this.value;_renderMovCW()">
+        </div>
+        <div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-bottom:3px">Até</div>
+          <input type="date" class="inp" value="${f.ate}" style="padding:6px 8px"
+            onchange="_movCWFiltro.ate=this.value;_renderMovCW()">
+        </div>
+        <select class="inp" style="padding:6px 8px;align-self:flex-end"
+          onchange="_movCWFiltro.status=this.value;_renderMovCW()">
+          <option value="todos"      ${f.status==='todos'      ?'selected':''}>Todos</option>
+          <option value="pendente"   ${f.status==='pendente'   ?'selected':''}>Pendentes</option>
+          <option value="atualizado" ${f.status==='atualizado' ?'selected':''}>Atualizados</option>
+        </select>
+        <div style="align-self:flex-end;font-size:var(--text-xs);color:var(--muted)">
+          ${pendentes > 0 ? `<span style="color:var(--orange-dark);font-weight:700">${pendentes} pendente${pendentes>1?'s':''}</span>` : '<span style="color:var(--green);font-weight:700">Tudo atualizado ✓</span>'}
+          ${atualizados > 0 ? ` · ${atualizados} feito${atualizados>1?'s':''}` : ''}
+        </div>
+      </div>
+
+      <!-- Lista -->
+      ${filt.length === 0
+        ? `<div style="text-align:center;padding:40px;color:var(--muted)">${lc('check-circle',24,'var(--muted)')}<br><br>Nenhuma movimentação no período</div>`
+        : `<div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden">
+            ${filt.map(_row).join('')}
+          </div>`}
+    </div>`;
+}
+
+// Toggle bidirecional: atualiza a origem (contagem ou recebimento)
+function _toggleMovCW(entryId, checked) {
+  if (entryId.startsWith('cnt_')) {
+    // Origem: contagem de estoque
+    const parts = entryId.split('_'); // ['cnt', contagemId, itemId]
+    const contagemId = parts[1];
+    const itemId     = parseInt(parts[2]);
+    const hist = _getHistContagens();
+    const c    = hist.find(x => x.id === contagemId);
+    if (!c) return;
+    if (!c.cwSubido) c.cwSubido = {};
+    if (checked) c.cwSubido[itemId] = true;
+    else delete c.cwSubido[itemId];
+    _saveHistContagens(hist);
+
+  } else if (entryId.startsWith('rec_')) {
+    // Origem: recebimento de compra
+    const parts   = entryId.split('_'); // ['rec', listaId, itemListaId]
+    const listaId = parseInt(parts[1]);
+    const iId     = parseInt(parts[2]);
+    const listas  = db._get('vtp_listas', []);
+    const lista   = listas.find(l => l.id === listaId);
+    if (!lista) return;
+    const item = lista.itens?.find(i => i.id === iId);
+    if (!item) return;
+    item.cwAtualizado   = checked;
+    item.cwAtualizadoEm = checked ? new Date().toISOString() : null;
+    db._set('vtp_listas', listas);
+    if (typeof saveListas === 'function') saveListas();
+  }
+  _renderMovCW();
 }
 
 // ── Render da aba de Histórico ────────────────────────────────
