@@ -4494,6 +4494,11 @@ function _renderEtapa4OC() {
   const horas      = Array.from({length:18},(_,i)=>`${String(i+6).padStart(2,'0')}:00`);
   const u          = typeof getCurrentUser==='function' ? getCurrentUser() : null;
 
+  // Contador CW
+  const confItems  = l.itens.filter(i => i.conferido);
+  const cwTotal    = confItems.length;
+  const cwFeitos   = confItems.filter(i => i.cwAtualizado).length;
+
   // Agrupa por fornecedor
   const bySup = {};
   l.itens.forEach(i => {
@@ -4506,7 +4511,12 @@ function _renderEtapa4OC() {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
         <h3 style="font-size:var(--text-base);font-weight:800;margin-bottom:3px">${lc('package',14,'var(--purple)')} Recebimento · ${l.codigo}</h3>
-        <div style="font-size:var(--text-xs);color:var(--muted)">${conferidos} de ${total} itens conferidos</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);display:flex;gap:12px;flex-wrap:wrap">
+          <span>${conferidos} de ${total} itens conferidos</span>
+          ${cwTotal > 0 ? `<span style="color:${cwFeitos===cwTotal?'var(--green)':'var(--purple)'}">
+            ${lc('monitor',10,'currentColor')} CW: ${cwFeitos}/${cwTotal} atualizados
+          </span>` : ''}
+        </div>
       </div>
       <button class="btn btn-outline btn-sm" onclick="_renderEtapa3()">${lc('arrow-left',13)} OC</button>
     </div>
@@ -4625,6 +4635,46 @@ function _renderEtapa4OC() {
                 </button>
               </div>
             </div>
+
+            <!-- Painel Atualizar CW — aparece só quando conferido -->
+            ${i.conferido ? (() => {
+              const cw    = _calcDadosCW(i);
+              const feito = !!i.cwAtualizado;
+              if (!cw) return '';
+              return `
+              <div style="margin:0 12px 10px 32px;border-radius:var(--r8);overflow:hidden;
+                border:1.5px solid ${feito?'var(--green)':'#e5deff'};
+                background:${feito?'var(--green-light)':'var(--purple-xlight)'}">
+                <div style="padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                  <div>
+                    <div style="font-size:var(--text-xs);font-weight:800;color:${feito?'var(--green)':'var(--purple)'};margin-bottom:3px">
+                      ${feito?lc('check-circle',11,'currentColor'):lc('monitor',11,'currentColor')} Atualizar no Cardápio Web
+                    </div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                      <span style="font-size:var(--text-xs);color:var(--text2)">
+                        Qtd: <strong style="font-family:monospace">${fmt(cw.qtd)} ${i.unidade}</strong>
+                      </span>
+                      <span style="font-size:var(--text-xs);color:var(--text2)">
+                        Custo: <strong style="font-family:monospace;color:${feito?'var(--green)':'var(--purple)'}">R$ ${fmt(cw.preco)}/${i.unidade}</strong>
+                      </span>
+                      <span style="font-size:var(--text-2xs);color:var(--muted)">
+                        R$ ${fmt(cw.valorTotal)} ÷ ${fmt(cw.qtd)}${i.unidade} = R$${fmt(cw.preco)}/${i.unidade}
+                      </span>
+                      ${cw.embInfo ? `<span style="font-size:var(--text-2xs);color:var(--muted)">${cw.embInfo}</span>` : ''}
+                    </div>
+                  </div>
+                  <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;
+                    padding:5px 10px;border-radius:var(--r6);font-size:var(--text-xs);font-weight:700;
+                    border:1.5px solid ${feito?'var(--green)':'var(--purple)'};
+                    background:${feito?'var(--green)':'var(--surface)'};
+                    color:${feito?'#fff':'var(--purple)'}">
+                    <input type="checkbox" ${feito?'checked':''} style="accent-color:var(--green);width:15px;height:15px"
+                      onchange="marcarCWAtualizado(${i.id},this.checked)">
+                    ${feito?'✓ Atualizado':'Atualizei no CW'}
+                  </label>
+                </div>
+              </div>`;
+            })() : ''}
           </div>`;
         }).join('')}
       </div>`;
@@ -4702,6 +4752,41 @@ function marcarConferido(itemId,checked) {
 }
 
 function setComentarioConferencia(itemId,val) { const i=_listaAtual.itens.find(x=>x.id===itemId); if(i){i.comentarioConferencia=val;saveListas();} }
+
+// Calcula dados para o usuário atualizar no Cardápio Web
+function _calcDadosCW(i) {
+  const qtdR = i.qtdRecebida ?? (i.qtdAprovada ?? i.qtdSelecionada);
+  if (!qtdR || qtdR <= 0) return null;
+
+  // Acha a cotação vencedora (fornecedor escolhido)
+  const cot = (i.cotacoes||[]).find(c => c.supId === i.fornecedorId && c.respondido && !c.emFalta && c.precoUnit > 0)
+           || (i.cotacoes||[]).find(c => c.respondido && !c.emFalta && c.precoUnit > 0);
+
+  if (!cot && !i.precoUnitEstimado) return null;
+
+  const precoUnit  = cot?.precoUnit || i.precoUnitEstimado || 0;
+  const valorTotal = cot?.valorFinal || (precoUnit * qtdR);
+  const precoPorBase = valorTotal > 0 && qtdR > 0 ? valorTotal / qtdR : precoUnit;
+
+  // Info de embalagem (se configurada)
+  const itemCad = typeof items !== 'undefined' ? items.find(x => x.id === i.itemId) : null;
+  let embInfo = null;
+  if (itemCad?.qtdEmb > 0 && itemCad?.unidCompra) {
+    const nEmb = Math.round(qtdR / itemCad.qtdEmb);
+    embInfo = `${nEmb} ${itemCad.unidCompra}(s) × ${fmt(itemCad.qtdEmb)}${i.unidade}`;
+  }
+
+  return { qtd: qtdR, preco: parseFloat(precoPorBase.toFixed(2)), valorTotal, embInfo };
+}
+
+function marcarCWAtualizado(itemId, checked) {
+  const i = _listaAtual?.itens?.find(x => x.id === itemId);
+  if (!i) return;
+  i.cwAtualizado = checked;
+  i.cwAtualizadoEm = checked ? new Date().toISOString() : null;
+  saveListas();
+  _renderEtapa4();
+}
 
 function setGrupoNF(supKey, campo, val) {
   _listaAtual.itens.forEach(i => {
