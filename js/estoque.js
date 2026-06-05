@@ -1352,6 +1352,19 @@ function confirmImport() {
     // item.name nunca é alterado pela importação
   });
   saveI();
+
+  // Sincroniza CATEGORIAS_INSUMO com novas cats que possam ter vindo do CW
+  if (typeof CATEGORIAS_INSUMO !== 'undefined' && typeof saveCategoriasInsumo === 'function') {
+    let catChanged = false;
+    items.forEach(i => {
+      if (i.cat && !CATEGORIAS_INSUMO.includes(i.cat)) {
+        CATEGORIAS_INSUMO.push(i.cat);
+        catChanged = true;
+      }
+    });
+    if (catChanged) { CATEGORIAS_INSUMO.sort(); saveCategoriasInsumo(); }
+  }
+
   closeModal('ovImport');
   toast(`${importData.length} itens atualizados!`, 'ok');
   renderEstoque();

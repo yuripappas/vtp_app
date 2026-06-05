@@ -843,12 +843,18 @@ function filterSupItems() {
 
 
 // Categorias pré-definidas para fornecedores
-const SUP_CATS = ['Laticínios','Massas','Carnes e Frios','Embalagens','Molhos','Produção Interna','Bebidas','Higiene/Limpeza','Descartáveis','Outros'];
+// Categorias de fornecedor derivadas dos itens reais (dinâmico, atualiza com CW)
+function _getSupCats() {
+  const fromItems = [...new Set((typeof items !== 'undefined' ? items : []).map(i => i.cat).filter(Boolean))].sort();
+  // Garante "Outros" sempre ao final
+  if (!fromItems.includes('Outros')) fromItems.push('Outros');
+  return fromItems;
+}
 
 function renderCatTags(selected) {
   const wrap = document.getElementById('sfCatsWrap');
   if (!wrap) return;
-  wrap.innerHTML = SUP_CATS.map(cat => {
+  wrap.innerHTML = _getSupCats().map(cat => {
     const active = selected.includes(cat);
     return `<span class="sup-cat-tag${active ? ' active' : ''}" data-cat="${cat}"
       style="padding:3px 10px;border-radius:20px;font-size:var(--text-xs);font-weight:600;cursor:pointer;border:1.5px solid ${active ? 'var(--purple)' : 'var(--border)'};background:${active ? 'var(--purple)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text2)'};transition:all .15s;user-select:none"

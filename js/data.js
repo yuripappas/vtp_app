@@ -160,12 +160,27 @@ const _TIPOS_DESPERDICIO_DEFAULT = [
 let TIPOS_DESPERDICIO = db._get('vtp_emp_tipos_desp', null) || [..._TIPOS_DESPERDICIO_DEFAULT];
 const saveTiposDesperdicio = () => db._set('vtp_emp_tipos_desp', TIPOS_DESPERDICIO);
 
-// ── Categorias de Insumo configuráveis ─────────────────────────
-let CATEGORIAS_INSUMO = db._get('vtp_emp_cat_insumo', null) || [
-  // Mesmos nomes usados nos itens e importados do Cardápio Web
-  'Laticínios','Carnes e Frios','Massas','Molhos','Embalagens',
-  'Bebidas','Hortifruti','Higiene/Limpeza','Descartáveis','Outros',
-];
+// ── Categorias de Insumo — sincronizadas com item.cat do CW ────
+// A fonte da verdade são as categorias reais dos itens.
+// CATEGORIAS_INSUMO é enriquecida automaticamente com novas
+// categorias que vierem do Cardápio Web.
+let CATEGORIAS_INSUMO = db._get('vtp_emp_cat_insumo', null) || [];
+
+// Auto-sincroniza: adiciona ao array qualquer cat de item que não esteja ainda
+(function _sincCatsInsumo() {
+  const catsItens = [...new Set(items.map(i => i.cat).filter(Boolean))].sort();
+  let changed = false;
+  catsItens.forEach(cat => {
+    if (!CATEGORIAS_INSUMO.includes(cat)) {
+      CATEGORIAS_INSUMO.push(cat);
+      changed = true;
+    }
+  });
+  // Garante ordenação alfabética
+  CATEGORIAS_INSUMO.sort();
+  if (changed || CATEGORIAS_INSUMO.length === 0) db._set('vtp_emp_cat_insumo', CATEGORIAS_INSUMO);
+})();
+
 const saveCategoriasInsumo = () => db._set('vtp_emp_cat_insumo', CATEGORIAS_INSUMO);
 
 // ── Tipos de Ausência RH configuráveis ─────────────────────────
