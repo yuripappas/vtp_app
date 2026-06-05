@@ -780,7 +780,7 @@ function _savePreparoConfirmado(name, fichaTecnica) {
   const data = {
     name,
     code:         document.getElementById('fpCode').value.trim(),
-    cat:          'Preparados',
+    cat:          'PREPARADOS',
     unit:         document.getElementById('fpUnit').value,
     cost:         custoKg,
     min:          parseFloat(document.getElementById('fpMin').value)    || 0,
@@ -1500,10 +1500,10 @@ function confirmarImportCad() {
   if (!data) return;
 
   // Adiciona novos
-  // Normaliza categoria: qualquer variação de "produção interna" → "Preparados"
+  // Normaliza categoria: qualquer variação de "produção interna" → "PREPARADOS" (igual ao CW)
   const _normCat = cat => {
     const l = (cat || '').toLowerCase();
-    if (l.includes('produção') || l.includes('producao') || l.includes('interno') || l.includes('preparado')) return 'Preparados';
+    if (l.includes('produção') || l.includes('producao') || l.includes('interno') || l.includes('preparado')) return 'PREPARADOS';
     return cat.trim() || 'Outros';
   };
 
@@ -1521,7 +1521,7 @@ function confirmarImportCad() {
       supId:  null,
       brands: [],
       code:   r.code || '',
-      isProd: catNorm === 'Preparados',
+      isProd: catNorm === 'PREPARADOS',
     });
   });
 

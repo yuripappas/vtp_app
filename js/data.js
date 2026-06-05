@@ -17,24 +17,25 @@ let items = db._get('vtp_items', null) || [
   { id:8,  name:'Cream Cheese',            cat:'Laticínios',       unit:'kg', qty:3.9,  min:5,   ideal:12,  cost:35,    supId:null, brands:[],                              code:'157636', isProd:false },
   { id:9,  name:'Bacon em Cubos',          cat:'Carnes e Frios',   unit:'kg', qty:2,    min:3,   ideal:12,  cost:32.61, supId:null, brands:['Sadia','Seara'],               code:'157640', isProd:false },
   { id:10, name:'Caixa Pizza Pequena',     cat:'Embalagens',       unit:'un', qty:40,   min:400, ideal:393, cost:2.60,  supId:null, brands:[],                              code:'160000', isProd:false },
-  { id:11, name:'Frango Desfiado',         cat:'Preparados', unit:'kg', qty:8,    min:1,   ideal:18,  cost:57.01, supId:null, brands:[],                              code:'157638', isProd:true,  medPorcao:0.090 },
-  { id:12, name:'Carne de Sol Desfiada',   cat:'Preparados', unit:'kg', qty:12,   min:2,   ideal:20,  cost:70,    supId:null, brands:[],                              code:'157645', isProd:true,  medPorcao:0.080 },
-  { id:13, name:'Mussarela Triturada',     cat:'Preparados', unit:'kg', qty:16.8, min:3,   ideal:30,  cost:34,    supId:null, brands:[],                              code:'157629', isProd:true,  medPorcao:0.090 },
-  { id:14, name:'Brigadeiro de Chocolate', cat:'Preparados', unit:'kg', qty:16.9, min:0.5, ideal:20,  cost:24.58, supId:null, brands:[],                              code:'163291', isProd:true,  medPorcao:0.175 },
-  { id:15, name:'Creme de Gorgonzola',     cat:'Preparados', unit:'kg', qty:8.4,  min:0.3, ideal:12,  cost:61.83, supId:null, brands:[],                              code:'157633', isProd:true,  medPorcao:0.080 },
-  { id:16, name:'Costela Bovina Desfiada', cat:'Preparados', unit:'kg', qty:7.1,  min:3,   ideal:15,  cost:75.81, supId:null, brands:[],                              code:'157646', isProd:true,  medPorcao:0.075 },
+  { id:11, name:'Frango Desfiado',         cat:'PREPARADOS', unit:'kg', qty:8,    min:1,   ideal:18,  cost:57.01, supId:null, brands:[],                              code:'157638', isProd:true,  medPorcao:0.090 },
+  { id:12, name:'Carne de Sol Desfiada',   cat:'PREPARADOS', unit:'kg', qty:12,   min:2,   ideal:20,  cost:70,    supId:null, brands:[],                              code:'157645', isProd:true,  medPorcao:0.080 },
+  { id:13, name:'Mussarela Triturada',     cat:'PREPARADOS', unit:'kg', qty:16.8, min:3,   ideal:30,  cost:34,    supId:null, brands:[],                              code:'157629', isProd:true,  medPorcao:0.090 },
+  { id:14, name:'Brigadeiro de Chocolate', cat:'PREPARADOS', unit:'kg', qty:16.9, min:0.5, ideal:20,  cost:24.58, supId:null, brands:[],                              code:'163291', isProd:true,  medPorcao:0.175 },
+  { id:15, name:'Creme de Gorgonzola',     cat:'PREPARADOS', unit:'kg', qty:8.4,  min:0.3, ideal:12,  cost:61.83, supId:null, brands:[],                              code:'157633', isProd:true,  medPorcao:0.080 },
+  { id:16, name:'Costela Bovina Desfiada', cat:'PREPARADOS', unit:'kg', qty:7.1,  min:3,   ideal:15,  cost:75.81, supId:null, brands:[],                              code:'157646', isProd:true,  medPorcao:0.075 },
 ];
 
-// Migração automática: renomeia 'Produção Interna' → 'Preparados' em todos os itens salvos
-// e limpa o filtro de categorias da etiquetagem (pode ter nomes antigos)
+// Migração automática: normaliza variações de "Preparados" para 'PREPARADOS' (igual ao CW)
 (function _migrarCatPreparados() {
+  const variantes = ['Produção Interna', 'Preparados', 'preparados', 'PREPARADO'];
   let changed = false;
   items.forEach(i => {
-    if (i.cat === 'Produção Interna') { i.cat = 'Preparados'; changed = true; }
+    if (variantes.includes(i.cat) || (i.isProd && i.cat !== 'PREPARADOS')) {
+      i.cat = 'PREPARADOS'; changed = true;
+    }
   });
   if (changed) {
     db._set('vtp_items', items);
-    // Apaga o filtro de categorias salvo para forçar recarga com nomes atuais
     db._set('vtp_etiq_categorias', null);
   }
 })();
