@@ -197,62 +197,103 @@ function _renderCkMeu() {
   const u        = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
   const el       = document.getElementById('ckPanelContent');
   const hoje     = new Date().toISOString().slice(0,10);
-  const sessoes  = _getCkSessoes().filter(s => s.userId === u?.id && s.data === hoje);
   const all      = _getCkSessoes();
-  // Instâncias atribuídas a este usuário hoje
-  const instancias = all.filter(s => s.userId === u?.id && s.data === hoje);
+  const isGestor = u?.role === 'gerente' || u?.role === 'supervisor';
 
-  const now   = new Date();
-  const hora  = now.getHours();
-  const saud  = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  // Instâncias de hoje
+  const instancias = all.filter(s => s.userId === u?.id && s.data === hoje);
+  // Instâncias atrasadas (data anterior a hoje, não concluídas)
+  const atrasadas  = all.filter(s => s.userId === u?.id && s.data < hoje && s.status !== 'concluido');
+  // Últimos 3 concluídos (qualquer data)
+  const recentes   = all
+    .filter(s => s.userId === u?.id && s.status === 'concluido')
+    .sort((a,b) => (b.concluidoEm||b.data) > (a.concluidoEm||a.data) ? 1 : -1)
+    .slice(0,3);
+
+  const now  = new Date();
+  const hora = now.getHours();
+  const saud = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+
+  // Bloco "Últimos concluídos" — sempre no rodapé
+  const _blocoRecentes = recentes.length === 0 ? '' : `
+    <details style="margin-top:20px" ${instancias.length===0?'open':''}>
+      <summary style="font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;
+        letter-spacing:.05em;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:4px 0">
+        ${lc('check-circle',12,'var(--muted)')} Últimos concluídos
+      </summary>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        ${recentes.map(s => {
+          const t    = _getCkTemplates().find(x => x.id === s.templateId);
+          if (!t) return '';
+          const hora = s.concluidoEm ? new Date(s.concluidoEm).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+          const dataLabel = s.data ? new Date(s.data+'T12:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'}) : '';
+          return `
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--green-light);
+            border-radius:var(--r8);border:1px solid var(--green)">
+            ${lc('check-circle',14,'var(--green)')}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--text-sm);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.nome}</div>
+              <div style="font-size:var(--text-2xs);color:var(--muted)">${dataLabel}${hora?' · '+hora:''}</div>
+            </div>
+            <span style="font-size:var(--text-2xs);font-weight:700;color:var(--green);white-space:nowrap">Concluído ✓</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </details>`;
 
   el.innerHTML = `
     <div style="max-width:680px;margin:0 auto">
-      <!-- Saudação mobile-friendly -->
       <div style="text-align:center;padding:16px 0 20px">
         <div style="font-size:1.4rem;font-weight:800;margin-bottom:4px">${saud}, ${u?.name?.split(' ')[0] || 'você'}!</div>
-        <div style="font-size:var(--text-sm);color:var(--muted)">${new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</div>
+        <div style="font-size:var(--text-sm);color:var(--muted)">${now.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</div>
       </div>
 
-      ${instancias.length === 0 ? (() => {
-        const historico = _getCkSessoes()
-          .filter(s => s.userId === u?.id && s.data !== hoje && s.status === 'concluido')
-          .sort((a, b) => (b.concluidoEm || b.data) > (a.concluidoEm || a.data) ? 1 : -1)
-          .slice(0, 3);
-        return `
-        <div style="text-align:center;padding:36px 20px 24px;background:var(--surface2);border-radius:var(--r12);border:1.5px dashed var(--border)">
-          ${lc('check-square',32,'var(--muted)')}
-          <div style="font-size:var(--text-md);font-weight:700;margin-top:12px;margin-bottom:4px">Nenhum checklist para hoje</div>
-          <div style="font-size:var(--text-sm);color:var(--muted)">Aguarde seu supervisor atribuir as tarefas do dia</div>
+      ${atrasadas.length > 0 ? `
+      <div style="margin-bottom:20px">
+        <div style="font-size:var(--text-xs);font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;gap:5px">
+          ${lc('alert-circle',12,'currentColor')} Atrasados — não concluídos no prazo
         </div>
-        ${historico.length > 0 ? `
-        <div style="margin-top:20px">
-          <div style="font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">
-            ${lc('history',12,'var(--muted)')} Últimos concluídos
-          </div>
-          ${historico.map(s => {
-            const t = _getCkTemplates().find(x => x.id === s.templateId);
-            if (!t) return '';
-            const total = t.itens.length;
-            const feitos = Object.keys(s.respostas||{}).length;
-            const pct = total > 0 ? Math.round(feitos/total*100) : 0;
-            const cor = t.cor || 'var(--purple)';
-            return `
-            <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border-radius:var(--r8);border:1px solid var(--border);margin-bottom:8px">
-              <div style="width:8px;height:8px;border-radius:50%;background:${cor};flex-shrink:0"></div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:var(--text-sm);font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.nome}</div>
-                <div style="font-size:var(--text-xs);color:var(--muted);margin-top:1px">${s.data ? new Date(s.data+'T12:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'}) : ''}</div>
-              </div>
-              <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-                ${lc('check-circle',13,'var(--green)')}
-                <span style="font-size:var(--text-xs);font-weight:700;color:var(--green)">${pct}%</span>
-              </div>
-            </div>`;
-          }).join('')}
-        </div>` : ''}`;
-      })() : instancias.map(inst => _cardInstanciaFuncionario(inst)).join('')}
+        ${atrasadas.map(inst => _cardInstanciaAtrasada(inst)).join('')}
+      </div>` : ''}
+
+      ${instancias.length === 0 ? `
+      <div style="text-align:center;padding:36px 20px 24px;background:var(--surface2);border-radius:var(--r12);border:1.5px dashed var(--border)">
+        ${lc('check-square',32,'var(--muted)')}
+        <div style="font-size:var(--text-md);font-weight:700;margin-top:12px;margin-bottom:4px">Nenhum checklist para hoje</div>
+        <div style="font-size:var(--text-sm);color:var(--muted)">Aguarde seu supervisor atribuir as tarefas do dia</div>
+      </div>` :
+      instancias.map(inst => _cardInstanciaFuncionario(inst)).join('')}
+
+      ${_blocoRecentes}
     </div>`;
+}
+
+// Card para checklists que passaram do prazo sem conclusão
+function _cardInstanciaAtrasada(inst) {
+  const tmpl = _getCkTemplates().find(t => t.id === inst.templateId);
+  if (!tmpl) return '';
+  const total  = tmpl.itens.length;
+  const feitos = Object.keys(inst.respostas||{}).length;
+  const pct    = total > 0 ? Math.round(feitos/total*100) : 0;
+  const dataLabel = inst.data ? new Date(inst.data+'T12:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}) : '';
+
+  return `
+  <div style="margin-bottom:12px;border-radius:var(--r12);overflow:hidden;border:1.5px solid var(--red);opacity:.85">
+    <div style="padding:14px 16px;background:var(--red);display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
+          ${lc('alert-circle',14,'#fff')}
+          <span style="font-size:var(--text-2xs);font-weight:800;color:rgba(255,255,255,.9);text-transform:uppercase;letter-spacing:.5px">Não concluído no prazo</span>
+        </div>
+        <div style="font-size:1rem;font-weight:800;color:#fff">${tmpl.nome}</div>
+        <div style="font-size:var(--text-xs);color:rgba(255,255,255,.8);margin-top:2px">${dataLabel} · ${pct}% concluído</div>
+      </div>
+      <div style="font-size:1.4rem;font-weight:800;color:rgba(255,255,255,.7)">${pct}%</div>
+    </div>
+    <div style="padding:10px 16px;background:var(--red-light);font-size:var(--text-xs);color:var(--red);font-weight:600">
+      ${lc('lock',11,'currentColor')} Este checklist está bloqueado. Contate seu supervisor caso precise registrá-lo.
+    </div>
+  </div>`;
 }
 
 function _cardInstanciaFuncionario(inst) {
@@ -405,6 +446,23 @@ function marcarItemCkClick(instId, itemId) {
   const sessoes = _getCkSessoes();
   const inst    = sessoes.find(s => s.id === instId);
   if (!inst) return;
+
+  // Bloqueia se checklist é de data passada
+  const hoje     = new Date().toISOString().slice(0,10);
+  const isGestor = (() => { const u = typeof getCurrentUser==='function'?getCurrentUser():null; return u?.role==='gerente'||u?.role==='supervisor'; })();
+  if (inst.data && inst.data < hoje) {
+    if (!isGestor) {
+      toast('Prazo encerrado — checklist bloqueado. Contate seu supervisor.', 'err');
+      return;
+    }
+    // Gestor pode concluir com justificativa
+    if (!inst._justificativaAtraso) {
+      const just = window.prompt('Este checklist está atrasado. Informe a justificativa para registrá-lo fora do prazo:');
+      if (!just || !just.trim()) { toast('Justificativa obrigatória para registrar fora do prazo.', 'err'); return; }
+      inst._justificativaAtraso = just.trim();
+      inst._atualizadoForaDoPrazo = new Date().toISOString();
+    }
+  }
   const _itmTipo = _getCkTemplates().find(t => t.id === inst.templateId)?.itens.find(i => i.id === itemId);
   if (_itmTipo?.tipo && _itmTipo.tipo !== 'check') return;
   if (!inst.respostas) inst.respostas = {};
