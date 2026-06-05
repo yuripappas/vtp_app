@@ -1641,18 +1641,41 @@ function _renderMovCW() {
 
   const _row = e => {
     const feito = e.atualizado;
+    // Bloco "Colocar no CW" — mesmo padrão do detalhe de contagem e recebimento
+    const cwBlock = (() => {
+      if (e.cwQtd == null && e.cwPreco == null) return '';
+      const bg  = feito ? 'transparent' : 'var(--purple-xlight)';
+      const bor = feito ? 'transparent' : 'var(--purple-light,#C4B5FD)';
+      const cor = feito ? 'var(--muted)' : 'var(--purple)';
+      return `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0">
+          ${e.cwQtd != null ? `
+          <div style="text-align:center;padding:5px 10px;background:${bg};border:1.5px solid ${bor};border-radius:var(--r8)">
+            <div style="font-size:var(--text-2xs);font-weight:700;color:${cor};text-transform:uppercase;letter-spacing:.5px">Colocar no CW</div>
+            <div style="font-size:.95rem;font-family:monospace;font-weight:800;color:${cor}">${fmt(e.cwQtd)} <span style="font-size:var(--text-2xs);font-weight:600">${e.unit||''}</span></div>
+            ${e.cwPreco != null ? `<div style="font-size:var(--text-2xs);color:${feito?'var(--muted)':'var(--purple)'};font-weight:700">R$ ${fmt(e.cwPreco)}/${e.unit||''}</div>` : ''}
+          </div>` : ''}
+          ${e.diverg != null && !feito ? `
+          <div style="text-align:center;min-width:40px">
+            <div style="font-size:var(--text-2xs);color:var(--muted)">Dif.</div>
+            <div style="font-size:var(--text-xs);font-family:monospace;font-weight:700;color:${e.diverg<0?'var(--red)':'var(--green)'}">${e.diverg>0?'+':''}${fmt(e.diverg)}</div>
+          </div>` : ''}
+          ${feito ? `<div style="font-size:var(--text-xs);color:var(--green);font-weight:700;white-space:nowrap">${lc('check-circle',11,'currentColor')} Feito</div>` : ''}
+        </div>`;
+    })();
+
     return `
-    <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);
-      background:${feito?'var(--green-light)':'var(--surface)'};opacity:${feito?'.75':'1'}">
+    <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);
+      background:${feito?'var(--green-light)':'var(--surface)'};opacity:${feito?'.7':'1'}">
       <!-- Checkbox -->
       <input type="checkbox" ${feito?'checked':''} data-movcw-id="${e.id}"
-        style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;margin-top:2px;cursor:pointer"
+        style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;cursor:pointer"
         onchange="_toggleMovCW('${e.id}',this.checked)">
       <!-- Info -->
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
           ${_chip(e.tipo)}
-          <span style="font-size:var(--text-xs);font-weight:700;${feito?'text-decoration:line-through;color:var(--muted)':''}">${e.nome}</span>
+          <span style="font-size:var(--text-sm);font-weight:700;${feito?'text-decoration:line-through;color:var(--muted)':''}">${e.nome}</span>
           ${e.cat ? `<span style="font-size:var(--text-2xs);color:var(--muted)">${e.cat}</span>` : ''}
         </div>
         <div style="font-size:var(--text-2xs);color:var(--muted);display:flex;gap:8px;flex-wrap:wrap">
@@ -1662,13 +1685,8 @@ function _renderMovCW() {
           ${e.cats?.length ? `<span>${e.cats.join(', ')}</span>` : ''}
         </div>
       </div>
-      <!-- Valores CW -->
-      <div style="text-align:right;flex-shrink:0">
-        ${e.cwQtd != null ? `<div style="font-size:var(--text-xs);font-weight:700;font-family:monospace;color:${feito?'var(--muted)':'var(--purple)'}">${fmt(e.cwQtd)} ${e.unit||''}</div>` : ''}
-        ${e.cwPreco != null ? `<div style="font-size:var(--text-2xs);color:var(--muted)">R$ ${fmt(e.cwPreco)}/${e.unit||''}</div>` : ''}
-        ${e.diverg != null ? `<div style="font-size:var(--text-2xs);color:${e.diverg<0?'var(--red)':'var(--green)'};font-family:monospace">${e.diverg>0?'+':''}${fmt(e.diverg)} ${e.unit||''}</div>` : ''}
-        ${feito ? `<div style="font-size:var(--text-2xs);color:var(--green);font-weight:700">${lc('check-circle',9,'currentColor')} Atualizado</div>` : ''}
-      </div>
+      <!-- Bloco CW destacado -->
+      ${cwBlock}
     </div>`;
   };
 
