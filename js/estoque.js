@@ -1585,6 +1585,7 @@ function _renderMovCW() {
         unit:       x.unit,
         cwQtd:      x.fisico,
         cwPreco:    null,
+        digital:    x.digital,
         diverg:     x.diverg,
         atualizado: !!(c.cwSubido?.[x.id]),
         // refs para toggle
@@ -1640,38 +1641,50 @@ function _renderMovCW() {
     : `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">${lc('package',9,'currentColor')} Recebimento</span>`;
 
   const _row = e => {
-    const feito = e.atualizado;
-    // Bloco "Colocar no CW" — mesmo padrão do detalhe de contagem e recebimento
-    const cwBlock = (() => {
-      if (e.cwQtd == null && e.cwPreco == null) return '';
-      const bg  = feito ? 'transparent' : 'var(--purple-xlight)';
-      const bor = feito ? 'transparent' : 'var(--purple-light,#C4B5FD)';
-      const cor = feito ? 'var(--muted)' : 'var(--purple)';
-      return `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex-shrink:0">
-          ${e.cwQtd != null ? `
-          <div style="text-align:center;padding:5px 10px;background:${bg};border:1.5px solid ${bor};border-radius:var(--r8)">
-            <div style="font-size:var(--text-2xs);font-weight:700;color:${cor};text-transform:uppercase;letter-spacing:.5px">Colocar no CW</div>
-            <div style="font-size:.95rem;font-family:monospace;font-weight:800;color:${cor}">${fmt(e.cwQtd)} <span style="font-size:var(--text-2xs);font-weight:600">${e.unit||''}</span></div>
-            ${e.cwPreco != null ? `<div style="font-size:var(--text-2xs);color:${feito?'var(--muted)':'var(--purple)'};font-weight:700">R$ ${fmt(e.cwPreco)}/${e.unit||''}</div>` : ''}
-          </div>` : ''}
-          ${e.diverg != null && !feito ? `
-          <div style="text-align:center;min-width:40px">
-            <div style="font-size:var(--text-2xs);color:var(--muted)">Dif.</div>
-            <div style="font-size:var(--text-xs);font-family:monospace;font-weight:700;color:${e.diverg<0?'var(--red)':'var(--green)'}">${e.diverg>0?'+':''}${fmt(e.diverg)}</div>
-          </div>` : ''}
-          ${feito ? `<div style="font-size:var(--text-xs);color:var(--green);font-weight:700;white-space:nowrap">${lc('check-circle',11,'currentColor')} Feito</div>` : ''}
+    const feito   = e.atualizado;
+    const bgRow   = feito ? 'var(--green-light)' : 'var(--surface)';
+    const opRow   = feito ? '.7' : '1';
+
+    // Bloco direito — idêntico ao Histórico/abrirDetalheContagem
+    const blocoDir = (() => {
+      if (e.cwQtd == null) return feito ? `<span style="font-size:var(--text-xs);color:var(--green);font-weight:700;white-space:nowrap;flex-shrink:0">${lc('check-circle',11,'currentColor')} Atualizado</span>` : '';
+
+      const bg  = feito ? 'transparent'            : 'var(--purple-xlight)';
+      const bor = feito ? 'transparent'            : '#C4B5FD';
+      const cor = feito ? 'var(--muted)'           : 'var(--purple)';
+
+      // Para contagem: mostra cwQtd (físico) + "era" + digital + diff
+      // Para recebimento: mostra cwQtd (qtd kg) + preço/kg
+      const boxCW = `
+        <div style="text-align:center;padding:5px 10px;background:${bg};border:1.5px solid ${bor};border-radius:8px;min-width:90px">
+          <div style="font-size:10px;font-weight:800;color:${cor};text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">Colocar no CW</div>
+          <div style="font-size:1rem;font-family:monospace;font-weight:800;color:${cor};line-height:1.1">${fmt(e.cwQtd)}<span style="font-size:10px;margin-left:2px">${e.unit||''}</span></div>
+          ${e.cwPreco != null ? `<div style="font-size:10px;color:${feito?'var(--muted)':'var(--purple)'};font-weight:700;margin-top:1px">R$ ${fmt(e.cwPreco)}/${e.unit||''}</div>` : ''}
+          ${feito ? `<div style="font-size:10px;color:var(--green);font-weight:700">${lc('check-circle',9,'currentColor')} Feito</div>` : ''}
         </div>`;
+
+      const extras = e.tipo === 'contagem' && e.digital != null ? `
+        <div style="font-size:10px;color:var(--muted);flex-shrink:0">era</div>
+        <div style="text-align:center;min-width:44px;flex-shrink:0">
+          <div style="font-size:10px;color:var(--muted)">CW atual</div>
+          <div style="font-size:var(--text-sm);font-family:monospace;font-weight:600;color:var(--muted);text-decoration:line-through">${fmt(e.digital)}</div>
+        </div>
+        ${e.diverg != null ? `
+        <div style="text-align:center;min-width:36px;flex-shrink:0">
+          <div style="font-size:10px;color:var(--muted)">Dif.</div>
+          <div style="font-size:var(--text-xs);font-family:monospace;font-weight:700;color:${e.diverg<0?'var(--red)':'var(--green)'}">${e.diverg>0?'+':''}${fmt(e.diverg)}</div>
+        </div>` : ''}` : '';
+
+      return `<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+        ${boxCW}${extras}
+      </div>`;
     })();
 
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);
-      background:${feito?'var(--green-light)':'var(--surface)'};opacity:${feito?'.7':'1'}">
-      <!-- Checkbox -->
-      <input type="checkbox" ${feito?'checked':''} data-movcw-id="${e.id}"
-        style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;cursor:pointer"
+      background:${bgRow};opacity:${opRow}">
+      <input type="checkbox" ${feito?'checked':''} style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;cursor:pointer"
         onchange="_toggleMovCW('${e.id}',this.checked)">
-      <!-- Info -->
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
           ${_chip(e.tipo)}
@@ -1685,8 +1698,7 @@ function _renderMovCW() {
           ${e.cats?.length ? `<span>${e.cats.join(', ')}</span>` : ''}
         </div>
       </div>
-      <!-- Bloco CW destacado -->
-      ${cwBlock}
+      ${blocoDir}
     </div>`;
   };
 
