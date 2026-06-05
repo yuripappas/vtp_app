@@ -1213,11 +1213,41 @@ function openImportModal() {
 function handleDrop(e) {
   e.preventDefault();
   const file = e.dataTransfer.files[0];
-  if (file) parseCSV(file);
+  if (file) handleFile({ files: [file] });
   document.getElementById('dropzone')?.classList.remove('drag');
 }
 
-function handleFile(inp) { if (inp.files[0]) parseCSV(inp.files[0]); }
+function handleFile(inp) {
+  const file = inp.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'xlsx' || ext === 'xls' || ext === 'ods') {
+    _parseXLSX(file);
+  } else {
+    parseCSV(file);
+  }
+}
+
+function _parseXLSX(file) {
+  if (typeof XLSX === 'undefined') {
+    toast('Biblioteca de leitura de Excel não carregada. Tente recarregar a página.', 'err');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb    = XLSX.read(e.target.result, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]]; // primeira aba
+      // Converte para CSV e passa pelo mesmo parser
+      const csv   = XLSX.utils.sheet_to_csv(sheet, { FS: ';' });
+      const blob  = new Blob([csv], { type: 'text/csv' });
+      parseCSV(blob);
+    } catch(err) {
+      toast('Erro ao ler o arquivo Excel: ' + err.message, 'err');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
 
 function parseCSV(file) {
   const reader = new FileReader();

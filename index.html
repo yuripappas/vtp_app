@@ -207,7 +207,7 @@
           <div style="display:flex;gap:8px;padding:8px 0;flex-shrink:0">
             <button onclick="openImportModal()" id="estBtnImport" class="btn btn-outline btn-sm" style="gap:6px">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Importar CSV
+              Importar planilha
             </button>
           </div>
         </div>
@@ -322,7 +322,7 @@
             <div style="display:flex;gap:8px">
               <button class="btn btn-outline btn-sm" onclick="abrirImportCadInsumos()" style="display:flex;align-items:center;gap:5px">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Importar CSV
+                Importar planilha
               </button>
               <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Novo Insumo</button>
             </div>
@@ -746,9 +746,9 @@
       </div>
       <div class="dropzone" id="dropzone" onclick="document.getElementById('csvFile').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop(event)">
         <div style="font-size:2rem;margin-bottom:8px"></div>
-        <div style="font-size:.84rem;font-weight:600;color:var(--text2)">Clique ou arraste o arquivo CSV aqui</div>
+        <div style="font-size:.84rem;font-weight:600;color:var(--text2)">Clique ou arraste o arquivo CSV ou Excel (.xlsx) aqui</div>
         <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Exportado do Cardápio Web · formato UTF-8</div>
-        <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="handleFile(this)">
+        <input type="file" id="csvFile" accept=".csv,.xlsx,.xls,.ods,.txt" style="display:none" onchange="handleFile(this)">
       </div>
       <div id="importPreview"></div>
     </div>
@@ -1351,6 +1351,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
