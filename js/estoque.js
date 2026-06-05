@@ -1753,19 +1753,21 @@ function _toggleMovCW(entryId, checked) {
     _saveHistContagens(hist);
 
   } else if (entryId.startsWith('rec_')) {
-    // Origem: recebimento de compra
-    const parts   = entryId.split('_'); // ['rec', listaId, itemListaId]
+    // Origem: recebimento de compra — atualiza diretamente o global 'listas' de compras.js
+    const parts   = entryId.split('_');
     const listaId = parseInt(parts[1]);
     const iId     = parseInt(parts[2]);
-    const listas  = db._get('vtp_listas', []);
-    const lista   = listas.find(l => l.id === listaId);
+    // Usa o global 'listas' (compras.js) se disponível para manter sync
+    const listasGlobal = typeof listas !== 'undefined' ? listas : db._get('vtp_listas', []);
+    const lista   = listasGlobal.find(l => l.id === listaId);
     if (!lista) return;
     const item = lista.itens?.find(i => i.id === iId);
     if (!item) return;
     item.cwAtualizado   = checked;
     item.cwAtualizadoEm = checked ? new Date().toISOString() : null;
-    db._set('vtp_listas', listas);
+    // Salva via global saveListas se disponível, senão direto no db
     if (typeof saveListas === 'function') saveListas();
+    else db._set('vtp_listas', listasGlobal);
   }
   _renderMovCW();
 }
