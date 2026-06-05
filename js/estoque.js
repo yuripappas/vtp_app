@@ -173,14 +173,15 @@ function _renderCatCards(el) {
 
     let ultimaLabel = 'Nunca contada';
     if (ultima) {
-      // Comparação por data apenas (sem horário) — evita bug de "hoje" quando foi ontem
-      const hoje    = new Date().toISOString().slice(0,10);
-      const ontem   = new Date(Date.now() - 864e5).toISOString().slice(0,10);
-      const dCont   = ultima.slice(0,10);
+      // Usa data local (não UTC) para evitar bug de fuso — Brasil é UTC-3
+      const toLocal = d => { const dt = new Date(d); return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0'); };
+      const hoje    = toLocal(new Date());
+      const ontem   = toLocal(new Date(Date.now() - 864e5));
+      const dCont   = toLocal(new Date(ultima));
       if      (dCont === hoje)  ultimaLabel = 'hoje';
       else if (dCont === ontem) ultimaLabel = 'ontem';
       else {
-        const d = Math.floor((Date.now() - new Date(dCont)) / 864e5);
+        const d = Math.round((new Date(hoje) - new Date(dCont)) / 864e5);
         ultimaLabel = d + 'd atrás';
       }
     }
