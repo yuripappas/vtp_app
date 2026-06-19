@@ -136,6 +136,61 @@ function _closeMobileSubmenu() {
   _mobileSubmenuActive = false;
 }
 
+// ══════════════════════════════════════════════════════════════
+// SUB-PANEL — two-column nav (desktop) estilo Intercom
+// ══════════════════════════════════════════════════════════════
+
+let _subPanelGroupId = null;
+
+function _openSubPanel(items, parentLabel, groupId) {
+  // Mesmo grupo: toggle
+  if (_subPanelGroupId === groupId) { _closeSubPanel(); return; }
+
+  _subPanelGroupId = groupId;
+
+  const panel    = document.getElementById('sbSubPanel');
+  const header   = document.getElementById('sbSubPanelHeader');
+  const itemsEl  = document.getElementById('sbSubPanelItems');
+  if (!panel) return;
+
+  header.textContent = parentLabel;
+  itemsEl.innerHTML  = items.map(item => `
+    <button class="sb-sub-item" onclick="${item.action}">
+      ${lc(item.icon, 15, 'currentColor')}
+      <span>${item.label}</span>
+    </button>`).join('');
+
+  panel.classList.add('open');
+
+  // Destaca o grupo no sidebar principal
+  document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
+  document.getElementById(`nav-${groupId}`)?.classList.add('active');
+}
+
+function _closeSubPanel() {
+  _subPanelGroupId = null;
+  document.getElementById('sbSubPanel')?.classList.remove('open');
+}
+
+// Marca um sub-item como ativo dentro do painel aberto
+function _setSubPanelActive(selector) {
+  document.querySelectorAll('#sbSubPanelItems .sb-sub-item').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`#sbSubPanelItems .sb-sub-item[onclick*="${selector}"]`);
+  if (btn) btn.classList.add('active');
+}
+
+// ── Hover-expand sidebar (só desktop, só quando sidebar colapsado) ──
+function _initSidebarHover() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  sidebar.addEventListener('mouseenter', () => {
+    if (!sidebarOpen && !_subPanelGroupId) sidebar.classList.add('hover-expand');
+  });
+  sidebar.addEventListener('mouseleave', () => {
+    sidebar.classList.remove('hover-expand');
+  });
+}
+
 // Submenu items de Compras
 const _COMPRAS_SUBMENU_ITEMS = [
   { id: 'listas',    icon: 'clipboard-list', label: 'Lista de Compras' },
@@ -143,33 +198,66 @@ const _COMPRAS_SUBMENU_ITEMS = [
 ];
 
 function _handleNavCompras() {
-  _openMobileSubmenu(
-    _COMPRAS_SUBMENU_ITEMS.map(item => ({
-      ...item,
-      action: `_cpSection='${item.id}'; goModule('compras');`
-    })),
-    'Compras'
-  );
+  if (window.innerWidth <= 480) {
+    _openMobileSubmenu(
+      _COMPRAS_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `_cpSection='${item.id}'; goModule('compras');`
+      })),
+      'Compras'
+    );
+  } else {
+    _openSubPanel(
+      _COMPRAS_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `_cpSection='${item.id}'; goModule('compras');`
+      })),
+      'Compras',
+      'compras'
+    );
+  }
 }
 
 function _handleNavOperacao() {
-  _openMobileSubmenu(
-    _OPERACAO_SUBMENU_ITEMS.map(item => ({
-      ...item,
-      action: `goModule('${item.id}');`
-    })),
-    'Operação'
-  );
+  if (window.innerWidth <= 480) {
+    _openMobileSubmenu(
+      _OPERACAO_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `goModule('${item.id}');`
+      })),
+      'Operação'
+    );
+  } else {
+    _openSubPanel(
+      _OPERACAO_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `goModule('${item.id}');`
+      })),
+      'Operação',
+      'operacao'
+    );
+  }
 }
 
 function _handleNavConfiguracoes() {
-  _openMobileSubmenu(
-    _CFG_SUBMENU_ITEMS.map(item => ({
-      ...item,
-      action: `_cfgSection='${item.id}'; goModule('configuracoes');`
-    })),
-    'Configurações'
-  );
+  if (window.innerWidth <= 480) {
+    _openMobileSubmenu(
+      _CFG_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `_cfgSection='${item.id}'; goModule('configuracoes');`
+      })),
+      'Configurações'
+    );
+  } else {
+    _openSubPanel(
+      _CFG_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `_cfgSection='${item.id}'; goModule('configuracoes');`
+      })),
+      'Configurações',
+      'configuracoes'
+    );
+  }
 }
 
 const modInfo = {
@@ -237,9 +325,12 @@ function goModule(mod) {
   // Atualiza URL (não duplica entrada se veio do popstate)
   if (!_vtpNavFromPop) _vtpPushRoute(mod);
 
-  // Fecha submenu do sidebar ao navegar (desktop e mobile)
+  // Fecha drawer mobile ao navegar
   if (_mobileSubmenuActive) _closeMobileSubmenu();
   if (_mobileMenuOpen) toggleMobileMenu();
+  // Fecha sub-panel desktop ao navegar (exceto quando é o próprio grupo)
+  const _GROUP_MODS = { compras: 'compras', configuracoes: 'configuracoes' };
+  if (_subPanelGroupId && _subPanelGroupId !== _GROUP_MODS[mod]) _closeSubPanel();
 
   const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
 
@@ -336,3 +427,6 @@ function vtpConfirmExec() {
   vtpConfirmClose();
   if (typeof cb === 'function') cb();
 }
+
+// Inicia hover-expand do sidebar (chamado após DOM pronto)
+_initSidebarHover();

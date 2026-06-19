@@ -141,6 +141,12 @@
   <!-- Backdrop do drawer mobile -->
   <div id="mobileBackdrop" class="mobile-backdrop"></div>
 
+  <!-- Painel secundário de submenu (desktop) — two-column nav -->
+  <div id="sbSubPanel" class="sb-sub-panel">
+    <div id="sbSubPanelHeader" class="sb-sub-header"></div>
+    <nav id="sbSubPanelItems" class="sb-sub-items"></nav>
+  </div>
+
   <!-- Toggle sidebar — fora do sidebar-wrap para não herdar contexto de empilhamento do sticky -->
   <div id="sbToggle" onclick="toggleSidebar()"
     style="position:fixed;top:18px;left:48px;width:24px;height:24px;background:var(--surface);border:1.5px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:1000;transition:left .22s cubic-bezier(.4,0,.2,1)">
