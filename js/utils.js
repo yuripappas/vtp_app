@@ -143,45 +143,33 @@ const _COMPRAS_SUBMENU_ITEMS = [
 ];
 
 function _handleNavCompras() {
-  if (isMobile()) {
-    _openMobileSubmenu(
-      _COMPRAS_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `_cpSection='${item.id}'; goModule('compras');`
-      })),
-      'Compras'
-    );
-  } else {
-    goModule('compras');
-  }
+  _openMobileSubmenu(
+    _COMPRAS_SUBMENU_ITEMS.map(item => ({
+      ...item,
+      action: `_cpSection='${item.id}'; goModule('compras');`
+    })),
+    'Compras'
+  );
 }
 
 function _handleNavOperacao() {
-  if (isMobile()) {
-    _openMobileSubmenu(
-      _OPERACAO_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `goModule('${item.id}');`
-      })),
-      'Operação'
-    );
-  } else {
-    goModule('operacao');
-  }
+  _openMobileSubmenu(
+    _OPERACAO_SUBMENU_ITEMS.map(item => ({
+      ...item,
+      action: `goModule('${item.id}');`
+    })),
+    'Operação'
+  );
 }
 
 function _handleNavConfiguracoes() {
-  if (isMobile()) {
-    _openMobileSubmenu(
-      _CFG_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `_cfgSection='${item.id}'; goModule('configuracoes');`
-      })),
-      'Configurações'
-    );
-  } else {
-    goModule('configuracoes');
-  }
+  _openMobileSubmenu(
+    _CFG_SUBMENU_ITEMS.map(item => ({
+      ...item,
+      action: `_cfgSection='${item.id}'; goModule('configuracoes');`
+    })),
+    'Configurações'
+  );
 }
 
 const modInfo = {
@@ -237,6 +225,9 @@ function _vtpRestoreRoute() {
 }
 
 function goModule(mod) {
+  // Operação e Configurações sem seção definida → abrem submenu no sidebar
+  if (mod === 'operacao') { _handleNavOperacao(); return; }
+
   // Verifica permissão
   if (typeof canAccess === 'function' && !canAccess(mod)) {
     toast('Acesso não permitido para seu perfil', 'err');
@@ -245,6 +236,10 @@ function goModule(mod) {
 
   // Atualiza URL (não duplica entrada se veio do popstate)
   if (!_vtpNavFromPop) _vtpPushRoute(mod);
+
+  // Fecha submenu do sidebar ao navegar (desktop e mobile)
+  if (_mobileSubmenuActive) _closeMobileSubmenu();
+  if (_mobileMenuOpen) toggleMobileMenu();
 
   const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
 
@@ -260,7 +255,7 @@ function goModule(mod) {
     document.getElementById('nav-configuracoes-bottom')?.classList.add('active');
   }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById(`page-${mod}`).classList.add('active');
+  document.getElementById(`page-${mod}`)?.classList.add('active');
   const info = modInfo[mod];
   if (info) {
     document.getElementById('topbarTitle').textContent = info.title;
@@ -269,7 +264,6 @@ function goModule(mod) {
     const mobileTitle = document.getElementById('mobileModuleTitle');
     if (mobileTitle) mobileTitle.textContent = info.title;
   }
-  if (_mobileMenuOpen) toggleMobileMenu();
   if (mod === 'operacao')        renderOperacao();
   else if (mod === 'omnichannel') renderOmnichannel();
   else if (mod === 'dashboard')  renderDashboard();

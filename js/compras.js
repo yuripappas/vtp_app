@@ -57,28 +57,13 @@ function renderComprasModule() {
 function renderComprasLayout(section) {
   if (section) _cpSection = section;
 
-  // Popula nav lateral (padrão Operação: ícone + label)
-  const _CP_NAV_ITEMS = [
-    { id: 'listas',    icon: 'clipboard-list', label: 'Lista de Compras' },
-    { id: 'historico', icon: 'clock',          label: 'Histórico'        },
-  ];
-  _CP_NAV_ITEMS.forEach(it => {
-    const btn = document.getElementById(`cpNav-${it.id}`);
-    if (!btn) return;
-    btn.classList.toggle('active', _cpSection === it.id);
-    btn.innerHTML = `${lc(it.icon, 16, 'currentColor')}<span>${it.label}</span>`;
-  });
-
-  // Renderiza seção no painel direito
+  // Renderiza seção full-width (sem nav lateral — navegação é via sidebar)
   if (_cpSection === 'historico') {
     _renderHistoricoLayout();
+  } else if (_cpListaAberta) {
+    _renderFlowLayout(_cpListaAberta);
   } else {
-    // 'listas'
-    if (_cpListaAberta) {
-      _renderFlowLayout(_cpListaAberta);
-    } else {
-      _renderListaCompras();
-    }
+    _renderListaCompras();
   }
 }
 
