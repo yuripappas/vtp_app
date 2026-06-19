@@ -136,8 +136,6 @@ function _closeMobileSubmenu() {
   _mobileSubmenuActive = false;
 }
 
-let _operacaoExpanded = false;
-
 function _handleNavOperacao() {
   if (isMobile()) {
     _openMobileSubmenu(
@@ -148,43 +146,8 @@ function _handleNavOperacao() {
       'Operação'
     );
   } else {
-    _toggleOperacaoAccordion();
+    goModule('operacao');
   }
-}
-
-function _toggleOperacaoAccordion() {
-  _operacaoExpanded = !_operacaoExpanded;
-  _renderOperacaoAccordion();
-}
-
-function _renderOperacaoAccordion() {
-  // Remove submenu anterior se existir
-  document.getElementById('_op-submenu')?.remove();
-  const navOp = document.getElementById('nav-operacao');
-  if (!navOp || !_operacaoExpanded) {
-    // atualiza ícone de seta
-    const arrow = document.getElementById('_op-arrow');
-    if (arrow) arrow.style.transform = 'rotate(0deg)';
-    return;
-  }
-
-  const arrow = document.getElementById('_op-arrow');
-  if (arrow) arrow.style.transform = 'rotate(180deg)';
-
-  const sub = document.createElement('div');
-  sub.id = '_op-submenu';
-  sub.style.cssText = 'display:flex;flex-direction:column;gap:2px;padding:2px 8px 4px 8px';
-  sub.innerHTML = _OPERACAO_SUBMENU_ITEMS.map(item => `
-    <button id="nav-${item.id}" onclick="goModule('${item.id}')" class="sb-item sb-subitem" style="padding-left:14px;font-size:var(--text-xs);min-height:34px">
-      <span class="sb-icon" style="width:18px;height:18px">${lc(item.icon, 15, 'currentColor')}</span>
-      <span class="sb-label">${item.label}</span>
-    </button>
-  `).join('');
-  navOp.insertAdjacentElement('afterend', sub);
-
-  // Reaplicar permissões nos novos botões
-  const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-  if (user) applyPermissions(user);
 }
 
 function _handleNavConfiguracoes() {
@@ -265,17 +228,10 @@ function goModule(mod) {
 
   const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
 
-  // Fecha accordion de Operação ao navegar para módulo fora de Operação (exceto a tela de submenu)
-  if (!_OPERACAO_MODS.includes(mod) && mod !== 'operacao') {
-    _operacaoExpanded = false;
-    _renderOperacaoAccordion();
-  }
-
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
   // Submódulos de Operação destacam o item "Operação" no sidebar
   if (_OPERACAO_MODS.includes(mod)) {
     document.getElementById('nav-operacao')?.classList.add('active');
-    document.getElementById(`nav-${mod}`)?.classList.add('active');
   } else {
     document.getElementById(`nav-${mod}`)?.classList.add('active');
   }

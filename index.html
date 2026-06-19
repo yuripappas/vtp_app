@@ -88,7 +88,6 @@
         <button class="sb-item" id="nav-operacao" onclick="_handleNavOperacao()">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span>
           <span class="sb-label">Operação</span>
-          <svg id="_op-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;flex-shrink:0;opacity:.5;transition:transform .2s"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
 
         <button class="sb-item" id="nav-rh" onclick="goModule('rh')">
@@ -450,7 +449,21 @@
 
       <!-- RH -->
       <div class="page" id="page-rh" style="padding:0"></div>
-      <div class="page" id="page-operacao" style="padding:0"></div>
+      <div class="page" id="page-operacao" style="padding:0">
+        <div class="settings-layout">
+          <nav class="settings-nav" id="opSettingsNav">
+            <button class="settings-nav-item active" id="opNav-estoque"     onclick="setOpSection('estoque')"></button>
+            <button class="settings-nav-item"        id="opNav-preproducao" onclick="setOpSection('preproducao')"></button>
+            <button class="settings-nav-item"        id="opNav-desperdicio" onclick="setOpSection('desperdicio')"></button>
+            <button class="settings-nav-item"        id="opNav-previsao"    onclick="setOpSection('previsao')"></button>
+            <button class="settings-nav-item"        id="opNav-checklist"   onclick="setOpSection('checklist')"></button>
+            <button class="settings-nav-item"        id="opNav-manutencao"  onclick="setOpSection('manutencao')"></button>
+            <button class="settings-nav-item"        id="opNav-inventario"  onclick="setOpSection('inventario')"></button>
+            <button class="settings-nav-item"        id="opNav-etiquetagem" onclick="setOpSection('etiquetagem')"></button>
+          </nav>
+          <div class="settings-content" id="opSectionContent" style="padding:0"></div>
+        </div>
+      </div>
       <div class="page" id="page-omnichannel" style="padding:0"></div>
 
       <!-- ALERTAS -->

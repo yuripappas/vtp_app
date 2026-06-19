@@ -989,46 +989,52 @@ function deleteUser()       { /* delegado ao modal unificado */ }
 function renderPermPreview(){ /* substituído pelo modal unificado */ }
 
 // ══════════════════════════════════════════════════════════════
-// OPERAÇÃO — tela de submenu
+// OPERAÇÃO — painel de navegação lateral (padrão da plataforma)
 // ══════════════════════════════════════════════════════════════
 
-function renderOperacao() {
-  const cards = [
-    { mod: 'estoque',     icon: 'package',      label: 'Estoque',       desc: 'Contagem e movimentações'           },
-    { mod: 'preproducao', icon: 'chef-hat',      label: 'Pré-produção',  desc: 'Ordens de produção interna'         },
-    { mod: 'desperdicio', icon: 'trash-2',       label: 'Desperdício',   desc: 'Monitore perdas e impacto financeiro' },
-    { mod: 'previsao',    icon: 'trending-up',   label: 'Previsão',      desc: 'Planejamento de demanda do dia'     },
-    { mod: 'checklist',   icon: 'check-square',  label: 'Checklist',     desc: 'Tarefas diárias e controle de equipe' },
-    { mod: 'manutencao',  icon: 'wrench',        label: 'Manutenção',    desc: 'Equipamentos e histórico preventivo' },
-    { mod: 'inventario',  icon: 'layers',        label: 'Inventário',    desc: 'Ativos, utensílios e contagem mensal' },
-    { mod: 'etiquetagem', icon: 'tag',           label: 'Etiquetagem',   desc: 'Impressão de etiquetas e validades'  },
-  ];
+const _OP_ITEMS = [
+  { mod: 'estoque',     icon: 'package',      label: 'Estoque',      desc: 'Contagem e movimentações'            },
+  { mod: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção', desc: 'Ordens de produção interna'          },
+  { mod: 'desperdicio', icon: 'trash-2',      label: 'Desperdício',  desc: 'Monitore perdas e impacto financeiro'},
+  { mod: 'previsao',    icon: 'trending-up',  label: 'Previsão',     desc: 'Planejamento de demanda do dia'      },
+  { mod: 'checklist',   icon: 'check-square', label: 'Checklist',    desc: 'Tarefas diárias e controle de equipe'},
+  { mod: 'manutencao',  icon: 'wrench',       label: 'Manutenção',   desc: 'Equipamentos e histórico preventivo' },
+  { mod: 'inventario',  icon: 'layers',       label: 'Inventário',   desc: 'Ativos, utensílios e contagem mensal'},
+  { mod: 'etiquetagem', icon: 'tag',          label: 'Etiquetagem',  desc: 'Impressão de etiquetas e validades'  },
+];
 
-  document.getElementById('page-operacao').innerHTML = `
-    <div style="padding:24px 20px;max-width:900px;margin:0 auto">
-      <div style="margin-bottom:28px">
-        <div style="font-size:var(--text-xl);font-weight:700;color:var(--text1);margin-bottom:4px">Operação</div>
-        <div style="font-size:var(--text-sm);color:var(--text3)">Estoque · Produção · Checklist · Inventário e mais</div>
+let _opSection = _OP_ITEMS[0].mod;
+
+function renderOperacao(section) {
+  _OP_ITEMS.forEach(item => {
+    const btn = document.getElementById(`opNav-${item.mod}`);
+    if (!btn) return;
+    btn.innerHTML = `${lc(item.icon, 16, 'currentColor')}<span>${item.label}</span>`;
+  });
+  setOpSection(section || _opSection);
+}
+
+function setOpSection(mod) {
+  _opSection = mod;
+  document.querySelectorAll('#opSettingsNav .settings-nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById(`opNav-${mod}`)?.classList.add('active');
+
+  const item = _OP_ITEMS.find(i => i.mod === mod);
+  const content = document.getElementById('opSectionContent');
+  if (!content || !item) return;
+
+  content.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px;text-align:center;padding:40px 32px">
+      <span style="width:56px;height:56px;border-radius:var(--r12);background:var(--purple-a12);display:flex;align-items:center;justify-content:center">
+        ${lc(item.icon, 26, 'var(--purple)')}
+      </span>
+      <div>
+        <div style="font-size:var(--text-lg);font-weight:700;color:var(--text1);margin-bottom:6px">${item.label}</div>
+        <div style="font-size:var(--text-sm);color:var(--text3);max-width:280px;line-height:1.6">${item.desc}</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
-        ${cards.map(c => `
-          <button onclick="goModule('${c.mod}')" style="
-            background:var(--surface);border:1px solid var(--border);border-radius:var(--r12);
-            padding:20px 16px;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s;
-            display:flex;flex-direction:column;gap:10px;width:100%
-          " onmouseover="this.style.borderColor='var(--purple)';this.style.boxShadow='0 0 0 3px var(--purple-a12)'"
-             onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
-            <span style="
-              width:40px;height:40px;border-radius:var(--r8);background:var(--purple-a12);
-              display:flex;align-items:center;justify-content:center;flex-shrink:0
-            ">${lc(c.icon, 20, 'var(--purple)')}</span>
-            <div>
-              <div style="font-size:var(--text-sm);font-weight:600;color:var(--text1);margin-bottom:3px">${c.label}</div>
-              <div style="font-size:var(--text-xs);color:var(--text3);line-height:1.4">${c.desc}</div>
-            </div>
-          </button>
-        `).join('')}
-      </div>
+      <button onclick="goModule('${mod}')" class="btn btn-primary" style="gap:8px">
+        ${lc('arrow-right', 15, '#fff')} Abrir ${item.label}
+      </button>
     </div>
   `;
 }
