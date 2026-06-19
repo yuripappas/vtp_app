@@ -9,6 +9,8 @@
 
 const MODULE_PERMISSIONS = {
   dashboard:     ['gerente', 'supervisor', 'comprador', 'funcionario'],
+  omnichannel:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
+  operacao:      ['gerente', 'supervisor', 'comprador', 'funcionario'],
   estoque:       ['gerente', 'supervisor', 'comprador'],
   preproducao:   ['gerente', 'supervisor', 'comprador'],
   desperdicio:   ['gerente', 'supervisor'],

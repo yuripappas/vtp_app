@@ -73,6 +73,18 @@ function toggleMobileMenu() {
   }
 }
 
+// Submenu items de Operação
+const _OPERACAO_SUBMENU_ITEMS = [
+  { id: 'estoque',     icon: 'package',      label: 'Estoque'      },
+  { id: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção' },
+  { id: 'desperdicio', icon: 'trash-2',      label: 'Desperdício'  },
+  { id: 'previsao',    icon: 'trending-up',  label: 'Previsão'     },
+  { id: 'checklist',   icon: 'check-square', label: 'Checklist'    },
+  { id: 'manutencao',  icon: 'wrench',       label: 'Manutenção'   },
+  { id: 'inventario',  icon: 'layers',       label: 'Inventário'   },
+  { id: 'etiquetagem', icon: 'tag',          label: 'Etiquetagem'  },
+];
+
 // Submenu items de Configurações
 const _CFG_SUBMENU_ITEMS = [
   { id: 'empresa',      icon: 'building-2', label: 'Empresa'        },
@@ -124,6 +136,20 @@ function _closeMobileSubmenu() {
   _mobileSubmenuActive = false;
 }
 
+function _handleNavOperacao() {
+  if (isMobile()) {
+    _openMobileSubmenu(
+      _OPERACAO_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `goModule('${item.id}');`
+      })),
+      'Operação'
+    );
+  } else {
+    goModule('operacao');
+  }
+}
+
 function _handleNavConfiguracoes() {
   if (isMobile()) {
     _openMobileSubmenu(
@@ -140,6 +166,8 @@ function _handleNavConfiguracoes() {
 
 const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
+  operacao:       { title: 'Operação',              sub: 'Estoque · Produção · Checklist · Inventário e mais' },
+  omnichannel:    { title: 'Omnichannel',           sub: 'Central de atendimento e canais de venda' },
   estoque:        { title: 'Estoque',               sub: 'Contagem e movimentações' },
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
@@ -198,8 +226,15 @@ function goModule(mod) {
   // Atualiza URL (não duplica entrada se veio do popstate)
   if (!_vtpNavFromPop) _vtpPushRoute(mod);
 
+  const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
+
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
-  document.getElementById(`nav-${mod}`)?.classList.add('active');
+  // Submódulos de Operação destacam o item "Operação" no sidebar
+  if (_OPERACAO_MODS.includes(mod)) {
+    document.getElementById('nav-operacao')?.classList.add('active');
+  } else {
+    document.getElementById(`nav-${mod}`)?.classList.add('active');
+  }
   // Configurações tem dois botões (nav e rodapé) — ativa ambos
   if (mod === 'configuracoes') {
     document.getElementById('nav-configuracoes-bottom')?.classList.add('active');
@@ -215,7 +250,9 @@ function goModule(mod) {
     if (mobileTitle) mobileTitle.textContent = info.title;
   }
   if (_mobileMenuOpen) toggleMobileMenu();
-  if (mod === 'dashboard')       renderDashboard();
+  if (mod === 'operacao')        renderOperacao();
+  else if (mod === 'omnichannel') renderOmnichannel();
+  else if (mod === 'dashboard')  renderDashboard();
   else if (mod === 'estoque')    renderEstoque();
   else if (mod === 'preproducao') renderPreproducao();
   else if (mod === 'compras')    renderComprasModule();

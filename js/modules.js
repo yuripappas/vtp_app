@@ -987,3 +987,73 @@ function openEditUser(id) {
 function saveUser()         { /* delegado ao modal unificado */ }
 function deleteUser()       { /* delegado ao modal unificado */ }
 function renderPermPreview(){ /* substituído pelo modal unificado */ }
+
+// ══════════════════════════════════════════════════════════════
+// OPERAÇÃO — tela de submenu
+// ══════════════════════════════════════════════════════════════
+
+function renderOperacao() {
+  const cards = [
+    { mod: 'estoque',     icon: 'package',      label: 'Estoque',       desc: 'Contagem e movimentações'           },
+    { mod: 'preproducao', icon: 'chef-hat',      label: 'Pré-produção',  desc: 'Ordens de produção interna'         },
+    { mod: 'desperdicio', icon: 'trash-2',       label: 'Desperdício',   desc: 'Monitore perdas e impacto financeiro' },
+    { mod: 'previsao',    icon: 'trending-up',   label: 'Previsão',      desc: 'Planejamento de demanda do dia'     },
+    { mod: 'checklist',   icon: 'check-square',  label: 'Checklist',     desc: 'Tarefas diárias e controle de equipe' },
+    { mod: 'manutencao',  icon: 'wrench',        label: 'Manutenção',    desc: 'Equipamentos e histórico preventivo' },
+    { mod: 'inventario',  icon: 'layers',        label: 'Inventário',    desc: 'Ativos, utensílios e contagem mensal' },
+    { mod: 'etiquetagem', icon: 'tag',           label: 'Etiquetagem',   desc: 'Impressão de etiquetas e validades'  },
+  ];
+
+  document.getElementById('page-operacao').innerHTML = `
+    <div style="padding:24px 20px;max-width:900px;margin:0 auto">
+      <div style="margin-bottom:28px">
+        <div style="font-size:var(--text-xl);font-weight:700;color:var(--text1);margin-bottom:4px">Operação</div>
+        <div style="font-size:var(--text-sm);color:var(--text3)">Estoque · Produção · Checklist · Inventário e mais</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">
+        ${cards.map(c => `
+          <button onclick="goModule('${c.mod}')" style="
+            background:var(--surface);border:1px solid var(--border);border-radius:var(--r12);
+            padding:20px 16px;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s;
+            display:flex;flex-direction:column;gap:10px;width:100%
+          " onmouseover="this.style.borderColor='var(--purple)';this.style.boxShadow='0 0 0 3px var(--purple-a12)'"
+             onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+            <span style="
+              width:40px;height:40px;border-radius:var(--r8);background:var(--purple-a12);
+              display:flex;align-items:center;justify-content:center;flex-shrink:0
+            ">${lc(c.icon, 20, 'var(--purple)')}</span>
+            <div>
+              <div style="font-size:var(--text-sm);font-weight:600;color:var(--text1);margin-bottom:3px">${c.label}</div>
+              <div style="font-size:var(--text-xs);color:var(--text3);line-height:1.4">${c.desc}</div>
+            </div>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ══════════════════════════════════════════════════════════════
+// OMNICHANNEL — placeholder
+// ══════════════════════════════════════════════════════════════
+
+function renderOmnichannel() {
+  document.getElementById('page-omnichannel').innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px;text-align:center;padding:24px">
+      <span style="
+        width:64px;height:64px;border-radius:var(--r16);background:var(--purple-a12);
+        display:flex;align-items:center;justify-content:center
+      ">${lc('message-circle', 32, 'var(--purple)')}</span>
+      <div>
+        <div style="font-size:var(--text-lg);font-weight:700;color:var(--text1);margin-bottom:6px">Omnichannel</div>
+        <div style="font-size:var(--text-sm);color:var(--text3);max-width:320px;line-height:1.6">
+          Central de atendimento e canais de venda.<br>Em breve.
+        </div>
+      </div>
+      <span style="
+        background:var(--warning-bg);color:var(--warning-text);
+        font-size:var(--text-xs);font-weight:600;padding:4px 10px;border-radius:999px
+      ">Em desenvolvimento</span>
+    </div>
+  `;
+}
