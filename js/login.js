@@ -174,7 +174,17 @@ function applyPermissions(user) {
   const role = user.role;
   const hasCustomPerms = Array.isArray(user.perms);
   const userPerms = hasCustomPerms ? user.perms : (typeof getUserPerms === 'function' ? getUserPerms(user) : []);
+
+  // Submódulos agrupados em Operação — não têm nav próprio no sidebar
+  const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
+
+  // nav-operacao: visível se o usuário tem acesso a pelo menos 1 submódulo
+  const operacaoRoles = new Set(_OPERACAO_MODS.flatMap(m => MODULE_PERMISSIONS[m] || []));
+  const navOp = document.getElementById('nav-operacao');
+  if (navOp) navOp.style.display = operacaoRoles.has(role) ? '' : 'none';
+
   Object.entries(MODULE_PERMISSIONS).forEach(([mod, roles]) => {
+    if (_OPERACAO_MODS.includes(mod)) return; // controlado via nav-operacao
     const navEl = document.getElementById(`nav-${mod}`);
     if (!navEl) return;
     if (mod === 'etiquetagem' && hasCustomPerms) {
