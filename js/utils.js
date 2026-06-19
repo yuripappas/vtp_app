@@ -328,9 +328,8 @@ function goModule(mod) {
   // Fecha drawer mobile ao navegar
   if (_mobileSubmenuActive) _closeMobileSubmenu();
   if (_mobileMenuOpen) toggleMobileMenu();
-  // Fecha sub-panel desktop ao navegar (exceto quando é o próprio grupo)
-  const _GROUP_MODS = { compras: 'compras', configuracoes: 'configuracoes' };
-  if (_subPanelGroupId && _subPanelGroupId !== _GROUP_MODS[mod]) _closeSubPanel();
+  // Fecha sub-panel desktop sempre que navegar
+  if (_subPanelGroupId) _closeSubPanel();
 
   const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
 

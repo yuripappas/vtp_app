@@ -192,6 +192,11 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   border: 1.5px solid var(--nav-bg);
 }
 
+/* Configurações: nav lateral escondida — sub-panel do sidebar é a navegação */
+#page-configuracoes .settings-nav { display: none; }
+#page-configuracoes .settings-layout { display: block; }
+#page-configuracoes .settings-content { max-width: 900px; margin: 0 auto; }
+
 /* ── Hover-expand (desktop): sidebar expande ao passar o mouse ── */
 .sidebar.hover-expand { width: var(--sb-w); }
 .sidebar.hover-expand .sb-logo-text { opacity: 1; }
