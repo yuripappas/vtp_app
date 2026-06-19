@@ -57,28 +57,17 @@ function renderComprasModule() {
 function renderComprasLayout(section) {
   if (section) _cpSection = section;
 
-  // Popula nav lateral
-  const navEl = document.getElementById('cpSettingsNav');
-  if (navEl) {
-    const itens = [
-      { id: 'listas',    icon: 'clipboard-list', label: 'Lista de Compras', desc: 'Todas as listas · Busca · Filtros' },
-      { id: 'historico', icon: 'clock',          label: 'Histórico',        desc: 'Auditoria por etapa · Análises'    },
-    ];
-    navEl.innerHTML = itens.map(it => `
-      <button class="settings-nav-item ${_cpSection === it.id ? 'active' : ''}"
-              id="cpNav-${it.id}" onclick="setCpSection('${it.id}')">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="width:34px;height:34px;border-radius:var(--r8);background:var(--surface2);
-            display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            ${lc(it.icon, 16, 'currentColor')}
-          </span>
-          <div>
-            <div style="font-size:var(--text-sm);font-weight:700">${it.label}</div>
-            <div style="font-size:var(--text-xs);color:var(--muted);margin-top:1px">${it.desc}</div>
-          </div>
-        </div>
-      </button>`).join('');
-  }
+  // Popula nav lateral (padrão Operação: ícone + label)
+  const _CP_NAV_ITEMS = [
+    { id: 'listas',    icon: 'clipboard-list', label: 'Lista de Compras' },
+    { id: 'historico', icon: 'clock',          label: 'Histórico'        },
+  ];
+  _CP_NAV_ITEMS.forEach(it => {
+    const btn = document.getElementById(`cpNav-${it.id}`);
+    if (!btn) return;
+    btn.classList.toggle('active', _cpSection === it.id);
+    btn.innerHTML = `${lc(it.icon, 16, 'currentColor')}<span>${it.label}</span>`;
+  });
 
   // Renderiza seção no painel direito
   if (_cpSection === 'historico') {
@@ -206,7 +195,7 @@ function _renderListaCompras() {
       <!-- Filtros -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
         <div style="flex:2;min-width:160px">
-          <input type="text" class="inp" placeholder="${lc('search', 12, 'var(--muted)')} Buscar por código, fornecedor..."
+          <input type="text" class="inp" placeholder="Buscar por código, fornecedor..."
             value="${busca}"
             oninput="window._lcBusca=this.value; _renderListaCompras()"
             style="width:100%">
