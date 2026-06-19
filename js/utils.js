@@ -136,6 +136,26 @@ function _closeMobileSubmenu() {
   _mobileSubmenuActive = false;
 }
 
+// Submenu items de Compras
+const _COMPRAS_SUBMENU_ITEMS = [
+  { id: 'listas',    icon: 'clipboard-list', label: 'Lista de Compras' },
+  { id: 'historico', icon: 'clock',          label: 'Histórico'        },
+];
+
+function _handleNavCompras() {
+  if (isMobile()) {
+    _openMobileSubmenu(
+      _COMPRAS_SUBMENU_ITEMS.map(item => ({
+        ...item,
+        action: `_cpSection='${item.id}'; goModule('compras');`
+      })),
+      'Compras'
+    );
+  } else {
+    goModule('compras');
+  }
+}
+
 function _handleNavOperacao() {
   if (isMobile()) {
     _openMobileSubmenu(

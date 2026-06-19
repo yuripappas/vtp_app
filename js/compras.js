@@ -3,8 +3,10 @@
  * compras.js — Módulo de Compras (v3)
  */
 
-let _listaAtual = null;
-let _comprasTab  = 'lista'; // 'lista' | 'historico'
+let _listaAtual      = null;
+let _comprasTab      = 'lista';   // legado — mantido para compat interna
+let _cpSection       = 'listas';  // 'listas' | 'historico'
+let _cpListaAberta   = null;      // lista aberta no detalhe (flow)
 
 // Retorna listas abertas (≠ concluida) que contêm o mesmo itemId, excluindo a lista atual
 function _conflitosItem(itemId, listaIdIgnorar) {
@@ -46,23 +48,264 @@ function _conflitoBanner() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// RENDER PRINCIPAL
+// RENDER PRINCIPAL — settings-layout (nav lateral + conteúdo)
 // ══════════════════════════════════════════════════════════════
 function renderComprasModule() {
-  // Preserva a lista selecionada se ainda estiver ativa; senão busca a mais recente
-  const ainda = _listaAtual && listas.find(l => l.id === _listaAtual.id && l.status !== 'concluida');
-  _listaAtual = ainda || getListaAtiva();
-  _renderDashCompras();
-  if (_comprasTab === 'historico') {
-    _renderHistorico();
+  renderComprasLayout();
+}
+
+function renderComprasLayout(section) {
+  if (section) _cpSection = section;
+
+  // Popula nav lateral
+  const navEl = document.getElementById('cpSettingsNav');
+  if (navEl) {
+    const itens = [
+      { id: 'listas',    icon: 'clipboard-list', label: 'Lista de Compras', desc: 'Todas as listas · Busca · Filtros' },
+      { id: 'historico', icon: 'clock',          label: 'Histórico',        desc: 'Auditoria por etapa · Análises'    },
+    ];
+    navEl.innerHTML = itens.map(it => `
+      <button class="settings-nav-item ${_cpSection === it.id ? 'active' : ''}"
+              id="cpNav-${it.id}" onclick="setCpSection('${it.id}')">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:34px;height:34px;border-radius:var(--r8);background:var(--surface2);
+            display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc(it.icon, 16, 'currentColor')}
+          </span>
+          <div>
+            <div style="font-size:var(--text-sm);font-weight:700">${it.label}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted);margin-top:1px">${it.desc}</div>
+          </div>
+        </div>
+      </button>`).join('');
+  }
+
+  // Renderiza seção no painel direito
+  if (_cpSection === 'historico') {
+    _renderHistoricoLayout();
   } else {
-    _listaAtual ? _renderEtapa(_listaAtual.etapa) : _renderSemLista();
+    // 'listas'
+    if (_cpListaAberta) {
+      _renderFlowLayout(_cpListaAberta);
+    } else {
+      _renderListaCompras();
+    }
   }
 }
 
+function setCpSection(section) {
+  _cpSection = section;
+  if (section !== 'listas') _cpListaAberta = null;
+  renderComprasLayout();
+}
+
+// Alias legado
 function setComprasTab(tab) {
-  _comprasTab = tab;
-  renderComprasModule();
+  _cpSection = tab === 'historico' ? 'historico' : 'listas';
+  _cpListaAberta = null;
+  renderComprasLayout();
+}
+
+// Abre uma lista específica no flow de etapas (master → detail)
+function _abrirListaDetalhe(listaId) {
+  const l = listas.find(x => x.id === listaId);
+  if (!l) return;
+  _cpListaAberta = l;
+  _listaAtual    = l;
+  _cpSection     = 'listas';
+  renderComprasLayout();
+}
+
+// Volta da lista detalhe para a lista principal
+function _voltarParaListaCompras() {
+  _cpListaAberta = null;
+  _listaAtual    = getListaAtiva();
+  renderComprasLayout();
+}
+
+// ── Renderiza o flow de etapas dentro do painel direito ──────
+function _renderFlowLayout(lista) {
+  const el = document.getElementById('cpSectionContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;
+      background:var(--surface);border-bottom:1px solid var(--border)">
+      <button onclick="_voltarParaListaCompras()"
+        style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r8);
+        border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);
+        font-size:var(--text-sm);font-weight:600;cursor:pointer;font-family:Inter,sans-serif">
+        ${lc('arrow-left', 14, 'currentColor')} Voltar
+      </button>
+      <span style="font-size:var(--text-sm);color:var(--muted)">Lista de Compras</span>
+      <span style="color:var(--muted)">/</span>
+      <span style="font-size:var(--text-sm);font-weight:700">${lista.codigo}</span>
+    </div>
+    <div id="comprasDash" style="background:var(--surface);border-bottom:2px solid var(--border);padding:16px 24px"></div>
+    <div id="comprasContent" style="padding:24px"></div>`;
+
+  _listaAtual = lista;
+  _renderDashCompras();
+  _renderEtapa(lista.etapa || 1);
+}
+
+// ── Renderiza historico dentro do painel direito ─────────────
+function _renderHistoricoLayout() {
+  const el = document.getElementById('cpSectionContent');
+  if (!el) return;
+  el.innerHTML = `<div id="comprasContent" style="padding:24px"></div>`;
+  _renderHistorico();
+}
+
+// ── Nova página principal: Lista de Compras ──────────────────
+function _renderListaCompras() {
+  const el = document.getElementById('cpSectionContent');
+  if (!el) return;
+
+  const busca   = (window._lcBusca   || '').toLowerCase();
+  const status  =  window._lcStatus  || 'all';
+  const etapa   =  window._lcEtapa   || '';
+  const de      =  window._lcDe      || '';
+  const ate     =  window._lcAte     || '';
+
+  const ETAPAS = [
+    { n: 1, label: 'Montagem' }, { n: 2, label: 'Pré-Aprov.' },
+    { n: 3, label: 'Cotação'  }, { n: 4, label: 'Aprovação'  },
+    { n: 5, label: 'OC'       }, { n: 6, label: 'Recebimento' },
+  ];
+
+  let lista = [...listas].sort((a, b) => new Date(b.dataCriacao || 0) - new Date(a.dataCriacao || 0));
+  if (status === 'ativas')     lista = lista.filter(l => l.status !== 'concluida');
+  if (status === 'concluidas') lista = lista.filter(l => l.status === 'concluida');
+  if (etapa) lista = lista.filter(l => String(l.etapa) === etapa);
+  if (busca) lista = lista.filter(l =>
+    (l.codigo || '').toLowerCase().includes(busca) ||
+    (l.criadoPor || '').toLowerCase().includes(busca) ||
+    (l.itens || []).some(i => (i.nome || '').toLowerCase().includes(busca))
+  );
+  if (de)  lista = lista.filter(l => (l.dataCriacao || '').slice(0, 10) >= de);
+  if (ate) lista = lista.filter(l => (l.dataCriacao || '').slice(0, 10) <= ate);
+
+  const filtrando = !!(busca || status !== 'all' || etapa || de || ate);
+
+  el.innerHTML = `
+    <div style="padding:20px 24px">
+      <!-- Cabeçalho -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:var(--text-base);font-weight:800">${lc('clipboard-list', 16, 'var(--purple)')} Lista de Compras</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${lista.length} lista(s)${filtrando ? ' · filtrado' : ''}</div>
+        </div>
+        <button onclick="_abrirModalCriarLista()"
+          style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r8);
+          border:none;background:var(--purple);color:#fff;font-size:var(--text-sm);font-weight:700;
+          cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">
+          ${lc('plus', 14, '#fff')} Nova lista
+        </button>
+      </div>
+
+      <!-- Filtros -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end">
+        <div style="flex:2;min-width:160px">
+          <input type="text" class="inp" placeholder="${lc('search', 12, 'var(--muted)')} Buscar por código, fornecedor..."
+            value="${busca}"
+            oninput="window._lcBusca=this.value; _renderListaCompras()"
+            style="width:100%">
+        </div>
+        <div style="min-width:130px">
+          <select class="inp" style="width:100%"
+            onchange="window._lcStatus=this.value; _renderListaCompras()">
+            <option value="all"        ${status==='all'        ?'selected':''}>Todas</option>
+            <option value="ativas"     ${status==='ativas'     ?'selected':''}>Ativas</option>
+            <option value="concluidas" ${status==='concluidas' ?'selected':''}>Concluídas</option>
+          </select>
+        </div>
+        <div style="min-width:140px">
+          <select class="inp" style="width:100%"
+            onchange="window._lcEtapa=this.value; _renderListaCompras()">
+            <option value="">Todas as etapas</option>
+            ${ETAPAS.map(e => `<option value="${e.n}" ${etapa===String(e.n)?'selected':''}>${e.label}</option>`).join('')}
+          </select>
+        </div>
+        <div style="min-width:110px">
+          <input type="date" class="inp" style="width:100%" value="${de}"
+            onchange="window._lcDe=this.value; _renderListaCompras()">
+        </div>
+        <div style="min-width:110px">
+          <input type="date" class="inp" style="width:100%" value="${ate}"
+            onchange="window._lcAte=this.value; _renderListaCompras()">
+        </div>
+        ${filtrando ? `<button class="btn btn-outline btn-sm" onclick="_lcLimparFiltros()">${lc('x', 12)} Limpar</button>` : ''}
+      </div>
+
+      <!-- Lista -->
+      ${lista.length === 0
+        ? `<div class="empty" style="padding:48px">
+            <div class="empty-icon">${lc('clipboard-list', 28, 'var(--muted)')}</div>
+            ${filtrando ? 'Nenhuma lista encontrada para estes filtros.' : 'Nenhuma lista de compras criada ainda.'}
+          </div>`
+        : lista.map(l => _cardListaCompras(l)).join('')
+      }
+    </div>`;
+}
+
+function _cardListaCompras(l) {
+  const st  = STATUS_ETAPA[l.status] || { label: l.status, color: 'var(--muted)', bg: 'var(--surface2)' };
+  const tp  = TIPOS_LISTA[l.tipo || 'insumos'] || TIPOS_LISTA.insumos;
+  const val = l.valorFinal || l.valorEstimado || 0;
+  const ETAPAS_LABEL = ['', 'Montagem', 'Pré-Aprov.', 'Cotação', 'Aprovação', 'OC', 'Recebimento'];
+  const etapaLabel = l.status === 'concluida' ? 'Concluída' : (ETAPAS_LABEL[l.etapa] || `Etapa ${l.etapa}`);
+  const isConcluida = l.status === 'concluida';
+
+  return `
+    <div onclick="_abrirListaDetalhe(${l.id})"
+      style="display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:8px;
+      background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);
+      cursor:pointer;transition:all .15s"
+      onmouseover="this.style.borderColor='var(--purple-light)';this.style.background='var(--purple-xlight)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+
+      <!-- Ícone tipo -->
+      <div style="width:40px;height:40px;border-radius:var(--r8);background:${tp.bg};
+        display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        ${lc(tp.icon, 18, tp.color)}
+      </div>
+
+      <!-- Info principal -->
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+          <span style="font-size:var(--text-sm);font-weight:800">${l.codigo}</span>
+          <span style="padding:2px 8px;border-radius:10px;font-size:var(--text-2xs);font-weight:700;
+            background:${st.bg};color:${st.color};border:1px solid ${st.color}">${etapaLabel}</span>
+          <span style="padding:2px 7px;border-radius:10px;font-size:var(--text-2xs);font-weight:600;
+            background:${tp.bg};color:${tp.color}">${tp.label}</span>
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--muted)">
+          ${lc('user', 10, 'currentColor')} ${l.criadoPor || '—'}
+          &nbsp;·&nbsp;
+          ${lc('calendar', 10, 'currentColor')} ${fmtD(l.dataCriacao)}
+        </div>
+      </div>
+
+      <!-- Resumo numérico -->
+      <div style="display:flex;gap:12px;align-items:center;flex-shrink:0">
+        <div style="text-align:right">
+          <div style="font-size:var(--text-sm);font-weight:800;font-family:monospace;color:var(--purple)">
+            R$ ${fmt(val)}
+          </div>
+          <div style="font-size:var(--text-2xs);color:var(--muted)">${(l.itens || []).length} iten(s)</div>
+        </div>
+        ${lc('chevron-right', 16, 'var(--muted)')}
+      </div>
+    </div>`;
+}
+
+function _lcLimparFiltros() {
+  window._lcBusca  = '';
+  window._lcStatus = 'all';
+  window._lcEtapa  = '';
+  window._lcDe     = '';
+  window._lcAte    = '';
+  _renderListaCompras();
 }
 
 function _renderComprasTabs() {
@@ -134,10 +377,8 @@ function _criarListaDoEstoque() {
   saveListas();
   try { logAudit('lista_criada', 'Lista #' + lista.id + ' (do estoque)', 'compras'); } catch(e) {}
   _listaAtual = lista;
-  _comprasTab = 'lista';
-  _renderDashCompras();
-  _renderEtapa1();
   toast(`Lista criada com ${criticos.length} insumo(s) abaixo do mínimo!`);
+  _abrirListaDetalhe(lista.id);
 }
 
 function _criarListaAvulsa(tipo) {
@@ -147,10 +388,8 @@ function _criarListaAvulsa(tipo) {
   saveListas();
   try { logAudit('lista_criada', 'Lista #' + lista.id + ' (avulsa — ' + tipo + ')', 'compras'); } catch(e) {}
   _listaAtual = lista;
-  _comprasTab = 'lista';
-  _renderDashCompras();
-  _renderEtapa1();
   toast('Lista criada! Adicione os itens.');
+  _abrirListaDetalhe(lista.id);
 }
 
 // Mantido para compatibilidade com referências externas
@@ -343,8 +582,8 @@ function _renderDashCompras() {
 function _trocarLista(listaId) {
   const l = listas.find(x => x.id === listaId);
   if (!l) return;
-  _listaAtual = l;
-  _comprasTab = 'lista';
+  _cpListaAberta = l;
+  _listaAtual    = l;
   _renderDashCompras();
   _renderEtapa(l.etapa || 1);
 }
@@ -4892,8 +5131,9 @@ function concluirLista() {
 
   // Aguarda 1.8s para o usuário ver o feedback e vai ao histórico
   setTimeout(() => {
-    _listaAtual = getListaAtiva();
-    _comprasTab = 'historico';
+    _listaAtual    = getListaAtiva();
+    _cpSection     = 'historico';
+    _cpListaAberta = null;
     renderDashboard();
     renderComprasModule();
   }, 1800);
@@ -5336,8 +5576,8 @@ function abrirAuditoria(listaId) {
 }
 
 function _reabrirLista(id) {
-  const l=listas.find(x=>x.id===id); if(!l) return;
-  _listaAtual=l; _comprasTab='lista'; _renderDashCompras(); _renderEtapa(l.etapa||1);
+  const l = listas.find(x => x.id === id); if (!l) return;
+  _abrirListaDetalhe(l.id);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -5363,7 +5603,7 @@ function encerrarListaManual() {
     confirmLabel: 'Encerrar',
     onConfirm: () => {
       _listaAtual.status='concluida'; _listaAtual.dataConclusao=new Date().toISOString(); _listaAtual.valorFinal=_listaAtual.valorEstimado||0;
-      saveListas(); _listaAtual=getListaAtiva(); renderComprasModule(); toast('Lista encerrada.');
+      saveListas(); _listaAtual=getListaAtiva(); _cpListaAberta=null; renderComprasModule(); toast('Lista encerrada.');
     }
   });
 }
