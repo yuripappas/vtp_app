@@ -529,7 +529,10 @@ async function _renderDashPerf() {
   const total     = pedidos.length;
   const fat       = pedidos.reduce((s,p) => s+p.valor, 0);
   const ticket    = total ? fat/total : 0;
-  const pizzas    = pedidos.reduce((s,p) => s+(p.pizzas||0), 0);
+  const pizzasGrande  = pedidos.reduce((s,p) => s+(p.pizzasGrande||0), 0);
+  const pizzasPequena = pedidos.reduce((s,p) => s+(p.pizzasPequena||0), 0);
+  const pizzas        = pizzasGrande + pizzasPequena;
+  const fmtPz = n => (n % 1 === 0) ? String(n) : fmt(n);
 
   const statusCount = {
     aguardando: pedidos.filter(p=>p.status==='aguardando').length,
@@ -597,8 +600,9 @@ async function _renderDashPerf() {
       </div>
       <div style="background:var(--orange-light);border:1.5px solid var(--border);border-radius:var(--r14);padding:16px 18px">
         <div style="margin-bottom:6px">${lc('pizza',14,'var(--orange-dark)')}</div>
-        <div style="font-size:1.5rem;font-weight:900;color:var(--orange-dark);line-height:1;letter-spacing:-.02em">${pizzas}</div>
+        <div style="font-size:1.5rem;font-weight:900;color:var(--orange-dark);line-height:1;letter-spacing:-.02em">${fmtPz(pizzas)}</div>
         <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Pizzas vendidas</div>
+        <div style="font-size:var(--text-2xs);color:var(--orange-dark);margin-top:3px;font-weight:600">${fmtPz(pizzasGrande)} grandes · ${fmtPz(pizzasPequena)} pequenas</div>
       </div>
     </div>`;
 
@@ -639,6 +643,7 @@ async function _renderDashPerf() {
               <th style="padding:9px 16px;text-align:left;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Hora</th>
               ${_resultado ? `<th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Estimativa</th>` : ''}
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Pedidos</th>
+              <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Pizzas</th>
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Preparo</th>
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Entrega</th>
               <th style="padding:9px 16px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Total</th>
@@ -649,6 +654,7 @@ async function _renderDashPerf() {
               const est        = Math.round(totalDia * pct);
               const pedHora    = pedidos.filter(p => p.hora === h);
               const realizados = pedHora.length;
+              const pzHora     = pedHora.reduce((s,p)=>s+(p.pizzas||0),0);
               const isPico     = h === picoH;
               const isNow      = h === now.getHours();
               const isFuture   = h > now.getHours();
@@ -689,12 +695,27 @@ async function _renderDashPerf() {
                           </div>
                         </div>`}
                   </td>
+                  <td style="padding:10px 12px;text-align:center">
+                    ${isFuture
+                      ? `<span style="color:var(--muted)">—</span>`
+                      : `<span style="font-size:var(--text-sm);font-weight:700;color:${textCol}">${fmtPz(pzHora)}</span>`}
+                  </td>
                   <td style="padding:10px 12px;text-align:center">${isFuture?`<span style="color:var(--muted)">—</span>`:tempoCell(tPrep)}</td>
                   <td style="padding:10px 12px;text-align:center">${isFuture?`<span style="color:var(--muted)">—</span>`:tempoCell(tEnt)}</td>
                   <td style="padding:10px 16px;text-align:center">${isFuture?`<span style="color:var(--muted)">—</span>`:tempoCell(tTot)}</td>
                 </tr>`;
             }).join('')}
           </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--border);background:var(--surface2)">
+              <td style="padding:9px 16px;font-size:var(--text-sm);font-weight:800">Total do dia</td>
+              ${_resultado ? `<td></td>` : ''}
+              <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800">${total}</td>
+              <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800;color:var(--orange-dark)">${fmtPz(pizzas)}</td>
+              <td colspan="2"></td>
+              <td></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>`;

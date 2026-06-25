@@ -99,18 +99,86 @@ function _cwMapCanal(salesChannel) {
   return CW_CANAL_MAP[salesChannel] || salesChannel || 'outro';
 }
 
-// Conta unidades de itens cujo nome (ou grupo de opções, caso de promoções/combos)
-// contém "pizza" — base para o KPI "Pizzas vendidas".
-// items completo fica anexado em cada pedido para uso futuro (cruzamento com insumos).
-function _cwItemEhPizza(it) {
-  if (/pizza/i.test(it.name || '')) return true;
-  return (it.options || []).some(op => /pizza/i.test(op.option_group_name || '') || /pizza/i.test(op.name || ''));
+// ── Contagem de pizzas grandes/pequenas ────────────────────────────────────
+//
+// Validado contra pedidos reais da loja. Existem dois mecanismos de venda:
+//
+// 1) Meio a meio ("Monte seu sabor" e combos que puxam dele): o grupo de
+//    opções se chama literalmente "Pizza Grande (N Pedaços)..." ou
+//    "Pizza Pequena (N Pedaços)...". Cada metade é 1 opção (ou 1 opção com
+//    quantity:2 quando o cliente não divide o sabor) — soma das quantities
+//    do grupo ÷ 2 = pizzas grandes. Pequena nunca divide (1 seleção = 1 pizza).
+//
+// 2) Sabor fixo com tamanho no nome da opção ("PIZZA SALGADA - CALABRESA" →
+//    opção "Calabresa | Pizza Grande") e brindes de promoção ("GRÁTIS - Pizza
+//    Salgada Grande - Tradicionais", "ESCOLHA SUA PIZZA DOCE GRÁTIS"): o
+//    grupo não tem "Pizza Grande/Pequena" no nome, mas a OPÇÃO escolhida tem
+//    o sufixo "| Pizza Grande" / "| Pizza Pequena". Cada opção = 1 pizza
+//    inteira, sem dividir.
+//
+// Em ambos os casos, o resultado é multiplicado por item.quantity (a opção
+// descreve a composição de 1 unidade do item; item.quantity multiplica).
+// Combos (kind:"combo") têm os itens reais aninhados em item.items — a
+// contagem é recursiva. option_group_id NÃO é estável entre produtos
+// equivalentes, então a classificação é sempre por nome (regex), nunca por id.
+
+const _CW_RE_GRUPO_GRANDE  = /^pizza grande\s*\(/i;
+const _CW_RE_GRUPO_PEQUENA = /^pizza pequena\s*\(/i;
+const _CW_RE_SUFIXO_GRANDE  = /\|\s*pizza grande\b/i;
+const _CW_RE_SUFIXO_PEQUENA = /\|\s*pizza pequena\b/i;
+
+// Pizzas de UMA unidade do item (antes de multiplicar por item.quantity).
+function _cwContaPizzasItem(it) {
+  const grupos = {}; // chave -> { tipo, dividir, qty }
+
+  for (const op of (it.options || [])) {
+    const gNome = op.option_group_name || '';
+    const oNome = op.name || '';
+    let tipo, dividir;
+
+    if (_CW_RE_GRUPO_GRANDE.test(gNome))       { tipo = 'grande';  dividir = true;  }
+    else if (_CW_RE_GRUPO_PEQUENA.test(gNome)) { tipo = 'pequena'; dividir = false; }
+    else if (_CW_RE_SUFIXO_GRANDE.test(oNome) || _CW_RE_SUFIXO_GRANDE.test(gNome))   { tipo = 'grande';  dividir = false; }
+    else if (_CW_RE_SUFIXO_PEQUENA.test(oNome) || _CW_RE_SUFIXO_PEQUENA.test(gNome)) { tipo = 'pequena'; dividir = false; }
+    else continue;
+
+    const chave = `${op.option_group_id ?? gNome}|${tipo}`;
+    grupos[chave] = grupos[chave] || { tipo, dividir, qty: 0 };
+    grupos[chave].qty += (op.quantity || 1);
+  }
+
+  let grande = 0, pequena = 0;
+  for (const g of Object.values(grupos)) {
+    const n = g.dividir ? g.qty / 2 : g.qty;
+    if (g.tipo === 'grande') grande += n; else pequena += n;
+  }
+
+  // Fallback: item sem opções com sabor já embutido no próprio nome
+  // (observado raramente em pedidos vindos de marketplace).
+  if (!grande && !pequena && !(it.options || []).length) {
+    if (_CW_RE_GRUPO_GRANDE.test(it.name || '') || _CW_RE_SUFIXO_GRANDE.test(it.name || ''))  grande = 1;
+    else if (_CW_RE_GRUPO_PEQUENA.test(it.name || '') || _CW_RE_SUFIXO_PEQUENA.test(it.name || '')) pequena = 1;
+  }
+
+  return { grande, pequena };
 }
 
 function _cwContaPizzas(items) {
-  return (items || [])
-    .filter(it => it.status !== 'canceled' && _cwItemEhPizza(it))
-    .reduce((s, it) => s + (it.quantity || 0), 0);
+  let grande = 0, pequena = 0;
+  for (const it of (items || [])) {
+    if (it.status === 'canceled') continue;
+    const mult = it.quantity || 1;
+    const own = _cwContaPizzasItem(it);
+    grande += own.grande * mult;
+    pequena += own.pequena * mult;
+
+    if (it.items && it.items.length) {
+      const sub = _cwContaPizzas(it.items);
+      grande += sub.grande * mult;
+      pequena += sub.pequena * mult;
+    }
+  }
+  return { grande, pequena, total: grande + pequena };
 }
 
 // ── Função principal usada pelo dashboard ─────────────────────────────────
@@ -135,6 +203,8 @@ async function _getPedidosCW() {
     const created = new Date(det.created_at);
     const mAtrs   = Math.max(0, Math.round((now - created) / 60000));
 
+    const pz = _cwContaPizzas(det.items);
+
     pedidos.push({
       id:     det.id,
       num:    `#${det.display_id ?? det.id}`,
@@ -145,7 +215,9 @@ async function _getPedidosCW() {
       ts:     created,
       hora:   created.getHours(),
       mAtrs,
-      pizzas: _cwContaPizzas(det.items),
+      pizzasGrande:  pz.grande,
+      pizzasPequena: pz.pequena,
+      pizzas:        pz.total,
       items:  det.items || [],
     });
   }
