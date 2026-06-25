@@ -448,57 +448,11 @@ function _renderDashRotina() {
 }
 
 // ── MODO PERFORMANCE ─────────────────────────────────────────────────────────
+// Pedidos reais vêm da API do Cardápio Web (ver js/cw-api.js → _getPedidosCW()).
 
-function _getPedidosCW() {
-  const now   = new Date();
-  const nowH  = now.getHours();
-  const nowM  = now.getMinutes();
-  const seed  = now.getFullYear()*10000 + (now.getMonth()+1)*100 + now.getDate();
-  const rng   = (n,min=0,max=1) => { const x=Math.sin(seed+n)*10000; return min+Math.floor((x-Math.floor(x))*(max-min+1)); };
-
-  const totalDia = rng(0, 38, 62);
-  const CANAIS   = ['ifood','99food','site'];
-  const pedidos  = [];
-  let pid = 1;
-
-  _CURVA_HORARIA.forEach(({h, pct}) => {
-    const qtd = Math.round(totalDia * pct);
-    if (h > nowH || (h === nowH && nowM < 5)) return;
-    for (let j = 0; j < qtd; j++) {
-      const min2  = rng(pid*3+1, 0, 59);
-      const ts    = new Date(now); ts.setHours(h, min2, 0, 0);
-      const mAtrs = Math.max(0, Math.round((now-ts)/60000));
-      const canal = CANAIS[rng(pid*3+2, 0, 2)];
-      const tipo  = rng(pid*3+3, 0, 9) < 8 ? 'entrega' : 'retirada';
-      const valor = 35 + rng(pid*3+4, 0, 55) + rng(pid*3+5, 0, 9)*0.9;
-      let status;
-      if      (mAtrs < 8)  status = 'aguardando';
-      else if (mAtrs < 20) status = 'em_preparo';
-      else if (mAtrs < 30) status = 'pronto';
-      else if (mAtrs < 45 && tipo === 'entrega') status = 'em_rota';
-      else    status = 'entregue';
-      pedidos.push({ id:pid, num:`P-${String(pid).padStart(3,'0')}`, canal, tipo, status, valor:+valor.toFixed(2), ts, hora:h, mAtrs, tempoPreparo:12+rng(pid*3+6,0,8), tempoEntrega:tipo==='entrega'?18+rng(pid*3+7,0,14):0 });
-      pid++;
-    }
-  });
-
-  // Fora do horário: simula dados do dia anterior para demonstração
-  if (!pedidos.length) {
-    _CURVA_HORARIA.forEach(({h, pct}) => {
-      const qtd = Math.round(rng(99,38,55) * pct);
-      for (let j = 0; j < qtd; j++) {
-        const canal = CANAIS[rng(pid*3+2,0,2)];
-        const tipo  = rng(pid*3+3,0,9) < 8 ? 'entrega' : 'retirada';
-        const valor = 35 + rng(pid*3+4,0,55) + rng(pid*3+5,0,9)*0.9;
-        const ts    = new Date(now); ts.setDate(ts.getDate()-1); ts.setHours(h, rng(pid*3+1,0,59), 0, 0);
-        pedidos.push({ id:pid, num:`P-${String(pid).padStart(3,'0')}`, canal, tipo, status:'entregue', valor:+valor.toFixed(2), ts, hora:h, mAtrs:999, tempoPreparo:14+rng(pid*3+6,0,8), tempoEntrega:tipo==='entrega'?20+rng(pid*3+7,0,12):0 });
-        pid++;
-      }
-    });
-  }
-
-  return pedidos.sort((a,b) => b.ts - a.ts);
-}
+let _perfLoading = false;
+let _perfError    = null;
+let _perfPedidos  = [];
 
 function _dashRefreshPerf() { _perfCountdown = 60; _renderDashPerf(); }
 
@@ -509,20 +463,73 @@ function _dashPedAtrasado(p) {
   return null;
 }
 
-function _renderDashPerf() {
+async function _renderDashPerf() {
   const el = document.getElementById('dashContent');
   if (!el) return;
 
-  const pedidos   = _getPedidosCW();
-  const now       = new Date();
-  const nowH      = now.getHours();
-  const operando  = nowH >= 17 && nowH <= 23;
-  const simulado  = !operando;
+  const cfg = getConfig();
+  if (!cfg.codLoja) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:60px 20px">
+        ${lc('zap',28,'var(--border-strong)')}
+        <div style="font-size:var(--text-md);font-weight:700;margin-top:14px">Integração não configurada</div>
+        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:6px;max-width:380px;margin-inline:auto">
+          Cadastre o token da API do Cardápio Web para ver os pedidos em tempo real.
+        </div>
+        <button class="btn btn-primary btn-sm" style="margin-top:16px" onclick="goModule('configuracoes');setCfgSection('integracoes')">
+          ${lc('settings',12,'#fff')} Configurar integração
+        </button>
+      </div>`;
+    return;
+  }
+
+  if (!_perfPedidos.length && !_perfLoading) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:var(--muted)">
+        ${lc('refresh-cw',24,'currentColor')}
+        <div style="margin-top:10px;font-size:var(--text-sm)">Carregando pedidos do Cardápio Web…</div>
+      </div>`;
+  }
+
+  _perfLoading = true;
+  try {
+    _perfPedidos = await _getPedidosCW();
+    _perfError = null;
+  } catch (e) {
+    _perfError = e;
+  }
+  _perfLoading = false;
+
+  if (_perfError) {
+    const msg = _perfError.code === 'UNAUTHORIZED'
+      ? 'Token inválido. Verifique em Configurações → Integrações.'
+      : _perfError.code === 'RATE_LIMIT'
+      ? 'Limite de requisições da API atingido. Tentando novamente em breve.'
+      : _perfError.code === 'NO_TOKEN'
+      ? 'Token da API Cardápio Web não configurado.'
+      : 'Não foi possível conectar à API do Cardápio Web.';
+    el.innerHTML = `
+      <div style="text-align:center;padding:60px 20px">
+        ${lc('alert-triangle',28,'var(--red)')}
+        <div style="font-size:var(--text-md);font-weight:700;margin-top:14px;color:var(--red)">Erro ao carregar pedidos</div>
+        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:6px">${msg}</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:16px" onclick="_dashRefreshPerf()">${lc('refresh-cw',12,'currentColor')} Tentar novamente</button>
+      </div>`;
+    if (_perfInterval) clearInterval(_perfInterval);
+    _perfInterval = setInterval(() => {
+      _perfCountdown--;
+      if (_perfCountdown <= 0) { _perfCountdown = 60; _renderDashPerf(); }
+    }, 1000);
+    return;
+  }
+
+  const pedidos = _perfPedidos;
+  const now     = new Date();
 
   const total     = pedidos.length;
   const fat       = pedidos.reduce((s,p) => s+p.valor, 0);
   const ticket    = total ? fat/total : 0;
-  const pizzaEst  = Math.round(total * 1.5);
+  const pizzas    = pedidos.reduce((s,p) => s+(p.pizzas||0), 0);
 
   const statusCount = {
     aguardando: pedidos.filter(p=>p.status==='aguardando').length,
@@ -532,7 +539,7 @@ function _renderDashPerf() {
     entregue:   pedidos.filter(p=>p.status==='entregue').length,
   };
 
-  const canaisData = ['ifood','99food','site'].map(c => ({
+  const canaisData = [...new Set(pedidos.map(p=>p.canal))].map(c => ({
     c, n: pedidos.filter(p=>p.canal===c).length,
     fat: pedidos.filter(p=>p.canal===c).reduce((s,p)=>s+p.valor,0),
   })).sort((a,b)=>b.n-a.n);
@@ -543,6 +550,8 @@ function _renderDashPerf() {
 
   const CANAL_LABEL = { ifood:'iFood', '99food':'99Food', site:'Site' };
   const CANAL_COR   = { ifood:'var(--red)', '99food':'#F97316', site:'var(--purple)' };
+  const canalLabel  = c => CANAL_LABEL[c] || (c.charAt(0).toUpperCase()+c.slice(1));
+  const canalCor    = c => CANAL_COR[c] || 'var(--muted)';
   const STATUS_INFO = {
     aguardando: { l:'Aguardando', c:'var(--purple)', bg:'var(--surface)',     ic:'clock',         badgeC:'var(--warning-fg)', badgeBg:'var(--yellow-light)' },
     em_preparo: { l:'Em preparo', c:'var(--purple)', bg:'var(--surface)',     ic:'chef-hat',      badgeC:'var(--orange-dark)', badgeBg:'var(--orange-light)' },
@@ -551,19 +560,17 @@ function _renderDashPerf() {
     entregue:   { l:'Entregues',  c:'var(--green)',  bg:'var(--green-light)', ic:'check-circle',  badgeC:'var(--green)', badgeBg:'var(--green-light)' },
   };
 
-  // Horário de pico: maior pct na curva
-  const picoH = _CURVA_HORARIA.reduce((p,c) => c.pct > p.pct ? c : p).h;
-  // Total estimado do dia (mesmo seed)
-  const seed2    = now.getFullYear()*10000 + (now.getMonth()+1)*100 + now.getDate();
-  const rng2     = (n,min=0,max=1) => { const x=Math.sin(seed2+n)*10000; return min+Math.floor((x-Math.floor(x))*(max-min+1)); };
-  const totalDia = rng2(0, 38, 62) || rng2(99, 38, 55);
+  // Horário de pico: maior pct na curva fixa de distribuição (ver previsao.js)
+  const picoH    = _CURVA_HORARIA.reduce((p,c) => c.pct > p.pct ? c : p).h;
+  // Total previsto do dia (vem da Previsão, quando calculada) — usado só na coluna "Estimativa"
+  const totalDia = _resultado?.pedDel || 0;
 
   // Status bar
   const statusBarHtml = `
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:14px">
       <span style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px">
-        <span style="width:6px;height:6px;border-radius:50%;background:${simulado?'var(--muted)':operando?'var(--green)':'var(--muted)'};display:inline-block;flex-shrink:0"></span>
-        ${simulado?'Simulação':'API CW'} · atualiza em <strong id="perfCdwn" style="color:var(--text)">${_perfCountdown}s</strong>
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0"></span>
+        API CW · atualiza em <strong id="perfCdwn" style="color:var(--text)">${_perfCountdown}s</strong>
       </span>
       <button class="btn btn-ghost btn-xs" onclick="_dashRefreshPerf()" style="padding:3px 8px">${lc('refresh-cw',10,'currentColor')} Agora</button>
     </div>`;
@@ -590,8 +597,8 @@ function _renderDashPerf() {
       </div>
       <div style="background:var(--orange-light);border:1.5px solid var(--border);border-radius:var(--r14);padding:16px 18px">
         <div style="margin-bottom:6px">${lc('pizza',14,'var(--orange-dark)')}</div>
-        <div style="font-size:1.5rem;font-weight:900;color:var(--orange-dark);line-height:1;letter-spacing:-.02em">${pizzaEst}</div>
-        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Pizzas est.</div>
+        <div style="font-size:1.5rem;font-weight:900;color:var(--orange-dark);line-height:1;letter-spacing:-.02em">${pizzas}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Pizzas vendidas</div>
       </div>
     </div>`;
 
@@ -622,7 +629,7 @@ function _renderDashPerf() {
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);font-weight:600;color:var(--warning-fg);background:var(--yellow-light);padding:2px 8px;border-radius:4px">${lc('zap',9,'currentColor')} Pico: ${picoH}h</span>
-          ${!simulado?`<span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);font-weight:600;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">${lc('radio',9,'currentColor')} Agora: ${nowH}h</span>`:''}
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);font-weight:600;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">${lc('radio',9,'currentColor')} Agora: ${now.getHours()}h</span>
         </div>
       </div>
       <div style="overflow-x:auto">
@@ -643,9 +650,8 @@ function _renderDashPerf() {
               const pedHora    = pedidos.filter(p => p.hora === h);
               const realizados = pedHora.length;
               const isPico     = h === picoH;
-              const isNow      = !simulado && h === nowH;
-              const isFuture   = !simulado && h > nowH;
-              const isPast     = simulado || h < nowH;
+              const isNow      = h === now.getHours();
+              const isFuture   = h > now.getHours();
 
               const entH = pedHora.filter(p => p.status==='entregue' && p.tempoEntrega>0);
               const tPrep  = entH.length ? Math.round(entH.reduce((s,p)=>s+p.tempoPreparo,0)/entH.length) : null;
@@ -703,14 +709,14 @@ function _renderDashPerf() {
             const pct = total ? Math.round(c.n/total*100) : 0;
             return `
               <div style="display:flex;align-items:center;gap:10px;padding:9px 18px;border-bottom:1px solid var(--border)">
-                <div style="width:8px;height:8px;border-radius:50%;background:${CANAL_COR[c.c]};flex-shrink:0"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:${canalCor(c.c)};flex-shrink:0"></div>
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                    <span style="font-size:var(--text-sm);font-weight:600">${CANAL_LABEL[c.c]}</span>
+                    <span style="font-size:var(--text-sm);font-weight:600">${canalLabel(c.c)}</span>
                     <span style="font-size:var(--text-2xs);color:var(--muted)">${pct}%</span>
                   </div>
                   <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
-                    <div style="height:100%;width:${pct}%;background:${CANAL_COR[c.c]};border-radius:2px"></div>
+                    <div style="height:100%;width:${pct}%;background:${canalCor(c.c)};border-radius:2px"></div>
                   </div>
                 </div>
                 <div style="text-align:right;flex-shrink:0;min-width:70px">
@@ -736,7 +742,7 @@ function _renderDashPerf() {
     </div>`;
 
   // Pedidos em aberto (excluindo concluídos)
-  const ativos   = pedidos.filter(p => p.status !== 'entregue' && p.mAtrs < 999);
+  const ativos   = pedidos.filter(p => p.status !== 'entregue');
   const nAtrasados = ativos.filter(p => _dashPedAtrasado(p)).length;
 
   const recentesHtml = `
@@ -751,9 +757,7 @@ function _renderDashPerf() {
       </div>
       ${!ativos.length ? `
         <div style="text-align:center;padding:28px;color:var(--muted)">
-          ${simulado
-            ? `${lc('moon',18,'currentColor')}<div style="font-size:var(--text-sm);margin-top:8px">Loja fechada — sem pedidos ativos</div>`
-            : `${lc('check-circle',18,'var(--green)')}<div style="font-size:var(--text-sm);margin-top:8px;color:var(--green);font-weight:600">Sem pedidos em aberto</div>`}
+          ${lc('check-circle',18,'var(--green)')}<div style="font-size:var(--text-sm);margin-top:8px;color:var(--green);font-weight:600">Sem pedidos em aberto</div>
         </div>` : `
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:var(--text-xs)">
@@ -776,7 +780,7 @@ function _renderDashPerf() {
                   onmouseover="this.style.background='${atraso?'rgba(220,38,38,.08)':'var(--purple-xlight)'}'"
                   onmouseout="this.style.background='${rowBg}'">
                   <td style="padding:9px 10px;font-weight:800;color:${atraso?'var(--red)':'var(--purple)'}">${p.num}</td>
-                  <td style="padding:9px 10px"><span style="padding:2px 7px;border-radius:4px;background:var(--surface2);font-size:var(--text-2xs);font-weight:700">${CANAL_LABEL[p.canal]}</span></td>
+                  <td style="padding:9px 10px"><span style="padding:2px 7px;border-radius:4px;background:var(--surface2);font-size:var(--text-2xs);font-weight:700">${canalLabel(p.canal)}</span></td>
                   <td style="padding:9px 10px;color:var(--muted);font-size:var(--text-xs)">
                     <div style="display:flex;align-items:center;gap:4px">${p.tipo==='entrega'?lc('truck',10,'currentColor'):lc('store',10,'currentColor')} ${p.tipo==='entrega'?'Entrega':'Retirada'}</div>
                   </td>
