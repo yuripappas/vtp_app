@@ -681,16 +681,18 @@ async function _renderDashPerf() {
     </div>`;
 
   // ── Tabela pedidos por hora
+  const isHoje = _perfRangeDias === 0;
   const tabelaHoraHtml = `
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r16);overflow:hidden">
       <div style="padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:8px">
           ${lc('clock',13,'var(--purple)')}
           <span style="font-size:var(--text-sm);font-weight:700">Pedidos por hora</span>
+          ${!isHoje ? `<span style="font-size:var(--text-2xs);color:var(--muted);font-weight:500">soma de pedidos/pizzas e média de tempos no período</span>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);font-weight:600;color:var(--warning-fg);background:var(--yellow-light);padding:2px 8px;border-radius:4px">${lc('zap',9,'currentColor')} Pico: ${picoH}h</span>
-          <span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);font-weight:600;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">${lc('radio',9,'currentColor')} Agora: ${now.getHours()}h</span>
+          ${isHoje ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);font-weight:600;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">${lc('radio',9,'currentColor')} Agora: ${now.getHours()}h</span>` : ''}
         </div>
       </div>
       <div style="overflow-x:auto">
@@ -713,8 +715,8 @@ async function _renderDashPerf() {
               const realizados = pedHora.length;
               const pzHora     = pedHora.reduce((s,p)=>s+(p.pizzas||0),0);
               const isPico     = h === picoH;
-              const isNow      = h === now.getHours();
-              const isFuture   = h > now.getHours();
+              const isNow      = isHoje && h === now.getHours();
+              const isFuture   = isHoje && h > now.getHours();
 
               const tPrep = _media(pedHora, 'tempoPreparo');
               const tEnt  = _media(pedHora, 'tempoEntrega');
@@ -764,7 +766,7 @@ async function _renderDashPerf() {
           </tbody>
           <tfoot>
             <tr style="border-top:2px solid var(--border);background:var(--surface2)">
-              <td style="padding:9px 16px;font-size:var(--text-sm);font-weight:800">Total do dia</td>
+              <td style="padding:9px 16px;font-size:var(--text-sm);font-weight:800">${isHoje ? 'Total do dia' : 'Total do período'}</td>
               ${(_resultado && _perfRangeDias===0) ? `<td></td>` : ''}
               <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800">${total}</td>
               <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800;color:var(--orange-dark)">${fmtPz(pizzas)}</td>
