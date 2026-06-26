@@ -453,8 +453,24 @@ function _renderDashRotina() {
 let _perfLoading = false;
 let _perfError    = null;
 let _perfPedidos  = [];
+let _perfRangeDias = 0; // 0 = hoje, ou 7/30/60 dias atrás até hoje
 
 function _dashRefreshPerf() { _perfCountdown = 60; _renderDashPerf(); }
+
+function _dashSetRange(dias) {
+  _perfRangeDias = dias;
+  _perfPedidos = [];
+  _perfError = null;
+  _renderDashPerf();
+}
+
+function _perfGetRange() {
+  const fim = new Date();
+  const inicio = _perfRangeDias > 0
+    ? new Date(new Date(fim.getTime() - _perfRangeDias * 86400000).setHours(0,0,0,0))
+    : new Date(new Date().setHours(0,0,0,0));
+  return { inicio, fim };
+}
 
 function _dashPedAtrasado(p) {
   if (p.status === 'em_preparo' && p.mAtrs > 25) return { msg: `Preparo há ${p.mAtrs}min — meta 20min` };
@@ -477,7 +493,8 @@ async function _renderDashPerf() {
 
   _perfLoading = true;
   try {
-    _perfPedidos = await _getPedidosCW();
+    const { inicio, fim } = _perfGetRange();
+    _perfPedidos = await _getPedidosCW(inicio, fim);
     _perfError = null;
   } catch (e) {
     _perfError = e;
@@ -551,14 +568,22 @@ async function _renderDashPerf() {
   // Total previsto do dia (vem da Previsão, quando calculada) — usado só na coluna "Estimativa"
   const totalDia = _resultado?.pedDel || 0;
 
-  // Status bar
+  // Status bar + filtro de período
+  const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
   const statusBarHtml = `
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:14px">
-      <span style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px">
-        <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0"></span>
-        API CW · atualiza em <strong id="perfCdwn" style="color:var(--text)">${_perfCountdown}s</strong>
-      </span>
-      <button class="btn btn-ghost btn-xs" onclick="_dashRefreshPerf()" style="padding:3px 8px">${lc('refresh-cw',10,'currentColor')} Agora</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
+        ${RANGES.map(([d,l]) => `
+          <button onclick="_dashSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${_perfRangeDias===d?'700':'500'};background:${_perfRangeDias===d?'var(--bg)':'transparent'};color:${_perfRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${_perfRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
+        `).join('')}
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0"></span>
+          atualiza em <strong id="perfCdwn" style="color:var(--text)">${_perfCountdown}s</strong>
+        </span>
+        <button class="btn btn-ghost btn-xs" onclick="_dashRefreshPerf()" style="padding:3px 8px">${lc('refresh-cw',10,'currentColor')} Agora</button>
+      </div>
     </div>`;
 
   // KPIs
@@ -624,7 +649,7 @@ async function _renderDashPerf() {
           <thead>
             <tr style="background:var(--surface2)">
               <th style="padding:9px 16px;text-align:left;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Hora</th>
-              ${_resultado ? `<th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Estimativa</th>` : ''}
+              ${(_resultado && _perfRangeDias===0) ? `<th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Estimativa</th>` : ''}
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Pedidos</th>
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Pizzas</th>
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Preparo</th>
@@ -664,7 +689,7 @@ async function _renderDashPerf() {
                       ${isNow  ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--purple);background:rgba(107,33,212,.1);padding:1px 5px;border-radius:3px">AGORA</span>` : ''}
                     </div>
                   </td>
-                  ${_resultado ? `<td style="padding:10px 12px;text-align:center">
+                  ${(_resultado && _perfRangeDias===0) ? `<td style="padding:10px 12px;text-align:center">
                     <span style="font-size:var(--text-sm);font-weight:600;color:${textCol}">${est}</span>
                   </td>` : ''}
                   <td style="padding:10px 12px;text-align:center">
@@ -691,7 +716,7 @@ async function _renderDashPerf() {
           <tfoot>
             <tr style="border-top:2px solid var(--border);background:var(--surface2)">
               <td style="padding:9px 16px;font-size:var(--text-sm);font-weight:800">Total do dia</td>
-              ${_resultado ? `<td></td>` : ''}
+              ${(_resultado && _perfRangeDias===0) ? `<td></td>` : ''}
               <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800">${total}</td>
               <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800;color:var(--orange-dark)">${fmtPz(pizzas)}</td>
               <td colspan="2"></td>
