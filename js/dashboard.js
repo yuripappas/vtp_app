@@ -467,27 +467,11 @@ async function _renderDashPerf() {
   const el = document.getElementById('dashContent');
   if (!el) return;
 
-  const cfg = getConfig();
-  if (!cfg.codLoja) {
-    el.innerHTML = `
-      <div style="text-align:center;padding:60px 20px">
-        ${lc('zap',28,'var(--border-strong)')}
-        <div style="font-size:var(--text-md);font-weight:700;margin-top:14px">Integração não configurada</div>
-        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:6px;max-width:380px;margin-inline:auto">
-          Cadastre o token da API do Cardápio Web para ver os pedidos em tempo real.
-        </div>
-        <button class="btn btn-primary btn-sm" style="margin-top:16px" onclick="goModule('configuracoes');setCfgSection('integracoes')">
-          ${lc('settings',12,'#fff')} Configurar integração
-        </button>
-      </div>`;
-    return;
-  }
-
   if (!_perfPedidos.length && !_perfLoading) {
     el.innerHTML = `
       <div style="text-align:center;padding:60px 20px;color:var(--muted)">
         ${lc('refresh-cw',24,'currentColor')}
-        <div style="margin-top:10px;font-size:var(--text-sm)">Carregando pedidos do Cardápio Web…</div>
+        <div style="margin-top:10px;font-size:var(--text-sm)">Carregando pedidos…</div>
       </div>`;
   }
 
@@ -501,13 +485,9 @@ async function _renderDashPerf() {
   _perfLoading = false;
 
   if (_perfError) {
-    const msg = _perfError.code === 'UNAUTHORIZED'
-      ? 'Token inválido. Verifique em Configurações → Integrações.'
-      : _perfError.code === 'RATE_LIMIT'
-      ? 'Limite de requisições da API atingido. Tentando novamente em breve.'
-      : _perfError.code === 'NO_TOKEN'
-      ? 'Token da API Cardápio Web não configurado.'
-      : 'Não foi possível conectar à API do Cardápio Web.';
+    const msg = _perfError.code === 'SUPABASE_ERROR'
+      ? `Erro ao consultar o banco: ${_perfError.message}`
+      : 'Não foi possível carregar os pedidos.';
     el.innerHTML = `
       <div style="text-align:center;padding:60px 20px">
         ${lc('alert-triangle',28,'var(--red)')}
@@ -547,9 +527,12 @@ async function _renderDashPerf() {
     fat: pedidos.filter(p=>p.canal===c).reduce((s,p)=>s+p.valor,0),
   })).sort((a,b)=>b.n-a.n);
 
-  const entregues  = pedidos.filter(p => p.status==='entregue' && p.tempoEntrega>0);
-  const tmPreparo  = entregues.length ? Math.round(entregues.reduce((s,p)=>s+p.tempoPreparo,0)/entregues.length) : null;
-  const tmEntrega  = entregues.length ? Math.round(entregues.reduce((s,p)=>s+p.tempoEntrega,0)/entregues.length) : null;
+  const _media = (arr, key) => {
+    const vals = arr.map(p=>p[key]).filter(v => v != null);
+    return vals.length ? Math.round(vals.reduce((s,v)=>s+v,0)/vals.length) : null;
+  };
+  const tmPreparo  = _media(pedidos, 'tempoPreparo');
+  const tmEntrega  = _media(pedidos, 'tempoEntrega');
 
   const CANAL_LABEL = { ifood:'iFood', '99food':'99Food', site:'Site' };
   const CANAL_COR   = { ifood:'var(--red)', '99food':'#F97316', site:'var(--purple)' };
@@ -659,10 +642,9 @@ async function _renderDashPerf() {
               const isNow      = h === now.getHours();
               const isFuture   = h > now.getHours();
 
-              const entH = pedHora.filter(p => p.status==='entregue' && p.tempoEntrega>0);
-              const tPrep  = entH.length ? Math.round(entH.reduce((s,p)=>s+p.tempoPreparo,0)/entH.length) : null;
-              const tEnt   = entH.length ? Math.round(entH.reduce((s,p)=>s+p.tempoEntrega,0)/entH.length) : null;
-              const tTot   = tPrep && tEnt ? tPrep+tEnt : null;
+              const tPrep = _media(pedHora, 'tempoPreparo');
+              const tEnt  = _media(pedHora, 'tempoEntrega');
+              const tTot  = _media(pedHora, 'tempoTotal');
 
               const rowBg = isPico ? 'var(--yellow-light)' : isNow ? 'var(--purple-xlight)' : isFuture ? 'var(--surface2)' : 'var(--surface)';
               const leftBorder = isPico ? '3px solid #EAB308' : isNow ? '3px solid var(--purple)' : '3px solid transparent';
