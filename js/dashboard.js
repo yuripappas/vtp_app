@@ -453,18 +453,46 @@ function _renderDashRotina() {
 let _perfLoading = false;
 let _perfError    = null;
 let _perfPedidos  = [];
-let _perfRangeDias = 0; // 0 = hoje, ou 7/30/60 dias atrás até hoje
+let _perfRangeDias = 0; // 0 = hoje, ou 7/30/60 dias atrás até hoje, ou 'custom'
+let _perfCustomInicio = null; // 'YYYY-MM-DD'
+let _perfCustomFim    = null; // 'YYYY-MM-DD'
+let _perfCustomAberto = false; // mostra os campos de data
 
 function _dashRefreshPerf() { _perfCountdown = 60; _renderDashPerf(); }
 
 function _dashSetRange(dias) {
   _perfRangeDias = dias;
+  _perfCustomAberto = false;
+  _perfPedidos = [];
+  _perfError = null;
+  _renderDashPerf();
+}
+
+function _dashToggleCustomRange() {
+  _perfCustomAberto = !_perfCustomAberto;
+  _renderDashPerf();
+}
+
+function _dashAplicarCustomRange() {
+  const i = document.getElementById('perfCustomInicio')?.value;
+  const f = document.getElementById('perfCustomFim')?.value;
+  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
+  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
+  _perfCustomInicio = i;
+  _perfCustomFim    = f;
+  _perfRangeDias    = 'custom';
+  _perfCustomAberto = false;
   _perfPedidos = [];
   _perfError = null;
   _renderDashPerf();
 }
 
 function _perfGetRange() {
+  if (_perfRangeDias === 'custom' && _perfCustomInicio && _perfCustomFim) {
+    const inicio = new Date(_perfCustomInicio + 'T00:00:00');
+    const fim    = new Date(_perfCustomFim    + 'T23:59:59');
+    return { inicio, fim };
+  }
   const fim = new Date();
   const inicio = _perfRangeDias > 0
     ? new Date(new Date(fim.getTime() - _perfRangeDias * 86400000).setHours(0,0,0,0))
@@ -570,12 +598,33 @@ async function _renderDashPerf() {
 
   // Status bar + filtro de período
   const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
+  const isCustom = _perfRangeDias === 'custom';
+  const customLabel = isCustom
+    ? `${_perfCustomInicio?.split('-').reverse().join('/')} – ${_perfCustomFim?.split('-').reverse().join('/')}`
+    : 'Personalizado';
   const statusBarHtml = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
-        ${RANGES.map(([d,l]) => `
-          <button onclick="_dashSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${_perfRangeDias===d?'700':'500'};background:${_perfRangeDias===d?'var(--bg)':'transparent'};color:${_perfRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${_perfRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
-        `).join('')}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
+        <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
+          ${RANGES.map(([d,l]) => `
+            <button onclick="_dashSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${_perfRangeDias===d?'700':'500'};background:${_perfRangeDias===d?'var(--bg)':'transparent'};color:${_perfRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${_perfRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
+          `).join('')}
+          <button onclick="_dashToggleCustomRange()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
+            ${lc('calendar',11,'currentColor')} ${customLabel}
+          </button>
+        </div>
+        ${_perfCustomAberto ? `
+          <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+            <div>
+              <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
+              <input type="date" id="perfCustomInicio" value="${_perfCustomInicio||''}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+            </div>
+            <div>
+              <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
+              <input type="date" id="perfCustomFim" value="${_perfCustomFim||''}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+            </div>
+            <button class="btn btn-primary btn-xs" onclick="_dashAplicarCustomRange()">Aplicar</button>
+          </div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px">
