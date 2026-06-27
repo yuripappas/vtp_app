@@ -192,7 +192,6 @@ function _initSidebarHover() {
 // Submenu items de Compras
 const _COMPRAS_SUBMENU_ITEMS = [
   { id: 'listas',       icon: 'clipboard-list', label: 'Lista de Compras' },
-  { id: 'historico',    icon: 'clock',          label: 'Histórico'        },
   { id: 'insumos',      icon: 'package',        label: 'Insumos'          },
   { id: 'fornecedores', icon: 'truck',          label: 'Fornecedores'     },
 ];

@@ -62,8 +62,6 @@ function renderComprasLayout(section) {
     _renderCpInsumos();
   } else if (_cpSection === 'fornecedores') {
     _renderCpFornecedores();
-  } else if (_cpSection === 'historico') {
-    _renderHistoricoLayout();
   } else if (_cpListaAberta) {
     _renderFlowLayout(_cpListaAberta);
   } else {
@@ -79,7 +77,7 @@ function setCpSection(section) {
 
 // Alias legado
 function setComprasTab(tab) {
-  _cpSection = tab === 'historico' ? 'historico' : 'listas';
+  _cpSection = 'listas';
   _cpListaAberta = null;
   renderComprasLayout();
 }
@@ -245,23 +243,35 @@ function _confirmarDeletarLista(listaId) {
 }
 
 // ── Renderiza historico dentro do painel direito ─────────────
-function _renderHistoricoLayout() {
-  const el = document.getElementById('cpSectionContent');
-  if (!el) return;
-  el.innerHTML = `<div id="comprasContent" style="padding:24px"></div>`;
-  _renderHistorico();
+// ── Nova página principal: Lista de Compras ──────────────────
+// Retorna { de, ate } da semana atual (seg–dom) como string YYYY-MM-DD
+function _semanaAtualDates() {
+  const hoje = new Date();
+  const dow = hoje.getDay(); // 0=dom
+  const diffSeg = dow === 0 ? -6 : 1 - dow;
+  const seg = new Date(hoje); seg.setDate(hoje.getDate() + diffSeg);
+  const dom = new Date(seg);  dom.setDate(seg.getDate() + 6);
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  return { de: fmt(seg), ate: fmt(dom) };
 }
 
-// ── Nova página principal: Lista de Compras ──────────────────
 function _renderListaCompras() {
   const el = document.getElementById('cpSectionContent');
   if (!el) return;
 
+  // Inicializa filtros de data com semana atual na primeira renderização
+  if (window._lcDe === undefined && window._lcAte === undefined) {
+    const { de: deSem, ate: ateSem } = _semanaAtualDates();
+    window._lcDe  = deSem;
+    window._lcAte = ateSem;
+  }
+
   const busca   = (window._lcBusca   || '').toLowerCase();
   const status  =  window._lcStatus  || 'all';
   const etapa   =  window._lcEtapa   || '';
-  const de      =  window._lcDe      || '';
-  const ate     =  window._lcAte     || '';
+  const de      =  window._lcDe      !== undefined ? window._lcDe  : '';
+  const ate     =  window._lcAte     !== undefined ? window._lcAte : '';
 
   const ETAPAS = [
     { n: 1, label: 'Montagem' }, { n: 2, label: 'Pré-Aprov.' },
@@ -283,6 +293,16 @@ function _renderListaCompras() {
 
   const filtrando = !!(busca || status !== 'all' || etapa || de || ate);
 
+  // KPIs do período filtrado
+  const concluidas  = lista.filter(l => l.status === 'concluida');
+  const emAndamento = lista.filter(l => l.status !== 'concluida');
+  const totalGasto  = concluidas.reduce((s, l) => s + (l.valorFinal || 0), 0);
+  const totalItens  = lista.reduce((s, l) => s + (l.itens?.length || 0), 0);
+  const economia    = concluidas.reduce((s, l) => s + Math.max(0, (l.valorEstimado || 0) - (l.valorFinal || 0)), 0);
+  const ticketMedio = concluidas.length ? totalGasto / concluidas.length : 0;
+  const { de: deSem, ate: ateSem } = _semanaAtualDates();
+  const isSemanaAtual = de === deSem && ate === ateSem;
+
   el.innerHTML = `
     <div style="padding:20px 24px">
       <!-- Cabeçalho -->
@@ -297,6 +317,38 @@ function _renderListaCompras() {
           cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">
           ${lc('plus', 14, '#fff')} Nova lista
         </button>
+      </div>
+
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+        <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light,#c4b5fd);border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('dollar-sign', 10, 'currentColor')} Total comprado
+          </div>
+          <div style="font-size:1.18rem;font-weight:800;color:var(--purple);font-family:monospace;line-height:1">R$ ${fmt(totalGasto)}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">${concluidas.length} lista(s) concluída(s)</div>
+        </div>
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('shopping-bag', 10, 'currentColor')} Ticket médio
+          </div>
+          <div style="font-size:1.18rem;font-weight:800;color:var(--text);font-family:monospace;line-height:1">R$ ${fmt(ticketMedio)}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">por lista concluída</div>
+        </div>
+        <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('trending-down', 10, 'currentColor')} Economia gerada
+          </div>
+          <div style="font-size:1.18rem;font-weight:800;color:var(--green);font-family:monospace;line-height:1">R$ ${fmt(economia)}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">estimado vs. final</div>
+        </div>
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('package', 10, 'currentColor')} Itens comprados
+          </div>
+          <div style="font-size:1.18rem;font-weight:800;color:var(--text);line-height:1">${totalItens}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">${emAndamento.length > 0 ? emAndamento.length + ' em andamento' : 'todas concluídas'}</div>
+        </div>
       </div>
 
       <!-- Filtros -->
@@ -330,6 +382,7 @@ function _renderListaCompras() {
           <input type="date" class="inp" style="width:100%" value="${ate}"
             onchange="window._lcAte=this.value; _renderListaCompras()">
         </div>
+        ${!isSemanaAtual ? `<button class="btn btn-outline btn-xs" onclick="_lcSemanaAtual()" title="Voltar para semana atual">${lc('calendar', 11, 'currentColor')} Esta semana</button>` : ''}
         ${filtrando ? `<button class="btn btn-outline btn-sm" onclick="_lcLimparFiltros()">${lc('x', 12)} Limpar</button>` : ''}
       </div>
 
@@ -382,7 +435,7 @@ function _cardListaCompras(l) {
         </div>
       </div>
 
-      <!-- Resumo numérico -->
+      <!-- Resumo numérico + ações -->
       <div style="display:flex;gap:12px;align-items:center;flex-shrink:0">
         <div style="text-align:right">
           <div style="font-size:var(--text-sm);font-weight:800;font-family:monospace;color:var(--purple)">
@@ -390,6 +443,16 @@ function _cardListaCompras(l) {
           </div>
           <div style="font-size:var(--text-2xs);color:var(--muted)">${(l.itens || []).length} iten(s)</div>
         </div>
+        ${(['gerente','supervisor'].includes(getCurrentUser()?.role)) ? `
+        <button onclick="event.stopPropagation();_abrirAuditoriaLista(${l.id})"
+          title="Ver auditoria"
+          style="width:32px;height:32px;border-radius:var(--r8);border:1.5px solid var(--border);
+          background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;
+          transition:all .15s;flex-shrink:0"
+          onmouseover="this.style.background='var(--purple-xlight)';this.style.borderColor='var(--purple-light)'"
+          onmouseout="this.style.background='var(--surface2)';this.style.borderColor='var(--border)'">
+          ${lc('file-text', 14, 'var(--muted)')}
+        </button>` : ''}
         ${lc('chevron-right', 16, 'var(--muted)')}
       </div>
     </div>`;
@@ -402,6 +465,67 @@ function _lcLimparFiltros() {
   window._lcDe     = '';
   window._lcAte    = '';
   _renderListaCompras();
+}
+
+function _lcSemanaAtual() {
+  const { de, ate } = _semanaAtualDates();
+  window._lcDe  = de;
+  window._lcAte = ate;
+  _renderListaCompras();
+}
+
+function _abrirAuditoriaLista(listaId) {
+  const lista   = listas.find(l => l.id === listaId);
+  if (!lista) return;
+  const entries = (auditLog || []).filter(e =>
+    String(e.lista_id) === String(listaId) ||
+    (e.detalhe || '').includes('Lista #' + listaId) ||
+    (e.detalhe || '').includes('#' + (lista.codigo || ''))
+  ).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  let ov = document.getElementById('ovAuditoria');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'ovAuditoria'; document.body.appendChild(ov); }
+
+  const rowHtml = entries.length === 0
+    ? `<div style="padding:32px;text-align:center;color:var(--muted)">${lc('inbox', 28, 'currentColor')}<br><br>Nenhum registro de auditoria para esta lista.</div>`
+    : entries.map(e => `
+        <div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--purple-xlight);
+            display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc('user', 13, 'var(--purple)')}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--text-xs);font-weight:700">${e.user_name || '—'} <span style="font-weight:400;color:var(--muted)">(${e.user_role || ''})</span></div>
+            <div style="font-size:var(--text-xs);color:var(--text);margin-top:2px">${e.acao || ''}</div>
+            ${e.detalhe ? `<div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">${e.detalhe}</div>` : ''}
+            <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:3px">${lc('clock', 9, 'currentColor')} ${fmtDT(e.created_at)}</div>
+          </div>
+        </div>`).join('');
+
+  ov.className = 'overlay open';
+  ov.onclick = e => { if (e.target === ov) { ov.className = 'overlay'; } };
+  ov.innerHTML = `
+    <div class="modal">
+      <div class="mbox" style="max-width:520px;padding:0;overflow:hidden;max-height:90vh;display:flex;flex-direction:column">
+        <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;border-radius:var(--r8);background:var(--purple-xlight);
+            display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc('file-text', 16, 'var(--purple)')}
+          </div>
+          <div style="flex:1">
+            <div style="font-size:var(--text-sm);font-weight:800">Auditoria · ${lista.codigo}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">${entries.length} registro(s)</div>
+          </div>
+          <button onclick="document.getElementById('ovAuditoria').className='overlay'"
+            style="width:32px;height:32px;border:none;background:var(--surface2);border-radius:var(--r8);cursor:pointer;display:flex;align-items:center;justify-content:center">
+            ${lc('x', 14, 'var(--muted)')}
+          </button>
+        </div>
+        <div style="padding:0 24px;overflow-y:auto;flex:1">
+          ${rowHtml}
+        </div>
+      </div>
+    </div>`;
 }
 
 function _renderComprasTabs() {
@@ -439,11 +563,6 @@ function _renderSemLista() {
         style="font-size:var(--text-md);padding:12px 28px;gap:8px">
         ${lc('plus-circle', 17, '#fff')} Criar Lista de Compras
       </button>
-      <div style="margin-top:16px">
-        <button class="btn btn-outline btn-sm" onclick="setComprasTab('historico')">
-          ${lc('clock', 13, 'currentColor')} Ver histórico de compras
-        </button>
-      </div>
     </div>`;
 }
 
@@ -5290,187 +5409,9 @@ function concluirLista() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// HISTÓRICO — com filtro de período e auditoria
+// AUDITORIA_PLACEHOLDER — removido, ver _abrirAuditoriaLista()
 // ══════════════════════════════════════════════════════════════
-function _renderHistorico() {
-  const busca  = (document.getElementById('histBusca')?.value||'').toLowerCase();
-  const filtro =  document.getElementById('histFiltro')?.value||'';
-  const de     =  document.getElementById('histDe')?.value||'';
-  const ate    =  document.getElementById('histAte')?.value||'';
-
-  const hist=[...listas]
-    .sort((a,b)=>new Date(b.dataCriacao||0)-new Date(a.dataCriacao||0))
-    .filter(l=>{
-      if (filtro && l.status!==filtro) return false;
-      if (busca && !l.codigo.toLowerCase().includes(busca)) return false;
-      if (de) { const d=(l.dataCriacao||'').slice(0,10); if(d<de) return false; }
-      if (ate) { const d=(l.dataCriacao||'').slice(0,10); if(d>ate) return false; }
-      return true;
-    });
-
-  // Totalizadores do conjunto filtrado
-  const concluidas  = hist.filter(l => l.status === 'concluida');
-  const emAndamento = hist.filter(l => l.status !== 'concluida');
-  const totalGasto  = concluidas.reduce((s,l) => s + (l.valorFinal||0), 0);
-  const totalItens  = concluidas.reduce((s,l) => s + (l.itens?.length||0), 0);
-  const economia    = concluidas.reduce((s,l) => s + Math.max(0,(l.valorEstimado||0)-(l.valorFinal||0)), 0);
-  const ticketMedio = concluidas.length ? totalGasto / concluidas.length : 0;
-  const filtrando   = !!(busca || de || ate || filtro);
-
-  document.getElementById('comprasContent').innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-      <div>
-        <h3 style="font-size:var(--text-base);font-weight:800;margin-bottom:3px">${lc('clock',14,'var(--purple)')} Histórico de Compras</h3>
-        <div style="font-size:var(--text-xs);color:var(--muted)">${hist.length} lista(s)${filtrando?' no período/filtro selecionado':''}</div>
-      </div>
-    </div>
-
-    <!-- Totalizadores -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
-      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r10);padding:12px 16px">
-        <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);margin-bottom:4px">
-          ${lc('dollar-sign',11,'var(--purple)')} Total comprado
-        </div>
-        <div style="font-size:1.2rem;font-weight:800;color:var(--purple);font-family:monospace">R$ ${fmt(totalGasto)}</div>
-        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">${concluidas.length} lista(s) concluída(s)</div>
-      </div>
-      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px">
-        <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">
-          ${lc('shopping-bag',11,'currentColor')} Ticket médio
-        </div>
-        <div style="font-size:1.2rem;font-weight:800;color:var(--text);font-family:monospace">R$ ${fmt(ticketMedio)}</div>
-        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">por lista concluída</div>
-      </div>
-      <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r10);padding:12px 16px">
-        <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:4px">
-          ${lc('trending-down',11,'var(--green)')} Economia gerada
-        </div>
-        <div style="font-size:1.2rem;font-weight:800;color:var(--green);font-family:monospace">R$ ${fmt(economia)}</div>
-        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">estimado vs. final</div>
-      </div>
-      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px">
-        <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px">
-          ${lc('package',11,'currentColor')} Itens comprados
-        </div>
-        <div style="font-size:1.2rem;font-weight:800;color:var(--text)">${totalItens}</div>
-        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">
-          ${emAndamento.length > 0 ? emAndamento.length+' em andamento' : 'todas concluídas'}
-        </div>
-      </div>
-    </div>
-
-    <!-- Filtros -->
-    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end">
-      <div style="flex:1;min-width:140px;max-width:220px">
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">Buscar</div>
-        <input type="text" id="histBusca" class="inp" placeholder="Código da lista..." value="${busca}" oninput="_renderHistorico()">
-      </div>
-      <div style="flex:1;min-width:100px">
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">De</div>
-        <input type="date" id="histDe" class="inp" value="${de}" onchange="_renderHistorico()" style="width:100%">
-      </div>
-      <div style="flex:1;min-width:100px">
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">Até</div>
-        <input type="date" id="histAte" class="inp" value="${ate}" onchange="_renderHistorico()" style="width:100%">
-      </div>
-      <div style="flex:1;min-width:120px">
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:3px;font-weight:600">Status</div>
-        <select id="histFiltro" class="inp" style="width:100%" onchange="_renderHistorico()">
-          <option value="">Todos</option>
-          ${Object.entries(STATUS_ETAPA).map(([k,v])=>`<option value="${k}" ${filtro===k?'selected':''}>${v.label}</option>`).join('')}
-        </select>
-      </div>
-      ${filtrando?`<button class="btn btn-outline btn-sm" onclick="_limparFiltrosHist()">${lc('x',12)} Limpar</button>`:''}
-    </div>
-
-    ${hist.length===0?`<div class="empty" style="padding:40px"><div class="empty-icon">${lc('clock',24,'var(--muted)')}</div>Nenhuma lista encontrada.</div>`
-    :hist.map(l=>_cardHistorico(l)).join('')}`;
-}
-function _limparFiltrosHist() {
-  ['histBusca','histDe','histAte'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  const s=document.getElementById('histFiltro'); if(s) s.value='';
-  _renderHistorico();
-}
-
-function _cardHistorico(l) {
-  const st=STATUS_ETAPA[l.status]||{label:l.status,color:'var(--muted)',bg:'var(--surface2)'};
-  const its=l.itens||[];
-  const itensForn=its.filter(i=>i.tipoCompra!=='presencial');
-  const itensPresencial=its.filter(i=>i.tipoCompra==='presencial');
-  const bySup={};
-  itensForn.forEach(i=>{const k=i.fornecedorId||0;if(!bySup[k])bySup[k]=[];bySup[k].push(i);});
-  const numSups=Object.keys(bySup).filter(k=>k!=='0').length;
-  const isOpen=l.status!=='concluida';
-
-  const etapas=[
-    {label:'Criação',icon:'file-plus',data:l.dataCriacao},
-    {label:'Cotação',icon:'message-circle',data:l.etapa>=2?l.dataCriacao:null},
-    {label:'Aprovação',icon:'check-circle',data:l.dataAprovacao},
-    {label:'Ordem',icon:'shopping-bag',data:l.etapa>=3?(l.dataAprovacao||null):null},
-    {label:'Concluído',icon:'package',data:l.dataConclusao},
-  ];
-
-  return `<div class="card" style="margin-bottom:12px;overflow:hidden">
-    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap">
-      <div style="flex:1;min-width:140px">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-size:var(--text-md);font-weight:800">${l.codigo}</span>
-          <span style="font-size:var(--text-xs);font-weight:700;padding:2px 8px;border-radius:20px;background:${st.bg};color:${st.color};border:1px solid ${st.color}">${st.label}</span>
-        </div>
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:3px">
-          Criada em ${fmtD(l.dataCriacao)} por ${l.criadoPor}
-          ${l.conferidoPor?` · Conferida por <strong>${l.conferidoPor}</strong>`:''}
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <div style="text-align:center;padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
-          <div style="font-size:var(--text-sm);font-weight:800;color:var(--purple)">${its.length}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Itens</div>
-        </div>
-        <div style="text-align:center;padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
-          <div style="font-size:var(--text-sm);font-weight:800;color:var(--purple)">${numSups}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Fornec.</div>
-        </div>
-        <div style="text-align:center;padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
-          <div style="font-size:var(--text-sm);font-weight:800;color:${l.status==='concluida'?'var(--green)':'var(--purple)'}">R$${fmt(l.valorFinal||l.valorEstimado||0)}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">${l.status==='concluida'?'Final':'Estimado'}</div>
-        </div>
-        ${isOpen?`<button class="btn btn-outline btn-xs" onclick="_reabrirLista(${l.id})">${lc('external-link',11)} Abrir</button>`:''}
-        <button class="btn btn-outline btn-xs" onclick="abrirAuditoria(${l.id})">${lc('search',11)} Auditoria</button>
-      </div>
-    </div>
-
-    <!-- Timeline -->
-    <div style="padding:14px 16px;background:var(--surface)">
-      <div style="position:relative;display:flex;align-items:flex-start">
-        <div style="position:absolute;top:11px;left:12px;right:12px;height:2px;background:var(--border);z-index:0"></div>
-        ${etapas.map((e,idx)=>{
-          const done=!!e.data; const cur=!done&&idx===etapas.filter(x=>!!x.data).length;
-          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative;z-index:1">
-            <div style="width:22px;height:22px;border-radius:50%;background:${done?'var(--green)':cur?'var(--purple)':'var(--border)'};border:2px solid ${done?'var(--green)':cur?'var(--purple)':'var(--border)'};display:flex;align-items:center;justify-content:center;margin-bottom:5px">
-              ${lc(e.icon,10,done||cur?'#fff':'var(--muted)')}
-            </div>
-            <div style="font-size:var(--text-2xs);font-weight:600;color:${done?'var(--green)':cur?'var(--purple)':'var(--muted)'};text-align:center;line-height:1.3">${e.label}</div>
-            ${done&&e.data?`<div style="font-size:var(--text-2xs);color:var(--muted);text-align:center">${fmtD(e.data)}</div>`:''}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
-
-    ${numSups>0||itensPresencial.length>0?`
-    <div style="padding:7px 16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:5px;align-items:center">
-      ${numSups>0?`<span style="font-size:var(--text-2xs);color:var(--muted)">${lc('building-2',10,'var(--muted)')} Fornecedores:</span>`:''}
-      ${Object.keys(bySup).filter(k=>k!=='0').map(k=>{const s=suppliers.find(x=>x.id===parseInt(k));return s?`<span class="badge b-purple" style="font-size:var(--text-2xs)">${s.name}</span>`:''}).join('')}
-      ${itensPresencial.length?`<span class="badge b-orange" style="font-size:var(--text-2xs)">${lc('shopping-cart',9,'currentColor')} ${itensPresencial.length} presencial</span>`:''}
-    </div>`:''}
-
-    ${l.conferidoPor||l.dataRecebimento?`
-    <div style="padding:6px 16px;border-top:1px solid var(--border);background:var(--surface2);display:flex;gap:12px;flex-wrap:wrap;font-size:var(--text-xs);color:var(--muted);align-items:center">
-      ${l.conferidoPor?`${lc('user',10,'currentColor')} Conferido por <strong>${l.conferidoPor}</strong>`:''}
-      ${l.dataRecebimento?`${lc('calendar',10,'currentColor')} ${fmtD(l.dataRecebimento)} ${l.horaRecebimento||''}`:''}
-    </div>`:''}
-  </div>`;
-}
+function _renderHistorico() { /* obsoleto */ }
 
 // ══════════════════════════════════════════════════════════════
 // AUDITORIA — modal completo de uma lista
