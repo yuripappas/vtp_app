@@ -63,7 +63,7 @@
     'js/cadastros.js', 'js/configuracoes.js', 'js/desperdicio.js',
     'js/checklist.js', 'js/manutencao.js', 'js/inventario.js',
     'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/etiquetagem.js',
-    'js/login.js',
+    'js/atendimento.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
     await loadScript(src + '?v=75');

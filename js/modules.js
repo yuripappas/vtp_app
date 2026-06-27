@@ -1039,27 +1039,4 @@ function setOpSection(mod) {
   `;
 }
 
-// ══════════════════════════════════════════════════════════════
-// OMNICHANNEL — placeholder
-// ══════════════════════════════════════════════════════════════
-
-function renderOmnichannel() {
-  document.getElementById('page-omnichannel').innerHTML = `
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px;text-align:center;padding:24px">
-      <span style="
-        width:64px;height:64px;border-radius:var(--r16);background:var(--purple-a12);
-        display:flex;align-items:center;justify-content:center
-      ">${lc('message-circle', 32, 'var(--purple)')}</span>
-      <div>
-        <div style="font-size:var(--text-lg);font-weight:700;color:var(--text1);margin-bottom:6px">Omnichannel</div>
-        <div style="font-size:var(--text-sm);color:var(--text3);max-width:320px;line-height:1.6">
-          Central de atendimento e canais de venda.<br>Em breve.
-        </div>
-      </div>
-      <span style="
-        background:var(--warning-bg);color:var(--warning-text);
-        font-size:var(--text-xs);font-weight:600;padding:4px 10px;border-radius:999px
-      ">Em desenvolvimento</span>
-    </div>
-  `;
-}
+// renderOmnichannel() agora vive em js/atendimento.js
