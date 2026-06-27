@@ -82,6 +82,16 @@ function contarPizzas(items: CwItem[] | undefined): { grande: number; pequena: n
   return { grande, pequena };
 }
 
+// ── Cliente e endereço (para o módulo de omnichannel) ──────────────────────
+
+interface CwCustomer { id?: number; name?: string; phone?: string; ddi?: string; }
+
+function normalizarTelefone(c: CwCustomer | null | undefined): string | null {
+  if (!c?.phone) return null;
+  const digitos = (((c.ddi || '') + c.phone)).replace(/\D/g, '');
+  return digitos || null;
+}
+
 // ── Handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (_req) => {
@@ -145,6 +155,10 @@ Deno.serve(async (_req) => {
         cw_created_at:     det.created_at,
         cw_updated_at:     det.updated_at,
         synced_at:         new Date().toISOString(),
+        customer_id:       det.customer?.id ?? null,
+        customer_name:     det.customer?.name ?? null,
+        customer_phone:    normalizarTelefone(det.customer),
+        delivery_address:  det.delivery_address ?? null,
       };
     } catch (_e) { erros++; return null; }
   }))).filter((l): l is NonNullable<typeof l> => l !== null);
