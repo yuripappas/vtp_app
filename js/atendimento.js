@@ -319,71 +319,109 @@ function _atdAssinarRealtime() {
 // CardápioWeb. Caso de uso principal: motoboy não acha o endereço.
 // ══════════════════════════════════════════════════════════════
 
+const ATD_STATUS_LABELS = {
+  aguardando:  'Aguardando',
+  em_preparo:  'Em preparo',
+  pronto:      'Pronto',
+  em_rota:     'Em rota',
+  entregue:    'Entregue',
+};
+const ATD_CANAL_LABELS = { ifood: 'iFood', '99food': '99Food', site: 'Site' };
+
 function _atdAbrirBuscaPedido() {
   document.getElementById('popupAtdBuscaPedido')?.remove();
+  _atdState.pedidosDia = [];
+  _atdState.pedidosFiltroStatus = 'todos';
+
   const popup = document.createElement('div');
   popup.id = 'popupAtdBuscaPedido';
   popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:20px';
   popup.innerHTML = `
-    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:480px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0;flex-shrink:0">
-        <div style="font-size:var(--text-md);font-weight:800">${lc('search', 15, 'var(--purple)')} Buscar pedido ou cliente</div>
+        <div style="font-size:var(--text-md);font-weight:800">${lc('search', 15, 'var(--purple)')} Pedidos de hoje</div>
         <button onclick="document.getElementById('popupAtdBuscaPedido').remove()" style="background:none;border:none;cursor:pointer;padding:4px">${lc('x', 18, 'var(--muted)')}</button>
       </div>
-      <div style="padding:16px 20px;flex-shrink:0">
-        <input id="atdBuscaInput" class="inp" placeholder="Número do pedido (#67) ou nome do cliente..." autocomplete="off"
-          oninput="_atdBuscarPedidoDebounced()">
+      <div style="padding:14px 20px 10px;flex-shrink:0">
+        <input id="atdBuscaInput" class="inp" placeholder="Filtrar por nome ou número do pedido..." autocomplete="off" oninput="_atdRenderPedidos()">
+        <div id="atdFiltrosStatus" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+          ${['todos', 'aguardando', 'em_preparo', 'pronto', 'em_rota', 'entregue'].map(s => `
+            <button class="atd-filtro ${s === 'todos' ? 'active' : ''}" data-status="${s}" onclick="_atdFiltrarPedidosPorStatus('${s}')">
+              ${s === 'todos' ? 'Todos' : ATD_STATUS_LABELS[s]}
+            </button>`).join('')}
+        </div>
       </div>
-      <div id="atdBuscaResultados" style="flex:1;overflow-y:auto;padding:0 12px 16px"></div>
+      <div id="atdBuscaResultados" style="flex:1;overflow-y:auto;padding:4px 12px 16px"></div>
     </div>`;
   document.body.appendChild(popup);
   popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
-  setTimeout(() => document.getElementById('atdBuscaInput')?.focus(), 60);
+
+  document.getElementById('atdBuscaResultados').innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Carregando pedidos de hoje...</div>`;
+  _atdCarregarPedidosDoDia();
 }
 
-let _atdBuscaTimeout = null;
-function _atdBuscarPedidoDebounced() {
-  clearTimeout(_atdBuscaTimeout);
-  _atdBuscaTimeout = setTimeout(_atdBuscarPedido, 300);
+function _atdFiltrarPedidosPorStatus(status) {
+  _atdState.pedidosFiltroStatus = status;
+  document.querySelectorAll('#atdFiltrosStatus .atd-filtro').forEach(b => b.classList.toggle('active', b.dataset.status === status));
+  _atdRenderPedidos();
 }
 
-async function _atdBuscarPedido() {
-  const termo = document.getElementById('atdBuscaInput')?.value.trim();
+async function _atdCarregarPedidosDoDia() {
+  const sb = _atdGetSbClient();
+  const inicioHoje = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+
+  const { data, error } = await sb
+    .from('cw_pedidos')
+    .select('id, display_id, customer_name, customer_phone, delivery_address, status, sales_channel, total, order_type, cw_created_at')
+    .gte('cw_created_at', inicioHoje)
+    .order('cw_created_at', { ascending: false });
+
+  const resEl = document.getElementById('atdBuscaResultados');
+  if (error) { if (resEl) resEl.innerHTML = `<div style="padding:16px;color:var(--red);font-size:var(--text-sm)">Erro ao carregar pedidos</div>`; return; }
+
+  _atdState.pedidosDia = (data || []).filter(p => p.status !== 'canceling' && p.status !== 'canceled');
+  _atdRenderPedidos();
+}
+
+function _atdRenderPedidos() {
   const resEl = document.getElementById('atdBuscaResultados');
   if (!resEl) return;
-  if (!termo) { resEl.innerHTML = ''; return; }
 
-  const sb = _atdGetSbClient();
+  const termo = (document.getElementById('atdBuscaInput')?.value || '').trim().toLowerCase();
   const numeroLimpo = termo.replace(/^#/, '');
-  const ehNumero = /^\d+$/.test(numeroLimpo);
+  const filtroStatus = _atdState.pedidosFiltroStatus || 'todos';
 
-  const query = sb.from('cw_pedidos')
-    .select('id, display_id, customer_name, customer_phone, delivery_address, status, total, order_type')
-    .order('cw_created_at', { ascending: false })
-    .limit(15);
+  let lista = _atdState.pedidosDia.map(p => ({ ...p, _statusMapeado: CW_STATUS_MAP[p.status] || 'aguardando' }));
 
-  const { data, error } = ehNumero
-    ? await query.eq('display_id', Number(numeroLimpo))
-    : await query.ilike('customer_name', `%${termo}%`);
+  if (filtroStatus !== 'todos') lista = lista.filter(p => p._statusMapeado === filtroStatus);
+  if (termo) {
+    lista = lista.filter(p =>
+      (p.customer_name || '').toLowerCase().includes(termo) ||
+      String(p.display_id ?? '').includes(numeroLimpo)
+    );
+  }
 
-  if (error) { resEl.innerHTML = `<div style="padding:16px;color:var(--red);font-size:var(--text-sm)">Erro na busca</div>`; return; }
-
-  if (!data?.length) {
-    resEl.innerHTML = `<div style="padding:16px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Nenhum pedido encontrado.</div>`;
+  if (!lista.length) {
+    resEl.innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Nenhum pedido encontrado.</div>`;
     return;
   }
 
-  resEl.innerHTML = data.map(p => `
+  resEl.innerHTML = lista.map(p => {
+    const canal = ATD_CANAL_LABELS[_cwMapCanal(p.sales_channel)] || 'Site';
+    return `
     <div class="conv-item" style="border-radius:var(--r8);border-bottom:none;margin-bottom:4px" onclick='_atdAbrirConversaDePedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
-      <span style="width:34px;height:34px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">#${p.display_id ?? '—'}</span>
+      <span style="width:34px;height:34px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:var(--text-xs)">#${p.display_id ?? '—'}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:var(--text-sm);color:var(--text)">${p.customer_name || 'Sem nome vinculado'}</div>
+        <div style="display:flex;align-items:center;gap:5px">
+          <div style="font-weight:700;font-size:var(--text-sm);color:var(--text)">${p.customer_name || 'Sem nome vinculado'}</div>
+          ${p.customer_phone ? lc('phone', 12, 'var(--green)') : ''}
+        </div>
         <div style="font-size:var(--text-xs);color:var(--fg-subtle)">
-          ${p.status || ''} ${p.total ? '· R$ ' + Number(p.total).toFixed(2) : ''}
-          ${!p.customer_phone ? ' · <span style="color:var(--warning-bg-bold)">sem telefone</span>' : ''}
+          ${ATD_STATUS_LABELS[p._statusMapeado]} · ${canal} ${p.total ? '· R$ ' + Number(p.total).toFixed(2) : ''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function _atdAbrirConversaDePedido(pedido) {
