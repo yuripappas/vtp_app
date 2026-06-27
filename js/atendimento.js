@@ -21,6 +21,8 @@ const _atdState = {
   realtimeChannel: null,
   modoNotaInterna: false,
   respostasRapidas: [],
+  todasTags: [],
+  tagsConversaAtual: [],
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -90,12 +92,19 @@ function renderOmnichannel() {
   _atdCarregarConversas();
   _atdAssinarRealtime();
   _atdCarregarRespostasRapidas();
+  _atdCarregarTodasTags();
 }
 
 async function _atdCarregarRespostasRapidas() {
   const sb = _atdGetSbClient();
   const { data } = await sb.from('atd_respostas_rapidas').select('*').eq('ativo', true).order('atalho');
   _atdState.respostasRapidas = data || [];
+}
+
+async function _atdCarregarTodasTags() {
+  const sb = _atdGetSbClient();
+  const { data } = await sb.from('atd_tags').select('*').eq('ativo', true).order('categoria, nome');
+  _atdState.todasTags = data || [];
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -180,7 +189,13 @@ async function _atdAbrirConversa(conversaId) {
     .eq('conversa_id', conversaId)
     .order('enviado_em', { ascending: true });
 
+  const { data: tagsConversa } = await sb
+    .from('atd_conversa_tags')
+    .select('tag_id')
+    .eq('conversa_id', conversaId);
+
   _atdState.mensagens = mensagens || [];
+  _atdState.tagsConversaAtual = (tagsConversa || []).map(t => t.tag_id);
   _atdRenderChat(conversa);
   _atdRenderPainel(conversa);
 }
@@ -311,6 +326,15 @@ function _atdRenderPainel(conversa) {
   const c = conversa.atd_contatos || {};
   const nome = c.nome || c.telefone || 'Sem nome';
   const pedido = conversa.pedido_data;
+  const tagsAtuais = new Set(_atdState.tagsConversaAtual);
+
+  const chipsTags = _atdState.todasTags.map(tag => {
+    const ativa = tagsAtuais.has(tag.id);
+    const cor = tag.cor || 'var(--purple)';
+    return `<span class="atd-tag-chip" data-tag-id="${tag.id}" onclick="_atdToggleTag('${conversa.id}', '${tag.id}')"
+        style="cursor:pointer;display:inline-block;padding:3px 9px;border-radius:999px;font-size:var(--text-2xs);font-weight:700;margin:0 4px 6px 0;border:1px solid ${cor};
+        ${ativa ? `background:${cor};color:#fff` : `background:transparent;color:${cor}`}">${tag.nome}</span>`;
+  }).join('');
 
   document.getElementById('atdPainelContato').innerHTML = `
     <div style="padding:18px 16px;border-bottom:1px solid var(--border);text-align:center">
@@ -331,7 +355,42 @@ function _atdRenderPainel(conversa) {
             ${lc('map-pin', 13, 'var(--purple)')} Ver endereço de entrega
           </button>` : ''}
       </div>` : ''}
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Tags</div>
+      <div>${chipsTags || `<span style="font-size:var(--text-xs);color:var(--fg-subtle)">Nenhuma tag cadastrada</span>`}</div>
+    </div>
   `;
+}
+
+async function _atdToggleTag(conversaId, tagId) {
+  const sb = _atdGetSbClient();
+  const jaTemTag = _atdState.tagsConversaAtual.includes(tagId);
+
+  if (jaTemTag) {
+    const { error } = await sb.from('atd_conversa_tags').delete().eq('conversa_id', conversaId).eq('tag_id', tagId);
+    if (error) { toast('Erro ao remover tag', 'err'); return; }
+    _atdState.tagsConversaAtual = _atdState.tagsConversaAtual.filter(id => id !== tagId);
+  } else {
+    const user = getCurrentUser();
+    const { error } = await sb.from('atd_conversa_tags').insert({
+      conversa_id: conversaId,
+      tag_id: tagId,
+      origem: 'manual',
+      atendente_id: user?.id ?? null,
+      confirmada: true,
+    });
+    if (error) { toast('Erro ao adicionar tag', 'err'); return; }
+    _atdState.tagsConversaAtual.push(tagId);
+  }
+
+  const chip = document.querySelector(`.atd-tag-chip[data-tag-id="${tagId}"]`);
+  if (chip) {
+    const tag = _atdState.todasTags.find(t => t.id === tagId);
+    const cor = tag?.cor || 'var(--purple)';
+    const ativa = _atdState.tagsConversaAtual.includes(tagId);
+    chip.style.background = ativa ? cor : 'transparent';
+    chip.style.color = ativa ? '#fff' : cor;
+  }
 }
 
 function _atdAbrirEndereco(addr) {
