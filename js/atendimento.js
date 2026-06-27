@@ -23,6 +23,7 @@ const _atdState = {
   respostasRapidas: [],
   todasTags: [],
   tagsConversaAtual: [],
+  corrigirAtivoPorConversa: {}, // { [conversaId]: boolean } — desativado por padrão (economiza tokens)
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -211,6 +212,7 @@ function _atdRenderChat(conversa) {
   }).join('');
 
   _atdState.modoNotaInterna = false;
+  const corrigirAtivo = !!_atdState.corrigirAtivoPorConversa[conversa.id];
 
   document.getElementById('atdChatAtivo').innerHTML = `
     <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
@@ -228,8 +230,16 @@ function _atdRenderChat(conversa) {
         <button id="atdBtnNotaInterna" class="btn btn-ghost" title="Nota interna (só a equipe vê)" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdToggleNotaInterna('${conversa.id}')">
           ${lc('lock', 14, 'var(--fg-muted)')}
         </button>
-        <button id="atdBtnCorrigir" class="btn btn-ghost" title="Corrigir ortografia com IA" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdCorrigirMensagem()">
-          ${lc('sparkles', 14, 'var(--purple)')}
+        <button id="atdBtnGerarResposta" class="btn btn-ghost" title="Gerar resposta ideal com IA" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdGerarResposta('${conversa.id}')">
+          ${lc('zap', 14, 'var(--purple)')}
+        </button>
+        <button id="atdBtnToggleCorrecao" class="btn btn-ghost" title="${corrigirAtivo ? 'Correção automática ATIVADA — clique para desativar' : 'Correção automática DESATIVADA — clique para ativar'}"
+          style="font-size:var(--text-xs);flex-shrink:0;${corrigirAtivo ? 'background:var(--purple);' : ''}" onclick="_atdToggleModoCorrecao('${conversa.id}')">
+          ${lc('sliders', 14, corrigirAtivo ? '#fff' : 'var(--fg-muted)')}
+        </button>
+        <button id="atdBtnCorrigir" class="btn btn-ghost" title="${corrigirAtivo ? 'Corrigir ortografia com IA' : 'Ative o modo de correção primeiro'}" ${corrigirAtivo ? '' : 'disabled'}
+          style="font-size:var(--text-xs);flex-shrink:0;${corrigirAtivo ? '' : 'opacity:.4;cursor:not-allowed'}" onclick="_atdCorrigirMensagem()">
+          ${lc('pencil', 14, corrigirAtivo ? 'var(--purple)' : 'var(--fg-subtle)')}
         </button>
         <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
           style="flex:1;resize:none" oninput="_atdCampoOnInput()"
@@ -285,7 +295,30 @@ function _atdCampoOnInput() {
     </div>`).join('');
 }
 
+function _atdToggleModoCorrecao(conversaId) {
+  const ativo = !_atdState.corrigirAtivoPorConversa[conversaId];
+  _atdState.corrigirAtivoPorConversa[conversaId] = ativo;
+
+  const btnToggle = document.getElementById('atdBtnToggleCorrecao');
+  const btnCorrigir = document.getElementById('atdBtnCorrigir');
+  if (btnToggle) {
+    btnToggle.style.background = ativo ? 'var(--purple)' : '';
+    btnToggle.title = ativo ? 'Correção automática ATIVADA — clique para desativar' : 'Correção automática DESATIVADA — clique para ativar';
+    btnToggle.innerHTML = lc('sliders', 14, ativo ? '#fff' : 'var(--fg-muted)');
+  }
+  if (btnCorrigir) {
+    btnCorrigir.disabled = !ativo;
+    btnCorrigir.style.opacity = ativo ? '' : '.4';
+    btnCorrigir.style.cursor = ativo ? '' : 'not-allowed';
+    btnCorrigir.title = ativo ? 'Corrigir ortografia com IA' : 'Ative o modo de correção primeiro';
+    btnCorrigir.innerHTML = lc('pencil', 14, ativo ? 'var(--purple)' : 'var(--fg-subtle)');
+  }
+}
+
 async function _atdCorrigirMensagem() {
+  const conversaId = _atdState.conversaAtivaId;
+  if (!_atdState.corrigirAtivoPorConversa[conversaId]) return;
+
   const campo = document.getElementById('atdCampoTexto');
   const btn = document.getElementById('atdBtnCorrigir');
   if (!campo || !btn) return;
@@ -309,6 +342,34 @@ async function _atdCorrigirMensagem() {
   } catch (e) {
     if (typeof toast === 'function') toast('Não foi possível corrigir a mensagem', 'error');
     else console.error('[atendimento] corrigir-mensagem:', e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = iconeOriginal;
+  }
+}
+
+async function _atdGerarResposta(conversaId) {
+  const campo = document.getElementById('atdCampoTexto');
+  const btn = document.getElementById('atdBtnGerarResposta');
+  if (!campo || !btn) return;
+
+  btn.disabled = true;
+  const iconeOriginal = btn.innerHTML;
+  btn.innerHTML = lc('hourglass', 14, 'var(--purple)');
+
+  try {
+    const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/gerar-resposta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      body: JSON.stringify({ conversa_id: conversaId }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'falha ao gerar resposta');
+    campo.value = json.resposta;
+    campo.focus();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Não foi possível gerar a resposta: ' + e.message, 'err');
+    else console.error('[atendimento] gerar-resposta:', e);
   } finally {
     btn.disabled = false;
     btn.innerHTML = iconeOriginal;
