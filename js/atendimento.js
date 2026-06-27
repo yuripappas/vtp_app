@@ -35,6 +35,9 @@ function renderOmnichannel() {
           <div style="font-size:var(--text-base);font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px;margin-bottom:10px">
             ${lc('message-circle', 18, 'var(--purple)')} Atendimento
           </div>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:10px;font-size:var(--text-xs)" onclick="_atdAbrirBuscaPedido()">
+            ${lc('search', 13, '#fff')} Buscar pedido / cliente
+          </button>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="atd-filtro active" data-filtro="todas" onclick="_atdAplicarFiltro('todas')">Todas</button>
             <button class="atd-filtro" data-filtro="minhas" onclick="_atdAplicarFiltro('minhas')">Minhas</button>
@@ -308,4 +311,131 @@ function _atdAssinarRealtime() {
       _atdCarregarConversas();
     })
     .subscribe();
+}
+
+// ══════════════════════════════════════════════════════════════
+// BUSCAR PEDIDO / CLIENTE — F04-B
+// Abre (ou cria) a conversa de WhatsApp já vinculada a um pedido do
+// CardápioWeb. Caso de uso principal: motoboy não acha o endereço.
+// ══════════════════════════════════════════════════════════════
+
+function _atdAbrirBuscaPedido() {
+  document.getElementById('popupAtdBuscaPedido')?.remove();
+  const popup = document.createElement('div');
+  popup.id = 'popupAtdBuscaPedido';
+  popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:20px';
+  popup.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--r14);width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--purple-xlight);border-radius:var(--r14) var(--r14) 0 0;flex-shrink:0">
+        <div style="font-size:var(--text-md);font-weight:800">${lc('search', 15, 'var(--purple)')} Buscar pedido ou cliente</div>
+        <button onclick="document.getElementById('popupAtdBuscaPedido').remove()" style="background:none;border:none;cursor:pointer;padding:4px">${lc('x', 18, 'var(--muted)')}</button>
+      </div>
+      <div style="padding:16px 20px;flex-shrink:0">
+        <input id="atdBuscaInput" class="inp" placeholder="Número do pedido (#67) ou nome do cliente..." autocomplete="off"
+          oninput="_atdBuscarPedidoDebounced()">
+      </div>
+      <div id="atdBuscaResultados" style="flex:1;overflow-y:auto;padding:0 12px 16px"></div>
+    </div>`;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+  setTimeout(() => document.getElementById('atdBuscaInput')?.focus(), 60);
+}
+
+let _atdBuscaTimeout = null;
+function _atdBuscarPedidoDebounced() {
+  clearTimeout(_atdBuscaTimeout);
+  _atdBuscaTimeout = setTimeout(_atdBuscarPedido, 300);
+}
+
+async function _atdBuscarPedido() {
+  const termo = document.getElementById('atdBuscaInput')?.value.trim();
+  const resEl = document.getElementById('atdBuscaResultados');
+  if (!resEl) return;
+  if (!termo) { resEl.innerHTML = ''; return; }
+
+  const sb = _atdGetSbClient();
+  const numeroLimpo = termo.replace(/^#/, '');
+  const ehNumero = /^\d+$/.test(numeroLimpo);
+
+  const query = sb.from('cw_pedidos')
+    .select('id, display_id, customer_name, customer_phone, delivery_address, status, total, order_type')
+    .order('cw_created_at', { ascending: false })
+    .limit(15);
+
+  const { data, error } = ehNumero
+    ? await query.eq('display_id', Number(numeroLimpo))
+    : await query.ilike('customer_name', `%${termo}%`);
+
+  if (error) { resEl.innerHTML = `<div style="padding:16px;color:var(--red);font-size:var(--text-sm)">Erro na busca</div>`; return; }
+
+  if (!data?.length) {
+    resEl.innerHTML = `<div style="padding:16px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Nenhum pedido encontrado.</div>`;
+    return;
+  }
+
+  resEl.innerHTML = data.map(p => `
+    <div class="conv-item" style="border-radius:var(--r8);border-bottom:none;margin-bottom:4px" onclick='_atdAbrirConversaDePedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+      <span style="width:34px;height:34px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">#${p.display_id ?? '—'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:var(--text-sm);color:var(--text)">${p.customer_name || 'Sem nome vinculado'}</div>
+        <div style="font-size:var(--text-xs);color:var(--fg-subtle)">
+          ${p.status || ''} ${p.total ? '· R$ ' + Number(p.total).toFixed(2) : ''}
+          ${!p.customer_phone ? ' · <span style="color:var(--warning-bg-bold)">sem telefone</span>' : ''}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function _atdAbrirConversaDePedido(pedido) {
+  if (!pedido.customer_phone) {
+    toast('Esse pedido não tem telefone de cliente vinculado.', 'err');
+    return;
+  }
+
+  const sb = _atdGetSbClient();
+
+  // 1. Upsert contato pelo telefone do pedido
+  const { data: contato, error: contatoErr } = await sb
+    .from('atd_contatos')
+    .upsert({ telefone: pedido.customer_phone, nome: pedido.customer_name || null, canal_origem: 'whatsapp' }, { onConflict: 'telefone' })
+    .select('id')
+    .single();
+  if (contatoErr || !contato) { toast('Erro ao vincular contato', 'err'); return; }
+
+  // 2. Busca conversa aberta existente desse contato, ou cria uma nova já com o pedido
+  const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'whatsapp').eq('ativo', true).limit(1).single();
+  const pedidoSnapshot = {
+    display_id: pedido.display_id, status: pedido.status, total: pedido.total,
+    order_type: pedido.order_type, delivery_address: pedido.delivery_address,
+  };
+
+  const { data: conversaExistente } = await sb
+    .from('atd_conversas')
+    .select('id')
+    .eq('contato_id', contato.id)
+    .eq('canal_tipo', 'whatsapp')
+    .eq('status', 'aberta')
+    .limit(1)
+    .maybeSingle();
+
+  let conversaId = conversaExistente?.id;
+  if (conversaId) {
+    await sb.from('atd_conversas').update({ pedido_id: String(pedido.id), pedido_data: pedidoSnapshot }).eq('id', conversaId);
+  } else {
+    const { data: novaConversa, error: convErr } = await sb
+      .from('atd_conversas')
+      .insert({
+        contato_id: contato.id, canal_id: canal?.id ?? null, canal_tipo: 'whatsapp', status: 'aberta',
+        pedido_id: String(pedido.id), pedido_data: pedidoSnapshot,
+      })
+      .select('id')
+      .single();
+    if (convErr || !novaConversa) { toast('Erro ao criar conversa', 'err'); return; }
+    conversaId = novaConversa.id;
+  }
+
+  document.getElementById('popupAtdBuscaPedido')?.remove();
+  await _atdCarregarConversas();
+  await _atdAbrirConversa(conversaId);
+  toast('Conversa vinculada ao pedido #' + (pedido.display_id ?? pedido.id), 'ok');
 }
