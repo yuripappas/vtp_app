@@ -126,6 +126,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
         const sups    = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
         const temEmb  = !!(item.unidCompra && item.qtdEmb > 0);
         const temDia  = !!item.contagemDiaria;
+        const supExcCfg = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
         return `<div class="cfg-row" style="cursor:pointer" onclick="openEditItem(${item.id})"
             onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'">
           <div style="flex:1;min-width:0">
@@ -134,6 +135,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
               <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
               ${temEmb ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>` : ''}
               ${temDia  ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);white-space:nowrap">${lc('sun',9,'currentColor')} Diária</span>` : ''}
+              ${supExcCfg ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('star',9,'currentColor')} Exclusivo · ${supExcCfg.name}</span>` : ''}
             </div>
             <div class="cfg-row-sub" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:2px">
               <span>Mín: <strong>${item.min}</strong> · Ideal: <strong>${item.ideal}</strong> · Custo: <strong style="color:var(--purple)">R$ ${fmt(item.cost)}</strong></span>
@@ -162,12 +164,16 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
           const sups   = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
           const temEmb = !!(item.unidCompra && item.qtdEmb > 0);
           const temDia = !!item.contagemDiaria;
-          return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px;transition:border-color .15s;cursor:pointer"
-            onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'"
+          const supExc = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
+          return `<div style="background:var(--surface);border:1.5px solid ${supExc?'var(--orange-dark)':'var(--border)'};border-radius:var(--r10);padding:14px;transition:border-color .15s;cursor:pointer"
+            onmouseover="this.style.borderColor='${supExc?'var(--orange-dark)':'var(--purple-light)'}'" onmouseout="this.style.borderColor='${supExc?'var(--orange-dark)':'var(--border)'}'"
             onclick="openEditItem(${item.id})">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
               <div>
-                <div style="font-size:var(--text-sm);font-weight:700">${item.name}</div>
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                  <span style="font-size:var(--text-sm);font-weight:700">${item.name}</span>
+                  ${supExc?`<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:99px;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark)">${lc('star',8,'currentColor')} Exclusivo</span>`:''}
+                </div>
                 <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${item.unit}${item.code ? ' · #' + item.code : ''}</div>
               </div>
               <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();openEditItem(${item.id})">${lc("edit-2",13,"currentColor")}</button>
@@ -247,7 +253,7 @@ function openEditItem(id) {
   atualizarLabelEmb();
   // Suporta supIds (array novo) e supId (legado)
   const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
-  populateSupChecks(supIds);
+  populateSupChecks(supIds, item.supIdExclusivo ?? null);
   const da = document.getElementById('fDebitoAuto');     if (da) da.checked = !!item.debitoAuto;
   document.getElementById('delItemBtn').style.display = 'inline-flex';
   document.getElementById('ovItem').classList.add('open');
@@ -310,7 +316,7 @@ function atualizarLabelEmb() {
     ${embs !== null ? `· Ideal: ${fmt(ideal)} ${unit} = <strong>${embs} ${nome}(s)</strong>` : ''}`;
 }
 
-function populateSupChecks(selIds) {
+function populateSupChecks(selIds, supIdExclusivo) {
   const wrap = document.getElementById('fSupIds');
   if (!wrap) return;
   const searchEl = document.getElementById('fSupSearch');
@@ -320,17 +326,91 @@ function populateSupChecks(selIds) {
     return;
   }
   const sel = new Set((selIds||[]).map(Number));
-  wrap.innerHTML = suppliers.map(s => `
-    <label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:var(--r6);cursor:pointer;
-      background:${sel.has(s.id)?'var(--purple-xlight)':'transparent'};transition:background .1s"
-      onmouseover="this.style.background='var(--purple-xlight)'" onmouseout="this.style.background='${sel.has(s.id)?'var(--purple-xlight)':'transparent'}'">
-      <input type="checkbox" value="${s.id}" ${sel.has(s.id)?'checked':''}
-        style="accent-color:var(--purple);width:15px;height:15px;flex-shrink:0"
-        onchange="this.closest('label').style.background=this.checked?'var(--purple-xlight)':'transparent'">
-      <span style="font-size:var(--text-sm);font-weight:${sel.has(s.id)?'600':'400'}">${s.name}</span>
-      ${s.seller?`<span style="font-size:var(--text-xs);color:var(--muted);margin-left:auto">${s.seller}</span>`:''}
-    </label>
-  `).join('');
+  const excId = supIdExclusivo ? Number(supIdExclusivo) : null;
+
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr auto;font-size:var(--text-2xs);font-weight:700;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.5px;padding:0 6px 4px;border-bottom:1px solid var(--border);margin-bottom:4px">
+      <span>Fornecedor</span>
+      <span title="Marcar como exclusivo — item pula a cotação e vai direto com este fornecedor">Exclusivo</span>
+    </div>
+    ${suppliers.map(s => {
+      const isSel = sel.has(s.id);
+      const isExc = excId === s.id;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:var(--r6);
+        background:${isExc?'var(--orange-light)':isSel?'var(--purple-xlight)':'transparent'};transition:background .1s"
+        id="supRow_${s.id}">
+        <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer">
+          <input type="checkbox" name="supCheck" value="${s.id}" ${isSel||isExc?'checked':''}
+            style="accent-color:var(--purple);width:15px;height:15px;flex-shrink:0"
+            onchange="_onSupCheckChange(${s.id})">
+          <span style="font-size:var(--text-sm);font-weight:${isSel||isExc?'600':'400'}">${s.name}</span>
+          ${s.seller?`<span style="font-size:var(--text-xs);color:var(--muted)">${s.seller}</span>`:''}
+          ${isExc?`<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:99px;background:var(--orange-dark);color:#fff">exclusivo</span>`:''}
+        </label>
+        <input type="radio" name="supExclusivo" value="${s.id}" ${isExc?'checked':''}
+          title="Fornecedor exclusivo — pula cotação"
+          style="accent-color:var(--orange-dark);width:15px;height:15px;flex-shrink:0;cursor:pointer"
+          onchange="_onSupExclusivoChange(${s.id})">
+      </div>`;
+    }).join('')}
+    <button type="button" onclick="_limparExclusivo()"
+      style="margin-top:6px;font-size:var(--text-xs);color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 6px;text-decoration:underline">
+      Remover exclusivo
+    </button>`;
+}
+
+function _onSupCheckChange(supId) {
+  const cb = document.querySelector(`#supRow_${supId} input[type=checkbox]`);
+  const row = document.getElementById(`supRow_${supId}`);
+  const excRadio = document.querySelector(`#supRow_${supId} input[type=radio]`);
+  if (!cb || !row) return;
+  if (!cb.checked) {
+    // Desmarcou: limpa exclusivo também se era este
+    if (excRadio?.checked) { excRadio.checked = false; _atualizarCoresSupRows(); }
+  }
+  _atualizarCoresSupRows();
+}
+
+function _onSupExclusivoChange(supId) {
+  // Ao marcar exclusivo, garante que o checkbox também está marcado
+  const cb = document.querySelector(`#supRow_${supId} input[type=checkbox]`);
+  if (cb) cb.checked = true;
+  _atualizarCoresSupRows();
+}
+
+function _limparExclusivo() {
+  document.querySelectorAll('#fSupIds input[type=radio]').forEach(r => r.checked = false);
+  _atualizarCoresSupRows();
+}
+
+function _atualizarCoresSupRows() {
+  suppliers.forEach(s => {
+    const row = document.getElementById(`supRow_${s.id}`);
+    if (!row) return;
+    const cb  = row.querySelector('input[type=checkbox]');
+    const rad = row.querySelector('input[type=radio]');
+    const isExc = rad?.checked;
+    const isSel = cb?.checked;
+    row.style.background = isExc ? 'var(--orange-light)' : isSel ? 'var(--purple-xlight)' : 'transparent';
+    const nameEl = row.querySelector('span:first-of-type');
+    if (nameEl) nameEl.style.fontWeight = isSel || isExc ? '600' : '400';
+    // Badge exclusivo
+    const existingBadge = row.querySelector('.badge-exclusivo');
+    if (existingBadge) existingBadge.remove();
+    if (isExc) {
+      const badge = document.createElement('span');
+      badge.className = 'badge-exclusivo';
+      badge.style.cssText = 'font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:99px;background:var(--orange-dark);color:#fff';
+      badge.textContent = 'exclusivo';
+      row.querySelector('label')?.appendChild(badge);
+    }
+  });
+}
+
+function getSupExclusivoId() {
+  const rad = document.querySelector('#fSupIds input[type=radio]:checked');
+  return rad ? parseInt(rad.value) : null;
 }
 
 function _filtrarFornSupSearch() {
@@ -396,8 +476,9 @@ function saveItem() {
 }
 
 function _saveItemConfirmado(name, supIds) {
-  const unidCompra = document.getElementById('fUnidCompra')?.value.trim() || '';
-  const qtdEmb     = parseFloat(document.getElementById('fQtdEmb')?.value) || 0;
+  const unidCompra    = document.getElementById('fUnidCompra')?.value.trim() || '';
+  const qtdEmb        = parseFloat(document.getElementById('fQtdEmb')?.value) || 0;
+  const supIdExclusivo = getSupExclusivoId();
   const data = {
     name,
     cat:        document.getElementById('fCat').value.trim() || 'Outros',
@@ -408,6 +489,7 @@ function _saveItemConfirmado(name, supIds) {
     code:       document.getElementById('fCode').value.trim(),
     supIds,
     supId:      supIds[0] ?? null,
+    supIdExclusivo: supIdExclusivo,
     unidCompra,
     qtdEmb,
     brands: [

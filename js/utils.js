@@ -89,8 +89,6 @@ const _OPERACAO_SUBMENU_ITEMS = [
 const _CFG_SUBMENU_ITEMS = [
   { id: 'empresa',      icon: 'building-2', label: 'Empresa'        },
   { id: 'usuarios',     icon: 'shield',     label: 'Usuários'       },
-  { id: 'insumos',      icon: 'package',    label: 'Insumos'        },
-  { id: 'fornecedores', icon: 'truck',      label: 'Fornecedores'   },
   { id: 'preparo',      icon: 'chef-hat',   label: 'Preparados'     },
   { id: 'produtos',     icon: 'pizza',      label: 'Produtos'       },
   { id: 'servicos',     icon: 'wrench',     label: 'Serviços'       },
@@ -193,8 +191,10 @@ function _initSidebarHover() {
 
 // Submenu items de Compras
 const _COMPRAS_SUBMENU_ITEMS = [
-  { id: 'listas',    icon: 'clipboard-list', label: 'Lista de Compras' },
-  { id: 'historico', icon: 'clock',          label: 'Histórico'        },
+  { id: 'listas',       icon: 'clipboard-list', label: 'Lista de Compras' },
+  { id: 'historico',    icon: 'clock',          label: 'Histórico'        },
+  { id: 'insumos',      icon: 'package',        label: 'Insumos'          },
+  { id: 'fornecedores', icon: 'truck',          label: 'Fornecedores'     },
 ];
 
 function _handleNavCompras() {

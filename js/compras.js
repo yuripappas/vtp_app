@@ -5,7 +5,7 @@
 
 let _listaAtual      = null;
 let _comprasTab      = 'lista';   // legado — mantido para compat interna
-let _cpSection       = 'listas';  // 'listas' | 'historico'
+let _cpSection       = 'listas';  // 'listas' | 'historico' | 'insumos' | 'fornecedores'
 let _cpListaAberta   = null;      // lista aberta no detalhe (flow)
 
 // Retorna listas abertas (≠ concluida) que contêm o mesmo itemId, excluindo a lista atual
@@ -58,7 +58,11 @@ function renderComprasLayout(section) {
   if (section) _cpSection = section;
 
   // Renderiza seção full-width (sem nav lateral — navegação é via sidebar)
-  if (_cpSection === 'historico') {
+  if (_cpSection === 'insumos') {
+    _renderCpInsumos();
+  } else if (_cpSection === 'fornecedores') {
+    _renderCpFornecedores();
+  } else if (_cpSection === 'historico') {
     _renderHistoricoLayout();
   } else if (_cpListaAberta) {
     _renderFlowLayout(_cpListaAberta);
@@ -101,6 +105,8 @@ function _voltarParaListaCompras() {
 function _renderFlowLayout(lista) {
   const el = document.getElementById('cpSectionContent');
   if (!el) return;
+  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  const podeExcluir = u && ['gerente', 'supervisor'].includes(u.role);
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;
       background:var(--surface);border-bottom:1px solid var(--border)">
@@ -113,6 +119,13 @@ function _renderFlowLayout(lista) {
       <span style="font-size:var(--text-sm);color:var(--muted)">Lista de Compras</span>
       <span style="color:var(--muted)">/</span>
       <span style="font-size:var(--text-sm);font-weight:700">${lista.codigo}</span>
+      ${podeExcluir ? `
+        <button onclick="_abrirModalDeletarLista(${lista.id})"
+          style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 11px;
+          border-radius:var(--r8);border:1.5px solid var(--red);background:var(--red-light);
+          color:var(--red);font-size:var(--text-xs);font-weight:700;cursor:pointer;font-family:Inter,sans-serif">
+          ${lc('trash-2', 13, 'currentColor')} Excluir lista
+        </button>` : ''}
     </div>
     <div id="comprasDash" style="background:var(--surface);border-bottom:2px solid var(--border);padding:16px 24px"></div>
     <div id="comprasContent" style="padding:24px"></div>`;
@@ -120,6 +133,72 @@ function _renderFlowLayout(lista) {
   _listaAtual = lista;
   _renderDashCompras();
   _renderEtapa(lista.etapa || 1);
+}
+
+// ── Modal de confirmação para excluir lista ───────────────────
+function _abrirModalDeletarLista(listaId) {
+  const lista = listas.find(l => l.id === listaId);
+  if (!lista) return;
+  const existing = document.getElementById('ovDeletarLista');
+  if (existing) existing.remove();
+
+  const ov = document.createElement('div');
+  ov.id = 'ovDeletarLista';
+  ov.className = 'overlay open';
+  ov.innerHTML = `
+    <div class="modal">
+      <div class="mbox" style="max-width:420px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <div style="width:36px;height:36px;border-radius:var(--r8);background:var(--red-light);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc('trash-2', 18, 'var(--red)')}
+          </div>
+          <div>
+            <div style="font-size:var(--text-md);font-weight:800;color:var(--red)">Excluir lista ${lista.codigo}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">Esta ação não pode ser desfeita</div>
+          </div>
+        </div>
+        <p style="font-size:var(--text-sm);color:var(--text2);margin-bottom:16px">
+          Para confirmar, digite o código da lista <strong>${lista.codigo}</strong> no campo abaixo:
+        </p>
+        <input id="inputConfirmCodigo" class="inp" placeholder="${lista.codigo}" autocomplete="off"
+          oninput="_checkCodigoDeletar('${lista.codigo}', ${listaId})"
+          style="margin-bottom:14px;font-size:var(--text-base);letter-spacing:2px;text-align:center">
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ovDeletarLista').remove()">Cancelar</button>
+          <button id="btnConfirmarDeletar" class="btn btn-red btn-sm" disabled
+            onclick="_confirmarDeletarLista(${listaId})"
+            style="opacity:.4;cursor:not-allowed">
+            ${lc('trash-2', 13, 'currentColor')} Excluir definitivamente
+          </button>
+        </div>
+      </div>
+    </div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  setTimeout(() => document.getElementById('inputConfirmCodigo')?.focus(), 50);
+}
+
+function _checkCodigoDeletar(codigoEsperado, listaId) {
+  const val = document.getElementById('inputConfirmCodigo')?.value?.trim().toUpperCase();
+  const btn = document.getElementById('btnConfirmarDeletar');
+  if (!btn) return;
+  const ok = val === codigoEsperado.toUpperCase();
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '.4';
+  btn.style.cursor  = ok ? 'pointer' : 'not-allowed';
+}
+
+function _confirmarDeletarLista(listaId) {
+  const idx = listas.findIndex(l => l.id === listaId);
+  if (idx < 0) return;
+  const codigo = listas[idx].codigo;
+  listas.splice(idx, 1);
+  saveListas();
+  document.getElementById('ovDeletarLista')?.remove();
+  _cpListaAberta = null;
+  _listaAtual = null;
+  renderComprasLayout();
+  toast(`${lc('check-circle', 14, 'var(--green)')} Lista ${codigo} excluída`);
 }
 
 // ── Renderiza historico dentro do painel direito ─────────────
@@ -1207,12 +1286,23 @@ function e1IrParaCotacao() {
       if (!i.cotacoes) i.cotacoes = [];
       const itemCad = items.find(x => x.id === i.itemId);
       if (itemCad) {
-        const supIds = itemCad.supIds?.length ? [...itemCad.supIds] : (itemCad.supId ? [itemCad.supId] : []);
-        supIds.forEach(supId => {
-          if (supId && !i.cotacoes.some(c => c.supId === supId)) {
-            i.cotacoes.push({ supId, precoUnit:null, valorFinal:null, respondido:false, emFalta:false, diasPedido:null, dataEntrega:null, formaPagamento:'', boletoDias:null, parceladoVezes:null, parceladoFreq:'', obs:'' });
+        if (itemCad.supIdExclusivo) {
+          // Fornecedor exclusivo: pula cotação, vai direto com ele
+          i.fornecedorExclusivo = true;
+          i.fornecedorId = itemCad.supIdExclusivo;
+          i.tipoCompra = 'fornecedor';
+          if (!i.cotacoes.some(c => c.supId === itemCad.supIdExclusivo)) {
+            i.cotacoes = [{ supId: itemCad.supIdExclusivo, precoUnit: i.precoUnitEstimado || null, valorFinal: null, respondido: false, emFalta: false, diasPedido: null, dataEntrega: null, formaPagamento: '', boletoDias: null, parceladoVezes: null, parceladoFreq: '', obs: '' }];
           }
-        });
+        } else {
+          i.fornecedorExclusivo = false;
+          const supIds = itemCad.supIds?.length ? [...itemCad.supIds] : (itemCad.supId ? [itemCad.supId] : []);
+          supIds.forEach(supId => {
+            if (supId && !i.cotacoes.some(c => c.supId === supId)) {
+              i.cotacoes.push({ supId, precoUnit:null, valorFinal:null, respondido:false, emFalta:false, diasPedido:null, dataEntrega:null, formaPagamento:'', boletoDias:null, parceladoVezes:null, parceladoFreq:'', obs:'' });
+            }
+          });
+        }
       }
     });
     _listaAtual.etapa  = 2;
@@ -1387,9 +1477,18 @@ function _rowsItem(i) {
   })() : '';
 
   const _cbCot = _conflitoBadge(i.itemId);
+  const exclusivoBadge = i.fornecedorExclusivo ? (() => {
+    const sup = suppliers.find(s => s.id === (i.cotacoes?.[0]?.supId));
+    return `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;
+      font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);
+      border:1px solid var(--orange-dark)">
+      ${lc('star',8,'currentColor')} Exclusivo${sup?' · '+sup.name:''}
+    </span>`;
+  })() : '';
+
   const mainRow = `<tr id="item1-${i.id}" style="background:var(--surface);border-bottom:${cotacoes.length?'none':'1px solid var(--border)'}">
     <td style="padding:10px 14px">
-      <div style="font-size:var(--text-sm);font-weight:700">${i.nome}</div>
+      <div style="font-size:var(--text-sm);font-weight:700">${i.nome} ${exclusivoBadge}</div>
       <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:2px">
         ${lc(i.origem==='manual'?'edit-2':'package',11,'var(--muted)')} ${i.categoria}${i.origem==='manual'?' · Manual':''}
       </div>
@@ -2605,8 +2704,22 @@ function _renderEtapaAprovPre() {
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
       ${l.itens.map(i => _cardPreAprovItem(i)).join('')}
+    </div>
+
+    <div style="margin-bottom:16px">
+      <label style="display:block;font-size:var(--text-xs);font-weight:700;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">
+        ${lc('message-circle',12,'var(--purple)')} Observações para o comprador
+      </label>
+      <textarea id="obsPreAprovacao" rows="3" placeholder="Ex: se não tiver a marca preferencial, aceitar marca X · instruções específicas para esta compra…"
+        oninput="_salvarObsPreAprov(this.value)"
+        style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:var(--r8);border:1.5px solid var(--border);
+        background:var(--surface);color:var(--text);font-size:var(--text-sm);font-family:Inter,sans-serif;
+        resize:vertical;min-height:72px;line-height:1.5;transition:border-color .15s"
+        onfocus="this.style.borderColor='var(--purple)'" onblur="this.style.borderColor='var(--border)'"
+        ${etapaConcluidaPre ? 'readonly style="opacity:.7"' : ''}>${l.observacaoPre || ''}</textarea>
+      <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">Visível para o comprador nas etapas seguintes.</div>
     </div>
 
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;
@@ -2750,7 +2863,10 @@ function _cardPreAprovItem(i) {
     <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;flex-wrap:wrap">
       <div style="width:4px;align-self:stretch;min-height:32px;background:${accentColor};border-radius:2px;flex-shrink:0"></div>
       <div style="flex:1;min-width:120px">
-        <div style="font-size:var(--text-md);font-weight:700">${i.nome}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:var(--text-md);font-weight:700">${i.nome}</span>
+          ${i.fornecedorExclusivo ? (() => { const sup = suppliers.find(s => s.id === i.fornecedorId); return `<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:99px;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark)">${lc('star',8,'currentColor')} Exclusivo${sup?' · '+sup.name:''}</span>`; })() : ''}
+        </div>
         <div style="font-size:var(--text-2xs);color:var(--muted)">${i.categoria}</div>
         ${_conflitoBadge(i.itemId) ? `<div style="margin-top:3px">${_conflitoBadge(i.itemId)}</div>` : ''}
         ${i.qtdSugerida && Math.abs((i.qtdSelecionada||0)-(i.qtdSugerida||0)) > 0.001 ? `
@@ -2823,6 +2939,12 @@ function reprovarItemPre(itemId) {
   const i = _listaAtual.itens.find(x => x.id === itemId);
   const obs = prompt('Motivo da reprovação (opcional):') ?? '';
   if (i) { i.aprovado = false; i.comentarioAprovador = obs; saveListas(); _renderEtapaAprovPre(); }
+}
+
+function _salvarObsPreAprov(valor) {
+  if (!_listaAtual) return;
+  _listaAtual.observacaoPre = valor;
+  saveListas();
 }
 
 function _aprovPreTodos() {
@@ -3084,6 +3206,16 @@ function _renderEtapa2Cotacao() {
       </button>
     </div>` : '';
 
+  const obsPreHtml = l.observacaoPre ? `
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 14px;margin-bottom:14px;
+      background:var(--purple-xlight);border:1.5px solid var(--purple-light, #c4b5fd);border-radius:var(--r8)">
+      ${lc('message-circle',14,'var(--purple)')}
+      <div>
+        <div style="font-size:var(--text-xs);font-weight:700;color:var(--purple);margin-bottom:2px">Observações do aprovador</div>
+        <div style="font-size:var(--text-sm);color:var(--text2);white-space:pre-line">${l.observacaoPre}</div>
+      </div>
+    </div>` : '';
+
   document.getElementById('comprasContent').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:10px">
       <div>
@@ -3105,6 +3237,7 @@ function _renderEtapa2Cotacao() {
     </div>
 
     ${prazoHtml}
+    ${obsPreHtml}
 
     ${itensCotacao.length ? `
     <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);
@@ -5807,3 +5940,56 @@ async function _postToGAS(url, data) {
 
 // Alias para compatibilidade
 function _renderEtapa4Recebimento() { _renderRecebimento?.() || _renderEtapa4?.(); }
+
+
+// ── Insumos dentro do módulo Compras ─────────────────────────
+function _renderCpInsumos() {
+  const el = document.getElementById('cpSectionContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="padding:20px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:var(--text-base);font-weight:800">${lc('package', 16, 'var(--purple)')} Insumos</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Matérias-primas e ingredientes usados na produção</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input class="inp" style="max-width:200px;padding:7px 12px" id="srchCadInsumos" placeholder=" Buscar..." oninput="renderCadInsumos()">
+          <select class="inp" style="max-width:160px;padding:7px 10px" id="catCadFil" onchange="renderCadInsumos()"><option value="">Todas categorias</option></select>
+          <button class="btn btn-outline btn-sm" onclick="abrirImportCadInsumos()" style="display:flex;align-items:center;gap:5px">
+            ${lc('upload', 13, 'currentColor')} Importar
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Novo Insumo</button>
+        </div>
+      </div>
+      <div id="cadInsumosGrid"></div>
+    </div>`;
+  renderCadInsumos();
+}
+
+// ── Fornecedores dentro do módulo Compras ────────────────────
+function _renderCpFornecedores() {
+  const el = document.getElementById('cpSectionContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="padding:20px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:var(--text-base);font-weight:800">${lc('truck', 16, 'var(--purple)')} Fornecedores</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Cadastro de fornecedores e condições comerciais</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input class="inp" style="max-width:180px;padding:7px 12px" id="srchCadForn" placeholder=" Buscar..." oninput="renderFornecedores()">
+          <select class="inp" id="filFornCat" style="max-width:160px;padding:7px 12px" onchange="renderFornecedores()">
+            <option value="">Todas categorias</option>
+            <option value="alimentos">Alimentos</option>
+            <option value="suprimentos">Suprimentos</option>
+            <option value="bebidas">Bebidas</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="openSupModal()">+ Novo Fornecedor</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px" id="supGrid"></div>
+    </div>`;
+  renderFornecedores();
+}
