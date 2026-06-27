@@ -213,6 +213,9 @@ function _atdRenderChat(conversa) {
         <button id="atdBtnNotaInterna" class="btn btn-ghost" title="Nota interna (só a equipe vê)" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdToggleNotaInterna('${conversa.id}')">
           ${lc('lock', 14, 'var(--fg-muted)')}
         </button>
+        <button id="atdBtnCorrigir" class="btn btn-ghost" title="Corrigir ortografia com IA" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdCorrigirMensagem()">
+          ${lc('sparkles', 14, 'var(--purple)')}
+        </button>
         <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
           style="flex:1;resize:none" oninput="_atdCampoOnInput()"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_atdEnviarMensagem('${conversa.id}')}"></textarea>
@@ -265,6 +268,36 @@ function _atdCampoOnInput() {
       <div style="font-weight:700;font-size:var(--text-xs);color:var(--purple)">${r.atalho}</div>
       <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.titulo}</div>
     </div>`).join('');
+}
+
+async function _atdCorrigirMensagem() {
+  const campo = document.getElementById('atdCampoTexto');
+  const btn = document.getElementById('atdBtnCorrigir');
+  if (!campo || !btn) return;
+  const texto = campo.value.trim();
+  if (!texto) return;
+
+  btn.disabled = true;
+  const iconeOriginal = btn.innerHTML;
+  btn.innerHTML = lc('hourglass', 14, 'var(--purple)');
+
+  try {
+    const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/corrigir-mensagem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      body: JSON.stringify({ texto }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'falha ao corrigir');
+    campo.value = json.corrigido;
+    campo.focus();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Não foi possível corrigir a mensagem', 'error');
+    else console.error('[atendimento] corrigir-mensagem:', e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = iconeOriginal;
+  }
 }
 
 function _atdInserirRespostaRapida(conteudo) {
