@@ -19,6 +19,8 @@ const _atdState = {
   mensagens: [],
   canal: null,
   realtimeChannel: null,
+  modoNotaInterna: false,
+  respostasRapidas: [],
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -87,6 +89,13 @@ function renderOmnichannel() {
 
   _atdCarregarConversas();
   _atdAssinarRealtime();
+  _atdCarregarRespostasRapidas();
+}
+
+async function _atdCarregarRespostasRapidas() {
+  const sb = _atdGetSbClient();
+  const { data } = await sb.from('atd_respostas_rapidas').select('*').eq('ativo', true).order('atalho');
+  _atdState.respostasRapidas = data || [];
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -182,8 +191,11 @@ function _atdRenderChat(conversa) {
     const classe = m.visibilidade === 'interna' ? 'interna' : (m.origem === 'cliente' ? 'cliente' : 'atendente');
     const texto = m.conteudo?.texto ?? '[mensagem não suportada]';
     const hora = new Date(m.enviado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    return `<div class="msg-bubble ${classe}">${texto}<div style="font-size:10px;opacity:.7;margin-top:3px">${hora}</div></div>`;
+    const prefixo = classe === 'interna' ? `${lc('lock', 11, 'var(--warning-fg)')} ` : '';
+    return `<div class="msg-bubble ${classe}">${prefixo}${texto}<div style="font-size:10px;opacity:.7;margin-top:3px">${hora}</div></div>`;
   }).join('');
+
+  _atdState.modoNotaInterna = false;
 
   document.getElementById('atdChatAtivo').innerHTML = `
     <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
@@ -195,17 +207,71 @@ function _atdRenderChat(conversa) {
     <div id="atdMensagensWrap" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
       ${bubbles || '<div style="color:var(--fg-subtle);font-size:var(--text-sm);text-align:center;margin-top:40px">Sem mensagens ainda.</div>'}
     </div>
-    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end">
-      <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta..."
-        style="flex:1;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_atdEnviarMensagem('${conversa.id}')}"></textarea>
-      <button class="btn btn-primary" onclick="_atdEnviarMensagem('${conversa.id}')">
-        ${lc('send', 15, '#fff')}
-      </button>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);position:relative">
+      <div id="atdRespostasRapidasDropdown" style="display:none;position:absolute;bottom:100%;left:16px;right:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.1);max-height:180px;overflow-y:auto;margin-bottom:6px;z-index:10"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <button id="atdBtnNotaInterna" class="btn btn-ghost" title="Nota interna (só a equipe vê)" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdToggleNotaInterna('${conversa.id}')">
+          ${lc('lock', 14, 'var(--fg-muted)')}
+        </button>
+        <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
+          style="flex:1;resize:none" oninput="_atdCampoOnInput()"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_atdEnviarMensagem('${conversa.id}')}"></textarea>
+        <button class="btn btn-primary" onclick="_atdEnviarMensagem('${conversa.id}')">
+          ${lc('send', 15, '#fff')}
+        </button>
+      </div>
     </div>
   `;
 
   const wrap = document.getElementById('atdMensagensWrap');
   if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+function _atdToggleNotaInterna(conversaId) {
+  _atdState.modoNotaInterna = !_atdState.modoNotaInterna;
+  const btn = document.getElementById('atdBtnNotaInterna');
+  const campo = document.getElementById('atdCampoTexto');
+  if (_atdState.modoNotaInterna) {
+    btn.classList.add('active-nota');
+    btn.style.background = 'var(--warning-bg)';
+    campo.placeholder = 'Nota interna — não vai pro cliente...';
+    campo.style.background = 'var(--warning-bg)';
+  } else {
+    btn.classList.remove('active-nota');
+    btn.style.background = '';
+    campo.placeholder = 'Digite sua resposta... (/ pra respostas rápidas)';
+    campo.style.background = '';
+  }
+  campo.focus();
+}
+
+function _atdCampoOnInput() {
+  const campo = document.getElementById('atdCampoTexto');
+  const dropdown = document.getElementById('atdRespostasRapidasDropdown');
+  if (!campo || !dropdown) return;
+  const valor = campo.value;
+
+  if (!valor.startsWith('/')) { dropdown.style.display = 'none'; return; }
+
+  const termo = valor.slice(1).toLowerCase();
+  const opcoes = _atdState.respostasRapidas.filter(r => r.atalho.toLowerCase().includes(termo));
+
+  if (!opcoes.length) { dropdown.style.display = 'none'; return; }
+
+  dropdown.style.display = 'block';
+  dropdown.innerHTML = opcoes.map(r => `
+    <div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border)" onmouseenter="this.style.background='var(--bg-hover)'" onmouseleave="this.style.background=''"
+      onclick="_atdInserirRespostaRapida(${JSON.stringify(r.conteudo).replace(/"/g, '&quot;')})">
+      <div style="font-weight:700;font-size:var(--text-xs);color:var(--purple)">${r.atalho}</div>
+      <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.titulo}</div>
+    </div>`).join('');
+}
+
+function _atdInserirRespostaRapida(conteudo) {
+  const campo = document.getElementById('atdCampoTexto');
+  campo.value = conteudo;
+  document.getElementById('atdRespostasRapidasDropdown').style.display = 'none';
+  campo.focus();
 }
 
 function _atdRenderPainel(conversa) {
@@ -254,14 +320,16 @@ async function _atdEnviarMensagem(conversaId) {
   if (!texto) return;
 
   const user = getCurrentUser();
+  const visibilidade = _atdState.modoNotaInterna ? 'interna' : 'publica';
   campo.value = '';
   campo.disabled = true;
+  document.getElementById('atdRespostasRapidasDropdown')?.style && (document.getElementById('atdRespostasRapidasDropdown').style.display = 'none');
 
   try {
     const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
-      body: JSON.stringify({ conversa_id: conversaId, texto, atendente_id: user?.id ?? null }),
+      body: JSON.stringify({ conversa_id: conversaId, texto, atendente_id: user?.id ?? null, visibilidade }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'falha ao enviar');
