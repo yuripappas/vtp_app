@@ -147,30 +147,60 @@ function _abrirModalDeletarLista(listaId) {
   ov.className = 'overlay open';
   ov.innerHTML = `
     <div class="modal">
-      <div class="mbox" style="max-width:420px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-          <div style="width:36px;height:36px;border-radius:var(--r8);background:var(--red-light);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            ${lc('trash-2', 18, 'var(--red)')}
+      <div class="mbox" style="max-width:440px;padding:0;overflow:hidden">
+
+        <!-- Cabeçalho vermelho -->
+        <div style="background:var(--red);padding:24px 28px 20px;display:flex;align-items:flex-start;gap:14px">
+          <div style="width:44px;height:44px;border-radius:var(--r10);background:rgba(255,255,255,.18);
+            display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc('trash-2', 22, '#fff')}
           </div>
           <div>
-            <div style="font-size:var(--text-md);font-weight:800;color:var(--red)">Excluir lista ${lista.codigo}</div>
-            <div style="font-size:var(--text-xs);color:var(--muted)">Esta ação não pode ser desfeita</div>
+            <div style="font-size:var(--text-md);font-weight:800;color:#fff;margin-bottom:3px">
+              Excluir lista ${lista.codigo}
+            </div>
+            <div style="font-size:var(--text-xs);color:rgba(255,255,255,.75);display:flex;align-items:center;gap:4px">
+              ${lc('alert-triangle', 11, 'rgba(255,255,255,.75)')} Esta ação é permanente e não pode ser desfeita
+            </div>
           </div>
         </div>
-        <p style="font-size:var(--text-sm);color:var(--text2);margin-bottom:16px">
-          Para confirmar, digite o código da lista <strong>${lista.codigo}</strong> no campo abaixo:
-        </p>
-        <input id="inputConfirmCodigo" class="inp" placeholder="${lista.codigo}" autocomplete="off"
-          oninput="_checkCodigoDeletar('${lista.codigo}', ${listaId})"
-          style="margin-bottom:14px;font-size:var(--text-base);letter-spacing:2px;text-align:center">
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ovDeletarLista').remove()">Cancelar</button>
-          <button id="btnConfirmarDeletar" class="btn btn-red btn-sm" disabled
-            onclick="_confirmarDeletarLista(${listaId})"
-            style="opacity:.4;cursor:not-allowed">
-            ${lc('trash-2', 13, 'currentColor')} Excluir definitivamente
-          </button>
+
+        <!-- Corpo -->
+        <div style="padding:24px 28px 20px">
+          <div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:20px;line-height:1.55">
+            Você está prestes a excluir a lista <strong style="color:var(--text)">${lista.codigo}</strong>
+            com todos os seus itens e cotações. Para confirmar, digite o código abaixo:
+          </div>
+
+          <div style="margin-bottom:20px">
+            <label style="display:block;font-size:var(--text-xs);font-weight:700;color:var(--text2);
+              text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">
+              Código de confirmação
+            </label>
+            <input id="inputConfirmCodigo" class="inp" placeholder="${lista.codigo}" autocomplete="off"
+              oninput="_checkCodigoDeletar('${lista.codigo}', ${listaId})"
+              style="font-size:var(--text-base);font-family:monospace;letter-spacing:3px;text-align:center;
+              font-weight:700;padding:12px">
+            <div id="msgConfirmCodigo" style="font-size:var(--text-xs);margin-top:5px;min-height:16px;color:var(--muted);text-align:center">
+              Digite <strong>${lista.codigo}</strong> para habilitar a exclusão
+            </div>
+          </div>
+
+          <!-- Ações -->
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" onclick="document.getElementById('ovDeletarLista').remove()"
+              style="flex:1;min-height:44px;font-size:var(--text-sm);font-weight:600">
+              Cancelar
+            </button>
+            <button id="btnConfirmarDeletar" class="btn btn-red" disabled
+              onclick="_confirmarDeletarLista(${listaId})"
+              style="flex:1;min-height:44px;font-size:var(--text-sm);font-weight:700;
+              opacity:.4;cursor:not-allowed;display:flex;align-items:center;justify-content:center;gap:6px">
+              ${lc('trash-2', 15, 'currentColor')} Excluir lista
+            </button>
+          </div>
         </div>
+
       </div>
     </div>`;
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
@@ -186,6 +216,19 @@ function _checkCodigoDeletar(codigoEsperado, listaId) {
   btn.disabled = !ok;
   btn.style.opacity = ok ? '1' : '.4';
   btn.style.cursor  = ok ? 'pointer' : 'not-allowed';
+  const msg = document.getElementById('msgConfirmCodigo');
+  if (msg) {
+    if (!val) {
+      msg.style.color = 'var(--muted)';
+      msg.innerHTML = `Digite <strong>${codigoEsperado}</strong> para habilitar a exclusão`;
+    } else if (ok) {
+      msg.style.color = 'var(--red)';
+      msg.innerHTML = `${lc('check-circle', 11, 'currentColor')} Código confirmado — clique em "Excluir lista" para continuar`;
+    } else {
+      msg.style.color = 'var(--orange-dark)';
+      msg.innerHTML = `${lc('alert-circle', 11, 'currentColor')} Código incorreto`;
+    }
+  }
 }
 
 function _confirmarDeletarLista(listaId) {
