@@ -1263,11 +1263,14 @@ function parseCSV(file) {
     const header = lines[0].split(sep).map(norm);
     const col    = (...keys) => header.findIndex(h => keys.some(k => h.includes(norm(k))));
 
-    const nameIdx = col('insumo','nome','produto');
-    const codeIdx = col('cod. interno','codigo interno','cod interno','code');
-    const qtyIdx  = col('estoque atual','atual','qty');
-    const minIdx  = col('estoque minimo','minimo','min');
-    const costIdx = col('preco de custo','custo','price');
+    const nameIdx      = col('insumo','nome','produto');
+    const codeIdx      = col('cod. interno','codigo interno','cod interno','code');
+    const qtyIdx       = col('estoque atual','atual','qty');
+    const minIdx       = col('estoque minimo','minimo','min');
+    const costIdx      = col('preco de custo','custo','price');
+    const catIdx       = col('categoria','cat');
+    const unitIdx      = col('medida','unidade','unit');
+    const debitoIdx    = col('controle de estoque','debito automatico','controle');
 
     if (nameIdx === -1 && codeIdx === -1) {
       toast('CSV não reconhecido — verifique se é o relatório do Cardápio Web', 'err');
@@ -1276,20 +1279,29 @@ function parseCSV(file) {
 
     const parseMoney = v => parseFloat((v||'').replace(/[R$\s]/g,'').replace(',','.')) || 0;
     const parseNum   = v => parseFloat((v||'').replace(',','.'));
+    const parseBool  = v => (v||'').trim().toLowerCase() === 'sim';
 
     importData = [];
-    const naoEncontrados = [];
+    window._importNovosItens = []; // itens do CW não encontrados no app → serão criados
+    const cwCodes = new Set();     // códigos/nomes vistos no CW (para detectar inconformidades)
 
     lines.slice(1).forEach(line => {
-      const cols = line.split(sep).map(c => c.trim().replace(/"/g,''));
-      const name = nameIdx >= 0 ? cols[nameIdx]||'' : '';
-      const code = codeIdx >= 0 ? cols[codeIdx]||'' : '';
-      const qty  = qtyIdx  >= 0 ? parseNum(cols[qtyIdx])  : NaN;
-      const min  = minIdx  >= 0 ? parseNum(cols[minIdx])  : NaN;
-      const cost = costIdx >= 0 ? parseMoney(cols[costIdx]): 0;
+      const cols    = line.split(sep).map(c => c.trim().replace(/"/g,''));
+      const name    = nameIdx   >= 0 ? cols[nameIdx]||''  : '';
+      const code    = codeIdx   >= 0 ? cols[codeIdx]||''  : '';
+      const qty     = qtyIdx    >= 0 ? parseNum(cols[qtyIdx])   : NaN;
+      const min     = minIdx    >= 0 ? parseNum(cols[minIdx])   : NaN;
+      const cost    = costIdx   >= 0 ? parseMoney(cols[costIdx]): 0;
+      const catCW   = catIdx    >= 0 ? (cols[catIdx]||'').trim() : '';
+      const unitCW  = unitIdx   >= 0 ? (cols[unitIdx]||'').trim() : '';
+      const debCW   = debitoIdx >= 0 ? parseBool(cols[debitoIdx]) : null;
 
       if (!name && !code) return;
       if (isNaN(qty)) return;
+
+      // Rastreia o que veio do CW para detectar inconformidades
+      if (code) cwCodes.add(code.toString());
+      if (name) cwCodes.add(name.toLowerCase().trim());
 
       const item = items.find(i =>
         (code && i.code && i.code.toString() === code.toString()) ||
@@ -1298,97 +1310,176 @@ function parseCSV(file) {
 
       if (item) {
         importData.push({
-          id:item.id, name:item.name,
-          oldQty:item.qty, newQty:parseFloat(qty.toFixed(3)),
-          oldMin:item.min, newMin:!isNaN(min)?parseFloat(min.toFixed(3)):item.min,
-          oldCost:item.cost, newCost:cost > 0 ? cost : item.cost,
+          id: item.id, name: item.name,
+          oldQty: item.qty,   newQty: parseFloat(qty.toFixed(3)),
+          oldMin: item.min,   newMin: !isNaN(min) ? parseFloat(min.toFixed(3)) : item.min,
+          oldCost: item.cost, newCost: cost > 0 ? cost : item.cost,
+          // Campos novos: só atualiza se vieram no CSV
+          oldCat:  item.cat,  newCat:  catCW  || item.cat,
+          oldUnit: item.unit, newUnit: unitCW  || item.unit,
+          oldDebito: item.debitoAuto, newDebito: debCW !== null ? debCW : item.debitoAuto,
+          newCode: code || item.code,
         });
       } else if (name) {
-        naoEncontrados.push(name);
+        // Item novo — vai ser criado ao confirmar
+        window._importNovosItens.push({
+          _novo: true,
+          name:  name,
+          code:  code,
+          qty:   parseFloat(qty.toFixed(3)),
+          min:   !isNaN(min) ? parseFloat(min.toFixed(3)) : 0,
+          cost:  cost,
+          cat:   catCW || 'Outros',
+          unit:  unitCW || 'UN',
+          debitoAuto: debCW !== null ? debCW : false,
+        });
       }
+    });
+
+    // Itens do app que NÃO vieram no CW → inconformidade
+    const foraDoApp = items.filter(i => {
+      if (i.isProd) return false;
+      const porCod  = i.code && cwCodes.has(i.code.toString());
+      const porNome = cwCodes.has(i.name.toLowerCase().trim());
+      return !porCod && !porNome;
     });
 
     const prev = document.getElementById('importPreview');
     if (!prev) return;
 
-    if (!importData.length) {
+    if (!importData.length && !window._importNovosItens.length) {
       prev.innerHTML = `
         <div style="background:var(--red-light);border:1px solid #FCA5A5;border-radius:var(--r8);padding:12px;font-size:var(--text-sm);color:var(--red)">
           ${lc('alert-circle',14,'var(--red)')} Nenhum item encontrado. Verifique os códigos internos em Cadastros.
         </div>
-        ${naoEncontrados.length ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:8px">${naoEncontrados.length} no CSV: ${naoEncontrados.slice(0,5).join(', ')}...</div>` : ''}`;
+        ${foraDoApp.length ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);margin-top:8px">${lc('alert-triangle',10,'currentColor')} ${foraDoApp.length} item(ns) do app ausentes no CW: ${foraDoApp.slice(0,5).map(i=>i.name).join(', ')}${foraDoApp.length>5?'...':''}</div>` : ''}`;
       return;
     }
 
+    const totalAcoes = importData.length + window._importNovosItens.length;
+
     prev.innerHTML = `
-      <div style="background:var(--green-light);border:1px solid var(--green);border-radius:var(--r8);padding:10px;margin-bottom:10px;font-size:var(--text-sm);color:var(--green);font-weight:600">
-        ${lc('check-circle',13,'currentColor')} ${importData.length} itens reconhecidos — estoque digital será atualizado
+      <!-- Resumo de ações -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        ${importData.length ? `<span style="padding:4px 10px;border-radius:20px;background:var(--green-light);border:1px solid var(--green);font-size:var(--text-xs);font-weight:700;color:var(--green)">${lc('check-circle',10,'currentColor')} ${importData.length} atualizados</span>` : ''}
+        ${window._importNovosItens.length ? `<span style="padding:4px 10px;border-radius:20px;background:var(--purple-xlight);border:1px solid var(--purple);font-size:var(--text-xs);font-weight:700;color:var(--purple)">${lc('plus',10,'currentColor')} ${window._importNovosItens.length} novos (serão criados)</span>` : ''}
+        ${foraDoApp.length ? `<span style="padding:4px 10px;border-radius:20px;background:var(--yellow-light);border:1px solid var(--yellow);font-size:var(--text-xs);font-weight:700;color:var(--orange-dark)">${lc('alert-triangle',10,'currentColor')} ${foraDoApp.length} inconformidade(s)</span>` : ''}
       </div>
+
       <div style="background:var(--surface2);border-radius:var(--r6);padding:7px 10px;margin-bottom:10px;font-size:var(--text-xs);color:var(--muted)">
         ${lc('info',12,'currentColor')} O <strong>nome</strong> dos insumos nunca é alterado pela importação — permanece sempre o cadastrado no VTP App.
       </div>
-      <div style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
+
+      <!-- Itens atualizados -->
+      ${importData.length ? `
+      <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:4px">
+        ${lc('refresh-cw',10,'currentColor')} Atualizações
+      </div>
+      <div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
         ${importData.map(d => {
           const diff = d.newQty - d.oldQty;
           const diffColor = diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--muted)';
-          const diffStr  = diff > 0 ? `+${diff.toFixed(3)}` : diff.toFixed(3);
+          const diffStr   = diff > 0 ? `+${diff.toFixed(3)}` : diff.toFixed(3);
+          const catMudou  = d.newCat  !== d.oldCat;
+          const unitMudou = d.newUnit !== d.oldUnit;
+          const debMudou  = d.newDebito !== d.oldDebito;
           return `
           <div style="padding:7px 11px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r6)">
             <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:2px">${d.name}</div>
-            <div style="display:flex;gap:12px;font-family:monospace;font-size:var(--text-xs);color:var(--muted)">
-              <span>Qtd: <strong>${d.oldQty}</strong> → <strong style="color:var(--purple)">${d.newQty}</strong></span>
-              <span style="color:${diffColor};font-weight:600">${diffStr}</span>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;font-family:monospace;font-size:var(--text-xs);color:var(--muted)">
+              <span>Qtd: <strong>${d.oldQty}</strong> → <strong style="color:var(--purple)">${d.newQty}</strong> <span style="color:${diffColor};font-weight:600">${diffStr}</span></span>
               ${Math.abs(d.newMin - d.oldMin) > 0.001 ? `<span>Mín: ${d.oldMin}→${d.newMin}</span>` : ''}
               ${d.newCost !== d.oldCost && d.newCost > 0 ? `<span style="color:var(--green)">Custo: R$${d.newCost}</span>` : ''}
+              ${catMudou  ? `<span style="color:var(--purple)">Cat: ${d.oldCat||'—'}→${d.newCat}</span>` : ''}
+              ${unitMudou ? `<span style="color:var(--purple)">Un: ${d.oldUnit||'—'}→${d.newUnit}</span>` : ''}
+              ${debMudou  ? `<span style="color:var(--purple)">Débito: ${d.oldDebito?'Sim':'Não'}→${d.newDebito?'Sim':'Não'}</span>` : ''}
             </div>
           </div>`;}).join('')}
+      </div>` : ''}
+
+      <!-- Itens novos -->
+      ${window._importNovosItens.length ? `
+      <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);margin-bottom:6px;display:flex;align-items:center;gap:4px">
+        ${lc('plus-circle',10,'currentColor')} Novos insumos (serão criados automaticamente)
       </div>
-      ${naoEncontrados.length ? `
-        <div style="font-size:var(--text-xs);color:var(--muted);background:var(--surface2);border-radius:var(--r6);padding:7px 10px;margin-bottom:10px">
-          Não encontrados (${naoEncontrados.length}): ${naoEncontrados.slice(0,8).join(', ')}${naoEncontrados.length>8?'...':''}
-        </div>` : ''}
+      <div style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:12px">
+        ${window._importNovosItens.map(d => `
+          <div style="padding:7px 11px;background:var(--purple-xlight);border:1.5px solid var(--purple-light,#c4b5fd);border-radius:var(--r6)">
+            <div style="font-size:var(--text-sm);font-weight:700;color:var(--purple);margin-bottom:2px">${lc('plus',10,'currentColor')} ${d.name}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">
+              ${d.cat} · ${d.unit} · Qtd: ${d.qty} · Mín: ${d.min}${d.cost>0?` · R$${d.cost}`:''}
+              ${d.debitoAuto?` · ${lc('zap',9,'var(--green)')} débito auto`:''}
+            </div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <!-- Inconformidades -->
+      ${foraDoApp.length ? `
+      <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--orange-dark);margin-bottom:6px;display:flex;align-items:center;gap:4px">
+        ${lc('alert-triangle',10,'currentColor')} Inconformidade — ausentes no CW
+      </div>
+      <div style="background:var(--yellow-light);border:1.5px solid var(--yellow);border-radius:var(--r8);padding:10px 12px;margin-bottom:12px;font-size:var(--text-xs);color:var(--orange-dark);line-height:1.8">
+        Os itens abaixo existem no VTP App mas <strong>não foram encontrados nesta exportação do CW</strong>. Verifique se foram removidos do Cardápio Web ou se o nome/código diverge.<br>
+        <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">
+          ${foraDoApp.map(i => `<span style="padding:2px 8px;background:var(--surface);border:1px solid var(--border);border-radius:10px;font-weight:600">${i.name}</span>`).join('')}
+        </div>
+      </div>` : ''}
+
       <button class="btn btn-primary" style="width:100%" onclick="confirmImport()">
-        ${lc('check',14,'#fff')} Confirmar — atualizar digital
+        ${lc('check',14,'#fff')} Confirmar — atualizar digital${window._importNovosItens.length ? ` + criar ${window._importNovosItens.length} novo(s)` : ''}
       </button>`;
   };
   reader.readAsText(file, 'UTF-8');
 }
 
 function confirmImport() {
-  // Salva registro no histórico de importações CW
   const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-  const histCW = db._get('vtp_hist_imports_cw', []);
-  histCW.push({
-    id:      'CW-' + Date.now(),
-    date:    new Date().toISOString(),
-    user:    u?.name || 'Sistema',
-    total:   importData.length,
-    itens:   importData.map(d => ({
-      id:       d.id,
-      name:     d.name,
-      oldQty:   d.oldQty,
-      newQty:   d.newQty,
-      diff:     parseFloat((d.newQty - d.oldQty).toFixed(3)),
-    })),
+
+  // ── 1. Cria itens novos vindos do CW ──────────────────────────
+  const novos = window._importNovosItens || [];
+  const criados = [];
+  novos.forEach(d => {
+    const novoItem = {
+      id:             nextIid++,
+      qty:            d.qty,
+      name:           d.name,
+      cat:            d.cat || 'Outros',
+      unit:           d.unit || 'UN',
+      min:            d.min || 0,
+      ideal:          0,
+      cost:           d.cost || 0,
+      code:           d.code || '',
+      supIds:         [],
+      supId:          null,
+      supIdExclusivo: null,
+      unidCompra:     '',
+      qtdEmb:         0,
+      brands:         ['', '', ''],
+      isProd:         false,
+      debitoAuto:     d.debitoAuto || false,
+    };
+    items.push(novoItem);
+    criados.push(novoItem);
+    try { logAudit('insumo_criado_cw', `${novoItem.name} (${novoItem.cat}) — via importação CW`, 'estoque'); } catch(e) {}
   });
-  db._set('vtp_hist_imports_cw', histCW);
 
-  // Registra movimentações antes de alterar os itens
-  registrarImportacaoCW(importData);
-
-  // Regra: o NOME do insumo nunca é sobrescrito pela importação — permanece sempre o do VTP App.
-  // Quantidade, estoque mínimo e custo são atualizados normalmente via CSV.
+  // ── 2. Atualiza itens existentes ──────────────────────────────
+  // Regra: o NOME nunca é alterado — permanece o cadastrado no VTP App.
   importData.forEach(d => {
     const item = items.find(i => i.id === d.id);
     if (!item) return;
     item.qty  = d.newQty;
-    if (d.newMin !== undefined) item.min  = d.newMin;
-    if (d.newCost > 0)          item.cost = d.newCost;
-    // item.name nunca é alterado pela importação
+    if (d.newMin  !== undefined) item.min       = d.newMin;
+    if (d.newCost  > 0)          item.cost      = d.newCost;
+    if (d.newCat)                item.cat       = d.newCat;
+    if (d.newUnit)               item.unit      = d.newUnit;
+    if (d.newDebito !== undefined && d.newDebito !== null) item.debitoAuto = d.newDebito;
+    if (d.newCode)               item.code      = d.newCode;
+    // item.name nunca é alterado
   });
   saveI();
 
-  // Sincroniza CATEGORIAS_INSUMO com novas cats que possam ter vindo do CW
+  // ── 3. Sincroniza categorias ──────────────────────────────────
   if (typeof CATEGORIAS_INSUMO !== 'undefined' && typeof saveCategoriasInsumo === 'function') {
     let catChanged = false;
     items.forEach(i => {
@@ -1400,11 +1491,47 @@ function confirmImport() {
     if (catChanged) { CATEGORIAS_INSUMO.sort(); saveCategoriasInsumo(); }
   }
 
+  // ── 4. Histórico de importações CW ───────────────────────────
+  registrarImportacaoCW(importData);
+  const histCW = db._get('vtp_hist_imports_cw', []);
+  histCW.push({
+    id:      'CW-' + Date.now(),
+    date:    new Date().toISOString(),
+    user:    u?.name || 'Sistema',
+    total:   importData.length + criados.length,
+    novos:   criados.length,
+    itens:   [
+      ...importData.map(d => ({
+        id: d.id, name: d.name,
+        oldQty: d.oldQty, newQty: d.newQty,
+        diff: parseFloat((d.newQty - d.oldQty).toFixed(3)),
+      })),
+      ...criados.map(i => ({
+        id: i.id, name: i.name,
+        oldQty: 0, newQty: i.qty,
+        diff: i.qty, novo: true,
+      })),
+    ],
+  });
+  db._set('vtp_hist_imports_cw', histCW);
+
+  // ── 5. Limpa e fecha ──────────────────────────────────────────
   closeModal('ovImport');
-  toast(`${importData.length} itens atualizados!`, 'ok');
+  const totalMsg = importData.length + criados.length;
+  toast(`${totalMsg} itens importados${criados.length ? ` · ${criados.length} novo(s) criado(s)` : ''}!`, 'ok');
+
+  importData = [];
+  window._importNovosItens = [];
+
+  // ── 6. Redireciona se veio do flow de contagem ────────────────
+  if (window._importarParaContagem) {
+    window._importarParaContagem = false;
+    _iniciarFlowContagem();
+    return;
+  }
+
   renderEstoque();
   renderDashboard();
-  importData = [];
 }
 
 // ── Compatibilidade ───────────────────────────────────────────
