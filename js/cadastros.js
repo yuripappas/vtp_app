@@ -71,7 +71,7 @@ function renderCadInsumos() {
     if (q && !i.name.toLowerCase().includes(q) && !i.cat.toLowerCase().includes(q)) return false;
     if (cat && i.cat !== cat) return false;
     if (window._cadFilEmb    && !(i.unidCompra && i.qtdEmb > 0)) return false;
-    if (window._cadFilDiaria && !i.contagemDiaria)                return false;
+    if (window._cadFilDiaria && !i.debitoAuto)                    return false;
     return true;
   }).sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
 
@@ -89,7 +89,7 @@ function renderCadInsumos() {
 
   if (inCfg) {
     const nEmb    = insumos.filter(i => i.unidCompra && i.qtdEmb > 0).length;
-    const nDiaria = insumos.filter(i => i.contagemDiaria).length;
+    const nDiaria = insumos.filter(i => i.debitoAuto).length;
     const filEmb  = !!window._cadFilEmb;
     const filDia  = !!window._cadFilDiaria;
 
@@ -105,7 +105,7 @@ function renderCadInsumos() {
   </button>
   <button onclick="window._cadFilDiaria=!window._cadFilDiaria;renderCadInsumos()"
     style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;border:1.5px solid ${filDia?'var(--orange-dark)':'var(--border)'};background:${filDia?'var(--orange-light)':'transparent'};color:${filDia?'var(--orange-dark)':'var(--muted)'};font-size:var(--text-xs);font-weight:700;cursor:pointer">
-    ${lc('sun',11,'currentColor')} Contagem Diária <span style="font-size:var(--text-2xs);opacity:.7">(${nDiaria})</span>
+    ${lc('zap',11,'currentColor')} Débito CW <span style="font-size:var(--text-2xs);opacity:.7">(${nDiaria})</span>
   </button>
   ${filEmb||filDia ? `<button onclick="window._cadFilEmb=false;window._cadFilDiaria=false;renderCadInsumos()"
     style="font-size:var(--text-xs);color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 6px">limpar</button>` : ''}
@@ -125,7 +125,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
         const supIds  = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
         const sups    = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
         const temEmb  = !!(item.unidCompra && item.qtdEmb > 0);
-        const temDia  = !!item.contagemDiaria;
+        const temDebito = !!item.debitoAuto;
         const supExcCfg = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
         return `<div class="cfg-row" style="cursor:pointer" onclick="openEditItem(${item.id})"
             onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'">
@@ -134,7 +134,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
               <span class="cfg-row-label">${item.name}</span>
               <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
               ${temEmb ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>` : ''}
-              ${temDia  ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);white-space:nowrap">${lc('sun',9,'currentColor')} Diária</span>` : ''}
+              ${temDebito ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito CW</span>` : ''}
               ${supExcCfg ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('star',9,'currentColor')} Exclusivo · ${supExcCfg.name}</span>` : ''}
             </div>
             <div class="cfg-row-sub" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:2px">
@@ -163,7 +163,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
           const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
           const sups   = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
           const temEmb = !!(item.unidCompra && item.qtdEmb > 0);
-          const temDia = !!item.contagemDiaria;
+          const temDebito = !!item.debitoAuto;
           const supExc = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
           return `<div style="background:var(--surface);border:1.5px solid ${supExc?'var(--orange-dark)':'var(--border)'};border-radius:var(--r10);padding:14px;transition:border-color .15s;cursor:pointer"
             onmouseover="this.style.borderColor='${supExc?'var(--orange-dark)':'var(--purple-light)'}'" onmouseout="this.style.borderColor='${supExc?'var(--orange-dark)':'var(--border)'}'"
@@ -178,9 +178,9 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
               </div>
               <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();openEditItem(${item.id})">${lc("edit-2",13,"currentColor")}</button>
             </div>
-            ${(temEmb || temDia) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+            ${(temEmb || temDebito) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
               ${temEmb ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple)">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>` : ''}
-              ${temDia ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark)">${lc('sun',9,'currentColor')} Diária</span>` : ''}
+              ${temDebito ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green)">${lc('zap',9,'currentColor')} Débito CW</span>` : ''}
             </div>` : ''}
             <div style="display:flex;flex-direction:column;gap:4px;font-size:var(--text-xs);color:var(--text2)">
               <div style="display:flex;justify-content:space-between">
