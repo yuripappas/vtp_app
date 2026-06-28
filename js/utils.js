@@ -75,7 +75,6 @@ function toggleMobileMenu() {
 
 // Submenu items de Operação
 const _OPERACAO_SUBMENU_ITEMS = [
-  { id: 'estoque',     icon: 'package',      label: 'Estoque'      },
   { id: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção' },
   { id: 'desperdicio', icon: 'trash-2',      label: 'Desperdício'  },
   { id: 'previsao',    icon: 'trending-up',  label: 'Previsão'     },
@@ -194,7 +193,7 @@ const _COMPRAS_SUBMENU_ITEMS = [
   { id: 'listas',       icon: 'clipboard-list', label: 'Lista de Compras' },
   { id: 'insumos',      icon: 'package',        label: 'Insumos'          },
   { id: 'fornecedores', icon: 'truck',          label: 'Fornecedores'     },
-  { id: 'estoque',      icon: 'archive',        label: 'Estoque'          },
+  { id: 'estoque',      icon: 'box',            label: 'Estoque'          },
 ];
 
 function _handleNavCompras() {
@@ -331,7 +330,7 @@ function goModule(mod) {
   // Fecha sub-panel desktop sempre que navegar
   if (_subPanelGroupId) _closeSubPanel();
 
-  const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
+  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
 
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
   // Submódulos de Operação destacam o item "Operação" no sidebar
@@ -357,7 +356,7 @@ function goModule(mod) {
   if (mod === 'operacao')        renderOperacao();
   else if (mod === 'omnichannel') renderOmnichannel();
   else if (mod === 'dashboard')  renderDashboard();
-  else if (mod === 'estoque')    renderEstoque();
+  else if (mod === 'estoque')    { _cpSection='estoque'; renderComprasModule(); }
   else if (mod === 'preproducao') renderPreproducao();
   else if (mod === 'compras')    renderComprasModule();
   else if (mod === 'cadastros')  renderCadastros();
