@@ -77,6 +77,8 @@ function renderComprasLayout(section) {
     _renderCpInsumos();
   } else if (_cpSection === 'fornecedores') {
     _renderCpFornecedores();
+  } else if (_cpSection === 'estoque') {
+    if (typeof _renderCpEstoque === 'function') _renderCpEstoque();
   } else if (_cpListaAberta) {
     _renderFlowLayout(_cpListaAberta);
   } else {

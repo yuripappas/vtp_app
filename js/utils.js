@@ -194,6 +194,7 @@ const _COMPRAS_SUBMENU_ITEMS = [
   { id: 'listas',       icon: 'clipboard-list', label: 'Lista de Compras' },
   { id: 'insumos',      icon: 'package',        label: 'Insumos'          },
   { id: 'fornecedores', icon: 'truck',          label: 'Fornecedores'     },
+  { id: 'estoque',      icon: 'archive',        label: 'Estoque'          },
 ];
 
 function _handleNavCompras() {
