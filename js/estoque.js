@@ -1524,7 +1524,6 @@ function confirmImport() {
   window._importNovosItens = [];
 
   // ── 6. Redireciona se veio do flow de contagem ────────────────
-  console.log('[confirmImport] _importarParaContagem=', window._importarParaContagem, 'cpSectionContent=', !!document.getElementById('cpSectionContent'));
   if (window._importarParaContagem) {
     window._importarParaContagem = false;
     _iniciarFlowContagem();
@@ -2483,7 +2482,7 @@ function _htmlListaContagens(hist, tol) {
     const statusBg    = anom.length ? 'var(--red-light)' : divs.length ? 'var(--yellow-light)' : 'var(--green-light)';
     const statusLabel = anom.length ? `${anom.length} anomalia(s)` : divs.length ? `${divs.length} divergência(s)` : 'OK';
     return `
-      <div onclick="abrirDetalheContagem('${c.id}')"
+      <div onclick="_abrirDetalheContagemModal('${c.id}')"
         style="display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:8px;
         background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);
         cursor:pointer;transition:all .15s"
@@ -3244,4 +3243,151 @@ function _voltarEstoqueMain() {
     _cpSection='listas'; _estCpFlowEtapa=null;
     if (typeof renderComprasLayout === 'function') renderComprasLayout();
   }
+}
+
+// ── Detalhe de contagem em modal (contexto Compras > Estoque) ──
+function _abrirDetalheContagemModal(id) {
+  const hist = _getHistContagens();
+  const c    = hist.find(x => x.id === id);
+  if (!c) return;
+
+  const cfg  = typeof getConfig === 'function' ? getConfig() : {};
+  const tol  = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+  const cats = c.categorias || (c.tipo ? [c.tipo] : ['—']);
+
+  const divItems = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
+  const okItems  = (c.itens||[]).filter(x => Math.abs(x.diverg||0) <= 0.001);
+  const cwSub    = c.cwSubido || {};
+  const marcados = divItems.filter(x => cwSub[x.id]).length;
+  const total    = divItems.length;
+  const pct      = total > 0 ? Math.round(marcados/total*100) : 100;
+  const todos    = marcados >= total;
+
+  const buildRows = () => {
+    if (!divItems.length) return `
+      <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--r10);padding:16px;text-align:center;font-size:var(--text-sm);font-weight:600;color:var(--green)">
+        ${lc('check-circle',16,'currentColor')} Nenhuma divergência nesta contagem!
+      </div>`;
+    return divItems.map(x => {
+      const feito  = !!cwSub[x.id];
+      const isAnom = x.digital > 0 && Math.abs(x.diverg)/x.digital > tol;
+      const corDif = x.diverg < 0 ? 'var(--red)' : 'var(--green)';
+      const difStr = (x.diverg > 0 ? '+' : '') + fmt(x.diverg) + ' ' + x.unit;
+      return `
+        <div id="cwrow_modal_${x.id}" style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:${feito?'var(--green-light)':'var(--surface)'};transition:background .2s">
+          <label style="display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;width:28px;height:28px">
+            <input type="checkbox" ${feito?'checked':''} data-cw-id="${c.id}" data-item-id="${x.id}"
+              onchange="_toggleCwCheck('${c.id}','${x.id}',this.checked)"
+              style="width:20px;height:20px;accent-color:var(--green);cursor:pointer">
+          </label>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:var(--text-sm);font-weight:600;${feito?'text-decoration:line-through;color:var(--muted)':''}">${x.name}</span>
+              ${isAnom && !feito ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--red)">${lc('alert-triangle',9,'currentColor')} anomalia</span>` : ''}
+              ${feito ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--green)">${lc('check-circle',9,'currentColor')} Subiu no CW</span>` : ''}
+            </div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">${x.cat||'—'}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+            <div style="text-align:center;padding:5px 9px;background:${feito?'transparent':'var(--purple-xlight)'};border:1.5px solid ${feito?'transparent':'var(--purple-light)'};border-radius:var(--r8)">
+              <div style="font-size:.6rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.4px">Colocar no CW</div>
+              <div style="font-size:.9rem;font-family:monospace;font-weight:800;color:var(--purple)">${fmt(x.fisico)} <span style="font-size:.6rem">${x.unit}</span></div>
+            </div>
+            <div style="text-align:center;min-width:40px">
+              <div style="font-size:var(--text-2xs);color:var(--muted)">era</div>
+              <div style="font-size:var(--text-xs);font-family:monospace;color:var(--muted);text-decoration:line-through">${fmt(x.digital)}</div>
+            </div>
+            <div style="text-align:center;min-width:40px">
+              <div style="font-size:var(--text-2xs);color:var(--muted)">dif.</div>
+              <div style="font-size:var(--text-xs);font-family:monospace;font-weight:700;color:${corDif}">${difStr}</div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  };
+
+  let ov = document.getElementById('ovDetalheContagemCp');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'ovDetalheContagemCp'; document.body.appendChild(ov); }
+  ov.className = 'overlay open';
+  ov.onclick = e => { if (e.target === ov) ov.className = 'overlay'; };
+
+  ov.innerHTML = `
+    <div class="modal">
+      <div class="mbox" style="max-width:680px;padding:0;overflow:hidden;max-height:90vh;display:flex;flex-direction:column">
+        <!-- Header -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--text-sm);font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              ${lc('clipboard-list',15,'var(--purple)')} ${c.id}
+              <span style="font-size:var(--text-2xs);color:var(--muted);font-weight:500">${fmtD(c.date)} · ${c.user}</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+              ${cats.map(cat => `<span style="padding:1px 7px;border-radius:10px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light);font-size:var(--text-2xs);font-weight:700">${cat}</span>`).join('')}
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <button onclick="_imprimirGuiaCW('${id}')"
+              style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2);color:var(--text2);font-size:var(--text-xs);font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;font-family:Inter,sans-serif">
+              ${lc('printer',12,'currentColor')} Imprimir
+            </button>
+            <button onclick="document.getElementById('ovDetalheContagemCp').className='overlay'"
+              style="width:32px;height:32px;border:none;background:var(--surface2);border-radius:var(--r8);cursor:pointer;display:flex;align-items:center;justify-content:center">
+              ${lc('x',14,'var(--muted)')}
+            </button>
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div style="flex:1;padding:10px 16px;text-align:center;border-right:1px solid var(--border)">
+            <div style="font-size:1rem;font-weight:800;color:var(--purple)">${c.total||0}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">itens contados</div>
+          </div>
+          <div style="flex:1;padding:10px 16px;text-align:center;border-right:1px solid var(--border)">
+            <div style="font-size:1rem;font-weight:800;color:${divItems.length?'var(--orange-dark)':'var(--green)'}">${divItems.length}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">divergências</div>
+          </div>
+          <div style="flex:1;padding:10px 16px;text-align:center;border-right:1px solid var(--border)">
+            <div style="font-size:1rem;font-weight:800;color:${okItems.length===c.total?'var(--green)':'var(--muted)'}">${okItems.length}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">itens OK</div>
+          </div>
+          <div style="flex:1;padding:10px 16px;text-align:center">
+            <div style="font-size:1rem;font-weight:800;color:${todos&&total>0?'var(--green)':'var(--muted)'}">${marcados}/${total}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">subiu CW</div>
+          </div>
+        </div>
+
+        ${total > 0 && !todos ? `
+        <!-- Barra progresso CW -->
+        <div style="padding:8px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;height:5px;background:var(--border);border-radius:3px">
+              <div id="detCwProgBar" style="height:100%;width:${pct}%;background:var(--green);border-radius:3px;transition:width .3s"></div>
+            </div>
+            <span id="detCwProgTxt" style="font-size:var(--text-2xs);font-weight:700;color:var(--green);white-space:nowrap">${marcados}/${total} no CW</span>
+          </div>
+        </div>` : ''}
+
+        <!-- Lista de itens -->
+        <div style="overflow-y:auto;flex:1">
+          ${buildRows()}
+          ${okItems.length ? `
+          <div style="padding:8px 16px;background:var(--surface2);font-size:var(--text-xs);color:var(--muted);text-align:center">
+            ${lc('check-circle',11,'var(--green)')} ${okItems.length} item(ns) sem divergência
+          </div>` : ''}
+        </div>
+
+        <!-- Rodapé -->
+        <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
+          <button onclick="_enviarResumoWA('${id}')"
+            style="padding:8px 12px;background:#25D366;color:#fff;border:none;border-radius:var(--r8);font-size:var(--text-xs);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
+            ${lc('message-circle',13,'#fff')} WA
+          </button>
+          <button onclick="document.getElementById('ovDetalheContagemCp').className='overlay'"
+            style="flex:1;padding:10px;border:1.5px solid var(--border);border-radius:var(--r8);background:transparent;color:var(--text2);font-size:var(--text-sm);font-weight:600;cursor:pointer;font-family:Inter,sans-serif">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>`;
 }
