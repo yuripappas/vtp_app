@@ -1524,6 +1524,7 @@ function confirmImport() {
   window._importNovosItens = [];
 
   // ── 6. Redireciona se veio do flow de contagem ────────────────
+  console.log('[confirmImport] _importarParaContagem=', window._importarParaContagem, 'cpSectionContent=', !!document.getElementById('cpSectionContent'));
   if (window._importarParaContagem) {
     window._importarParaContagem = false;
     _iniciarFlowContagem();
