@@ -33,24 +33,39 @@ function _conflitoBadge(itemId) {
 // Banner de conflitos para o topo de cada etapa
 function _conflitoBanner() {
   if (!_listaAtual) return '';
+  const key = 'vtp_banner_dismissed_' + _listaAtual.id;
+  if (sessionStorage.getItem(key)) return '';
   const itensConflito = (_listaAtual.itens||[]).filter(i => _conflitosItem(i.itemId, _listaAtual.id).length > 0);
   if (!itensConflito.length) return '';
   const plural = itensConflito.length > 1 ? 'insumos estão' : 'insumo está';
   const nomes = itensConflito.map(i => i.nome).join(', ');
-  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin-bottom:12px;
+  return `<div id="bannerConflito" style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin-bottom:12px;
     background:var(--yellow-light);border:1.5px solid var(--yellow);border-radius:var(--r10);font-size:var(--text-xs);color:var(--orange-dark)">
     ${lc('alert-triangle',14,'currentColor')}
-    <div>
+    <div style="flex:1">
       <strong>${itensConflito.length} ${plural} presentes em outra(s) lista(s) ativa(s).</strong>
       Verifique se não haverá duplicidade no recebimento: <em>${nomes}</em>.
     </div>
+    <button onclick="_dispensarBannerConflito()" title="Fechar aviso"
+      style="background:none;border:none;cursor:pointer;padding:0;color:var(--orange-dark);flex-shrink:0;opacity:.7;line-height:1"
+      onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.7'">
+      ${lc('x',14,'currentColor')}
+    </button>
   </div>`;
+}
+
+function _dispensarBannerConflito() {
+  if (!_listaAtual) return;
+  sessionStorage.setItem('vtp_banner_dismissed_' + _listaAtual.id, '1');
+  const el = document.getElementById('bannerConflito');
+  if (el) el.remove();
 }
 
 // ══════════════════════════════════════════════════════════════
 // RENDER PRINCIPAL — settings-layout (nav lateral + conteúdo)
 // ══════════════════════════════════════════════════════════════
 function renderComprasModule() {
+  _cpListaAberta = null;
   renderComprasLayout();
 }
 
