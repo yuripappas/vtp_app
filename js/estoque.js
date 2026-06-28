@@ -2218,3 +2218,902 @@ function salvarMovManual() {
   _renderMovimentacoes();
   toast('Movimentação registrada!');
 }
+
+
+// ══════════════════════════════════════════════════════════════
+// ESTOQUE COMO FILHO DE COMPRAS — nova navegação integrada
+// ══════════════════════════════════════════════════════════════
+let _estCpAba      = 'contagens'; // 'contagens' | 'atual'
+let _estCpFlowEtapa = null;       // null | 'categorias' | 'contagem' | 'divergencias' | 'atualizarcw'
+let _estCpContagem  = null;       // contagem concluída aguardando CW step
+let _estCpGrupos    = null;       // grupos de divergência da contagem atual
+
+function _renderCpEstoque() {
+  if (_estCpFlowEtapa) {
+    _renderEstoqueFlowLayout();
+  } else {
+    _renderEstoqueMain();
+  }
+}
+
+// ── Página principal (lista de contagens + aba estoque atual) ──
+function _renderEstoqueMain() {
+  const el = document.getElementById('cpSectionContent');
+  if (!el) return;
+
+  const hist = _getHistContagens();
+  const cfg  = typeof getConfig === 'function' ? getConfig() : {};
+  const tol  = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+
+  // KPIs do período (semana atual)
+  const hoje = new Date();
+  const dow  = hoje.getDay();
+  const seg  = new Date(hoje); seg.setDate(hoje.getDate() - (dow === 0 ? 6 : dow - 1));
+  const dom  = new Date(seg);  dom.setDate(seg.getDate() + 6);
+  const segStr = seg.toISOString().slice(0,10);
+  const domStr = dom.toISOString().slice(0,10);
+
+  const histSemana = hist.filter(c => {
+    const d = (c.date||'').slice(0,10);
+    return d >= segStr && d <= domStr;
+  });
+  const totalInsumos = histSemana.reduce((s,c) => s + (c.total||0), 0);
+  const totalAnom    = histSemana.reduce((s,c) => {
+    return s + (c.itens||[]).filter(x =>
+      x.debitoAuto && x.digital > 0 && Math.abs(x.diverg||0)/x.digital > tol
+    ).length;
+  }, 0);
+
+  // Estoque atual
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const histCW   = db._get('vtp_hist_imports_cw', []);
+  const ultimaCW = histCW.length ? [...histCW].sort((a,b) => new Date(b.date)-new Date(a.date))[0] : null;
+
+  el.innerHTML = `
+    <div style="padding:20px 24px">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:var(--text-base);font-weight:800">${lc('archive',16,'var(--purple)')} Estoque</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${histSemana.length} contagem(ns) esta semana</div>
+        </div>
+        <button onclick="_iniciarNovaContagem()"
+          style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r8);
+          border:none;background:var(--purple);color:#fff;font-size:var(--text-sm);font-weight:700;
+          cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">
+          ${lc('plus',14,'#fff')} Nova contagem
+        </button>
+      </div>
+
+      <!-- KPIs -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+        <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light,#c4b5fd);border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('package',10,'currentColor')} Insumos contados
+          </div>
+          <div style="font-size:1.18rem;font-weight:800;color:var(--purple);line-height:1">${totalInsumos}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">esta semana</div>
+        </div>
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('clipboard-list',10,'currentColor')} Contagens
+          </div>
+          <div style="font-size:1.18rem;font-weight:800;color:var(--text);line-height:1">${histSemana.length}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">esta semana</div>
+        </div>
+        <div style="background:${totalAnom > 0 ? 'var(--red-light)' : 'var(--green-light)'};border:1.5px solid ${totalAnom > 0 ? 'var(--red)' : 'var(--green)'};border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${totalAnom > 0 ? 'var(--red)' : 'var(--green)'};margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('alert-circle',10,'currentColor')} Inconformidades
+          </div>
+          <div style="font-size:1.18rem;font-weight:800;color:${totalAnom > 0 ? 'var(--red)' : 'var(--green)'};line-height:1">${totalAnom}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">débito automático &gt;${Math.round(tol*100)}%</div>
+        </div>
+        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:13px 16px">
+          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:4px">
+            ${lc('upload',10,'currentColor')} Última atualização CW
+          </div>
+          <div style="font-size:var(--text-xs);font-weight:800;color:var(--text);line-height:1.3">${ultimaCW ? fmtD(ultimaCW.date) : '—'}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">${ultimaCW ? ultimaCW.user : 'Nenhuma importação'}</div>
+        </div>
+      </div>
+
+      <!-- Abas -->
+      <div style="display:flex;border-bottom:1.5px solid var(--border);margin-bottom:16px;gap:0">
+        <button onclick="_estCpAba='contagens';_renderCpEstoque()"
+          style="padding:8px 16px;border:none;border-bottom:2.5px solid ${_estCpAba==='contagens'?'var(--purple)':'transparent'};
+          background:none;color:${_estCpAba==='contagens'?'var(--purple)':'var(--muted)'};
+          font-size:var(--text-sm);font-weight:${_estCpAba==='contagens'?'700':'500'};cursor:pointer;font-family:Inter,sans-serif;
+          display:flex;align-items:center;gap:5px;transition:all .15s">
+          ${lc('clock',13,'currentColor')} Contagens
+        </button>
+        <button onclick="_estCpAba='atual';_renderCpEstoque()"
+          style="padding:8px 16px;border:none;border-bottom:2.5px solid ${_estCpAba==='atual'?'var(--purple)':'transparent'};
+          background:none;color:${_estCpAba==='atual'?'var(--purple)':'var(--muted)'};
+          font-size:var(--text-sm);font-weight:${_estCpAba==='atual'?'700':'500'};cursor:pointer;font-family:Inter,sans-serif;
+          display:flex;align-items:center;gap:5px;transition:all .15s">
+          ${lc('archive',13,'currentColor')} Estoque atual
+        </button>
+      </div>
+
+      <!-- Conteúdo da aba -->
+      ${_estCpAba === 'contagens' ? _htmlListaContagens(hist, tol) : _htmlEstoqueAtual(allItems, ultimaCW)}
+    </div>`;
+}
+
+function _htmlListaContagens(hist, tol) {
+  if (!hist.length) {
+    return `<div class="empty" style="padding:48px">
+      <div class="empty-icon">${lc('archive',28,'var(--muted)')}</div>
+      Nenhuma contagem registrada ainda.
+    </div>`;
+  }
+  return [...hist].reverse().map(c => {
+    const divs = (c.itens||[]).filter(x => Math.abs(x.diverg||0) > 0.001);
+    const anom = divs.filter(x => x.debitoAuto && x.digital > 0 && Math.abs(x.diverg)/x.digital > tol);
+    const cats = (c.categorias||[]).slice(0,3).join(', ') + (c.categorias?.length > 3 ? ` +${c.categorias.length-3}` : '');
+    const statusColor = anom.length ? 'var(--red)' : divs.length ? 'var(--orange-dark)' : 'var(--green)';
+    const statusBg    = anom.length ? 'var(--red-light)' : divs.length ? 'var(--yellow-light)' : 'var(--green-light)';
+    const statusLabel = anom.length ? `${anom.length} anomalia(s)` : divs.length ? `${divs.length} divergência(s)` : 'OK';
+    return `
+      <div onclick="abrirDetalheContagem('${c.id}')"
+        style="display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:8px;
+        background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);
+        cursor:pointer;transition:all .15s"
+        onmouseover="this.style.borderColor='var(--purple-light)';this.style.background='var(--purple-xlight)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+        <div style="width:40px;height:40px;border-radius:var(--r8);background:var(--purple-xlight);
+          display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          ${lc('clipboard-list',18,'var(--purple)')}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+            <span style="font-size:var(--text-sm);font-weight:800">${c.id}</span>
+            <span style="padding:2px 8px;border-radius:10px;font-size:var(--text-2xs);font-weight:700;
+              background:${statusBg};color:${statusColor};border:1px solid ${statusColor}">${statusLabel}</span>
+          </div>
+          <div style="font-size:var(--text-xs);color:var(--muted)">
+            ${lc('user',10,'currentColor')} ${c.user||'—'}
+            &nbsp;·&nbsp;${lc('calendar',10,'currentColor')} ${fmtD(c.date)}
+            &nbsp;·&nbsp;${cats}
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:var(--text-sm);font-weight:800;color:var(--purple)">${c.total||0}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted)">itens</div>
+        </div>
+        ${lc('chevron-right',16,'var(--muted)')}
+      </div>`;
+  }).join('');
+}
+
+function _htmlEstoqueAtual(allItems, ultimaCW) {
+  if (!allItems.length) return `<div class="empty" style="padding:48px">${lc('archive',28,'var(--muted)')}<br><br>Nenhum insumo cadastrado.</div>`;
+  const cats = [...new Set(allItems.map(i => i.cat||'Outros'))].sort();
+  return cats.map(cat => {
+    const catItems = allItems.filter(i => (i.cat||'Outros') === cat);
+    return `
+      <div style="margin-bottom:12px">
+        <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+          color:var(--muted);padding:6px 0;display:flex;align-items:center;gap:5px">
+          ${lc(_estIconCat(cat),11,'currentColor')} ${cat} <span style="font-weight:500">(${catItems.length})</span>
+        </div>
+        ${catItems.map(i => {
+          const pct  = i.ideal > 0 ? Math.min(1, i.qty / i.ideal) : 0;
+          const cor  = i.qty <= (i.min||0) ? 'var(--red)' : pct < .5 ? 'var(--orange-dark)' : 'var(--green)';
+          return `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface);
+              border:1px solid var(--border);border-radius:var(--r8);margin-bottom:4px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:var(--text-xs);font-weight:700">${i.name}</div>
+                <div style="height:3px;background:var(--border);border-radius:2px;margin-top:4px;width:100%">
+                  <div style="height:100%;width:${Math.round(pct*100)}%;background:${cor};border-radius:2px;transition:width .3s"></div>
+                </div>
+              </div>
+              <div style="font-size:var(--text-xs);font-weight:800;color:${cor};white-space:nowrap;font-family:monospace">${fmt(i.qty)} ${i.unit}</div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }).join('');
+}
+
+// ── Modal: origem da contagem ──────────────────────────────────
+function _iniciarNovaContagem() {
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const histCW   = db._get('vtp_hist_imports_cw', []);
+  const ultimaCW = histCW.length ? [...histCW].sort((a,b) => new Date(b.date)-new Date(a.date))[0] : null;
+
+  let ov = document.getElementById('ovOrigemContagem');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'ovOrigemContagem'; document.body.appendChild(ov); }
+  ov.className = 'overlay open';
+  ov.onclick = e => { if (e.target === ov) ov.className = 'overlay'; };
+  ov.innerHTML = `
+    <div class="modal">
+      <div class="mbox" style="max-width:460px;padding:0;overflow:hidden">
+        <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+          <div style="width:36px;height:36px;border-radius:var(--r8);background:var(--purple-xlight);
+            display:flex;align-items:center;justify-content:justify-content:center;align-items:center;flex-shrink:0">
+            ${lc('archive',16,'var(--purple)')}
+          </div>
+          <div style="flex:1">
+            <div style="font-size:var(--text-sm);font-weight:800">Nova contagem de estoque</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">Escolha a base para iniciar</div>
+          </div>
+          <button onclick="document.getElementById('ovOrigemContagem').className='overlay'"
+            style="width:30px;height:30px;border:none;background:var(--surface2);border-radius:var(--r8);cursor:pointer;display:flex;align-items:center;justify-content:center">
+            ${lc('x',14,'var(--muted)')}
+          </button>
+        </div>
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px">
+
+          <!-- Opção A: Usar última atualização CW -->
+          <button onclick="_confirmarOrigemContagem('ultima')"
+            style="display:flex;align-items:flex-start;gap:14px;padding:16px;border-radius:var(--r10);
+            border:1.5px solid var(--border);background:var(--surface);cursor:pointer;text-align:left;
+            font-family:Inter,sans-serif;transition:all .15s;width:100%"
+            onmouseover="this.style.borderColor='var(--purple)';this.style.background='var(--purple-xlight)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+            <div style="width:40px;height:40px;border-radius:var(--r8);background:var(--purple-xlight);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              ${lc('archive',18,'var(--purple)')}
+            </div>
+            <div>
+              <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:3px">Usar última atualização do CW</div>
+              <div style="font-size:var(--text-xs);color:var(--muted);line-height:1.5">
+                Conta ${allItems.length} insumos cadastrados com a quantidade atual do sistema.
+              </div>
+              ${ultimaCW ? `<div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:3px">
+                ${lc('clock',9,'currentColor')} Última atualização: <strong>${fmtD(ultimaCW.date)}</strong> por ${ultimaCW.user}
+              </div>` : `<div style="font-size:var(--text-2xs);color:var(--orange-dark);margin-top:4px">${lc('alert-triangle',9,'currentColor')} Nenhuma importação CW registrada</div>`}
+            </div>
+          </button>
+
+          <!-- Opção B: Importar planilha CW -->
+          <button onclick="_confirmarOrigemContagem('importar')"
+            style="display:flex;align-items:flex-start;gap:14px;padding:16px;border-radius:var(--r10);
+            border:1.5px solid var(--border);background:var(--surface);cursor:pointer;text-align:left;
+            font-family:Inter,sans-serif;transition:all .15s;width:100%"
+            onmouseover="this.style.borderColor='var(--purple)';this.style.background='var(--purple-xlight)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
+            <div style="width:40px;height:40px;border-radius:var(--r8);background:var(--orange-light);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              ${lc('upload',18,'var(--orange-dark)')}
+            </div>
+            <div>
+              <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:3px">Importar planilha do Cardápio Web</div>
+              <div style="font-size:var(--text-xs);color:var(--muted);line-height:1.5">
+                Sobe o arquivo XLSX/CSV do CW para sincronizar as quantidades antes de contar.
+              </div>
+            </div>
+          </button>
+
+        </div>
+      </div>
+    </div>`;
+}
+
+function _confirmarOrigemContagem(origem) {
+  document.getElementById('ovOrigemContagem')?.remove();
+  if (origem === 'importar') {
+    // Abre o modal de importação existente e depois inicia o flow
+    openImportModal();
+    // Após importar, o flow inicia via _iniciarFlowContagem()
+    window._importarParaContagem = true;
+    return;
+  }
+  // Origem: última atualização — vai direto para categorias
+  _iniciarFlowContagem();
+}
+
+function _iniciarFlowContagem() {
+  window._importarParaContagem = false;
+  _catsSelecionadas   = new Set();
+  _categoriasContando = [];
+  _contagem           = {};
+  _contagemAtiva      = false;
+  _estCpFlowEtapa = 'categorias';
+  _renderCpEstoque();
+}
+
+// ── Layout do flow (cabeçalho + stepper + conteúdo) ────────────
+function _renderEstoqueFlowLayout() {
+  const el = document.getElementById('cpSectionContent');
+  if (!el) return;
+
+  const ETAPAS = [
+    { id: 'categorias',  label: 'Categorias',   icon: 'layers'       },
+    { id: 'contagem',    label: 'Contagem',      icon: 'clipboard-list'},
+    { id: 'divergencias',label: 'Divergências',  icon: 'alert-circle' },
+    { id: 'atualizarcw', label: 'Atualizar CW',  icon: 'refresh-cw'   },
+  ];
+
+  const etapaIdx = ETAPAS.findIndex(e => e.id === _estCpFlowEtapa);
+  const contagemId = _estCpContagem?.id || '';
+
+  el.innerHTML = `
+    <!-- Topbar -->
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 20px;
+      background:var(--surface);border-bottom:1px solid var(--border)">
+      <button onclick="_voltarEstoqueMain()"
+        style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--r8);
+        border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);
+        font-size:var(--text-xs);font-weight:600;cursor:pointer;font-family:Inter,sans-serif;flex-shrink:0">
+        ${lc('arrow-left',13,'currentColor')} Voltar
+      </button>
+      <span style="font-size:var(--text-xs);color:var(--muted);flex-shrink:0">Estoque</span>
+      <span style="color:var(--muted);flex-shrink:0">/</span>
+      <span style="font-size:var(--text-xs);font-weight:700;flex-shrink:0">${contagemId || 'Nova contagem'}</span>
+    </div>
+
+    <!-- Stepper -->
+    <div style="display:flex;background:var(--surface);border-bottom:2px solid var(--border)">
+      ${ETAPAS.map((e, idx) => {
+        const done = idx < etapaIdx;
+        const cur  = idx === etapaIdx;
+        const barColor = done ? 'var(--green)' : cur ? 'var(--purple)' : 'transparent';
+        const txtColor = done ? 'var(--green)' : cur ? 'var(--purple)' : 'var(--muted)';
+        const iconName = done ? 'check' : e.icon;
+        const canClick = done;
+        return `<div style="flex:1;text-align:center;cursor:${canClick?'pointer':'default'};padding:8px 2px 7px;
+          border-top:3px solid ${barColor};transition:border-color .2s"
+          ${canClick ? `onclick="_estCpFlowEtapa='${e.id}';_renderCpEstoque()"` : ''}>
+          <div style="font-size:var(--text-2xs);font-weight:${done||cur?'700':'500'};color:${txtColor};
+            display:flex;align-items:center;justify-content:center;gap:2px;line-height:1.3">
+            ${lc(iconName,10,txtColor)} ${e.label}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Conteúdo da etapa -->
+    <div id="estFlowContent"></div>`;
+
+  _renderEstoqueEtapa();
+}
+
+function _renderEstoqueEtapa() {
+  switch(_estCpFlowEtapa) {
+    case 'categorias':    _renderEstCpCategorias(); break;
+    case 'contagem':      _renderEstCpContagem();   break;
+    case 'divergencias':  _renderEstCpDivergencias(); break;
+    case 'atualizarcw':   _renderEstCpAtualizarCW(); break;
+  }
+}
+
+// ── Etapa 1: Categorias ────────────────────────────────────────
+function _renderEstCpCategorias() {
+  const el = document.getElementById('estFlowContent');
+  if (!el) return;
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const allCats  = [...new Set(allItems.map(i => i.cat||'Outros'))].filter(Boolean).sort();
+  const ultimaMapa  = _ultimaContagemPorItem();
+  const ultimaCWMapa = _ultimaImportCWporCat();
+
+  const _diasStr = dateStr => {
+    if (!dateStr) return null;
+    const d = Math.floor((Date.now() - new Date(dateStr)) / 864e5);
+    return d === 0 ? 'hoje' : d === 1 ? 'ontem' : d + 'd atrás';
+  };
+
+  const totalSel = [..._catsSelecionadas].reduce((s,c) =>
+    s + allItems.filter(i => (i.cat||'Outros') === c).length, 0);
+
+  let cardsHtml = allCats.map(cat => {
+    const count = allItems.filter(i => (i.cat||'Outros') === cat).length;
+    const sel   = _catsSelecionadas.has(cat);
+    const icon  = _estIconCat(cat);
+    const catItems = allItems.filter(i => (i.cat||'Outros') === cat);
+    const datas = catItems.map(i => ultimaMapa[i.id]?.date).filter(Boolean).sort().reverse();
+    const ultima = datas[0] || null;
+    const diverg = catItems.filter(i => { const u = ultimaMapa[i.id]; return u && Math.abs(u.diverg||0) > 0.001; }).length;
+    const cwDate = ultimaCWMapa[cat] || null;
+
+    let ultimaLabel = 'Nunca contada';
+    if (ultima) {
+      const toLocal = d => { const dt = new Date(d); return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); };
+      const hoje = toLocal(new Date()); const ontem = toLocal(new Date(Date.now()-864e5)); const dCont = toLocal(new Date(ultima));
+      if (dCont===hoje) ultimaLabel='hoje'; else if (dCont===ontem) ultimaLabel='ontem';
+      else { const d=Math.round((new Date(hoje)-new Date(dCont))/864e5); ultimaLabel=d+'d atrás'; }
+    }
+
+    const checkHtml = sel
+      ? `<span style="position:absolute;top:8px;right:8px;width:18px;height:18px;background:var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center">${lc('check',10,'#fff')}</span>`
+      : '';
+
+    return `
+      <button data-cat="${cat.replace(/"/g,'&quot;')}"
+        style="display:flex;flex-direction:column;align-items:center;padding:16px 10px;border-radius:var(--r12);
+        border:2px solid ${sel?'var(--purple)':'var(--border)'};
+        background:${sel?'var(--purple-xlight)':'var(--surface)'};
+        cursor:pointer;text-align:center;gap:8px;transition:all .15s;
+        min-height:110px;font-family:Inter,sans-serif;position:relative;width:100%">
+        ${checkHtml}
+        <div style="width:44px;height:44px;border-radius:50%;background:${sel?'var(--purple)':'var(--surface2)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s">
+          ${lc(icon,20,sel?'#fff':'var(--muted)')}
+        </div>
+        <div style="font-size:var(--text-xs);font-weight:700;color:${sel?'var(--purple)':'var(--text)'};line-height:1.2">${cat}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted)">${count} ${count===1?'item':'itens'}</div>
+        <div style="font-size:.62rem;color:${diverg>0?'var(--orange-dark)':'var(--muted)'}">${ultimaLabel}</div>
+        ${cwDate ? `<div style="font-size:.60rem;color:var(--muted)">CW: ${_diasStr(cwDate)}</div>` : ''}
+      </button>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="padding:20px 24px ${_catsSelecionadas.size>0?'80px':'24px'}">
+      <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:14px">
+        Selecione uma ou mais categorias para contar
+      </div>
+      <div id="estCpCatGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
+        ${cardsHtml}
+      </div>
+    </div>`;
+
+  // Barra de ação fixada
+  document.getElementById('_ctgBarExt')?.remove();
+  if (_catsSelecionadas.size > 0) {
+    const nCats = _catsSelecionadas.size;
+    const catsArr = [..._catsSelecionadas];
+    const bar = document.createElement('div');
+    bar.id = '_ctgBarExt';
+    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:12px 20px;background:var(--surface);border-top:2px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 16px rgba(0,0,0,.08);z-index:500';
+    bar.innerHTML = `
+      <div style="font-size:var(--text-sm);color:var(--text2)">
+        <strong style="color:var(--purple)">${nCats}</strong> categoria${nCats>1?'s':''} · <strong>${totalSel}</strong> itens
+      </div>
+      <button id="_cpCatBtnIniciar"
+        style="padding:10px 20px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
+        font-size:var(--text-sm);font-weight:700;cursor:pointer;min-height:44px;display:flex;align-items:center;gap:6px">
+        ${lc('arrow-right',14,'#fff')} Iniciar contagem
+      </button>`;
+    document.body.appendChild(bar);
+    document.getElementById('_cpCatBtnIniciar').addEventListener('click', () => {
+      document.getElementById('_ctgBarExt')?.remove();
+      _contagemAtiva      = true;
+      _categoriasContando = catsArr;
+      _catsSelecionadas   = new Set();
+      _contagem           = {};
+      _estCpFlowEtapa     = 'contagem';
+      _renderEstoqueFlowLayout();
+    });
+  }
+
+  // Delegate clicks nos cards
+  el.querySelector('#estCpCatGrid')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-cat]');
+    if (!btn) return;
+    const cat = btn.getAttribute('data-cat');
+    if (!cat) return;
+    if (_catsSelecionadas.has(cat)) _catsSelecionadas.delete(cat);
+    else _catsSelecionadas.add(cat);
+    _renderEstCpCategorias();
+  });
+}
+
+// ── Etapa 2: Contagem ──────────────────────────────────────────
+function _renderEstCpContagem() {
+  const el = document.getElementById('estFlowContent');
+  if (!el) return;
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const todosItens = _categoriasContando.flatMap(cat => allItems.filter(i => (i.cat||'Outros') === cat));
+  const total    = todosItens.length;
+  const contados = Object.keys(_contagem).length;
+  const pct      = total > 0 ? Math.round(contados/total*100) : 0;
+  const tudo     = contados === total && total > 0;
+
+  let html = `<div id="estCpContagemWrap" style="padding-bottom:80px">`;
+  html += `<div style="padding:10px 24px 8px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:6px;font-size:var(--text-xs);font-weight:600;color:var(--text2)">
+        <span id="estCpProgTxt">${contados}/${total} preenchidos</span>
+        <span style="font-size:var(--text-2xs);color:var(--muted)">(${pct}%)</span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;margin-top:5px">
+        <div id="estCpProgBar" style="height:100%;width:${pct}%;background:var(--purple);border-radius:2px;transition:width .3s"></div>
+      </div>
+    </div>
+  </div>`;
+
+  _categoriasContando.forEach(cat => {
+    const catItems = allItems.filter(i => (i.cat||'Outros') === cat);
+    html += `<div style="padding:8px 24px 4px;background:var(--purple-xlight);border-bottom:1px solid var(--border)">
+      <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);display:flex;align-items:center;gap:5px">
+        ${lc(_estIconCat(cat),11,'currentColor')} ${cat} <span style="font-weight:400;color:var(--muted)">(${catItems.length})</span>
+      </div>
+    </div>`;
+    catItems.forEach((item, idx) => {
+      const val = _contagem[item.id];
+      const preenchido = val !== undefined;
+      html += `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--border);
+          background:${preenchido?'var(--purple-xlight)':idx%2===0?'var(--surface)':'var(--surface2)'}">
+          <div style="flex:1">
+            <div style="font-size:var(--text-sm);font-weight:600">${item.name}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">CW atual: ${fmt(item.qty)} ${item.unit}</div>
+          </div>
+          <input type="number" inputmode="decimal" min="0" step="0.001"
+            data-cpitem="${item.id}"
+            value="${val !== undefined ? String(val) : ''}"
+            placeholder="—"
+            style="width:88px;height:44px;padding:0 8px;border:2px solid ${preenchido?'var(--purple)':'var(--border)'};
+            border-radius:var(--r8);font-size:var(--text-base);font-weight:700;text-align:center;
+            background:var(--surface);font-family:monospace"
+            onfocus="this.select()">
+          <span style="font-size:var(--text-xs);color:var(--muted);width:24px">${item.unit}</span>
+        </div>`;
+    });
+  });
+  html += `</div>`;
+
+  // Botão concluir fixo
+  html += `
+    <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 20px;
+      background:var(--surface);border-top:2px solid var(--border);z-index:500;
+      display:flex;align-items:center;gap:10px">
+      <button onclick="_cancelarEstCpContagem()"
+        style="padding:10px 16px;border:1.5px solid var(--border);border-radius:var(--r8);
+        background:transparent;color:var(--muted);font-size:var(--text-xs);font-weight:600;cursor:pointer;font-family:Inter,sans-serif">
+        Cancelar
+      </button>
+      <button id="btnEstCpConcluir"
+        onclick="_concluirEstCpContagem()"
+        style="flex:1;padding:12px;border:none;border-radius:var(--r8);
+        background:${tudo?'var(--green)':contados>0?'var(--purple)':'var(--border)'};
+        color:${contados>0?'#fff':'var(--muted)'};font-size:var(--text-sm);font-weight:700;
+        cursor:${contados>0?'pointer':'not-allowed'};font-family:Inter,sans-serif;
+        display:flex;align-items:center;justify-content:center;gap:6px">
+        ${lc('check-circle',16,contados>0?'#fff':'var(--muted)')}
+        ${tudo?'Tudo preenchido! Concluir contagem':contados>0?'Concluir · '+contados+' itens':'Preencha ao menos 1 item'}
+      </button>
+    </div>`;
+
+  el.innerHTML = html;
+
+  // Input delegation
+  el.addEventListener('input', e => {
+    const inp = e.target.closest('[data-cpitem]');
+    if (!inp) return;
+    const itemId = parseInt(inp.getAttribute('data-cpitem'));
+    const val    = inp.value;
+    if (val===''||val===null) delete _contagem[itemId];
+    else { const v=parseFloat(val); if (!isNaN(v)&&v>=0) _contagem[itemId]=parseFloat(v.toFixed(3)); }
+    inp.style.borderColor = _contagem[itemId]!==undefined ? 'var(--purple)' : 'var(--border)';
+    const row = inp.closest('div[style*="display:flex"]');
+    if (row) row.style.background = _contagem[itemId]!==undefined ? 'var(--purple-xlight)' : '';
+
+    const total2   = todosItens.length;
+    const contados2 = Object.keys(_contagem).length;
+    const pct2      = total2>0?Math.round(contados2/total2*100):0;
+    const tudo2     = contados2===total2&&total2>0;
+    const progTxt = document.getElementById('estCpProgTxt');
+    const progBar = document.getElementById('estCpProgBar');
+    const btn     = document.getElementById('btnEstCpConcluir');
+    if (progTxt) progTxt.textContent = `${contados2}/${total2} preenchidos`;
+    if (progBar) progBar.style.width = `${pct2}%`;
+    if (btn) {
+      btn.style.background = tudo2?'var(--green)':contados2>0?'var(--purple)':'var(--border)';
+      btn.style.color      = contados2>0?'#fff':'var(--muted)';
+      btn.style.cursor     = contados2>0?'pointer':'not-allowed';
+      btn.innerHTML = `${lc('check-circle',16,contados2>0?'#fff':'var(--muted)')} ${tudo2?'Tudo preenchido! Concluir contagem':contados2>0?'Concluir · '+contados2+' itens':'Preencha ao menos 1 item'}`;
+    }
+  });
+}
+
+function _cancelarEstCpContagem() {
+  vtpConfirm({
+    title:'Cancelar contagem',
+    message:'Os dados digitados não serão salvos.',
+    confirmLabel:'Cancelar contagem',
+    onConfirm: () => {
+      _contagem=[]; _contagemAtiva=false; _categoriasContando=[]; _catsSelecionadas=new Set();
+      _estCpFlowEtapa='categorias';
+      _renderCpEstoque();
+    }
+  });
+}
+
+function _concluirEstCpContagem() {
+  const contados = Object.keys(_contagem).length;
+  if (contados===0) { toast('Preencha ao menos uma quantidade.','err'); return; }
+
+  const u = typeof getCurrentUser==='function' ? getCurrentUser() : null;
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const todosCatItems = _categoriasContando.flatMap(cat => allItems.filter(i => (i.cat||'Outros')===cat));
+
+  const snapshot = todosCatItems.map(i => ({
+    id: i.id, name: i.name, unit: i.unit, cat: i.cat,
+    debitoAuto: !!i.debitoAuto,
+    digital: i.qty,
+    fisico:  _contagem[i.id] ?? null,
+    diverg:  _contagem[i.id]!==undefined ? parseFloat((_contagem[i.id]-i.qty).toFixed(3)) : null,
+    min: i.min, ideal: i.ideal,
+  })).filter(x => x.fisico !== null);
+
+  const hist = _getHistContagens();
+  const novaContagem = {
+    id: `CNT-${String(hist.length+1).padStart(4,'0')}`,
+    date: new Date().toISOString(),
+    categorias: _categoriasContando,
+    user: u?.name||'Sistema',
+    total: contados,
+    divergs: snapshot.filter(x => Math.abs(x.diverg||0)>0.001).length,
+    itens: snapshot,
+    cwSubido: {},
+  };
+  hist.push(novaContagem);
+  _saveHistContagens(hist);
+  try { logAudit('estoque_contagem', `Contagem ${novaContagem.id} · ${contados} itens`, 'estoque'); } catch(e) {}
+
+  _contagem=[]; _contagemAtiva=false; _categoriasContando=[];
+  _estCpContagem  = novaContagem;
+  _estCpFlowEtapa = 'divergencias';
+  _renderEstoqueFlowLayout();
+}
+
+// ── Etapa 3: Divergências ──────────────────────────────────────
+function _renderEstCpDivergencias() {
+  const el = document.getElementById('estFlowContent');
+  if (!el) return;
+
+  const c = _estCpContagem;
+  if (!c) { _estCpFlowEtapa='categorias'; _renderCpEstoque(); return; }
+
+  const cfg = typeof getConfig==='function' ? getConfig() : {};
+  const tol = parseFloat(cfg.toleranciaDiverg??10)/100;
+
+  const grupos = { ok:[], manual:[], varNormal:[], explicado:[], parcial:[], anomalia:[] };
+  const despsRaw = typeof desperdicios!=='undefined' ? desperdicios : [];
+  const dataHoje = c.date.slice(0,10);
+  const hist = _getHistContagens();
+  const anterior = [...hist].sort((a,b)=>new Date(b.date)-new Date(a.date))[1];
+  const dataAnterior = anterior ? anterior.date.slice(0,10) : null;
+  const despsPeriodo = despsRaw.filter(d => {
+    if (!d.itemId) return false;
+    const dDate = d.date||(d.createdAt||'').slice(0,10);
+    if (dataAnterior && dDate < dataAnterior) return false;
+    if (dDate > dataHoje) return false;
+    return true;
+  });
+
+  c.itens.forEach(x => {
+    const divAbs = Math.abs(x.diverg??0);
+    if (divAbs<=0.001) { grupos.ok.push(x); return; }
+    const despItem = despsPeriodo.filter(d=>d.itemId===x.id);
+    const qtdDesp  = despItem.reduce((s,d)=>s+(parseFloat(d.qty)||0),0);
+    const sobra    = parseFloat((divAbs-qtdDesp).toFixed(3));
+    const pctDiv   = x.digital>0 ? divAbs/x.digital : 0;
+    x._despQty=qtdDesp; x._sobra=sobra; x._pctDiv=pctDiv; x._despDocs=despItem;
+    if (!x.debitoAuto)                         grupos.manual.push(x);
+    else if (qtdDesp>0 && sobra<=0.001)        grupos.explicado.push(x);
+    else if (qtdDesp>0 && sobra>0.001)         grupos.parcial.push(x);
+    else if (pctDiv<=tol)                      grupos.varNormal.push(x);
+    else                                        grupos.anomalia.push(x);
+  });
+  _estCpGrupos = grupos;
+
+  const _secao = (icon, cor, titulo, lista) => {
+    if (!lista.length) return '';
+    return `
+      <div style="border:1.5px solid ${cor}33;border-radius:var(--r10);overflow:hidden;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:${cor}11">
+          <div style="display:flex;align-items:center;gap:7px;font-size:var(--text-sm);font-weight:700;color:${cor}">
+            ${lc(icon,14,cor)} ${titulo}
+          </div>
+          <span style="background:${cor};color:#fff;border-radius:20px;padding:1px 9px;font-size:var(--text-xs);font-weight:800">${lista.length}</span>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          ${lista.map((x,i) => {
+            const d = x.diverg>0?`+${fmt(x.diverg)}`:fmt(x.diverg);
+            const pctStr = x._pctDiv ? ` (${Math.round(x._pctDiv*100)}%)` : '';
+            const badgePct = x.debitoAuto && x._pctDiv > tol
+              ? `<span style="padding:2px 7px;border-radius:8px;background:var(--red-light);color:var(--red);font-size:var(--text-2xs);font-weight:800">${Math.round(x._pctDiv*100)}% fora</span>`
+              : '';
+            return `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
+                border-top:${i>0?'1px solid var(--border)':'none'};gap:8px;flex-wrap:wrap">
+                <div style="min-width:0">
+                  <div style="font-size:var(--text-sm);font-weight:600;display:flex;align-items:center;gap:6px">
+                    ${x.name} ${badgePct}
+                  </div>
+                  <div style="font-size:var(--text-xs);color:var(--muted)">
+                    CW: ${fmt(x.digital)} → Físico: ${fmt(x.fisico)} ${x.unit}
+                    ${x._despQty>0?`· ${lc('trash-2',9,'currentColor')} Desp: ${fmt(x._despQty)} ${x.unit}`:''}
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                  <span style="font-family:monospace;font-weight:800;font-size:var(--text-sm);color:${x.diverg<0?'var(--red)':'var(--green)'}">${d} ${x.unit}</span>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  };
+
+  const totalAnom = grupos.anomalia.length + grupos.parcial.length;
+  const totalCW   = grupos.manual.length;
+
+  el.innerHTML = `
+    <div style="padding:20px 24px 80px">
+      <!-- Chips de resumo -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        ${grupos.ok.length       ? `<span style="padding:4px 12px;border-radius:20px;background:var(--green-light);border:1px solid var(--green);font-size:var(--text-xs);font-weight:700;color:var(--green)">${lc('check-circle',11,'currentColor')} OK: ${grupos.ok.length}</span>` : ''}
+        ${grupos.varNormal.length ? `<span style="padding:4px 12px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);font-size:var(--text-xs);font-weight:700;color:var(--muted)">${lc('minus-circle',11,'currentColor')} Variação normal: ${grupos.varNormal.length}</span>` : ''}
+        ${grupos.explicado.length ? `<span style="padding:4px 12px;border-radius:20px;background:var(--green-light);border:1px solid var(--green);font-size:var(--text-xs);font-weight:700;color:var(--green)">${lc('clipboard',11,'currentColor')} Explicado: ${grupos.explicado.length}</span>` : ''}
+        ${grupos.manual.length    ? `<span style="padding:4px 12px;border-radius:20px;background:var(--yellow-light);border:1px solid var(--yellow);font-size:var(--text-xs);font-weight:700;color:var(--orange-dark)">${lc('refresh-cw',11,'currentColor')} Atualizar CW: ${grupos.manual.length}</span>` : ''}
+        ${grupos.anomalia.length  ? `<span style="padding:4px 12px;border-radius:20px;background:var(--red-light);border:1px solid var(--red);font-size:var(--text-xs);font-weight:700;color:var(--red)">${lc('alert-circle',11,'currentColor')} Anomalia: ${grupos.anomalia.length}</span>` : ''}
+        ${grupos.parcial.length   ? `<span style="padding:4px 12px;border-radius:20px;background:var(--yellow-light);border:1px solid var(--yellow);font-size:var(--text-xs);font-weight:700;color:var(--orange-dark)">${lc('alert-triangle',11,'currentColor')} Parcial: ${grupos.parcial.length}</span>` : ''}
+      </div>
+
+      ${totalAnom>0 ? `<div style="background:var(--red-light);border:1.5px solid var(--red);border-radius:var(--r10);padding:10px 14px;margin-bottom:12px;font-size:var(--text-xs);color:var(--red)">
+        ${lc('alert-circle',12,'currentColor')} <strong>${totalAnom} item(ns) com anomalia</strong> — divergência acima de ${Math.round(tol*100)}% sem explicação. Verifique possível perda não registrada.
+      </div>` : ''}
+
+      ${_secao('alert-circle','var(--red)','Anomalia — Investigar',grupos.anomalia)}
+      ${_secao('alert-triangle','var(--orange-dark)','Parcialmente Explicado',grupos.parcial)}
+      ${_secao('refresh-cw','var(--yellow)','Atualizar no Cardápio Web',grupos.manual)}
+      ${_secao('clipboard','var(--green)','Explicado por Desperdício',grupos.explicado)}
+      ${_secao('minus-circle','var(--muted)','Variação Normal',grupos.varNormal)}
+      ${grupos.ok.length ? `<div style="text-align:center;font-size:var(--text-xs);color:var(--muted);padding:8px">${lc('check-circle',12,'var(--green)')} ${grupos.ok.length} item(ns) sem divergência</div>` : ''}
+    </div>
+
+    <!-- Rodapé fixo -->
+    <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 20px;background:var(--surface);
+      border-top:2px solid var(--border);z-index:500;display:flex;gap:8px;align-items:center">
+      <button onclick="_enviarResumoWA('${c.id}')"
+        style="padding:10px 14px;background:#25D366;color:#fff;border:none;border-radius:var(--r8);
+        font-size:var(--text-xs);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
+        ${lc('message-circle',13,'#fff')} WA
+      </button>
+      ${totalCW+totalAnom>0 ? `
+      <button onclick="_estCpFlowEtapa='atualizarcw';_renderEstoqueFlowLayout()"
+        style="flex:1;padding:12px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
+        font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+        ${lc('arrow-right',14,'#fff')} Avançar → Atualizar CW
+      </button>` : `
+      <button onclick="_concluirFlowEstoque()"
+        style="flex:1;padding:12px;background:var(--green);color:#fff;border:none;border-radius:var(--r8);
+        font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+        ${lc('check-circle',14,'#fff')} Concluir contagem
+      </button>`}
+    </div>`;
+}
+
+// ── Etapa 4: Atualizar CW ──────────────────────────────────────
+function _renderEstCpAtualizarCW() {
+  const el = document.getElementById('estFlowContent');
+  if (!el) return;
+
+  const c = _estCpContagem;
+  if (!c) { _estCpFlowEtapa='divergencias'; _renderCpEstoque(); return; }
+
+  const grupos  = _estCpGrupos || {};
+  const itensParaCW = [
+    ...(grupos.anomalia||[]),
+    ...(grupos.parcial||[]),
+    ...(grupos.manual||[]),
+  ];
+
+  if (!itensParaCW.length) { _concluirFlowEstoque(); return; }
+
+  const feitos = new Set(Object.keys(c.cwSubido||{}).filter(k => c.cwSubido[k]).map(Number));
+  const totalFt = feitos.size;
+  const pct = itensParaCW.length > 0 ? Math.round(totalFt/itensParaCW.length*100) : 100;
+
+  el.innerHTML = `
+    <div style="padding:20px 24px 80px">
+      <!-- Info -->
+      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px">
+          ${lc('refresh-cw',14,'var(--purple)')} Como atualizar no Cardápio Web
+        </div>
+        <ol style="margin:0;padding-left:18px;font-size:var(--text-xs);color:var(--text2);line-height:2">
+          <li>Acesse o Cardápio Web → Gestão de Estoque → Ajuste manual</li>
+          <li>Localize cada insumo abaixo e insira a quantidade física contada</li>
+          <li>Marque "Atualizei no CW" para cada item que você já sincronizou</li>
+        </ol>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:6px;background:var(--border);border-radius:3px">
+            <div id="estCwProgBar" style="height:100%;width:${pct}%;background:var(--green);border-radius:3px;transition:width .3s"></div>
+          </div>
+          <span id="estCwProgTxt" style="font-size:var(--text-xs);font-weight:700;color:var(--green);white-space:nowrap">${totalFt}/${itensParaCW.length} atualizados</span>
+        </div>
+      </div>
+
+      <!-- Lista de itens -->
+      ${itensParaCW.map((x, idx) => {
+        const feito = feitos.has(x.id);
+        const isAnom = (grupos.anomalia||[]).includes(x) || (grupos.parcial||[]).includes(x);
+        const pctStr = x._pctDiv ? `${Math.round(x._pctDiv*100)}%` : '';
+        return `
+          <div id="cwRow_${x.id}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;margin-bottom:8px;
+            background:${feito?'var(--green-light)':'var(--surface)'};
+            border:1.5px solid ${feito?'var(--green)':isAnom?'var(--red)':'var(--border)'};
+            border-radius:var(--r10);transition:all .2s">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--text-sm);font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                ${x.name}
+                ${isAnom && pctStr ? `<span style="padding:1px 6px;border-radius:8px;background:var(--red-light);color:var(--red);font-size:var(--text-2xs);font-weight:800">${pctStr} fora</span>` : ''}
+              </div>
+              <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">
+                CW atual: <strong>${fmt(x.digital)} ${x.unit}</strong>
+                → Físico: <strong style="color:${x.diverg<0?'var(--red)':'var(--green)'}">${fmt(x.fisico)} ${x.unit}</strong>
+                <span style="color:${x.diverg<0?'var(--red)':'var(--green)'};">(${x.diverg>0?'+':''}${fmt(x.diverg)})</span>
+              </div>
+            </div>
+            ${feito
+              ? `<div style="display:flex;align-items:center;gap:5px;color:var(--green);font-size:var(--text-xs);font-weight:700">${lc('check-circle',14,'currentColor')} Feito</div>`
+              : `<button onclick="_marcarCwFeito('${c.id}',${x.id})"
+                  style="padding:6px 12px;border:1.5px solid var(--purple);border-radius:var(--r8);
+                  background:var(--purple-xlight);color:var(--purple);font-size:var(--text-xs);font-weight:700;
+                  cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">
+                  ${lc('check',11,'currentColor')} Atualizei no CW
+                </button>`
+            }
+          </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Rodapé -->
+    <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 20px;background:var(--surface);
+      border-top:2px solid var(--border);z-index:500;display:flex;gap:8px;align-items:center">
+      <button onclick="_imprimirGuiaCW('${c.id}')"
+        style="padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r8);
+        background:transparent;color:var(--text2);font-size:var(--text-xs);font-weight:600;cursor:pointer;
+        display:flex;align-items:center;gap:5px;font-family:Inter,sans-serif">
+        ${lc('printer',13,'currentColor')} Imprimir guia
+      </button>
+      <button onclick="_concluirFlowEstoque()"
+        style="flex:1;padding:12px;background:var(--green);color:#fff;border:none;border-radius:var(--r8);
+        font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+        ${lc('check-circle',14,'#fff')} Concluir contagem
+      </button>
+    </div>`;
+}
+
+function _marcarCwFeito(contagemId, itemId) {
+  const hist = _getHistContagens();
+  const c    = hist.find(x => x.id === contagemId);
+  if (!c) return;
+  if (!c.cwSubido) c.cwSubido = {};
+  c.cwSubido[itemId] = true;
+  _saveHistContagens(hist);
+  if (_estCpContagem && _estCpContagem.id === contagemId) {
+    _estCpContagem.cwSubido = c.cwSubido;
+  }
+  // Atualiza apenas o row visualmente
+  const row = document.getElementById(`cwRow_${itemId}`);
+  if (row) {
+    row.style.background   = 'var(--green-light)';
+    row.style.borderColor  = 'var(--green)';
+    const btn = row.querySelector('button');
+    if (btn) btn.outerHTML = `<div style="display:flex;align-items:center;gap:5px;color:var(--green);font-size:var(--text-xs);font-weight:700">${lc('check-circle',14,'currentColor')} Feito</div>`;
+  }
+  const feitos = Object.keys(c.cwSubido||{}).filter(k=>c.cwSubido[k]).length;
+  const total  = document.querySelectorAll('[id^="cwRow_"]').length;
+  const pct    = total>0?Math.round(feitos/total*100):100;
+  const bar    = document.getElementById('estCwProgBar');
+  const txt    = document.getElementById('estCwProgTxt');
+  if (bar) bar.style.width = `${pct}%`;
+  if (txt) txt.textContent = `${feitos}/${total} atualizados`;
+}
+
+// ── Concluir flow ──────────────────────────────────────────────
+function _concluirFlowEstoque() {
+  _estCpFlowEtapa = null;
+  _estCpContagem  = null;
+  _estCpGrupos    = null;
+  _renderCpEstoque();
+  toast(`Contagem concluída!`, 'ok');
+}
+
+function _voltarEstoqueMain() {
+  if (_estCpFlowEtapa) {
+    vtpConfirm({
+      title: 'Sair da contagem',
+      message: 'A contagem em andamento ficará salva no histórico.',
+      confirmLabel: 'Sair',
+      onConfirm: () => { _estCpFlowEtapa=null; _estCpContagem=null; _estCpGrupos=null; _renderCpEstoque(); }
+    });
+  } else {
+    _cpSection='listas'; _estCpFlowEtapa=null;
+    if (typeof renderComprasLayout === 'function') renderComprasLayout();
+  }
+}
