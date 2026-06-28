@@ -1455,7 +1455,7 @@ function confirmImport() {
       unidCompra:     '',
       qtdEmb:         0,
       brands:         ['', '', ''],
-      isProd:         false,
+      isProd:         (d.cat||'').toUpperCase().includes('PREPARA'),
       debitoAuto:     d.debitoAuto || false,
     };
     items.push(novoItem);
