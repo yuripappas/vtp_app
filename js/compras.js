@@ -103,29 +103,26 @@ function _voltarParaListaCompras() {
 function _renderFlowLayout(lista) {
   const el = document.getElementById('cpSectionContent');
   if (!el) return;
-  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-  const podeExcluir = u && ['gerente', 'supervisor'].includes(u.role);
+  const tp = TIPOS_LISTA[lista.tipo || 'insumos'] || TIPOS_LISTA.insumos;
   el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 20px;
       background:var(--surface);border-bottom:1px solid var(--border)">
       <button onclick="_voltarParaListaCompras()"
-        style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r8);
+        style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:var(--r8);
         border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);
-        font-size:var(--text-sm);font-weight:600;cursor:pointer;font-family:Inter,sans-serif">
-        ${lc('arrow-left', 14, 'currentColor')} Voltar
+        font-size:var(--text-xs);font-weight:600;cursor:pointer;font-family:Inter,sans-serif;flex-shrink:0">
+        ${lc('arrow-left', 13, 'currentColor')} Voltar
       </button>
-      <span style="font-size:var(--text-sm);color:var(--muted)">Lista de Compras</span>
-      <span style="color:var(--muted)">/</span>
-      <span style="font-size:var(--text-sm);font-weight:700">${lista.codigo}</span>
-      ${podeExcluir ? `
-        <button onclick="_abrirModalDeletarLista(${lista.id})"
-          style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 11px;
-          border-radius:var(--r8);border:1.5px solid var(--red);background:var(--red-light);
-          color:var(--red);font-size:var(--text-xs);font-weight:700;cursor:pointer;font-family:Inter,sans-serif">
-          ${lc('trash-2', 13, 'currentColor')} Excluir lista
-        </button>` : ''}
+      <span style="font-size:var(--text-xs);color:var(--muted);flex-shrink:0">Lista de Compras</span>
+      <span style="color:var(--muted);flex-shrink:0">/</span>
+      <span style="font-size:var(--text-xs);font-weight:700;flex-shrink:0">${lista.codigo}</span>
+      <span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:10px;
+        font-size:var(--text-2xs);font-weight:700;background:${tp.bg};color:${tp.color};
+        border:1px solid ${tp.color};flex-shrink:0">
+        ${lc(tp.icon, 9, 'currentColor')} ${tp.label}
+      </span>
     </div>
-    <div id="comprasDash" style="background:var(--surface);border-bottom:2px solid var(--border);padding:16px 24px"></div>
+    <div id="comprasDash" style="background:var(--surface);border-bottom:2px solid var(--border);padding:14px 20px"></div>
     <div id="comprasContent" style="padding:24px"></div>`;
 
   _listaAtual = lista;
@@ -529,23 +526,7 @@ function _abrirAuditoriaLista(listaId) {
 }
 
 function _renderComprasTabs() {
-  const el = document.getElementById('comprasTabs');
-  if (!el) return;
-  const tabs = [
-    { id: 'lista',     label: 'Lista Ativa', icon: 'clipboard-list' },
-    { id: 'historico', label: 'Histórico',   icon: 'clock'          },
-  ];
-  el.innerHTML = tabs.map(t => {
-    const active = _comprasTab === t.id;
-    return `<button onclick="setComprasTab('${t.id}')"
-      style="display:flex;align-items:center;gap:6px;padding:8px 16px;border:none;
-      border-bottom:2.5px solid ${active ? 'var(--purple)' : 'transparent'};
-      background:none;color:${active ? 'var(--purple)' : 'var(--muted)'};
-      font-size:var(--text-sm);font-weight:${active ? '700' : '500'};cursor:pointer;
-      font-family:Inter,sans-serif;transition:all .15s">
-      ${lc(t.icon, 13, 'currentColor')} ${t.label}
-    </button>`;
-  }).join('');
+  // tabs removidas — Histórico foi descontinuado
 }
 
 function _renderSemLista() {
@@ -710,82 +691,96 @@ function _renderDashCompras() {
   // Todas as listas em andamento (não concluídas), mais recentes primeiro
   const ativas = listas.filter(l => l.status !== 'concluida').sort((a,b) => b.id - a.id);
 
+  const u2 = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  const podeExcluir = u2 && la && ['gerente', 'supervisor'].includes(u2.role);
+
   el.innerHTML = `
-    <!-- Linha principal: info da lista + botão Nova Lista -->
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-      <div style="flex:1;min-width:180px">
+    <!-- Linha principal: identidade + KPIs inline + ações -->
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:${ativas.length > 1 ? '10px' : '0'}">
+      <div style="flex:1;min-width:160px">
         ${la ? `
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-            <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted)">Lista em edição</div>
-            ${(()=>{ const tp=TIPOS_LISTA[la.tipo||'insumos']||TIPOS_LISTA.insumos; return `<span style="display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:10px;font-size:var(--text-2xs);font-weight:700;background:${tp.bg};color:${tp.color};border:1px solid ${tp.color}">${lc(tp.icon,9,'currentColor')} ${tp.label}</span>`; })()}
-          </div>
-          <div style="font-size:var(--text-md);font-weight:800;color:var(--text)">${la.codigo}</div>
-          <div style="font-size:var(--text-xs);color:var(--muted)">Criada em ${fmtD(la.dataCriacao)} por ${la.criadoPor}</div>
+          <div style="font-size:var(--text-md);font-weight:800;color:var(--text);line-height:1.2">${la.codigo}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Criada ${fmtD(la.dataCriacao)} por ${la.criadoPor}</div>
         ` : `<div style="font-size:var(--text-md);font-weight:700">Compras</div><div style="font-size:var(--text-xs);color:var(--muted)">Nenhuma lista ativa</div>`}
       </div>
-      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
         ${la ? `
-          <div style="text-align:center;padding:5px 12px;background:var(--surface2);border-radius:var(--r8);border:1px solid var(--border)">
-            <div style="font-size:var(--text-md);font-weight:800;color:var(--purple)">${la.itens.length}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Itens</div>
+          <!-- KPIs inline compactos -->
+          <div style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r8);background:var(--surface2);border:1px solid var(--border)">
+            <span style="font-size:var(--text-sm);font-weight:800;color:var(--purple)">${la.itens.length}</span>
+            <span style="font-size:var(--text-2xs);color:var(--muted)">itens</span>
           </div>
-          <div style="text-align:center;padding:5px 12px;background:var(--surface2);border-radius:var(--r8);border:1px solid var(--border)">
-            <div style="font-size:var(--text-sm);font-weight:800;color:var(--purple)">R$${fmt(la.valorEstimado)}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Estimado</div>
+          <div style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r8);background:var(--surface2);border:1px solid var(--border)">
+            <span style="font-size:var(--text-xs);font-weight:800;color:var(--purple);font-family:monospace">R$${fmt(la.valorEstimado||0)}</span>
+            <span style="font-size:var(--text-2xs);color:var(--muted)">est.</span>
           </div>
-          <div style="text-align:center;padding:5px 12px;background:${st.bg||'var(--surface2)'};border-radius:var(--r8);border:1px solid ${st.color||'var(--border)'}">
-            <div style="font-size:var(--text-xs);font-weight:700;color:${st.color||'var(--muted)'}">${st.label||la.status}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Status</div>
+          <!-- Status como pill com dot colorido -->
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:var(--r8);
+            background:var(--surface2);border:1px solid var(--border)">
+            <span style="width:7px;height:7px;border-radius:50%;background:${st.color||'var(--muted)'};flex-shrink:0;display:inline-block"></span>
+            <span style="font-size:var(--text-xs);font-weight:700;color:${st.color||'var(--muted)'}">${st.label||la.status}</span>
           </div>
-          <button class="btn btn-red btn-xs" onclick="encerrarListaManual()">${lc('x',12)} Encerrar</button>
+          <!-- Divisor + ações -->
+          <div style="width:1px;height:28px;background:var(--border);flex-shrink:0"></div>
+          <button onclick="encerrarListaManual()"
+            style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:var(--r8);
+            border:1.5px solid var(--red);background:transparent;color:var(--red);
+            font-size:var(--text-xs);font-weight:700;cursor:pointer;font-family:Inter,sans-serif">
+            ${lc('x',11,'currentColor')} Encerrar
+          </button>
         ` : ''}
-        <!-- Botão Nova Lista — sempre visível -->
         <button onclick="_abrirModalCriarLista()"
-          style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;
-          border-radius:var(--r8);border:1.5px solid var(--purple);background:var(--purple);
-          color:#fff;font-size:var(--text-sm);font-weight:700;cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">
-          ${lc('plus',13,'#fff')} Nova lista
+          style="display:inline-flex;align-items:center;gap:5px;padding:6px 13px;
+          border-radius:var(--r8);border:none;background:var(--purple);
+          color:#fff;font-size:var(--text-xs);font-weight:700;cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">
+          ${lc('plus',12,'#fff')} Nova lista
         </button>
+        ${podeExcluir ? `
+        <button onclick="_abrirModalDeletarLista(${la.id})"
+          title="Excluir lista"
+          style="width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;
+          border-radius:var(--r8);border:1.5px solid var(--border);background:transparent;
+          color:var(--muted);cursor:pointer;font-family:Inter,sans-serif;flex-shrink:0;transition:all .15s"
+          onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)';this.style.background='var(--red-light)'"
+          onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)';this.style.background='transparent'">
+          ${lc('trash-2',13,'currentColor')}
+        </button>` : ''}
       </div>
     </div>
 
-    <!-- Seletor de listas em andamento (só aparece quando há mais de 1) -->
+    <!-- Seletor de listas em andamento (só quando >1) -->
     ${ativas.length > 1 ? `
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-      <span style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);white-space:nowrap;flex-shrink:0">
-        ${lc('layers',10,'var(--muted)')} ${ativas.length} listas:
-      </span>
+      <span style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);white-space:nowrap;flex-shrink:0">Listas abertas:</span>
       ${ativas.map(l => {
         const isCur = la && l.id === la.id;
         const s = STATUS_ETAPA[l.status] || {};
-        const tp = TIPOS_LISTA[l.tipo||'insumos'] || TIPOS_LISTA.insumos;
         return `<button onclick="_trocarLista(${l.id})"
-          style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+          style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
           border-radius:20px;border:1.5px solid ${isCur?'var(--purple)':'var(--border)'};
           background:${isCur?'var(--purple-xlight)':'var(--surface)'};
           color:${isCur?'var(--purple)':'var(--text2)'};font-size:var(--text-xs);font-weight:${isCur?'700':'500'};
           cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">
-          ${lc(tp.icon,10,'currentColor')}
           <span style="font-weight:700">${l.codigo}</span>
-          <span style="padding:1px 5px;border-radius:8px;background:${s.bg||'var(--surface2)'};color:${s.color||'var(--muted)'};font-size:var(--text-2xs);font-weight:700">${s.label||l.status}</span>
+          <span style="padding:1px 6px;border-radius:8px;background:${s.bg||'var(--surface2)'};color:${s.color||'var(--muted)'};font-size:var(--text-2xs);font-weight:700">${s.label||l.status}</span>
         </button>`;
       }).join('')}
     </div>` : ''}
 
-    <div id="comprasTabs" style="display:flex;border-bottom:1px solid var(--border);margin:-16px -24px 0;padding:0 24px;gap:4px"></div>
+    <!-- Stepper de etapas -->
     ${la ? `
-    <div style="margin-top:14px;display:flex;gap:2px;align-items:stretch">
+    <div style="display:flex;gap:0;margin:${ativas.length > 1 ? '0' : '10px'} -20px 0;border-top:1px solid var(--border)">
       ${[{n:1,label:'Lista',icon:'list'},{n:2,label:'Pré-Aprov.',icon:'user-check'},{n:3,label:'Cotação',icon:'tag'},{n:4,label:'Aprovação',icon:'check-circle'},{n:5,label:'OC',icon:'shopping-bag'},{n:6,label:'Recebimento',icon:'package'}].map((s,idx,arr) => {
         const done = la.etapa > s.n, cur = la.etapa === s.n;
-        const barColor  = done ? 'var(--green)' : cur ? 'var(--purple)' : 'var(--border)';
+        const barColor  = done ? 'var(--green)' : cur ? 'var(--purple)' : 'transparent';
         const txtColor  = done ? 'var(--green)' : cur ? 'var(--purple)' : 'var(--muted)';
         const iconName  = done ? 'check' : s.icon;
         const iconColor = done ? 'var(--green)' : cur ? 'var(--purple)' : 'var(--muted)';
-        const isLast    = idx === arr.length - 1;
-        return `<div style="flex:1;text-align:center;cursor:${done||cur?'pointer':'default'};position:relative" ${done||cur?`onclick="_renderEtapa(${s.n})"`:''}>
-          <div style="height:4px;border-radius:${idx===0?'3px 0 0 3px':isLast?'0 3px 3px 0':'0'};background:${barColor};margin-bottom:6px;transition:background .2s"></div>
-          <div style="font-size:var(--text-2xs);font-weight:${done||cur?'700':'500'};color:${txtColor};display:flex;align-items:center;justify-content:center;gap:2px;line-height:1.3">
-            ${lc(iconName, done?10:10, iconColor)} ${s.label}
+        return `<div style="flex:1;text-align:center;cursor:${done||cur?'pointer':'default'};padding:8px 2px 6px;
+          border-top:3px solid ${barColor};transition:border-color .2s" ${done||cur?`onclick="_renderEtapa(${s.n})"`:''}>
+          <div style="font-size:var(--text-2xs);font-weight:${done||cur?'700':'500'};color:${txtColor};
+            display:flex;align-items:center;justify-content:center;gap:2px;line-height:1.3">
+            ${lc(iconName, 10, iconColor)} ${s.label}
           </div>
         </div>`;
       }).join('')}
