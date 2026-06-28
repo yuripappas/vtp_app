@@ -2350,10 +2350,11 @@ function salvarMovManual() {
 // ══════════════════════════════════════════════════════════════
 // ESTOQUE COMO FILHO DE COMPRAS — nova navegação integrada
 // ══════════════════════════════════════════════════════════════
-let _estCpAba      = 'contagens'; // 'contagens' | 'atual'
-let _estCpFlowEtapa = null;       // null | 'categorias' | 'contagem' | 'divergencias' | 'atualizarcw'
-let _estCpContagem  = null;       // contagem concluída aguardando CW step
-let _estCpGrupos    = null;       // grupos de divergência da contagem atual
+let _estCpAba        = 'contagens'; // 'contagens' | 'atual'
+let _estCpFlowEtapa  = null;       // null | 'categorias' | 'contagem' | 'divergencias' | 'atualizarcw'
+let _estCpContagem   = null;       // contagem concluída aguardando CW step
+let _estCpGrupos     = null;       // grupos de divergência da contagem atual
+let _estCpRevisao    = false;      // true = visualizando contagem já concluída
 
 function _renderCpEstoque() {
   if (_estCpFlowEtapa) {
@@ -2482,7 +2483,7 @@ function _htmlListaContagens(hist, tol) {
     const statusBg    = anom.length ? 'var(--red-light)' : divs.length ? 'var(--yellow-light)' : 'var(--green-light)';
     const statusLabel = anom.length ? `${anom.length} anomalia(s)` : divs.length ? `${divs.length} divergência(s)` : 'OK';
     return `
-      <div onclick="_abrirDetalheContagemModal('${c.id}')"
+      <div onclick="_abrirContagemNoFlow('${c.id}')"
         style="display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:8px;
         background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);
         cursor:pointer;transition:all .15s"
@@ -2635,6 +2636,7 @@ function _iniciarFlowContagem() {
   _categoriasContando = [];
   _contagem           = {};
   _contagemAtiva      = false;
+  _estCpRevisao       = false;
   _estCpFlowEtapa = 'categorias';
   _renderCpEstoque();
 }
@@ -2651,7 +2653,7 @@ function _renderEstoqueFlowLayout() {
     { id: 'atualizarcw', label: 'Atualizar CW',  icon: 'refresh-cw'   },
   ];
 
-  const etapaIdx = ETAPAS.findIndex(e => e.id === _estCpFlowEtapa);
+  const etapaIdx   = ETAPAS.findIndex(e => e.id === _estCpFlowEtapa);
   const contagemId = _estCpContagem?.id || '';
 
   el.innerHTML = `
@@ -2667,20 +2669,21 @@ function _renderEstoqueFlowLayout() {
       <span style="font-size:var(--text-xs);color:var(--muted);flex-shrink:0">Estoque</span>
       <span style="color:var(--muted);flex-shrink:0">/</span>
       <span style="font-size:var(--text-xs);font-weight:700;flex-shrink:0">${contagemId || 'Nova contagem'}</span>
+      ${_estCpRevisao ? `<span style="margin-left:4px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);font-size:var(--text-2xs);font-weight:700;color:var(--muted)">revisão</span>` : ''}
     </div>
 
     <!-- Stepper -->
     <div style="display:flex;background:var(--surface);border-bottom:2px solid var(--border)">
       ${ETAPAS.map((e, idx) => {
-        const done = idx < etapaIdx;
-        const cur  = idx === etapaIdx;
-        const barColor = done ? 'var(--green)' : cur ? 'var(--purple)' : 'transparent';
-        const txtColor = done ? 'var(--green)' : cur ? 'var(--purple)' : 'var(--muted)';
-        const iconName = done ? 'check' : e.icon;
-        const canClick = done;
-        return `<div style="flex:1;text-align:center;cursor:${canClick?'pointer':'default'};padding:8px 2px 7px;
+        // Em revisão todas as etapas são clicáveis; em flow normal só as já feitas
+        const done     = _estCpRevisao ? true : idx < etapaIdx;
+        const cur      = idx === etapaIdx;
+        const barColor = cur ? 'var(--purple)' : done ? 'var(--green)' : 'transparent';
+        const txtColor = cur ? 'var(--purple)' : done ? 'var(--green)' : 'var(--muted)';
+        const iconName = cur ? e.icon : done ? 'check' : e.icon;
+        return `<div style="flex:1;text-align:center;cursor:pointer;padding:8px 2px 7px;
           border-top:3px solid ${barColor};transition:border-color .2s"
-          ${canClick ? `onclick="_estCpFlowEtapa='${e.id}';_renderCpEstoque()"` : ''}>
+          onclick="_estCpFlowEtapa='${e.id}';_renderEstoqueFlowLayout()">
           <div style="font-size:var(--text-2xs);font-weight:${done||cur?'700':'500'};color:${txtColor};
             display:flex;align-items:center;justify-content:center;gap:2px;line-height:1.3">
             ${lc(iconName,10,txtColor)} ${e.label}
@@ -2708,6 +2711,38 @@ function _renderEstoqueEtapa() {
 function _renderEstCpCategorias() {
   const el = document.getElementById('estFlowContent');
   if (!el) return;
+
+  // Modo revisão: mostra quais categorias foram contadas (read-only)
+  if (_estCpRevisao && _estCpContagem) {
+    const cats = _estCpContagem.categorias || [];
+    const allItems = typeof items !== 'undefined' ? items : [];
+    el.innerHTML = `
+      <div style="padding:20px 24px">
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:14px">
+          Categorias incluídas nesta contagem
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
+          ${cats.map(cat => {
+            const count = allItems.filter(i => (i.cat||'Outros') === cat).length;
+            return `
+              <div style="display:flex;flex-direction:column;align-items:center;padding:16px 10px;
+                border-radius:var(--r12);border:2px solid var(--green);background:var(--green-light);gap:8px">
+                <div style="width:44px;height:44px;border-radius:50%;background:var(--green);
+                  display:flex;align-items:center;justify-content:center">
+                  ${lc(_estIconCat(cat),20,'#fff')}
+                </div>
+                <div style="font-size:var(--text-xs);font-weight:700;color:var(--green)">${cat}</div>
+                <div style="font-size:var(--text-2xs);color:var(--muted)">${count} itens</div>
+                <span style="font-size:var(--text-2xs);color:var(--green);font-weight:700">${lc('check',10,'currentColor')} contada</span>
+              </div>`;
+          }).join('')}
+        </div>
+        <div style="margin-top:16px;padding:12px 16px;background:var(--surface2);border-radius:var(--r10);font-size:var(--text-xs);color:var(--muted)">
+          ${lc('info',11,'currentColor')} Para iniciar uma nova contagem, volte à tela de Estoque e clique em "Nova contagem".
+        </div>
+      </div>`;
+    return;
+  }
 
   const allItems = typeof items !== 'undefined' ? items : [];
   const allCats  = [...new Set(allItems.map(i => i.cat||'Outros'))].filter(Boolean).sort();
@@ -2818,6 +2853,39 @@ function _renderEstCpCategorias() {
 function _renderEstCpContagem() {
   const el = document.getElementById('estFlowContent');
   if (!el) return;
+
+  // Modo revisão: exibe os valores contados (read-only)
+  if (_estCpRevisao && _estCpContagem) {
+    const cats = _estCpContagem.categorias || [];
+    let html = `<div style="padding-bottom:20px">`;
+    cats.forEach(cat => {
+      const catItens = (_estCpContagem.itens||[]).filter(x => (x.cat||'Outros') === cat);
+      if (!catItens.length) return;
+      html += `<div style="padding:8px 24px 4px;background:var(--purple-xlight);border-bottom:1px solid var(--border)">
+        <div style="font-size:var(--text-xs);font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--purple);display:flex;align-items:center;gap:5px">
+          ${lc(_estIconCat(cat),11,'currentColor')} ${cat}
+        </div>
+      </div>`;
+      catItens.forEach((x, idx) => {
+        const divColor = x.diverg < 0 ? 'var(--red)' : x.diverg > 0 ? 'var(--green)' : 'var(--muted)';
+        html += `
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--border);
+            background:${idx%2===0?'var(--surface)':'var(--surface2)'}">
+            <div style="flex:1">
+              <div style="font-size:var(--text-sm);font-weight:600">${x.name}</div>
+              <div style="font-size:var(--text-xs);color:var(--muted)">CW: ${fmt(x.digital)} ${x.unit}</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:var(--text-base);font-weight:800;font-family:monospace;color:var(--purple)">${fmt(x.fisico)} <span style="font-size:var(--text-xs);font-weight:600">${x.unit}</span></div>
+              ${x.diverg !== null ? `<div style="font-size:var(--text-xs);font-family:monospace;color:${divColor};font-weight:700">${x.diverg>0?'+':''}${fmt(x.diverg)}</div>` : ''}
+            </div>
+          </div>`;
+      });
+    });
+    html += `</div>`;
+    el.innerHTML = html;
+    return;
+  }
 
   const allItems = typeof items !== 'undefined' ? items : [];
   const todosItens = _categoriasContando.flatMap(cat => allItems.filter(i => (i.cat||'Outros') === cat));
@@ -3089,7 +3157,12 @@ function _renderEstCpDivergencias() {
         font-size:var(--text-xs);font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">
         ${lc('message-circle',13,'#fff')} WA
       </button>
-      ${totalCW+totalAnom>0 ? `
+      ${_estCpRevisao ? `
+      <button onclick="_estCpFlowEtapa='atualizarcw';_renderEstoqueFlowLayout()"
+        style="flex:1;padding:12px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
+        font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+        ${lc('arrow-right',14,'#fff')} Ver Atualizar CW
+      </button>` : totalCW+totalAnom>0 ? `
       <button onclick="_estCpFlowEtapa='atualizarcw';_renderEstoqueFlowLayout()"
         style="flex:1;padding:12px;background:var(--purple);color:#fff;border:none;border-radius:var(--r8);
         font-size:var(--text-sm);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
@@ -3227,22 +3300,60 @@ function _concluirFlowEstoque() {
   _estCpFlowEtapa = null;
   _estCpContagem  = null;
   _estCpGrupos    = null;
+  _estCpRevisao   = false;
   _renderCpEstoque();
   toast(`Contagem concluída!`, 'ok');
 }
 
 function _voltarEstoqueMain() {
-  if (_estCpFlowEtapa) {
+  const _doVoltar = () => {
+    _estCpFlowEtapa=null; _estCpContagem=null; _estCpGrupos=null; _estCpRevisao=false;
+    _renderCpEstoque();
+  };
+  if (_estCpFlowEtapa && !_estCpRevisao) {
     vtpConfirm({
       title: 'Sair da contagem',
       message: 'A contagem em andamento ficará salva no histórico.',
       confirmLabel: 'Sair',
-      onConfirm: () => { _estCpFlowEtapa=null; _estCpContagem=null; _estCpGrupos=null; _renderCpEstoque(); }
+      onConfirm: _doVoltar,
     });
   } else {
-    _cpSection='listas'; _estCpFlowEtapa=null;
-    if (typeof renderComprasLayout === 'function') renderComprasLayout();
+    _doVoltar();
   }
+}
+
+function _abrirContagemNoFlow(id) {
+  const hist = _getHistContagens();
+  const c    = hist.find(x => x.id === id);
+  if (!c) return;
+
+  // Reconstrói os grupos de divergência a partir dos dados salvos
+  const cfg = typeof getConfig === 'function' ? getConfig() : {};
+  const tol = parseFloat(cfg.toleranciaDiverg ?? 10) / 100;
+  const despsRaw = typeof desperdicios !== 'undefined' ? desperdicios : [];
+  const grupos   = { ok:[], manual:[], varNormal:[], explicado:[], parcial:[], anomalia:[] };
+
+  (c.itens||[]).forEach(x => {
+    const divAbs = Math.abs(x.diverg ?? 0);
+    if (divAbs <= 0.001) { grupos.ok.push(x); return; }
+    const despItem = despsRaw.filter(d => d.itemId === x.id);
+    const qtdDesp  = despItem.reduce((s,d) => s + (parseFloat(d.qty)||0), 0);
+    const sobra    = parseFloat((divAbs - qtdDesp).toFixed(3));
+    const pctDiv   = x.digital > 0 ? divAbs / x.digital : 0;
+    x._despQty = qtdDesp; x._sobra = sobra; x._pctDiv = pctDiv; x._despDocs = despItem;
+    if (!x.debitoAuto)                    grupos.manual.push(x);
+    else if (qtdDesp > 0 && sobra<=0.001) grupos.explicado.push(x);
+    else if (qtdDesp > 0 && sobra > 0.001) grupos.parcial.push(x);
+    else if (pctDiv <= tol)               grupos.varNormal.push(x);
+    else                                  grupos.anomalia.push(x);
+  });
+
+  _estCpContagem   = c;
+  _estCpGrupos     = grupos;
+  _estCpRevisao    = true;
+  _estCpFlowEtapa  = 'divergencias'; // abre direto na etapa mais útil
+  _categoriasContando = c.categorias || [];
+  _renderEstoqueFlowLayout();
 }
 
 // ── Detalhe de contagem em modal (contexto Compras > Estoque) ──
