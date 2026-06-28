@@ -2482,6 +2482,24 @@ function _htmlListaContagens(hist, tol) {
     const statusColor = anom.length ? 'var(--red)' : divs.length ? 'var(--orange-dark)' : 'var(--green)';
     const statusBg    = anom.length ? 'var(--red-light)' : divs.length ? 'var(--yellow-light)' : 'var(--green-light)';
     const statusLabel = anom.length ? `${anom.length} anomalia(s)` : divs.length ? `${divs.length} divergência(s)` : 'OK';
+
+    // Etapa atual da contagem
+    const cwSubido = c.cwSubido || {};
+    const itensCW  = divs.filter(x => !x.debitoAuto); // manuais precisam subir CW
+    const anomCW   = anom; // anomalias também precisam
+    const totalCW  = itensCW.length + anomCW.length;
+    const feitosCW = [...itensCW, ...anomCW].filter(x => cwSubido[x.id]).length;
+    const cwCompleto = totalCW === 0 || feitosCW >= totalCW;
+
+    let etapaIcon, etapaLabel, etapaBg, etapaColor;
+    if (cwCompleto) {
+      etapaIcon = 'check-circle'; etapaLabel = 'Concluída';
+      etapaBg = 'var(--green-light)'; etapaColor = 'var(--green)';
+    } else {
+      etapaIcon = 'refresh-cw'; etapaLabel = `CW pendente (${feitosCW}/${totalCW})`;
+      etapaBg = 'var(--yellow-light)'; etapaColor = 'var(--orange-dark)';
+    }
+
     return `
       <div onclick="_abrirContagemNoFlow('${c.id}')"
         style="display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:8px;
@@ -2494,10 +2512,14 @@ function _htmlListaContagens(hist, tol) {
           ${lc('clipboard-list',18,'var(--purple)')}
         </div>
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
             <span style="font-size:var(--text-sm);font-weight:800">${c.id}</span>
             <span style="padding:2px 8px;border-radius:10px;font-size:var(--text-2xs);font-weight:700;
               background:${statusBg};color:${statusColor};border:1px solid ${statusColor}">${statusLabel}</span>
+            <span style="padding:2px 8px;border-radius:10px;font-size:var(--text-2xs);font-weight:700;
+              background:${etapaBg};color:${etapaColor};border:1px solid ${etapaColor};display:inline-flex;align-items:center;gap:3px">
+              ${lc(etapaIcon,9,'currentColor')} ${etapaLabel}
+            </span>
           </div>
           <div style="font-size:var(--text-xs);color:var(--muted)">
             ${lc('user',10,'currentColor')} ${c.user||'—'}
