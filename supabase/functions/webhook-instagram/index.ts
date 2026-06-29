@@ -12,9 +12,21 @@ interface IgMessagingEvent {
   message?: { mid?: string; text?: string; is_echo?: boolean };
 }
 
+interface IgChangeValue {
+  message?: { mid?: string; text?: string; is_echo?: boolean };
+  sender?: { id?: string };
+  recipient?: { id?: string };
+}
+
+interface IgChange {
+  field?: string;
+  value?: IgChangeValue;
+}
+
 interface IgEntry {
   id?: string;
   messaging?: IgMessagingEvent[];
+  changes?: IgChange[];
 }
 
 interface IgPayload {
@@ -59,7 +71,14 @@ Deno.serve(async (req) => {
   const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'instagram').maybeSingle();
 
   for (const entry of payload.entry ?? []) {
-    for (const evento of entry.messaging ?? []) {
+    // Formato legado (estilo Messenger): entry[].messaging[]
+    const eventosLegado = entry.messaging ?? [];
+    // Formato novo (Instagram API com Login do Instagram): entry[].changes[].field === 'messages'
+    const eventosNovos = (entry.changes ?? [])
+      .filter((c) => c.field === 'messages')
+      .map((c) => ({ sender: c.value?.sender, message: c.value?.message }));
+
+    for (const evento of [...eventosLegado, ...eventosNovos]) {
       // Ignora eco das nossas próprias mensagens enviadas pela Graph API
       if (evento.message?.is_echo) continue;
       const igsid = evento.sender?.id;
