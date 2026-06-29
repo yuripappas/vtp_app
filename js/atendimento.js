@@ -233,13 +233,9 @@ function _atdRenderChat(conversa) {
         <button id="atdBtnGerarResposta" class="btn btn-ghost" title="Gerar resposta ideal com IA" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdGerarResposta('${conversa.id}')">
           ${lc('zap', 14, 'var(--purple)')}
         </button>
-        <button id="atdBtnToggleCorrecao" class="btn btn-ghost" title="${corrigirAtivo ? 'Correção automática ATIVADA — clique para desativar' : 'Correção automática DESATIVADA — clique para ativar'}"
+        <button id="atdBtnCorrecaoAuto" class="btn btn-ghost" title="${corrigirAtivo ? 'Correção automática ATIVADA — sua mensagem é corrigida ao enviar. Clique para desativar' : 'Correção automática DESATIVADA — clique para ativar'}"
           style="font-size:var(--text-xs);flex-shrink:0;${corrigirAtivo ? 'background:var(--purple);' : ''}" onclick="_atdToggleModoCorrecao('${conversa.id}')">
-          ${lc('sliders', 14, corrigirAtivo ? '#fff' : 'var(--fg-muted)')}
-        </button>
-        <button id="atdBtnCorrigir" class="btn btn-ghost" title="${corrigirAtivo ? 'Corrigir ortografia com IA' : 'Ative o modo de correção primeiro'}" ${corrigirAtivo ? '' : 'disabled'}
-          style="font-size:var(--text-xs);flex-shrink:0;${corrigirAtivo ? '' : 'opacity:.4;cursor:not-allowed'}" onclick="_atdCorrigirMensagem()">
-          ${lc('pencil', 14, corrigirAtivo ? 'var(--purple)' : 'var(--fg-subtle)')}
+          ${lc('pencil', 14, corrigirAtivo ? '#fff' : 'var(--fg-muted)')}
         </button>
         <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
           style="flex:1;resize:none" oninput="_atdCampoOnInput()"
@@ -299,52 +295,11 @@ function _atdToggleModoCorrecao(conversaId) {
   const ativo = !_atdState.corrigirAtivoPorConversa[conversaId];
   _atdState.corrigirAtivoPorConversa[conversaId] = ativo;
 
-  const btnToggle = document.getElementById('atdBtnToggleCorrecao');
-  const btnCorrigir = document.getElementById('atdBtnCorrigir');
-  if (btnToggle) {
-    btnToggle.style.background = ativo ? 'var(--purple)' : '';
-    btnToggle.title = ativo ? 'Correção automática ATIVADA — clique para desativar' : 'Correção automática DESATIVADA — clique para ativar';
-    btnToggle.innerHTML = lc('sliders', 14, ativo ? '#fff' : 'var(--fg-muted)');
-  }
-  if (btnCorrigir) {
-    btnCorrigir.disabled = !ativo;
-    btnCorrigir.style.opacity = ativo ? '' : '.4';
-    btnCorrigir.style.cursor = ativo ? '' : 'not-allowed';
-    btnCorrigir.title = ativo ? 'Corrigir ortografia com IA' : 'Ative o modo de correção primeiro';
-    btnCorrigir.innerHTML = lc('pencil', 14, ativo ? 'var(--purple)' : 'var(--fg-subtle)');
-  }
-}
-
-async function _atdCorrigirMensagem() {
-  const conversaId = _atdState.conversaAtivaId;
-  if (!_atdState.corrigirAtivoPorConversa[conversaId]) return;
-
-  const campo = document.getElementById('atdCampoTexto');
-  const btn = document.getElementById('atdBtnCorrigir');
-  if (!campo || !btn) return;
-  const texto = campo.value.trim();
-  if (!texto) return;
-
-  btn.disabled = true;
-  const iconeOriginal = btn.innerHTML;
-  btn.innerHTML = lc('hourglass', 14, 'var(--purple)');
-
-  try {
-    const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/corrigir-mensagem`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
-      body: JSON.stringify({ texto }),
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'falha ao corrigir');
-    campo.value = json.corrigido;
-    campo.focus();
-  } catch (e) {
-    if (typeof toast === 'function') toast('Não foi possível corrigir a mensagem', 'error');
-    else console.error('[atendimento] corrigir-mensagem:', e);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = iconeOriginal;
+  const btn = document.getElementById('atdBtnCorrecaoAuto');
+  if (btn) {
+    btn.style.background = ativo ? 'var(--purple)' : '';
+    btn.title = ativo ? 'Correção automática ATIVADA — sua mensagem é corrigida ao enviar. Clique para desativar' : 'Correção automática DESATIVADA — clique para ativar';
+    btn.innerHTML = lc('pencil', 14, ativo ? '#fff' : 'var(--fg-muted)');
   }
 }
 
@@ -469,7 +424,7 @@ function _atdAbrirEndereco(addr) {
 
 async function _atdEnviarMensagem(conversaId) {
   const campo = document.getElementById('atdCampoTexto');
-  const texto = campo?.value.trim();
+  let texto = campo?.value.trim();
   if (!texto) return;
 
   const user = getCurrentUser();
@@ -477,6 +432,20 @@ async function _atdEnviarMensagem(conversaId) {
   campo.value = '';
   campo.disabled = true;
   document.getElementById('atdRespostasRapidasDropdown')?.style && (document.getElementById('atdRespostasRapidasDropdown').style.display = 'none');
+
+  if (visibilidade === 'publica' && _atdState.corrigirAtivoPorConversa[conversaId]) {
+    try {
+      const resCorrecao = await fetch(`${VTP_SUPABASE_URL}/functions/v1/corrigir-mensagem`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+        body: JSON.stringify({ texto }),
+      });
+      const jsonCorrecao = await resCorrecao.json();
+      if (resCorrecao.ok && jsonCorrecao.corrigido) texto = jsonCorrecao.corrigido;
+    } catch (e) {
+      console.warn('[atendimento] correção automática falhou, enviando texto original:', e);
+    }
+  }
 
   try {
     const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
