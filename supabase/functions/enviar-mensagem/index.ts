@@ -85,12 +85,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'contato sem instagram_id vinculado' }), { status: 400, headers: CORS_HEADERS });
     }
 
-    const IG_PAGE_TOKEN = Deno.env.get('INSTAGRAM_PAGE_ACCESS_TOKEN');
-    if (!IG_PAGE_TOKEN) {
-      return new Response(JSON.stringify({ error: 'INSTAGRAM_PAGE_ACCESS_TOKEN não configurado' }), { status: 500, headers: CORS_HEADERS });
+    const IG_USER_TOKEN = Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
+    if (!IG_USER_TOKEN) {
+      return new Response(JSON.stringify({ error: 'INSTAGRAM_USER_ACCESS_TOKEN não configurado' }), { status: 500, headers: CORS_HEADERS });
     }
 
-    const igRes = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${IG_PAGE_TOKEN}`, {
+    // Fluxo "Instagram API with Instagram Login" — usa graph.instagram.com,
+    // não graph.facebook.com (esse último é só pro fluxo Page-linked/Facebook Login).
+    const igRes = await fetch(`https://graph.instagram.com/v21.0/me/messages?access_token=${IG_USER_TOKEN}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ recipient: { id: igsid }, message: { text: body.texto } }),
