@@ -32,7 +32,69 @@ const _atdState = {
 
 function renderOmnichannel() {
   document.getElementById('page-omnichannel').innerHTML = `
-    <div class="atd-layout" style="display:flex;height:calc(100vh - 64px);background:var(--bg-elevated);border-radius:var(--r16);overflow:hidden;border:1px solid var(--border)">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="atdTabInbox" class="atd-tab active" onclick="_atdMudarAba('inbox')">
+        ${lc('message-circle', 15, 'currentColor')} Inbox
+      </button>
+      <button id="atdTabIntegracoes" class="atd-tab" onclick="_atdMudarAba('integracoes')">
+        ${lc('link', 15, 'currentColor')} Integrações de Canais
+      </button>
+    </div>
+
+    <div id="atdAbaInbox"></div>
+    <div id="atdAbaIntegracoes" style="display:none"></div>
+
+    <style>
+      .atd-tab {
+        display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:var(--r8); border:1px solid var(--border);
+        background:var(--bg-elevated); color:var(--fg-muted); font-size:var(--text-sm); font-weight:700; cursor:pointer;
+      }
+      .atd-tab.active { background:var(--purple); color:#fff; border-color:var(--purple); }
+
+      .atd-filtro {
+        border:1px solid var(--border); background:var(--bg-elevated); color:var(--fg-muted);
+        font-size:var(--text-xs); font-weight:600; padding:4px 10px; border-radius:999px; cursor:pointer;
+      }
+      .atd-filtro.active { background:var(--purple); color:#fff; border-color:var(--purple); }
+      .conv-item { display:flex; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; }
+      .conv-item:hover { background:var(--bg-hover); }
+      .conv-item.active { background:var(--purple-xlight); border-left:3px solid var(--purple); }
+      .msg-bubble { padding:9px 13px; border-radius:var(--r12); max-width:75%; word-break:break-word; font-size:var(--text-sm); line-height:1.5; }
+      .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
+      .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
+      .msg-bubble.interna { background:var(--warning-bg); border:1px dashed var(--warning-border); align-self:stretch; font-size:var(--text-xs); }
+
+      @media (max-width: 900px) {
+        .atd-panel { display:none !important; }
+      }
+      @media (max-width: 640px) {
+        .atd-layout { flex-direction:column; height:auto; min-height:calc(100vh - 64px); }
+        .atd-sidebar { width:100%; max-height:200px; }
+        .atd-chat { min-height:400px; }
+      }
+    </style>
+  `;
+
+  _atdRenderInbox();
+}
+
+function _atdMudarAba(aba) {
+  const inbox = document.getElementById('atdAbaInbox');
+  const integ = document.getElementById('atdAbaIntegracoes');
+  document.getElementById('atdTabInbox').classList.toggle('active', aba === 'inbox');
+  document.getElementById('atdTabIntegracoes').classList.toggle('active', aba === 'integracoes');
+  inbox.style.display = aba === 'inbox' ? 'block' : 'none';
+  integ.style.display = aba === 'integracoes' ? 'block' : 'none';
+
+  if (aba === 'integracoes' && !integ.dataset.carregado) {
+    integ.dataset.carregado = '1';
+    _atdRenderIntegracoes();
+  }
+}
+
+function _atdRenderInbox() {
+  document.getElementById('atdAbaInbox').innerHTML = `
+    <div class="atd-layout" style="display:flex;height:calc(100vh - 120px);background:var(--bg-elevated);border-radius:var(--r16);overflow:hidden;border:1px solid var(--border)">
 
       <!-- COLUNA A — lista de conversas -->
       <div class="atd-sidebar" style="width:280px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface2)">
@@ -64,30 +126,6 @@ function renderOmnichannel() {
       <!-- COLUNA C — painel do contato -->
       <div class="atd-panel" id="atdPainelContato" style="width:300px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto;display:none"></div>
     </div>
-
-    <style>
-      .atd-filtro {
-        border:1px solid var(--border); background:var(--bg-elevated); color:var(--fg-muted);
-        font-size:var(--text-xs); font-weight:600; padding:4px 10px; border-radius:999px; cursor:pointer;
-      }
-      .atd-filtro.active { background:var(--purple); color:#fff; border-color:var(--purple); }
-      .conv-item { display:flex; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; }
-      .conv-item:hover { background:var(--bg-hover); }
-      .conv-item.active { background:var(--purple-xlight); border-left:3px solid var(--purple); }
-      .msg-bubble { padding:9px 13px; border-radius:var(--r12); max-width:75%; word-break:break-word; font-size:var(--text-sm); line-height:1.5; }
-      .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
-      .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
-      .msg-bubble.interna { background:var(--warning-bg); border:1px dashed var(--warning-border); align-self:stretch; font-size:var(--text-xs); }
-
-      @media (max-width: 900px) {
-        .atd-panel { display:none !important; }
-      }
-      @media (max-width: 640px) {
-        .atd-layout { flex-direction:column; height:auto; min-height:calc(100vh - 64px); }
-        .atd-sidebar { width:100%; max-height:200px; }
-        .atd-chat { min-height:400px; }
-      }
-    </style>
   `;
 
   _atdCarregarConversas();
@@ -666,4 +704,153 @@ async function _atdAbrirConversaDePedido(pedido) {
   await _atdCarregarConversas();
   await _atdAbrirConversa(conversaId);
   toast('Conversa vinculada ao pedido #' + (pedido.display_id ?? pedido.id), 'ok');
+}
+
+// ══════════════════════════════════════════════════════════════
+// INTEGRAÇÕES DE CANAIS
+// ══════════════════════════════════════════════════════════════
+
+const ATD_CANAIS_DEFINICAO = [
+  { tipo: 'whatsapp', nome: 'WhatsApp', icone: 'phone', cor: 'var(--green)', disponivel: true },
+  { tipo: 'instagram', nome: 'Instagram', icone: 'camera', cor: '#E1306C', disponivel: true },
+  { tipo: 'ifood', nome: 'iFood', icone: 'utensils', cor: '#EA1D2C', disponivel: false },
+  { tipo: '99food', nome: '99Food', icone: 'bike', cor: '#FFC700', disponivel: false },
+  { tipo: 'google', nome: 'Google Meu Negócio', icone: 'search', cor: '#4285F4', disponivel: false },
+];
+
+async function _atdRenderIntegracoes() {
+  const wrap = document.getElementById('atdAbaIntegracoes');
+  wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle)">Carregando...</div>`;
+
+  const sb = _atdGetSbClient();
+  const { data: canais } = await sb.from('atd_canais').select('*');
+  _atdState.canais = canais || [];
+
+  const cards = ATD_CANAIS_DEFINICAO.map((def) => {
+    const registro = _atdState.canais.find((c) => c.tipo === def.tipo);
+    const conectado = !!registro?.ativo;
+
+    let statusHtml, acaoHtml, detalheHtml = '';
+
+    if (!def.disponivel) {
+      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Em breve</span>`;
+      acaoHtml = `<button class="btn btn-ghost" disabled style="opacity:.5;cursor:not-allowed;font-size:var(--text-xs)">Indisponível</button>`;
+    } else if (conectado) {
+      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--green);background:var(--success-bg);padding:2px 8px;border-radius:999px">${lc('check', 10, 'currentColor')} Conectado</span>`;
+      acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirDetalheCanal('${def.tipo}')">Gerenciar</button>`;
+      if (def.tipo === 'whatsapp') {
+        detalheHtml = `<div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:6px">Instância: ${registro?.config?.instance_name || '—'}</div>`;
+      }
+    } else {
+      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Não conectado</span>`;
+      acaoHtml = def.tipo === 'instagram'
+        ? `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirGuiaInstagram()">${lc('link', 13, '#fff')} Conectar</button>`
+        : `<button class="btn btn-primary" style="font-size:var(--text-xs)" disabled>Conectar</button>`;
+    }
+
+    return `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r12);padding:16px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:38px;height:38px;border-radius:var(--r8);background:${def.cor}1a;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc(def.icone, 18, def.cor)}
+          </span>
+          <div style="flex:1">
+            <div style="font-weight:700;color:var(--text);font-size:var(--text-sm)">${def.nome}</div>
+            ${statusHtml}
+          </div>
+        </div>
+        ${detalheHtml}
+        <div style="display:flex;justify-content:flex-end">${acaoHtml}</div>
+      </div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div style="margin-bottom:14px;color:var(--fg-muted);font-size:var(--text-sm)">
+      Conecte os canais de atendimento. Mensagens de qualquer canal conectado aparecem juntas no Inbox.
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));gap:14px">
+      ${cards}
+    </div>
+  `;
+}
+
+function _atdAbrirDetalheCanal(tipo) {
+  if (tipo === 'whatsapp') {
+    toast('WhatsApp já está conectado via Evolution API. Para reconfigurar, fale com o time técnico.', 'ok');
+  } else if (tipo === 'instagram') {
+    _atdAbrirGuiaInstagram();
+  }
+}
+
+function _atdAbrirGuiaInstagram() {
+  const registro = _atdState.canais?.find((c) => c.tipo === 'instagram');
+  const pageIdAtual = registro?.config?.page_id || '';
+  const igIdAtual = registro?.config?.ig_business_account_id || '';
+
+  const modal = document.createElement('div');
+  modal.id = 'popupAtdGuiaInstagram';
+  modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--bg-elevated);border-radius:var(--r16);max-width:560px;width:100%;max-height:85vh;overflow-y:auto;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-weight:800;font-size:var(--text-lg);color:var(--text);display:flex;align-items:center;gap:8px">
+          ${lc('camera', 18, '#E1306C')} Conectar Instagram
+        </div>
+        <button class="btn btn-ghost" onclick="document.getElementById('popupAtdGuiaInstagram').remove()">${lc('x', 16, 'currentColor')}</button>
+      </div>
+
+      <div style="font-size:var(--text-sm);color:var(--fg-muted);margin-bottom:16px">
+        A integração usa a API oficial da Meta (Instagram Messaging API). Antes de configurar aqui, você precisa preparar o lado da Meta — isso só pode ser feito por você, com login na sua conta:
+      </div>
+
+      <ol style="font-size:var(--text-sm);color:var(--text);line-height:1.7;padding-left:20px;margin-bottom:18px">
+        <li>Crie um app em <strong>developers.facebook.com</strong> (tipo "Business").</li>
+        <li>No app, adicione o produto <strong>"Instagram"</strong> (Instagram API with Instagram Login ou via Página do Facebook).</li>
+        <li>Vincule a <strong>Página do Facebook</strong> da pizzaria à conta <strong>Instagram Business/Creator</strong> (precisa estar como profissional, não pessoal).</li>
+        <li>Gere um <strong>Page Access Token</strong> com as permissões <code>instagram_basic</code> e <code>instagram_manage_messages</code>.</li>
+        <li>Anote o <strong>Page ID</strong> e o <strong>Instagram Business Account ID</strong> (aparecem no Graph API Explorer).</li>
+      </ol>
+
+      <div style="background:var(--warning-bg);border:1px dashed var(--warning-border);border-radius:var(--r8);padding:10px 12px;font-size:var(--text-xs);color:var(--text);margin-bottom:18px">
+        ${lc('shield', 13, 'currentColor')} O Access Token e o App Secret são credenciais sensíveis — nunca cole eles no chat. Quando tiver em mãos, eu te passo o comando exato pra salvar como secret no Supabase (igual fizemos com a chave da Anthropic).
+      </div>
+
+      <div style="font-weight:700;font-size:var(--text-sm);color:var(--text);margin-bottom:8px">Quando tiver os IDs (não-sensíveis), preencha aqui:</div>
+      <label style="font-size:var(--text-xs);color:var(--fg-muted)">Page ID (Facebook)</label>
+      <input id="atdInstaPageId" class="inp" style="margin-bottom:10px" placeholder="Ex: 123456789012345" value="${pageIdAtual}">
+      <label style="font-size:var(--text-xs);color:var(--fg-muted)">Instagram Business Account ID</label>
+      <input id="atdInstaIgId" class="inp" style="margin-bottom:16px" placeholder="Ex: 178414..." value="${igIdAtual}">
+
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="_atdSalvarConfigInstagram()">
+        ${lc('save', 14, '#fff')} Salvar e continuar
+      </button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+async function _atdSalvarConfigInstagram() {
+  const pageId = document.getElementById('atdInstaPageId').value.trim();
+  const igId = document.getElementById('atdInstaIgId').value.trim();
+  if (!pageId || !igId) { toast('Preencha os dois campos', 'err'); return; }
+
+  const sb = _atdGetSbClient();
+  const registro = _atdState.canais?.find((c) => c.tipo === 'instagram');
+
+  const payload = {
+    tipo: 'instagram',
+    nome: 'Instagram VTP',
+    config: { page_id: pageId, ig_business_account_id: igId, status: 'aguardando_token' },
+    ativo: false, // só fica true depois que o Access Token estiver configurado e o webhook validado
+  };
+
+  const { error } = registro
+    ? await sb.from('atd_canais').update(payload).eq('id', registro.id)
+    : await sb.from('atd_canais').insert(payload);
+
+  if (error) { toast('Erro ao salvar configuração', 'err'); return; }
+
+  document.getElementById('popupAtdGuiaInstagram')?.remove();
+  toast('IDs salvos! Agora me avise quando tiver o Access Token pra eu te guiar no próximo passo.', 'ok');
+  await _atdRenderIntegracoes();
 }

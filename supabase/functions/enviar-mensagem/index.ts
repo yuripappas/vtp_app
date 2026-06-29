@@ -46,10 +46,10 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
   }
 
-  // Busca telefone do contato vinculado à conversa
+  // Busca contato vinculado à conversa
   const { data: conversa, error: convErr } = await sb
     .from('atd_conversas')
-    .select('id, canal_tipo, atd_contatos(telefone)')
+    .select('id, canal_tipo, atd_contatos(telefone, instagram_id)')
     .eq('id', body.conversa_id)
     .single();
 
@@ -57,28 +57,54 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'conversa não encontrada', detalhe: convErr }), { status: 404, headers: CORS_HEADERS });
   }
 
-  const telefone = (conversa as unknown as { atd_contatos: { telefone: string } }).atd_contatos?.telefone;
-  if (!telefone) {
-    return new Response(JSON.stringify({ error: 'contato sem telefone vinculado' }), { status: 400, headers: CORS_HEADERS });
-  }
+  const contato = (conversa as unknown as { atd_contatos: { telefone: string; instagram_id: string } }).atd_contatos;
 
-  if (conversa.canal_tipo !== 'whatsapp') {
+  let externalId: string | null = null;
+
+  if (conversa.canal_tipo === 'whatsapp') {
+    const telefone = contato?.telefone;
+    if (!telefone) {
+      return new Response(JSON.stringify({ error: 'contato sem telefone vinculado' }), { status: 400, headers: CORS_HEADERS });
+    }
+
+    const evoRes = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: EVO_KEY },
+      body: JSON.stringify({ number: telefone, text: body.texto }),
+    });
+
+    if (!evoRes.ok) {
+      const detalhe = await evoRes.text();
+      return new Response(JSON.stringify({ error: `Evolution API HTTP ${evoRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
+    }
+    const evoData = await evoRes.json();
+    externalId = evoData?.key?.id ?? null;
+  } else if (conversa.canal_tipo === 'instagram') {
+    const igsid = contato?.instagram_id;
+    if (!igsid) {
+      return new Response(JSON.stringify({ error: 'contato sem instagram_id vinculado' }), { status: 400, headers: CORS_HEADERS });
+    }
+
+    const IG_PAGE_TOKEN = Deno.env.get('INSTAGRAM_PAGE_ACCESS_TOKEN');
+    if (!IG_PAGE_TOKEN) {
+      return new Response(JSON.stringify({ error: 'INSTAGRAM_PAGE_ACCESS_TOKEN não configurado' }), { status: 500, headers: CORS_HEADERS });
+    }
+
+    const igRes = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${IG_PAGE_TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipient: { id: igsid }, message: { text: body.texto } }),
+    });
+
+    if (!igRes.ok) {
+      const detalhe = await igRes.text();
+      return new Response(JSON.stringify({ error: `Instagram Graph API HTTP ${igRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
+    }
+    const igData = await igRes.json();
+    externalId = igData?.message_id ?? null;
+  } else {
     return new Response(JSON.stringify({ error: `envio para canal '${conversa.canal_tipo}' ainda não implementado` }), { status: 400, headers: CORS_HEADERS });
   }
-
-  // Envia via Evolution API
-  const evoRes = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: EVO_KEY },
-    body: JSON.stringify({ number: telefone, text: body.texto }),
-  });
-
-  if (!evoRes.ok) {
-    const detalhe = await evoRes.text();
-    return new Response(JSON.stringify({ error: `Evolution API HTTP ${evoRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
-  }
-  const evoData = await evoRes.json();
-  const externalId = evoData?.key?.id ?? null;
 
   const { error: msgErr } = await sb.from('atd_mensagens').insert({
     conversa_id:      body.conversa_id,
