@@ -1138,6 +1138,23 @@ svg { display: block; }
 .cfg-cat-group.collapsed .cfg-cat-body    { display: none; }
 @media (max-width: 480px) { .cfg-cat-toggle { min-height: 44px; } }
 
+/* === Insumo Row (list inside card per category) === */
+.insumo-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .12s;
+}
+.insumo-row:last-child { border-bottom: none; }
+.insumo-row:hover { background: var(--surface2); }
+@media (max-width: 480px) {
+  .insumo-row { flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+  .insumo-row-meta { display: none; }
+}
+
 /* === Config Section Block === */
 .cfg-section-block { margin-bottom: 24px; }
 .cfg-section-block-header {

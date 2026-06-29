@@ -154,44 +154,49 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
 
   el.style.display = '';
 
+  el.style.display = 'flex';
+  el.style.flexDirection = 'column';
+  el.style.gap = '0';
   el.innerHTML = Object.entries(bycat).map(([cat, catItems]) => `
-    <div style="margin-bottom:20px">
-      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)">${cat} <span style="font-weight:400">(${catItems.length})</span></div>
-      <div style="display:flex;flex-direction:column">
-        ${catItems.map(item => {
-          const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
-          const sups   = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
-          const temEmb = !!(item.unidCompra && item.qtdEmb > 0);
-          const temDebito = !!item.debitoAuto;
-          const supExc = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
-          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s"
-            onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"
-            onclick="openEditItem(${item.id})">
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                <span style="font-size:var(--text-sm);font-weight:700">${item.name}</span>
-                <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
-                ${temEmb?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>`:''}
-                ${temDebito?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito CW</span>`:''}
+    <div class="cfg-cat-group">
+      <button class="cfg-cat-toggle" onclick="toggleCfgCat(this)">
+        <span class="cfg-cat-label">${cat}</span>
+        <span class="cfg-cat-count">(${catItems.length})</span>
+        <span class="cfg-cat-chevron">${lc('chevron-down',14,'currentColor')}</span>
+      </button>
+      <div class="cfg-cat-body" style="padding:0;margin-bottom:8px">
+        <div class="card" style="padding:0;overflow:hidden">
+          ${catItems.map(item => {
+            const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
+            const sups   = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
+            const temEmb = !!(item.unidCompra && item.qtdEmb > 0);
+            const temDebito = !!item.debitoAuto;
+            const supExc = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
+            return `<div class="insumo-row" onclick="openEditItem(${item.id})">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="font-size:var(--text-sm);font-weight:700">${item.name}</span>
+                  <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
+                  ${temEmb?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>`:''}
+                  ${temDebito?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito CW</span>`:''}
+                </div>
+                ${sups.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                  ${sups.map(s => {
+                    const isExc = supExc && s.id === supExc.id;
+                    return isExc
+                      ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('lock',8,'currentColor')} Exclusivo · ${s.name}</span>`
+                      : `<span class="badge b-gray" style="font-size:var(--text-2xs)">${s.name}</span>`;
+                  }).join('')}
+                </div>`:''}
               </div>
-              ${sups.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
-                ${sups.map(s => {
-                  const isExc = supExc && s.id === supExc.id;
-                  return isExc
-                    ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('lock',8,'currentColor')} Exclusivo · ${s.name}</span>`
-                    : `<span class="badge b-gray" style="font-size:var(--text-2xs)">${s.name}</span>`;
-                }).join('')}
-              </div>`:''}
-            </div>
-            <div style="display:flex;align-items:center;gap:16px;flex-shrink:0">
-              <div style="text-align:right;font-size:var(--text-xs);color:var(--muted);line-height:1.6">
+              <div class="insumo-row-meta" style="text-align:right;font-size:var(--text-xs);color:var(--muted);line-height:1.7;flex-shrink:0">
                 <div>Mín <strong style="color:var(--text)">${item.min}</strong> · Ideal <strong style="color:var(--text)">${item.ideal}</strong></div>
                 <div>Custo <strong style="color:var(--purple)">R$ ${fmt(item.cost)}</strong></div>
               </div>
-              <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openEditItem(${item.id})">${lc("edit-2",12,"currentColor")}</button>
-            </div>
-          </div>`;
-        }).join('')}
+              <button class="btn btn-ghost btn-xs" style="flex-shrink:0" onclick="event.stopPropagation();openEditItem(${item.id})">${lc("edit-2",12,"currentColor")}</button>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
     </div>`).join('');
 }
