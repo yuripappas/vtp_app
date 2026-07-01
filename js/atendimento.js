@@ -56,9 +56,11 @@ function renderOmnichannel() {
         font-size:var(--text-xs); font-weight:600; padding:4px 10px; border-radius:999px; cursor:pointer;
       }
       .atd-filtro.active { background:var(--purple); color:#fff; border-color:var(--purple); }
-      .conv-item { display:flex; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; }
+      .conv-item { display:flex; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; position:relative; }
       .conv-item:hover { background:var(--bg-hover); }
-      .conv-item.active { background:var(--purple-xlight); border-left:3px solid var(--purple); }
+      .conv-item.active { background:#ede8ff; border-left:4px solid var(--purple); padding-left:12px; }
+      .conv-item.active .conv-nome { color:var(--purple) !important; font-weight:800 !important; }
+      .conv-canal-badge { position:absolute; bottom:9px; left:38px; width:16px; height:16px; border-radius:50%; background:var(--bg-elevated); border:2px solid var(--bg-elevated); display:flex; align-items:center; justify-content:center; }
       .msg-bubble { padding:9px 13px; border-radius:var(--r12); max-width:75%; word-break:break-word; font-size:var(--text-sm); line-height:1.5; }
       .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
       .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
@@ -154,7 +156,7 @@ async function _atdCarregarConversas() {
   const sb = _atdGetSbClient();
   const { data, error } = await sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, pedido_data, atualizado_em, atd_contatos(nome, telefone, avatar_url)')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
     .eq('status', 'aberta')
     .order('atualizado_em', { ascending: false });
 
@@ -185,15 +187,24 @@ function _atdRenderLista() {
   }
 
   el.innerHTML = lista.map(c => {
-    const nome = c.atd_contatos?.nome || c.atd_contatos?.telefone || 'Sem nome';
+    const contato = c.atd_contatos || {};
+    const nome = contato.nome || contato.telefone || (contato.instagram_id ? '@' + contato.instagram_id : 'Sem nome');
     const inicial = nome.charAt(0).toUpperCase();
     const ativa = c.id === _atdState.conversaAtivaId;
+    const canalBadge = c.canal_tipo === 'instagram'
+      ? `<span class="conv-canal-badge">${_atdIconeCanal('instagram', 10)}</span>`
+      : c.canal_tipo === 'whatsapp'
+      ? `<span class="conv-canal-badge">${_atdIconeCanal('whatsapp', 10)}</span>`
+      : '';
     return `
       <div class="conv-item ${ativa ? 'active' : ''}" onclick="_atdAbrirConversa('${c.id}')">
-        <span style="width:38px;height:38px;border-radius:50%;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">${inicial}</span>
+        <div style="position:relative;flex-shrink:0">
+          <span style="width:38px;height:38px;border-radius:50%;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${inicial}</span>
+          ${canalBadge}
+        </div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;justify-content:space-between;gap:6px">
-            <div style="font-weight:700;font-size:var(--text-sm);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+            <div class="conv-nome" style="font-weight:700;font-size:var(--text-sm);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
           </div>
           <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:2px">
             ${c.atendente_id ? lc('user-check', 11, 'var(--green)') + ' atribuída' : 'sem atendente'}
@@ -710,12 +721,22 @@ async function _atdAbrirConversaDePedido(pedido) {
 // INTEGRAÇÕES DE CANAIS
 // ══════════════════════════════════════════════════════════════
 
+function _atdIconeCanal(tipo, size = 20) {
+  const s = size;
+  if (tipo === 'whatsapp') return `<svg width="${s}" height="${s}" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="16" fill="#25D366"/><path d="M23.5 8.5C21.7 6.7 19.3 5.7 16.7 5.7c-5.4 0-9.8 4.4-9.8 9.8 0 1.7.5 3.4 1.3 4.9L6.7 25.3l5.1-1.3c1.4.8 3 1.2 4.7 1.2h.1c5.4 0 9.8-4.4 9.8-9.8-.1-2.6-1.1-5-2.9-6.9zM16.8 23.7c-1.5 0-2.9-.4-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3c-.8-1.3-1.2-2.7-1.2-4.2 0-4.4 3.6-8 8-8 2.1 0 4.1.8 5.6 2.3 1.5 1.5 2.3 3.5 2.3 5.6 0 4.4-3.5 8-7.8 8zm4.4-6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1-.8-.4-1.5-.8-2.1-1.5-.5-.6-1-1.3-1.4-2.1-.1-.2 0-.4.1-.5l.4-.5c.1-.1.2-.3.2-.5 0-.2-.6-1.4-.8-1.9-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.2-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.8 2.7 4.3 3.8.6.3 1.1.4 1.5.5.6.2 1.2.2 1.6.1.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1-.1-.1-.3-.2-.5-.3z" fill="#fff"/></svg>`;
+  if (tipo === 'instagram') return `<svg width="${s}" height="${s}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="ig${s}" cx="30%" cy="107%" r="150%"><stop offset="0%" stop-color="#ffd676"/><stop offset="25%" stop-color="#f4682e"/><stop offset="50%" stop-color="#e1306c"/><stop offset="75%" stop-color="#9e3193"/><stop offset="100%" stop-color="#5851db"/></radialGradient></defs><rect width="32" height="32" rx="8" fill="url(#ig${s})"/><rect x="9" y="9" width="14" height="14" rx="4" stroke="#fff" stroke-width="2" fill="none"/><circle cx="16" cy="16" r="3.5" stroke="#fff" stroke-width="2" fill="none"/><circle cx="21.2" cy="10.8" r="1.2" fill="#fff"/></svg>`;
+  if (tipo === 'ifood') return `<svg width="${s}" height="${s}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="6" fill="#EA1D2C"/><text x="16" y="22" text-anchor="middle" font-size="14" font-weight="900" fill="#fff" font-family="system-ui">iF</text></svg>`;
+  if (tipo === '99food') return `<svg width="${s}" height="${s}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="6" fill="#FFC700"/><text x="16" y="22" text-anchor="middle" font-size="13" font-weight="900" fill="#111" font-family="system-ui">99</text></svg>`;
+  if (tipo === 'google') return `<svg width="${s}" height="${s}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="6" fill="#fff" stroke="#e0e0e0"/><path d="M24 16.2c0-.7-.1-1.3-.2-1.9H16v3.6h4.5c-.2 1-.8 1.9-1.7 2.5v2h2.7c1.6-1.5 2.5-3.7 2.5-6.2z" fill="#4285F4"/><path d="M16 24c2.2 0 4.1-.7 5.5-2l-2.7-2c-.7.5-1.7.8-2.8.8-2.1 0-3.9-1.4-4.6-3.4H8.6v2.1C10 22.3 12.8 24 16 24z" fill="#34A853"/><path d="M11.4 17.4c-.2-.5-.3-1-.3-1.4s.1-1 .3-1.4v-2.1H8.6C8 13.7 7.7 14.8 7.7 16s.3 2.3.9 3.5l2.8-2.1z" fill="#FBBC05"/><path d="M16 11.2c1.2 0 2.3.4 3.1 1.2l2.3-2.3C19.9 8.6 18.1 8 16 8c-3.2 0-6 1.7-7.4 4.4l2.8 2.2c.7-2 2.5-3.4 4.6-3.4z" fill="#EA4335"/></svg>`;
+  return '';
+}
+
 const ATD_CANAIS_DEFINICAO = [
-  { tipo: 'whatsapp', nome: 'WhatsApp', icone: 'phone', cor: 'var(--green)', disponivel: true },
-  { tipo: 'instagram', nome: 'Instagram', icone: 'camera', cor: '#E1306C', disponivel: true },
-  { tipo: 'ifood', nome: 'iFood', icone: 'utensils', cor: '#EA1D2C', disponivel: false },
-  { tipo: '99food', nome: '99Food', icone: 'bike', cor: '#FFC700', disponivel: false },
-  { tipo: 'google', nome: 'Google Meu Negócio', icone: 'search', cor: '#4285F4', disponivel: false },
+  { tipo: 'whatsapp', nome: 'WhatsApp', cor: '#25D366', disponivel: true },
+  { tipo: 'instagram', nome: 'Instagram', cor: '#E1306C', disponivel: true },
+  { tipo: 'ifood', nome: 'iFood', cor: '#EA1D2C', disponivel: false },
+  { tipo: '99food', nome: '99Food', cor: '#FFC700', disponivel: false },
+  { tipo: 'google', nome: 'Google Meu Negócio', cor: '#4285F4', disponivel: false },
 ];
 
 async function _atdRenderIntegracoes() {
@@ -737,22 +758,27 @@ async function _atdRenderIntegracoes() {
       acaoHtml = `<button class="btn btn-ghost" disabled style="opacity:.5;cursor:not-allowed;font-size:var(--text-xs)">Indisponível</button>`;
     } else if (conectado) {
       statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--green);background:var(--success-bg);padding:2px 8px;border-radius:999px">${lc('check', 10, 'currentColor')} Conectado</span>`;
-      acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirDetalheCanal('${def.tipo}')">Gerenciar</button>`;
       if (def.tipo === 'whatsapp') {
-        detalheHtml = `<div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:6px">Instância: ${registro?.config?.instance_name || '—'}</div>`;
+        acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">Reconectar / Trocar número</button>`;
+      } else {
+        acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirDetalheCanal('${def.tipo}')">Gerenciar</button>`;
       }
     } else {
       statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Não conectado</span>`;
-      acaoHtml = def.tipo === 'instagram'
-        ? `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirGuiaInstagram()">${lc('link', 13, '#fff')} Conectar</button>`
-        : `<button class="btn btn-primary" style="font-size:var(--text-xs)" disabled>Conectar</button>`;
+      if (def.tipo === 'whatsapp') {
+        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Conectar via QR Code</button>`;
+      } else if (def.tipo === 'instagram') {
+        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirGuiaInstagram()">${lc('link', 13, '#fff')} Conectar</button>`;
+      } else {
+        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" disabled>Conectar</button>`;
+      }
     }
 
     return `
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r12);padding:16px;display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
-          <span style="width:38px;height:38px;border-radius:var(--r8);background:${def.cor}1a;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            ${lc(def.icone, 18, def.cor)}
+          <span style="width:38px;height:38px;border-radius:var(--r8);background:${def.cor}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${_atdIconeCanal(def.tipo, 22)}
           </span>
           <div style="flex:1">
             <div style="font-weight:700;color:var(--text);font-size:var(--text-sm)">${def.nome}</div>
@@ -775,11 +801,106 @@ async function _atdRenderIntegracoes() {
 }
 
 function _atdAbrirDetalheCanal(tipo) {
-  if (tipo === 'whatsapp') {
-    toast('WhatsApp já está conectado via Evolution API. Para reconfigurar, fale com o time técnico.', 'ok');
-  } else if (tipo === 'instagram') {
-    _atdAbrirGuiaInstagram();
+  if (tipo === 'instagram') _atdAbrirGuiaInstagram();
+}
+
+async function _atdAbrirQRWhatsApp() {
+  const modal = document.createElement('div');
+  modal.id = 'popupAtdQRWhatsApp';
+  modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:420px;padding:28px;text-align:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div style="font-weight:800;font-size:var(--text-lg);color:var(--text);display:flex;align-items:center;gap:8px">
+          ${_atdIconeCanal('whatsapp', 20)} Conectar WhatsApp
+        </div>
+        <button class="btn btn-ghost" onclick="_atdFecharQRWhatsApp()">${lc('x', 16, 'currentColor')}</button>
+      </div>
+      <div id="atdQRStatus" style="color:var(--fg-muted);font-size:var(--text-sm);margin-bottom:16px">Verificando conexão...</div>
+      <div id="atdQRImagem" style="min-height:200px;display:flex;align-items:center;justify-content:center"></div>
+      <div id="atdQRAcoes" style="margin-top:20px;display:flex;flex-direction:column;gap:8px"></div>
+    </div>`;
+  document.body.appendChild(modal);
+  await _atdQRVerificarStatus();
+}
+
+function _atdFecharQRWhatsApp() {
+  clearInterval(window._atdQRPollInterval);
+  document.getElementById('popupAtdQRWhatsApp')?.remove();
+}
+
+async function _atdQRVerificarStatus() {
+  const BASE = typeof VTP_SUPABASE_URL !== 'undefined'
+    ? VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1')
+    : '';
+  const statusDiv = document.getElementById('atdQRStatus');
+  const imagemDiv = document.getElementById('atdQRImagem');
+  const acoesDiv  = document.getElementById('atdQRAcoes');
+  if (!statusDiv) return;
+
+  try {
+    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { apikey: VTP_SUPABASE_KEY } });
+    const { state } = await r.json();
+
+    if (state === 'open') {
+      statusDiv.innerHTML = `<span style="color:var(--green);font-weight:700">${lc('check-circle', 16, 'var(--green)')} WhatsApp conectado!</span>`;
+      imagemDiv.innerHTML = `<div style="font-size:48px">✅</div>`;
+      acoesDiv.innerHTML = `
+        <button class="btn btn-ghost" style="color:var(--danger);font-size:var(--text-xs)" onclick="_atdQRDesconectar()">
+          ${lc('log-out', 13, 'currentColor')} Desconectar / Trocar número
+        </button>
+        <button class="btn btn-primary" onclick="_atdFecharQRWhatsApp()">Fechar</button>`;
+      clearInterval(window._atdQRPollInterval);
+    } else {
+      statusDiv.textContent = 'Escaneie o QR Code com o WhatsApp do número que deseja conectar:';
+      await _atdQRCarregar();
+      clearInterval(window._atdQRPollInterval);
+      window._atdQRPollInterval = setInterval(async () => {
+        const r2 = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { apikey: VTP_SUPABASE_KEY } });
+        const { state: s2 } = await r2.json();
+        if (s2 === 'open') {
+          clearInterval(window._atdQRPollInterval);
+          await _atdQRVerificarStatus();
+          await _atdRenderIntegracoes();
+        }
+      }, 4000);
+    }
+  } catch (e) {
+    statusDiv.textContent = 'Erro ao verificar conexão. Tente novamente.';
   }
+}
+
+async function _atdQRCarregar() {
+  const BASE = typeof VTP_SUPABASE_URL !== 'undefined'
+    ? VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1')
+    : '';
+  const imagemDiv = document.getElementById('atdQRImagem');
+  const acoesDiv  = document.getElementById('atdQRAcoes');
+  if (!imagemDiv) return;
+
+  imagemDiv.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm)">Gerando QR Code...</div>`;
+  try {
+    const r = await fetch(`${BASE}/wpp-connect?action=qr`, { headers: { apikey: VTP_SUPABASE_KEY } });
+    const { base64 } = await r.json();
+    if (base64) {
+      imagemDiv.innerHTML = `<img src="${base64}" style="width:220px;height:220px;border-radius:var(--r8);border:4px solid var(--border)" alt="QR Code WhatsApp">`;
+      acoesDiv.innerHTML = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdQRCarregar()">${lc('refresh-cw', 13, 'currentColor')} Atualizar QR</button>`;
+    } else {
+      imagemDiv.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm)">Não foi possível gerar o QR Code. A instância pode já estar conectada.</div>`;
+    }
+  } catch {
+    imagemDiv.innerHTML = `<div style="color:var(--danger);font-size:var(--text-sm)">Erro ao gerar QR Code.</div>`;
+  }
+}
+
+async function _atdQRDesconectar() {
+  const BASE = typeof VTP_SUPABASE_URL !== 'undefined'
+    ? VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1')
+    : '';
+  const acoesDiv = document.getElementById('atdQRAcoes');
+  if (acoesDiv) acoesDiv.innerHTML = `<div style="color:var(--fg-muted);font-size:var(--text-sm)">Desconectando...</div>`;
+  await fetch(`${BASE}/wpp-connect`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: VTP_SUPABASE_KEY }, body: JSON.stringify({ action: 'disconnect' }) });
+  await _atdQRVerificarStatus();
 }
 
 function _atdAbrirGuiaInstagram() {
