@@ -117,6 +117,7 @@ Deno.serve(async (req) => {
   const { error: msgErr } = await sb.from('atd_mensagens').upsert({
     conversa_id:  conversaId,
     origem:       'cliente',
+    visibilidade: 'publica',
     tipo,
     conteudo:     mapearConteudo(payload.data.message, tipo),
     external_id:  payload.data.key.id,
