@@ -899,7 +899,7 @@ async function _atdQRVerificarStatus() {
   if (!statusDiv) return;
 
   try {
-    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { apikey: VTP_SUPABASE_KEY } });
+    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
     const { state } = await r.json();
 
     if (state === 'open') {
@@ -916,7 +916,7 @@ async function _atdQRVerificarStatus() {
       await _atdQRCarregar();
       clearInterval(window._atdQRPollInterval);
       window._atdQRPollInterval = setInterval(async () => {
-        const r2 = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { apikey: VTP_SUPABASE_KEY } });
+        const r2 = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
         const { state: s2 } = await r2.json();
         if (s2 === 'open') {
           clearInterval(window._atdQRPollInterval);
@@ -940,7 +940,7 @@ async function _atdQRCarregar() {
 
   imagemDiv.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm)">Gerando QR Code...</div>`;
   try {
-    const r = await fetch(`${BASE}/wpp-connect?action=qr`, { headers: { apikey: VTP_SUPABASE_KEY } });
+    const r = await fetch(`${BASE}/wpp-connect?action=qr`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
     const { base64 } = await r.json();
     if (base64) {
       imagemDiv.innerHTML = `<img src="${base64}" style="width:220px;height:220px;border-radius:var(--r8);border:4px solid var(--border)" alt="QR Code WhatsApp">`;
