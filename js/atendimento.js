@@ -224,8 +224,9 @@ function _atdRenderLista() {
       ? `<img class="conv-avatar" src="${contato.avatar_url}" alt="${inicial}" onerror="this.outerHTML='<div class=conv-avatar-inicial>${inicial}</div>'">`
       : `<div class="conv-avatar-inicial">${inicial}</div>`;
 
-    const canalIcone = c.canal_tipo
-      ? `<span style="display:flex;align-items:center;gap:3px">${_atdIconeCanal(c.canal_tipo, 13)}<span style="color:var(--fg-subtle);font-size:10px;font-weight:600;text-transform:capitalize">${c.canal_tipo}</span></span>`
+    const previewTexto = c.ultima_mensagem?.texto || '';
+    const previewCheck = c.ultima_mensagem?.origem === 'atendente'
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`
       : '';
 
     return `
@@ -241,11 +242,8 @@ function _atdRenderLista() {
             <div class="conv-nome" style="font-weight:700;font-size:var(--text-sm);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
             ${naoLidas ? `<span class="conv-nao-lidas">${naoLidas}</span>` : ''}
           </div>
-          <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${c.ultima_mensagem?.origem === 'atendente' ? `<span style="color:var(--fg-subtle)">${lc('check', 10, 'var(--fg-subtle)')} </span>` : ''}${c.ultima_mensagem?.texto || (c.atendente_id ? 'atribuída' : 'sem atendente')}
-          </div>
-          <div style="font-size:10px;color:var(--fg-subtle);margin-top:2px;display:flex;align-items:center;gap:5px">
-            ${canalIcone}
+          <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px">
+            ${previewCheck}${previewTexto}
           </div>
         </div>
       </div>`;
