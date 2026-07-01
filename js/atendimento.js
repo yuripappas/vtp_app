@@ -1062,7 +1062,8 @@ async function _atdEncaminharLocalizacao(lat, lng) {
       </div>
 
       <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-bottom:6px">Ou digite o número manualmente:</div>
-      <input id="encLocNumero" class="inp" placeholder="Ex: 82999999999" type="tel" style="margin-bottom:14px">
+      <input id="encLocNumero" class="inp" placeholder="Ex: 82999999999" type="tel" style="margin-bottom:14px" oninput="document.getElementById('encLocNomeSelecionado').value=''">
+      <input id="encLocNomeSelecionado" type="hidden" value="">
 
       <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="_atdEncLocEnviar(${lat},${lng})">
         ${lc('send', 13, '#fff')} Encaminhar
@@ -1083,6 +1084,8 @@ function _atdEncLocFiltrar() {
 function _atdEncLocSelecionar(tel, nome) {
   const input = document.getElementById('encLocNumero');
   if (input) { input.value = tel; input.focus(); }
+  const nomeInput = document.getElementById('encLocNomeSelecionado');
+  if (nomeInput) nomeInput.value = nome || tel;
 }
 
 async function _atdEncLocEnviar(lat, lng) {
@@ -1102,6 +1105,21 @@ async function _atdEncLocEnviar(lat, lng) {
     const d = await r.json();
     if (r.ok && d.ok !== false) {
       if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--green)">✓ Localização enviada!</span>`;
+      // Registra nota interna na conversa para o atendente saber que foi enviado
+      const convId = _atdState.conversaAtivaId;
+      if (convId) {
+        const nomeLabel = document.getElementById('encLocNomeSelecionado')?.value?.trim() || numero;
+        await fetch(`${BASE}/enviar-mensagem`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+          body: JSON.stringify({
+            conversa_id: convId,
+            texto: `📍 Localização encaminhada para ${nomeLabel} (${numero})`,
+            atendente_id: _atdState.user?.id ?? null,
+            visibilidade: 'interna',
+          }),
+        });
+      }
       setTimeout(() => document.getElementById('popupEncaminharLoc')?.remove(), 1500);
     } else {
       if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--danger)">Erro: ${d.detalhe?.message || 'falha ao enviar'}</span>`;
