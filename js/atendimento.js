@@ -163,8 +163,8 @@ async function _atdCarregarConversas() {
   const sb = _atdGetSbClient();
   const { data, error } = await sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, atd_contatos(nome, telefone, instagram_id, avatar_url)')
-    .eq('status', 'aberta')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
+    .in('status', ['aberta', 'em_atendimento', 'aguardando_cliente'])
     .order('atualizado_em', { ascending: false });
 
   if (error) { console.error('[atendimento] erro ao carregar conversas', error); return; }
@@ -228,13 +228,20 @@ function _atdRenderLista() {
 
   const CANAL_COR = { whatsapp: '#25D366', instagram: '#E1306C', ifood: '#EA1D2C', '99food': '#FFC700' };
 
+  const agora = Date.now();
+
+  const STATUS_CONV = {
+    aberta:             { label: 'Nova',        cor: 'var(--purple)',      bg: 'var(--purple-xlight)' },
+    em_atendimento:     { label: 'Atendendo',   cor: 'var(--green)',       bg: 'var(--success-bg)'    },
+    aguardando_cliente: { label: 'Aguardando',  cor: 'var(--warning-fg)',  bg: 'var(--warning-bg)'    },
+  };
+
   el.innerHTML = lista.map(c => {
     const contato = c.atd_contatos || {};
     const nome = contato.nome || contato.telefone || (contato.instagram_id ? '@' + contato.instagram_id : 'Sem nome');
     const inicial = nome.charAt(0).toUpperCase();
     const ativa = c.id === _atdState.conversaAtivaId;
     const naoLidas = c.mensagens_nao_lidas || 0;
-    const cor = CANAL_COR[c.canal_tipo] || 'transparent';
 
     const avatar = contato.avatar_url
       ? `<img class="conv-avatar" src="${contato.avatar_url}" alt="${inicial}" onerror="this.outerHTML='<div class=conv-avatar-inicial>${inicial}</div>'">`
@@ -244,6 +251,24 @@ function _atdRenderLista() {
     const previewCheck = c.ultima_mensagem?.origem === 'atendente'
       ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`
       : '';
+
+    const st = STATUS_CONV[c.status] || STATUS_CONV.aberta;
+    const statusBadge = `<span style="font-size:10px;font-weight:700;color:${st.cor};background:${st.bg};padding:1px 6px;border-radius:999px;white-space:nowrap">${st.label}</span>`;
+
+    // Timer: se aguardando_cliente → tempo desde última msg do atendente
+    //        se aberta/em_atendimento → tempo desde última msg do cliente sem resposta
+    let timerHtml = '';
+    const refTs = c.status === 'aguardando_cliente'
+      ? c.ultima_msg_atendente_em
+      : (c.status === 'em_atendimento' || c.status === 'aberta') ? c.ultima_msg_cliente_em : null;
+    if (refTs) {
+      const diffMin = Math.floor((agora - new Date(refTs).getTime()) / 60000);
+      if (diffMin >= 1) {
+        const cor = diffMin >= 60 ? 'var(--danger)' : diffMin >= 15 ? 'var(--warning-fg)' : 'var(--fg-subtle)';
+        const label = diffMin < 60 ? `${diffMin}min` : `${Math.floor(diffMin/60)}h${diffMin%60 ? String(diffMin%60).padStart(2,'0')+'m' : ''}`;
+        timerHtml = `<span style="font-size:10px;color:${cor};font-weight:600;white-space:nowrap;flex-shrink:0">${lc('clock', 10, cor)} ${label}</span>`;
+      }
+    }
 
     return `
       <div class="conv-item ${ativa ? 'active' : ''}" data-canal="${c.canal_tipo || ''}" onclick="_atdAbrirConversa('${c.id}')">
@@ -256,10 +281,16 @@ function _atdRenderLista() {
         <div style="flex:1;min-width:0">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:4px">
             <div class="conv-nome" style="font-weight:700;font-size:var(--text-sm);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
-            ${naoLidas ? `<span class="conv-nao-lidas">${naoLidas}</span>` : ''}
+            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+              ${timerHtml}
+              ${naoLidas ? `<span class="conv-nao-lidas">${naoLidas}</span>` : ''}
+            </div>
           </div>
-          <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px">
-            ${previewCheck}${previewTexto}
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px;gap:4px">
+            <div style="font-size:var(--text-xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;min-width:0">
+              ${previewCheck}${previewTexto}
+            </div>
+            ${statusBadge}
           </div>
         </div>
       </div>`;
@@ -396,12 +427,39 @@ function _atdRenderChat(conversa) {
   _atdState.modoNotaInterna = false;
   const corrigirAtivo = !!_atdState.corrigirAtivoPorConversa[conversa.id];
 
+  const _ST = {
+    aberta:             { label: 'Nova',        cor: 'var(--purple)',      bg: 'var(--purple-xlight)' },
+    em_atendimento:     { label: 'Atendendo',   cor: 'var(--green)',       bg: 'var(--success-bg)'    },
+    aguardando_cliente: { label: 'Aguardando',  cor: 'var(--warning-fg)',  bg: 'var(--warning-bg)'    },
+  };
+  const stAtual = _ST[conversa.status] || _ST.aberta;
+  const statusBadgeChat = `<span style="font-size:10px;font-weight:700;color:${stAtual.cor};background:${stAtual.bg};padding:2px 8px;border-radius:999px">${stAtual.label}</span>`;
+
   document.getElementById('atdChatAtivo').innerHTML = `
-    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <div style="font-weight:700;color:var(--text)">${nome}</div>
-      <button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdConcluirConversa('${conversa.id}')">
-        ${lc('check', 14, 'var(--green)')} Concluir
-      </button>
+    <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <div style="font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+        ${statusBadgeChat}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <div style="position:relative">
+          <button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdToggleStatusMenu('${conversa.id}')">
+            ${lc('chevron-down', 12, 'var(--fg-muted)')} Status
+          </button>
+          <div id="atdStatusMenu" style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:20;min-width:160px;padding:4px">
+            ${Object.entries(_ST).map(([k,v]) => `
+              <button onclick="_atdMudarStatus('${conversa.id}','${k}')" style="width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;border:none;background:${conversa.status===k?'var(--bg-subtle)':'transparent'};border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);color:var(--text)">
+                <span style="width:8px;height:8px;border-radius:50%;background:${v.cor};flex-shrink:0"></span>
+                ${v.label}
+                ${conversa.status===k ? lc('check',10,'var(--fg-subtle)') : ''}
+              </button>`).join('')}
+            <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+            <button onclick="_atdConcluirConversa('${conversa.id}')" style="width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;border:none;background:transparent;border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);color:var(--green)">
+              ${lc('check-circle', 12, 'var(--green)')} Concluir conversa
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="atdMensagensWrap" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
       ${bubbles || '<div style="color:var(--fg-subtle);font-size:var(--text-sm);text-align:center;margin-top:40px">Sem mensagens ainda.</div>'}
@@ -752,6 +810,31 @@ async function _atdConcluirConversa(conversaId) {
   document.getElementById('atdChatAtivo').style.display  = 'none';
   document.getElementById('atdPainelContato').style.display = 'none';
   _atdCarregarConversas();
+}
+
+function _atdToggleStatusMenu(conversaId) {
+  const menu = document.getElementById('atdStatusMenu');
+  if (!menu) return;
+  const visible = menu.style.display !== 'none';
+  menu.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    const fechar = (e) => { if (!menu.contains(e.target)) { menu.style.display = 'none'; document.removeEventListener('click', fechar); } };
+    setTimeout(() => document.addEventListener('click', fechar), 0);
+  }
+}
+
+async function _atdMudarStatus(conversaId, novoStatus) {
+  const menu = document.getElementById('atdStatusMenu');
+  if (menu) menu.style.display = 'none';
+  const sb = _atdGetSbClient();
+  const { error } = await sb.from('atd_conversas').update({ status: novoStatus }).eq('id', conversaId);
+  if (error) { toast('Erro ao mudar status', 'err'); return; }
+  const conv = _atdState.conversas.find(c => c.id === conversaId);
+  if (conv) conv.status = novoStatus;
+  const LABELS = { aberta: 'Nova', em_atendimento: 'Em atendimento', aguardando_cliente: 'Aguardando cliente' };
+  toast(`Status: ${LABELS[novoStatus] || novoStatus}`, 'ok');
+  _atdRenderLista();
+  if (conv) _atdRenderChat(conv);
 }
 
 // ══════════════════════════════════════════════════════════════
