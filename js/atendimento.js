@@ -1215,10 +1215,161 @@ function _atdRespostasAba(aba) {
   document.querySelectorAll('[data-resp]').forEach(b => b.classList.toggle('active', b.dataset.resp === aba));
   const el = document.getElementById('atdRespostasConteudo');
   if (aba === 'padrao') {
-    el.innerHTML = `<div class="atd-skeleton-page">${lc('zap', 36, 'var(--fg-subtle)')}<h3>Respostas Padrão</h3><p>CRUD das respostas rápidas acionadas pelo atalho <code>/</code> no chat. Em construção.</p></div>`;
+    _atdRespostasPadraoRender();
   } else {
     el.innerHTML = `<div class="atd-skeleton-page">${lc('cpu', 36, 'var(--fg-subtle)')}<h3>Tom de voz da IA</h3><p>Configure a personalidade, formalidade e regras de resposta da marca. Em construção.</p></div>`;
   }
+}
+
+async function _atdRespostasPadraoRender() {
+  const el = document.getElementById('atdRespostasConteudo');
+  el.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm);padding:16px 0">Carregando...</div>`;
+
+  const sb = _atdGetSbClient();
+  const { data, error } = await sb.from('atd_respostas_rapidas').select('*').order('atalho');
+  if (error) { el.innerHTML = `<div style="color:var(--danger)">Erro ao carregar respostas.</div>`; return; }
+
+  const lista = data || [];
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:var(--text-sm);color:var(--fg-muted)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} cadastrada${lista.length !== 1 ? 's' : ''}</div>
+      <button class="btn btn-primary btn-sm" onclick="_atdRespostaAbrirModal(null)">
+        ${lc('plus', 14, '#fff')} Nova resposta
+      </button>
+    </div>
+
+    ${lista.length === 0 ? `
+      <div style="text-align:center;padding:40px 0;color:var(--fg-subtle)">
+        ${lc('zap', 32, 'var(--fg-subtle)')}
+        <div style="margin-top:8px;font-size:var(--text-sm)">Nenhuma resposta cadastrada ainda.</div>
+        <div style="font-size:var(--text-xs);margin-top:4px">Crie respostas rápidas que os atendentes acionam com <code>/atalho</code> no chat.</div>
+      </div>` : `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${lista.map(r => `
+          <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r8);background:var(--surface)${r.ativo ? '' : ';opacity:.5'}">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 7px;border-radius:4px">/${r.atalho}</code>
+                <span style="font-weight:600;font-size:var(--text-sm);color:var(--text)">${r.titulo}</span>
+                ${!r.ativo ? `<span style="font-size:10px;color:var(--fg-subtle);background:var(--bg-subtle);padding:1px 6px;border-radius:4px">Inativo</span>` : ''}
+                ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<span style="font-size:10px;color:var(--fg-subtle);background:var(--bg-subtle);padding:1px 6px;border-radius:4px">${r.canal_tipo}</span>` : ''}
+              </div>
+              <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:pre-wrap;line-height:1.5">${r.conteudo}</div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="_atdRespostaAbrirModal(${JSON.stringify(JSON.stringify(r))})">
+                ${lc('edit-2', 14, 'var(--fg-muted)')}
+              </button>
+              <button class="btn btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="_atdRespostaToggleAtivo('${r.id}', ${!r.ativo})">
+                ${lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)')}
+              </button>
+              <button class="btn btn-ghost" style="padding:4px 6px" title="Excluir" onclick="_atdRespostaExcluir('${r.id}')">
+                ${lc('trash-2', 14, 'var(--danger)')}
+              </button>
+            </div>
+          </div>`).join('')}
+      </div>`}`;
+}
+
+function _atdRespostaAbrirModal(jsonStr) {
+  const r = jsonStr ? JSON.parse(jsonStr) : null;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'atdModalResposta';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:480px;width:90%">
+      <div class="mbox">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <div style="font-weight:700;font-size:var(--text-base)">${lc('zap', 16, 'var(--purple)')} ${r ? 'Editar resposta' : 'Nova resposta rápida'}</div>
+          <button class="btn btn-ghost" onclick="document.getElementById('atdModalResposta').remove()">${lc('x', 16, 'var(--fg-muted)')}</button>
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">ATALHO <span style="color:var(--fg-subtle);font-weight:400">(sem a barra — ex: horario)</span></label>
+          <div style="display:flex;align-items:center;gap:0">
+            <span style="padding:0 8px;height:36px;display:flex;align-items:center;background:var(--bg-subtle);border:1px solid var(--border);border-right:none;border-radius:var(--r6) 0 0 var(--r6);font-size:var(--text-sm);color:var(--fg-muted);font-weight:700">/</span>
+            <input id="rrAtalho" class="inp" style="border-radius:0 var(--r6) var(--r6) 0;flex:1" placeholder="horario" value="${r?.atalho || ''}" oninput="this.value=this.value.replace(/[^a-z0-9_]/g,'')">
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TÍTULO <span style="color:var(--fg-subtle);font-weight:400">(aparece no dropdown)</span></label>
+          <input id="rrTitulo" class="inp" placeholder="Horário de funcionamento" value="${r?.titulo || ''}">
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">CONTEÚDO DA RESPOSTA</label>
+          <textarea id="rrConteudo" class="inp" rows="4" placeholder="Olá! Nosso horário de atendimento é...">${r?.conteudo || ''}</textarea>
+        </div>
+        <div class="field" style="margin-bottom:20px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">CANAL</label>
+          <select id="rrCanal" class="inp">
+            <option value="todos" ${(!r?.canal_tipo || r.canal_tipo === 'todos') ? 'selected' : ''}>Todos os canais</option>
+            <option value="whatsapp" ${r?.canal_tipo === 'whatsapp' ? 'selected' : ''}>WhatsApp</option>
+            <option value="instagram" ${r?.canal_tipo === 'instagram' ? 'selected' : ''}>Instagram</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="document.getElementById('atdModalResposta').remove()">Cancelar</button>
+          <button class="btn btn-primary" onclick="_atdRespostaSalvar('${r?.id || ''}')">
+            ${lc('save', 14, '#fff')} Salvar
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  document.getElementById('rrAtalho').focus();
+}
+
+async function _atdRespostaSalvar(id) {
+  const atalho   = document.getElementById('rrAtalho')?.value.trim();
+  const titulo   = document.getElementById('rrTitulo')?.value.trim();
+  const conteudo = document.getElementById('rrConteudo')?.value.trim();
+  const canal    = document.getElementById('rrCanal')?.value || 'todos';
+
+  if (!atalho || !titulo || !conteudo) { toast('Preencha atalho, título e conteúdo', 'err'); return; }
+
+  const sb = _atdGetSbClient();
+  let error;
+
+  if (id) {
+    ({ error } = await sb.from('atd_respostas_rapidas').update({ atalho, titulo, conteudo, canal_tipo: canal }).eq('id', id));
+  } else {
+    ({ error } = await sb.from('atd_respostas_rapidas').insert({ atalho, titulo, conteudo, canal_tipo: canal }));
+  }
+
+  if (error) { toast('Erro ao salvar: ' + error.message, 'err'); return; }
+
+  document.getElementById('atdModalResposta')?.remove();
+  toast(id ? 'Resposta atualizada!' : 'Resposta criada!', 'ok');
+
+  // Recarrega cache de respostas rápidas
+  const { data } = await sb.from('atd_respostas_rapidas').select('*').eq('ativo', true).order('atalho');
+  _atdState.respostasRapidas = data || [];
+
+  _atdRespostasPadraoRender();
+}
+
+async function _atdRespostaToggleAtivo(id, ativo) {
+  const sb = _atdGetSbClient();
+  const { error } = await sb.from('atd_respostas_rapidas').update({ ativo }).eq('id', id);
+  if (error) { toast('Erro ao atualizar', 'err'); return; }
+  const { data } = await sb.from('atd_respostas_rapidas').select('*').eq('ativo', true).order('atalho');
+  _atdState.respostasRapidas = data || [];
+  _atdRespostasPadraoRender();
+}
+
+async function _atdRespostaExcluir(id) {
+  if (!confirm('Excluir esta resposta rápida?')) return;
+  const sb = _atdGetSbClient();
+  const { error } = await sb.from('atd_respostas_rapidas').delete().eq('id', id);
+  if (error) { toast('Erro ao excluir', 'err'); return; }
+  toast('Resposta excluída', 'ok');
+  const { data } = await sb.from('atd_respostas_rapidas').select('*').eq('ativo', true).order('atalho');
+  _atdState.respostasRapidas = data || [];
+  _atdRespostasPadraoRender();
 }
 
 function _atdRenderEstatisticas() {
