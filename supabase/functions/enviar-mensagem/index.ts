@@ -1,10 +1,19 @@
 // VTP Atendimento — enviar-mensagem
-// Recebe { conversa_id, texto, atendente_id } e envia via Evolution API
+// Recebe { conversa_id, texto?, atendente_id, tipo?, url?, nome_arquivo? } e envia via Evolution API
 // (WhatsApp), salvando o registro em atd_mensagens.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-interface Body { conversa_id: string; texto: string; atendente_id?: number | null; visibilidade?: 'publica' | 'interna'; }
+type MsgTipo = 'texto' | 'imagem' | 'audio' | 'video' | 'documento';
+interface Body {
+  conversa_id: string;
+  texto?: string;
+  atendente_id?: string | null;
+  visibilidade?: 'publica' | 'interna';
+  tipo?: MsgTipo;
+  url?: string;
+  nome_arquivo?: string;
+}
 
 // Chamada direto do navegador (inbox) — precisa de CORS e tratar o preflight OPTIONS.
 const CORS_HEADERS = {
@@ -26,8 +35,9 @@ Deno.serve(async (req) => {
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
   const body: Body = await req.json();
-  if (!body.conversa_id || !body.texto) {
-    return new Response(JSON.stringify({ error: 'conversa_id e texto são obrigatórios' }), { status: 400, headers: CORS_HEADERS });
+  const tipo = body.tipo || 'texto';
+  if (!body.conversa_id || (!body.texto && !body.url)) {
+    return new Response(JSON.stringify({ error: 'conversa_id e (texto ou url) são obrigatórios' }), { status: 400, headers: CORS_HEADERS });
   }
 
   const visibilidade = body.visibilidade || 'publica';
@@ -65,6 +75,42 @@ Deno.serve(async (req) => {
     const telefone = contato?.telefone;
     if (!telefone) {
       return new Response(JSON.stringify({ error: 'contato sem telefone vinculado' }), { status: 400, headers: CORS_HEADERS });
+    }
+
+    // Mídia (imagem, áudio, vídeo, documento)
+    if (tipo !== 'texto' && body.url) {
+      const mediaTypeMap: Record<string, string> = { imagem: 'image', audio: 'audio', video: 'video', documento: 'document' };
+      const evoRes = await fetch(`${EVO_URL}/message/sendMedia/${EVO_INSTANCE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: EVO_KEY },
+        body: JSON.stringify({
+          number:    telefone,
+          mediatype: mediaTypeMap[tipo] || 'image',
+          media:     body.url,
+          caption:   body.texto || '',
+          fileName:  body.nome_arquivo || '',
+        }),
+      });
+      if (!evoRes.ok) {
+        const detalhe = await evoRes.text();
+        return new Response(JSON.stringify({ error: `Evolution API HTTP ${evoRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
+      }
+      const evoData = await evoRes.json();
+      externalId = evoData?.key?.id ?? null;
+
+      await sb.from('atd_mensagens').insert({
+        conversa_id:  body.conversa_id,
+        origem:       'atendente',
+        atendente_id: body.atendente_id ?? null,
+        visibilidade: 'publica',
+        tipo,
+        conteudo:     { url: body.url, texto: body.texto || '', nome: body.nome_arquivo || '' },
+        external_id:  externalId,
+      });
+      const upd: Record<string, unknown> = { atualizado_em: new Date().toISOString() };
+      if (body.atendente_id) upd.atendente_id = body.atendente_id;
+      await sb.from('atd_conversas').update(upd).eq('id', body.conversa_id);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
     }
 
     const evoRes = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {

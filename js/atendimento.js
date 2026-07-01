@@ -454,6 +454,9 @@ function _atdRenderChat(conversa) {
                 ${conversa.status===k ? lc('check',10,'var(--fg-subtle)') : ''}
               </button>`).join('')}
             <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+            <button onclick="_atdAbrirTransferencia('${conversa.id}');document.getElementById('atdStatusMenu').style.display='none'" style="width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;border:none;background:transparent;border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);color:var(--text)">
+              ${lc('users', 12, 'var(--fg-muted)')} Transferir atendente
+            </button>
             <button onclick="_atdConcluirConversa('${conversa.id}')" style="width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;border:none;background:transparent;border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);color:var(--green)">
               ${lc('check-circle', 12, 'var(--green)')} Concluir conversa
             </button>
@@ -466,9 +469,14 @@ function _atdRenderChat(conversa) {
     </div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);position:relative">
       <div id="atdRespostasRapidasDropdown" style="display:none;position:absolute;bottom:100%;left:16px;right:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.1);max-height:180px;overflow-y:auto;margin-bottom:6px;z-index:10"></div>
+      <input type="file" id="atdInputArquivo" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+        onchange="_atdUploadArquivo('${conversa.id}', this)">
       <div style="display:flex;gap:8px;align-items:flex-end">
         <button id="atdBtnNotaInterna" class="btn btn-ghost" title="Nota interna (só a equipe vê)" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdToggleNotaInterna('${conversa.id}')">
           ${lc('lock', 14, 'var(--fg-muted)')}
+        </button>
+        <button class="btn btn-ghost" title="Enviar arquivo/imagem" style="font-size:var(--text-xs);flex-shrink:0" onclick="document.getElementById('atdInputArquivo').click()">
+          ${lc('paperclip', 14, 'var(--fg-muted)')}
         </button>
         <button id="atdBtnGerarResposta" class="btn btn-ghost" title="Gerar resposta ideal com IA" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdGerarResposta('${conversa.id}')">
           ${lc('zap', 14, 'var(--purple)')}
@@ -835,6 +843,130 @@ async function _atdMudarStatus(conversaId, novoStatus) {
   toast(`Status: ${LABELS[novoStatus] || novoStatus}`, 'ok');
   _atdRenderLista();
   if (conv) _atdRenderChat(conv);
+}
+
+// ══════════════════════════════════════════════════════════════
+// UPLOAD DE ARQUIVO
+// ══════════════════════════════════════════════════════════════
+
+async function _atdUploadArquivo(conversaId, input) {
+  const file = input?.files?.[0];
+  if (!file) return;
+  input.value = '';
+
+  const user = getCurrentUser();
+  const sb = _atdGetSbClient();
+
+  // Detecta tipo
+  let tipo = 'documento';
+  if (file.type.startsWith('image/')) tipo = 'imagem';
+  else if (file.type.startsWith('audio/')) tipo = 'audio';
+  else if (file.type.startsWith('video/')) tipo = 'video';
+
+  // Feedback visual
+  toast(`Enviando ${file.name}…`, 'info');
+
+  // Upload para Supabase Storage
+  const ext = file.name.split('.').pop();
+  const path = `conversas/${conversaId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const { error: upErr } = await sb.storage.from('atd-midias').upload(path, file, { cacheControl: '3600', upsert: false });
+  if (upErr) { toast('Erro no upload: ' + upErr.message, 'err'); return; }
+
+  // URL pública assinada (1 semana)
+  const { data: signedData } = await sb.storage.from('atd-midias').createSignedUrl(path, 604800);
+  const url = signedData?.signedUrl;
+  if (!url) { toast('Erro ao gerar URL do arquivo', 'err'); return; }
+
+  // Envia via edge function
+  const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+    body: JSON.stringify({ conversa_id: conversaId, tipo, url, nome_arquivo: file.name, atendente_id: user?.id ?? null, visibilidade: 'publica' }),
+  });
+  const json = await res.json();
+  if (!res.ok) { toast('Erro ao enviar arquivo: ' + (json.error || ''), 'err'); return; }
+
+  toast(`${tipo === 'imagem' ? 'Imagem' : tipo === 'audio' ? 'Áudio' : tipo === 'video' ? 'Vídeo' : 'Arquivo'} enviado!`, 'ok');
+  await _atdAbrirConversa(conversaId);
+}
+
+// ══════════════════════════════════════════════════════════════
+// TRANSFERÊNCIA ENTRE ATENDENTES
+// ══════════════════════════════════════════════════════════════
+
+async function _atdAbrirTransferencia(conversaId) {
+  const sb = _atdGetSbClient();
+  const user = getCurrentUser();
+
+  // Busca atendentes disponíveis (profiles com role gerente/atendente)
+  const { data: perfis } = await sb
+    .from('profiles')
+    .select('id, nome, role')
+    .in('role', ['gerente', 'atendente', 'supervisor'])
+    .order('nome');
+
+  const lista = (perfis || []).filter(p => p.id !== user?.id);
+
+  // Cria modal
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'atdModalTransferencia';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:400px;width:90%">
+      <div class="mbox">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-weight:700;font-size:var(--text-base)">${lc('users', 16, 'var(--purple)')} Transferir conversa</div>
+          <button class="btn btn-ghost" onclick="document.getElementById('atdModalTransferencia').remove()">${lc('x', 16, 'var(--fg-muted)')}</button>
+        </div>
+        ${lista.length === 0
+          ? `<div style="color:var(--fg-subtle);font-size:var(--text-sm);text-align:center;padding:24px 0">Nenhum outro atendente disponível.</div>`
+          : `<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">
+              ${lista.map(p => `
+                <button onclick="_atdConfirmarTransferencia('${conversaId}','${p.id}','${(p.nome || '').replace(/'/g, "\\'")}')"
+                  style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r8);background:var(--surface);cursor:pointer;text-align:left;width:100%">
+                  <div style="width:32px;height:32px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:var(--text-sm)">${(p.nome || '?').charAt(0).toUpperCase()}</div>
+                  <div>
+                    <div style="font-weight:600;font-size:var(--text-sm);color:var(--text)">${p.nome || 'Sem nome'}</div>
+                    <div style="font-size:var(--text-xs);color:var(--fg-subtle);text-transform:capitalize">${p.role || ''}</div>
+                  </div>
+                </button>`).join('')}
+            </div>`}
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+}
+
+async function _atdConfirmarTransferencia(conversaId, atendenteId, atendenteNome) {
+  document.getElementById('atdModalTransferencia')?.remove();
+  const sb = _atdGetSbClient();
+  const user = getCurrentUser();
+
+  const { error } = await sb.from('atd_conversas')
+    .update({ atendente_id: atendenteId, status: 'em_atendimento' })
+    .eq('id', conversaId);
+
+  if (error) { toast('Erro ao transferir', 'err'); return; }
+
+  // Nota interna registrando a transferência
+  await sb.from('atd_mensagens').insert({
+    conversa_id:  conversaId,
+    origem:       'atendente',
+    atendente_id: user?.id ?? null,
+    visibilidade: 'interna',
+    tipo:         'texto',
+    conteudo:     { texto: `🔄 Conversa transferida para ${atendenteNome}.` },
+  });
+
+  toast(`Transferido para ${atendenteNome}`, 'ok');
+  _atdState.conversaAtivaId = null;
+  document.getElementById('atdChatVazio').style.display = 'flex';
+  document.getElementById('atdChatAtivo').style.display  = 'none';
+  const painel = document.getElementById('atdPainelContato');
+  if (painel) painel.style.display = 'none';
+  await _atdCarregarConversas();
 }
 
 // ══════════════════════════════════════════════════════════════
