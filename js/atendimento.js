@@ -271,6 +271,13 @@ function _atdRenderLista() {
 // ══════════════════════════════════════════════════════════════
 
 async function _atdAbrirConversa(conversaId) {
+  // Garante que o inbox está renderizado (pode ter sido navegado para outra seção)
+  if (!document.getElementById('atdChatVazio')) {
+    _atdPaginaAtiva = 'inbox';
+    renderOmnichannel();
+    await new Promise(r => setTimeout(r, 50));
+  }
+
   _atdState.conversaAtivaId = conversaId;
 
   // Zera não-lidas localmente e no banco
@@ -283,9 +290,14 @@ async function _atdAbrirConversa(conversaId) {
   const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
   document.title = totalNaoLidas > 0 ? `(${totalNaoLidas}) VTP Atendimento` : 'VTP Atendimento';
 
-  document.getElementById('atdChatVazio').style.display = 'none';
-  document.getElementById('atdChatAtivo').style.display  = 'flex';
-  document.getElementById('atdPainelContato').style.display = 'block';
+  const chatVazio = document.getElementById('atdChatVazio');
+  const chatAtivo = document.getElementById('atdChatAtivo');
+  const painelContato = document.getElementById('atdPainelContato');
+  if (!chatVazio || !chatAtivo) { console.error('[atd] elementos do chat não encontrados'); return; }
+
+  chatVazio.style.display = 'none';
+  chatAtivo.style.display  = 'flex';
+  if (painelContato) painelContato.style.display = 'block';
 
   const sb = _atdGetSbClient();
   const { data: conversa } = await sb
@@ -765,7 +777,6 @@ function _atdAssinarRealtime() {
           _atdTocarSom();
           const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
           if (totalNaoLidas > 0) document.title = `(${totalNaoLidas}) VTP Atendimento`;
-          if (navBadge) { navBadge.textContent = totalNaoLidas; navBadge.style.display = 'flex'; }
         }
       }
 
