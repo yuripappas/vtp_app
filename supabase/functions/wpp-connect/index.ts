@@ -44,8 +44,34 @@ Deno.serve(async (req) => {
 
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
+
     if (body.action === 'disconnect') {
       const r = await evoFetch(`/instance/logout/${EVO_INSTANCE}`, 'DELETE');
+      const d = await r.json();
+      return new Response(JSON.stringify({ ok: r.ok, detalhe: d }), {
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (body.action === 'forward-location') {
+      const { number, latitude, longitude, name } = body;
+      if (!number || latitude == null || longitude == null) {
+        return new Response(JSON.stringify({ error: 'number, latitude e longitude são obrigatórios' }), { status: 400, headers: CORS });
+      }
+      // Normaliza número: remove não-dígitos, garante DDI 55
+      const digits = String(number).replace(/\D/g, '');
+      const normalized = digits.startsWith('55') ? digits : `55${digits}`;
+      const r = await fetch(`${EVO_URL}/message/sendLocation/${EVO_INSTANCE}`, {
+        method: 'POST',
+        headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: normalized,
+          latitude,
+          longitude,
+          name: name || 'Localização do cliente',
+          address: '',
+        }),
+      });
       const d = await r.json();
       return new Response(JSON.stringify({ ok: r.ok, detalhe: d }), {
         headers: { ...CORS, 'Content-Type': 'application/json' },

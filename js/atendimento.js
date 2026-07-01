@@ -328,10 +328,47 @@ function _atdRenderChat(conversa) {
   const nome = conversa.atd_contatos?.nome || conversa.atd_contatos?.telefone || 'Sem nome';
   const bubbles = _atdState.mensagens.map(m => {
     const classe = m.visibilidade === 'interna' ? 'interna' : (m.origem === 'cliente' ? 'cliente' : 'atendente');
-    const texto = m.conteudo?.texto ?? '[mensagem não suportada]';
     const hora = new Date(m.enviado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const prefixo = classe === 'interna' ? `${lc('lock', 11, 'var(--warning-fg)')} ` : '';
-    return `<div class="msg-bubble ${classe}">${prefixo}${texto}<div style="font-size:10px;opacity:.7;margin-top:3px">${hora}</div></div>`;
+
+    let conteudoHtml;
+    if (m.tipo === 'localizacao' && m.conteudo?.latitude != null) {
+      const lat = m.conteudo.latitude;
+      const lng = m.conteudo.longitude;
+      const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+      conteudoHtml = `
+        <div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            ${lc('map-pin', 14, classe === 'cliente' ? 'var(--text)' : '#fff')}
+            <span style="font-weight:700">Localização</span>
+          </div>
+          <img src="https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=15&size=240x140&markers=${lat},${lng}&key=AIzaSyD-stub"
+               onerror="this.outerHTML='<div style=\'background:var(--border);border-radius:8px;width:240px;height:80px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--fg-subtle)\'>📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>'"
+               style="width:240px;height:140px;border-radius:8px;object-fit:cover;display:block;margin-bottom:8px">
+          <div style="display:flex;gap:6px">
+            <a href="${mapsUrl}" target="_blank" style="flex:1;text-align:center;padding:5px 8px;background:rgba(0,0,0,.12);border-radius:6px;font-size:11px;font-weight:700;color:inherit;text-decoration:none">
+              ${lc('external-link', 11, 'currentColor')} Abrir Maps
+            </a>
+            <button onclick="_atdEncaminharLocalizacao(${lat},${lng})" style="flex:1;padding:5px 8px;background:rgba(0,0,0,.12);border:none;border-radius:6px;font-size:11px;font-weight:700;color:inherit;cursor:pointer">
+              ${lc('send', 11, 'currentColor')} Encaminhar
+            </button>
+          </div>
+        </div>`;
+    } else if (m.tipo === 'imagem') {
+      conteudoHtml = `📷 Imagem${m.conteudo?.texto ? ': ' + m.conteudo.texto : ''}`;
+    } else if (m.tipo === 'audio') {
+      conteudoHtml = `🎤 Áudio`;
+    } else if (m.tipo === 'video') {
+      conteudoHtml = `🎥 Vídeo${m.conteudo?.texto ? ': ' + m.conteudo.texto : ''}`;
+    } else if (m.tipo === 'documento') {
+      conteudoHtml = `📄 Documento`;
+    } else if (m.tipo === 'sticker') {
+      conteudoHtml = `😊 Sticker`;
+    } else {
+      conteudoHtml = `${prefixo}${m.conteudo?.texto ?? ''}`;
+    }
+
+    return `<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
   }).join('');
 
   _atdState.modoNotaInterna = false;
@@ -984,6 +1021,93 @@ async function _atdQRCarregar() {
     }
   } catch {
     imagemDiv.innerHTML = `<div style="color:var(--danger);font-size:var(--text-sm)">Erro ao gerar QR Code.</div>`;
+  }
+}
+
+async function _atdEncaminharLocalizacao(lat, lng) {
+  const sb = _atdGetSbClient();
+  const BASE = VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1');
+
+  // Busca contatos com telefone cadastrado
+  const { data: contatos } = await sb
+    .from('atd_contatos')
+    .select('id, nome, telefone')
+    .not('telefone', 'is', null)
+    .order('nome', { ascending: true })
+    .limit(100);
+
+  const modal = document.createElement('div');
+  modal.id = 'popupEncaminharLoc';
+  modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:400px;padding:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="font-weight:800;font-size:var(--text-base);display:flex;align-items:center;gap:8px">
+          ${lc('send', 16, 'var(--purple)')} Encaminhar localização
+        </div>
+        <button class="btn btn-ghost" onclick="document.getElementById('popupEncaminharLoc').remove()">${lc('x',15,'currentColor')}</button>
+      </div>
+
+      <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-bottom:10px">Buscar na lista de contatos:</div>
+      <input id="encLocBusca" class="inp" placeholder="Nome ou número..." oninput="_atdEncLocFiltrar()" autocomplete="off" style="margin-bottom:8px">
+      <div id="encLocLista" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r8);margin-bottom:14px">
+        ${(contatos || []).map(c => `
+          <div class="enc-loc-item" data-tel="${c.telefone}" data-nome="${c.nome || c.telefone}"
+               style="padding:9px 12px;cursor:pointer;font-size:var(--text-sm);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"
+               onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''"
+               onclick="_atdEncLocSelecionar('${c.telefone}','${(c.nome || c.telefone).replace(/'/g,"\\'")}')">
+            <span>${c.nome || c.telefone}</span>
+            <span style="color:var(--fg-subtle);font-size:11px">${c.telefone}</span>
+          </div>`).join('') || '<div style="padding:12px;color:var(--fg-subtle);font-size:var(--text-sm);text-align:center">Nenhum contato com telefone cadastrado</div>'}
+      </div>
+
+      <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-bottom:6px">Ou digite o número manualmente:</div>
+      <input id="encLocNumero" class="inp" placeholder="Ex: 82999999999" type="tel" style="margin-bottom:14px">
+
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="_atdEncLocEnviar(${lat},${lng})">
+        ${lc('send', 13, '#fff')} Encaminhar
+      </button>
+      <div id="encLocStatus" style="margin-top:10px;font-size:var(--text-xs);text-align:center;color:var(--fg-subtle)"></div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function _atdEncLocFiltrar() {
+  const q = document.getElementById('encLocBusca')?.value.toLowerCase() || '';
+  document.querySelectorAll('.enc-loc-item').forEach(el => {
+    const match = (el.dataset.nome + el.dataset.tel).toLowerCase().includes(q);
+    el.style.display = match ? '' : 'none';
+  });
+}
+
+function _atdEncLocSelecionar(tel, nome) {
+  const input = document.getElementById('encLocNumero');
+  if (input) { input.value = tel; input.focus(); }
+}
+
+async function _atdEncLocEnviar(lat, lng) {
+  const numero = document.getElementById('encLocNumero')?.value.trim();
+  const statusDiv = document.getElementById('encLocStatus');
+  if (!numero) { if (statusDiv) statusDiv.textContent = 'Digite ou selecione um número.'; return; }
+
+  const BASE = VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1');
+  if (statusDiv) statusDiv.textContent = 'Enviando...';
+
+  try {
+    const r = await fetch(`${BASE}/wpp-connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      body: JSON.stringify({ action: 'forward-location', number: numero, latitude: lat, longitude: lng }),
+    });
+    const d = await r.json();
+    if (r.ok && d.ok !== false) {
+      if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--green)">✓ Localização enviada!</span>`;
+      setTimeout(() => document.getElementById('popupEncaminharLoc')?.remove(), 1500);
+    } else {
+      if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--danger)">Erro: ${d.detalhe?.message || 'falha ao enviar'}</span>`;
+    }
+  } catch (e) {
+    if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--danger)">Erro de conexão.</span>`;
   }
 }
 
