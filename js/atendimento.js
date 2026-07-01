@@ -30,27 +30,35 @@ const _atdState = {
 // RENDER PRINCIPAL
 // ══════════════════════════════════════════════════════════════
 
+// Página ativa do módulo omnichannel
+let _atdPaginaAtiva = 'inbox';
+
 function renderOmnichannel() {
   document.getElementById('page-omnichannel').innerHTML = `
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button id="atdTabInbox" class="atd-tab active" onclick="_atdMudarAba('inbox')">
-        ${lc('message-circle', 15, 'currentColor')} Inbox
-      </button>
-      <button id="atdTabIntegracoes" class="atd-tab" onclick="_atdMudarAba('integracoes')">
-        ${lc('link', 15, 'currentColor')} Integrações de Canais
-      </button>
-    </div>
-
-    <div id="atdAbaInbox"></div>
-    <div id="atdAbaIntegracoes" style="display:none"></div>
-
     <style>
-      .atd-tab {
-        display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:var(--r8); border:1px solid var(--border);
-        background:var(--bg-elevated); color:var(--fg-muted); font-size:var(--text-sm); font-weight:700; cursor:pointer;
+      /* Sub-nav do módulo Omnichannel */
+      .atd-subnav {
+        display:flex; align-items:center; gap:2px; margin-bottom:16px;
+        background:var(--bg-elevated); border:1px solid var(--border);
+        border-radius:var(--r12); padding:4px; width:fit-content;
       }
-      .atd-tab.active { background:var(--purple); color:#fff; border-color:var(--purple); }
+      .atd-subnav-item {
+        display:flex; align-items:center; gap:7px; padding:7px 14px;
+        border-radius:var(--r8); border:none; background:transparent;
+        color:var(--fg-muted); font-size:var(--text-sm); font-weight:600;
+        cursor:pointer; transition:background .15s, color .15s; white-space:nowrap;
+        position:relative;
+      }
+      .atd-subnav-item:hover { background:var(--bg-hover); color:var(--text); }
+      .atd-subnav-item.active { background:var(--purple); color:#fff; }
+      .atd-subnav-item .atd-nav-badge {
+        background:#E1306C; color:#fff; font-size:10px; font-weight:800;
+        min-width:17px; height:17px; border-radius:999px;
+        display:flex; align-items:center; justify-content:center; padding:0 4px;
+      }
+      .atd-subnav-item.active .atd-nav-badge { background:rgba(255,255,255,.3); }
 
+      /* Tabs internas (Chat/Avaliações e sub-filtros) */
       .atd-canal-tab {
         border:1px solid var(--border); background:var(--bg-elevated); color:var(--fg-muted);
         font-size:var(--text-xs); font-weight:700; padding:5px 12px; border-radius:999px; cursor:pointer;
@@ -63,6 +71,7 @@ function renderOmnichannel() {
       }
       .atd-canal-tab:not(.active) .atd-tab-badge { background:#E1306C; color:#fff; }
 
+      /* Cards de conversa */
       .conv-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; position:relative; border-left:3px solid transparent; }
       .conv-item:hover { background:var(--bg-hover); }
       .conv-item.active { background:#ede8ff; border-left-color:var(--purple); }
@@ -73,41 +82,88 @@ function renderOmnichannel() {
       .conv-avatar { width:40px; height:40px; border-radius:50%; flex-shrink:0; object-fit:cover; }
       .conv-avatar-inicial { width:40px; height:40px; border-radius:50%; background:var(--purple); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px; flex-shrink:0; }
       .conv-nao-lidas { background:#E1306C; color:#fff; font-size:10px; font-weight:800; min-width:18px; height:18px; border-radius:999px; display:flex; align-items:center; justify-content:center; padding:0 4px; flex-shrink:0; }
+
+      /* Balões de mensagem */
       .msg-bubble { padding:9px 13px; border-radius:var(--r12); max-width:75%; word-break:break-word; font-size:var(--text-sm); line-height:1.5; }
       .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
       .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
       .msg-bubble.interna { background:var(--warning-bg); border:1px dashed var(--warning-border); align-self:stretch; font-size:var(--text-xs); }
 
+      /* Páginas skeleton */
+      .atd-skeleton-page {
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        gap:12px; min-height:340px; color:var(--fg-subtle); text-align:center;
+      }
+      .atd-skeleton-page h3 { font-size:var(--text-base); font-weight:700; color:var(--text); margin:0; }
+      .atd-skeleton-page p { font-size:var(--text-sm); color:var(--fg-muted); margin:0; max-width:380px; line-height:1.6; }
+
       @media (max-width: 900px) {
         .atd-panel { display:none !important; }
+        .atd-subnav { width:100%; overflow-x:auto; }
       }
       @media (max-width: 640px) {
         .atd-layout { flex-direction:column; height:auto; min-height:calc(100vh - 64px); }
         .atd-sidebar { width:100%; max-height:200px; }
         .atd-chat { min-height:400px; }
+        .atd-subnav-item span.atd-subnav-label { display:none; }
       }
     </style>
+
+    <!-- Sub-navegação do módulo -->
+    <nav class="atd-subnav" id="atdSubNav">
+      <button class="atd-subnav-item active" data-page="inbox" onclick="_atdNavegar('inbox')">
+        ${lc('inbox', 15, 'currentColor')}
+        <span class="atd-subnav-label">Inbox</span>
+        <span class="atd-nav-badge" id="atdNavBadgeInbox" style="display:none"></span>
+      </button>
+      <button class="atd-subnav-item" data-page="respostas" onclick="_atdNavegar('respostas')">
+        ${lc('zap', 15, 'currentColor')}
+        <span class="atd-subnav-label">Respostas</span>
+      </button>
+      <button class="atd-subnav-item" data-page="estatisticas" onclick="_atdNavegar('estatisticas')">
+        ${lc('bar-chart-2', 15, 'currentColor')}
+        <span class="atd-subnav-label">Estatísticas</span>
+      </button>
+      <button class="atd-subnav-item" data-page="integracoes" onclick="_atdNavegar('integracoes')">
+        ${lc('link', 15, 'currentColor')}
+        <span class="atd-subnav-label">Integrações</span>
+      </button>
+      <button class="atd-subnav-item" data-page="configuracoes" onclick="_atdNavegar('configuracoes')">
+        ${lc('settings', 15, 'currentColor')}
+        <span class="atd-subnav-label">Configurações</span>
+      </button>
+    </nav>
+
+    <!-- Container de conteúdo -->
+    <div id="atdConteudo"></div>
   `;
 
-  _atdRenderInbox();
+  _atdNavegar(_atdPaginaAtiva);
 }
 
-function _atdMudarAba(aba) {
-  const inbox = document.getElementById('atdAbaInbox');
-  const integ = document.getElementById('atdAbaIntegracoes');
-  document.getElementById('atdTabInbox').classList.toggle('active', aba === 'inbox');
-  document.getElementById('atdTabIntegracoes').classList.toggle('active', aba === 'integracoes');
-  inbox.style.display = aba === 'inbox' ? 'block' : 'none';
-  integ.style.display = aba === 'integracoes' ? 'block' : 'none';
+function _atdNavegar(pagina) {
+  _atdPaginaAtiva = pagina;
 
-  if (aba === 'integracoes' && !integ.dataset.carregado) {
-    integ.dataset.carregado = '1';
-    _atdRenderIntegracoes();
+  // Atualiza nav
+  document.querySelectorAll('#atdSubNav .atd-subnav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === pagina);
+  });
+
+  // Renderiza página
+  const el = document.getElementById('atdConteudo');
+  el.innerHTML = '';
+
+  switch (pagina) {
+    case 'inbox':        _atdRenderInbox(); break;
+    case 'respostas':    _atdRenderRespostas(); break;
+    case 'estatisticas': _atdRenderEstatisticas(); break;
+    case 'integracoes':  _atdRenderIntegracoes(); break;
+    case 'configuracoes':_atdRenderConfiguracoes(); break;
   }
 }
 
 function _atdRenderInbox() {
-  document.getElementById('atdAbaInbox').innerHTML = `
+  document.getElementById('atdConteudo').innerHTML = `
     <div class="atd-layout" style="display:flex;height:calc(100vh - 120px);background:var(--bg-elevated);border-radius:var(--r16);overflow:hidden;border:1px solid var(--border)">
 
       <!-- COLUNA A — lista de conversas -->
