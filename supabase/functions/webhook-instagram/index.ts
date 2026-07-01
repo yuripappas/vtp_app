@@ -112,7 +112,9 @@ Deno.serve(async (req) => {
         .select('id')
         .eq('contato_id', contato.id)
         .eq('canal_tipo', 'instagram')
-        .eq('status', 'aberta')
+        .in('status', ['aberta', 'em_atendimento', 'aguardando_cliente'])
+        .order('atualizado_em', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       let conversaId = conversaExistente?.id;
