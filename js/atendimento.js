@@ -51,16 +51,28 @@ function renderOmnichannel() {
       }
       .atd-tab.active { background:var(--purple); color:#fff; border-color:var(--purple); }
 
-      .atd-filtro {
+      .atd-canal-tab {
         border:1px solid var(--border); background:var(--bg-elevated); color:var(--fg-muted);
-        font-size:var(--text-xs); font-weight:600; padding:4px 10px; border-radius:999px; cursor:pointer;
+        font-size:var(--text-xs); font-weight:700; padding:5px 12px; border-radius:999px; cursor:pointer;
+        display:flex; align-items:center; gap:5px;
       }
-      .atd-filtro.active { background:var(--purple); color:#fff; border-color:var(--purple); }
-      .conv-item { display:flex; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; position:relative; }
+      .atd-canal-tab.active { background:var(--purple); color:#fff; border-color:var(--purple); }
+      .atd-canal-tab .atd-tab-badge {
+        background:rgba(255,255,255,.25); color:#fff; font-size:10px; font-weight:800;
+        min-width:17px; height:17px; border-radius:999px; display:flex; align-items:center; justify-content:center; padding:0 4px;
+      }
+      .atd-canal-tab:not(.active) .atd-tab-badge { background:#E1306C; color:#fff; }
+
+      .conv-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; position:relative; border-left:3px solid transparent; }
       .conv-item:hover { background:var(--bg-hover); }
-      .conv-item.active { background:#ede8ff; border-left:4px solid var(--purple); padding-left:12px; }
+      .conv-item.active { background:#ede8ff; border-left-color:var(--purple); }
       .conv-item.active .conv-nome { color:var(--purple) !important; font-weight:800 !important; }
-      .conv-canal-badge { position:absolute; bottom:9px; left:38px; width:16px; height:16px; border-radius:50%; background:var(--bg-elevated); border:2px solid var(--bg-elevated); display:flex; align-items:center; justify-content:center; }
+      .conv-item[data-canal="whatsapp"] { --canal-cor: #25D366; }
+      .conv-item[data-canal="instagram"] { --canal-cor: #E1306C; }
+      .conv-item:not(.active) { border-left-color: var(--canal-cor, transparent); }
+      .conv-avatar { width:40px; height:40px; border-radius:50%; flex-shrink:0; object-fit:cover; }
+      .conv-avatar-inicial { width:40px; height:40px; border-radius:50%; background:var(--purple); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px; flex-shrink:0; }
+      .conv-nao-lidas { background:#E1306C; color:#fff; font-size:10px; font-weight:800; min-width:18px; height:18px; border-radius:999px; display:flex; align-items:center; justify-content:center; padding:0 4px; flex-shrink:0; }
       .msg-bubble { padding:9px 13px; border-radius:var(--r12); max-width:75%; word-break:break-word; font-size:var(--text-sm); line-height:1.5; }
       .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
       .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
@@ -107,10 +119,13 @@ function _atdRenderInbox() {
           <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:10px;font-size:var(--text-xs)" onclick="_atdAbrirBuscaPedido()">
             ${lc('search', 13, '#fff')} Buscar pedido / cliente
           </button>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="atd-filtro active" data-filtro="todas" onclick="_atdAplicarFiltro('todas')">Todas</button>
-            <button class="atd-filtro" data-filtro="minhas" onclick="_atdAplicarFiltro('minhas')">Minhas</button>
-            <button class="atd-filtro" data-filtro="sem_atendente" onclick="_atdAplicarFiltro('sem_atendente')">Sem atendente</button>
+          <div id="atdCanalTabs" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="atd-canal-tab active" data-canal="chat" onclick="_atdAplicarFiltro('chat')">
+              Chat <span class="atd-tab-badge" id="atdBadgeChat">0</span>
+            </button>
+            <button class="atd-canal-tab" data-canal="avaliacoes" onclick="_atdAplicarFiltro('avaliacoes')">
+              Avaliações <span class="atd-tab-badge" id="atdBadgeAvaliacoes">0</span>
+            </button>
           </div>
         </div>
         <div id="atdListaConversas" style="flex:1;overflow-y:auto"></div>
@@ -156,7 +171,7 @@ async function _atdCarregarConversas() {
   const sb = _atdGetSbClient();
   const { data, error } = await sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, atd_contatos(nome, telefone, instagram_id, avatar_url)')
     .eq('status', 'aberta')
     .order('atualizado_em', { ascending: false });
 
@@ -166,17 +181,26 @@ async function _atdCarregarConversas() {
 }
 
 function _atdAplicarFiltro(filtro) {
-  document.querySelectorAll('.atd-filtro').forEach(b => b.classList.toggle('active', b.dataset.filtro === filtro));
+  document.querySelectorAll('.atd-canal-tab').forEach(b => b.classList.toggle('active', b.dataset.canal === filtro));
   _atdState.filtroAtivo = filtro;
   _atdRenderLista();
 }
 
+const _ATD_CANAIS_CHAT = ['whatsapp', 'instagram'];
+const _ATD_CANAIS_AVAL = ['ifood', '99food'];
+
 function _atdRenderLista() {
-  const user = getCurrentUser();
-  const filtro = _atdState.filtroAtivo || 'todas';
-  let lista = _atdState.conversas;
-  if (filtro === 'minhas')         lista = lista.filter(c => c.atendente_id === user?.id);
-  else if (filtro === 'sem_atendente') lista = lista.filter(c => !c.atendente_id);
+  const filtro = _atdState.filtroAtivo || 'chat';
+  const canais = filtro === 'avaliacoes' ? _ATD_CANAIS_AVAL : _ATD_CANAIS_CHAT;
+  const lista = _atdState.conversas.filter(c => canais.includes(c.canal_tipo));
+
+  // Atualiza badges das abas
+  const totalChat = _atdState.conversas.filter(c => _ATD_CANAIS_CHAT.includes(c.canal_tipo)).reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
+  const totalAval = _atdState.conversas.filter(c => _ATD_CANAIS_AVAL.includes(c.canal_tipo)).reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
+  const badgeChat = document.getElementById('atdBadgeChat');
+  const badgeAval = document.getElementById('atdBadgeAvaliacoes');
+  if (badgeChat) { badgeChat.textContent = totalChat || ''; badgeChat.style.display = totalChat ? 'flex' : 'none'; }
+  if (badgeAval) { badgeAval.textContent = totalAval || ''; badgeAval.style.display = totalAval ? 'flex' : 'none'; }
 
   const el = document.getElementById('atdListaConversas');
   if (!el) return;
@@ -186,28 +210,40 @@ function _atdRenderLista() {
     return;
   }
 
+  const CANAL_COR = { whatsapp: '#25D366', instagram: '#E1306C', ifood: '#EA1D2C', '99food': '#FFC700' };
+
   el.innerHTML = lista.map(c => {
     const contato = c.atd_contatos || {};
     const nome = contato.nome || contato.telefone || (contato.instagram_id ? '@' + contato.instagram_id : 'Sem nome');
     const inicial = nome.charAt(0).toUpperCase();
     const ativa = c.id === _atdState.conversaAtivaId;
-    const canalBadge = c.canal_tipo === 'instagram'
-      ? `<span class="conv-canal-badge">${_atdIconeCanal('instagram', 10)}</span>`
-      : c.canal_tipo === 'whatsapp'
-      ? `<span class="conv-canal-badge">${_atdIconeCanal('whatsapp', 10)}</span>`
+    const naoLidas = c.mensagens_nao_lidas || 0;
+    const cor = CANAL_COR[c.canal_tipo] || 'transparent';
+
+    const avatar = contato.avatar_url
+      ? `<img class="conv-avatar" src="${contato.avatar_url}" alt="${inicial}" onerror="this.outerHTML='<div class=conv-avatar-inicial>${inicial}</div>'">`
+      : `<div class="conv-avatar-inicial">${inicial}</div>`;
+
+    const canalIcone = c.canal_tipo
+      ? `<span style="display:flex;align-items:center;gap:3px">${_atdIconeCanal(c.canal_tipo, 13)}<span style="color:var(--fg-subtle);font-size:10px;font-weight:600;text-transform:capitalize">${c.canal_tipo}</span></span>`
       : '';
+
     return `
-      <div class="conv-item ${ativa ? 'active' : ''}" onclick="_atdAbrirConversa('${c.id}')">
+      <div class="conv-item ${ativa ? 'active' : ''}" data-canal="${c.canal_tipo || ''}" onclick="_atdAbrirConversa('${c.id}')">
         <div style="position:relative;flex-shrink:0">
-          <span style="width:38px;height:38px;border-radius:50%;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${inicial}</span>
-          ${canalBadge}
+          ${avatar}
+          <span style="position:absolute;bottom:-1px;right:-1px;width:16px;height:16px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff">
+            ${_atdIconeCanal(c.canal_tipo, 13)}
+          </span>
         </div>
         <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;gap:6px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px">
             <div class="conv-nome" style="font-weight:700;font-size:var(--text-sm);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+            ${naoLidas ? `<span class="conv-nao-lidas">${naoLidas}</span>` : ''}
           </div>
-          <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:2px">
-            ${c.atendente_id ? lc('user-check', 11, 'var(--green)') + ' atribuída' : 'sem atendente'}
+          <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:3px;display:flex;align-items:center;gap:6px">
+            ${canalIcone}
+            <span>${c.atendente_id ? lc('user-check', 10, 'var(--green)') + ' atribuída' : 'sem atendente'}</span>
           </div>
         </div>
       </div>`;
@@ -220,6 +256,13 @@ function _atdRenderLista() {
 
 async function _atdAbrirConversa(conversaId) {
   _atdState.conversaAtivaId = conversaId;
+
+  // Zera não-lidas localmente e no banco
+  const conv = _atdState.conversas.find(c => c.id === conversaId);
+  if (conv && conv.mensagens_nao_lidas > 0) {
+    conv.mensagens_nao_lidas = 0;
+    _atdGetSbClient().from('atd_conversas').update({ mensagens_nao_lidas: 0 }).eq('id', conversaId).then(() => {});
+  }
   _atdRenderLista();
 
   document.getElementById('atdChatVazio').style.display = 'none';

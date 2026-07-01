@@ -82,9 +82,27 @@ Deno.serve(async (req) => {
       const mid = evento.message?.mid;
       if (!igsid || !texto) continue;
 
+      // Busca nome e foto do perfil via Graph API (best-effort)
+      let igNome: string | null = null;
+      let igAvatar: string | null = null;
+      const IG_TOKEN = Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
+      if (IG_TOKEN) {
+        try {
+          const igProfile = await fetch(`https://graph.instagram.com/v21.0/${igsid}?fields=name,profile_pic&access_token=${IG_TOKEN}`);
+          if (igProfile.ok) {
+            const p = await igProfile.json();
+            igNome   = p.name   ?? null;
+            igAvatar = p.profile_pic ?? null;
+          }
+        } catch { /* ignora falha na busca de perfil */ }
+      }
+
       const { data: contato, error: contatoErr } = await sb
         .from('atd_contatos')
-        .upsert({ instagram_id: igsid, canal_origem: 'instagram' }, { onConflict: 'instagram_id', ignoreDuplicates: false })
+        .upsert(
+          { instagram_id: igsid, canal_origem: 'instagram', ...(igNome ? { nome: igNome } : {}), ...(igAvatar ? { avatar_url: igAvatar } : {}) },
+          { onConflict: 'instagram_id', ignoreDuplicates: false }
+        )
         .select('id')
         .single();
       if (contatoErr || !contato) { console.error('erro ao upsertar contato instagram', contatoErr); continue; }
