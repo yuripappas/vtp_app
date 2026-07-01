@@ -351,6 +351,8 @@ async function _atdAbrirConversa(conversaId) {
   _atdRenderLista();
   const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
   document.title = totalNaoLidas > 0 ? `(${totalNaoLidas}) VTP Atendimento` : 'VTP Atendimento';
+  const navBadge = document.getElementById('atdNavBadgeInbox');
+  if (navBadge) { navBadge.textContent = totalNaoLidas || ''; navBadge.style.display = totalNaoLidas > 0 ? 'flex' : 'none'; }
 
   document.getElementById('atdChatVazio').style.display = 'none';
   document.getElementById('atdChatAtivo').style.display  = 'flex';
@@ -410,14 +412,37 @@ function _atdRenderChat(conversa) {
             </button>
           </div>
         </div>`;
+    } else if (m.tipo === 'imagem' && m.conteudo?.url) {
+      const legenda = m.conteudo.texto ? `<div style="margin-top:6px;font-size:var(--text-xs);opacity:.85">${m.conteudo.texto}</div>` : '';
+      conteudoHtml = `
+        <a href="${m.conteudo.url}" target="_blank" style="display:block">
+          <img src="${m.conteudo.url}"
+               alt="Imagem"
+               style="max-width:240px;max-height:300px;border-radius:8px;display:block;object-fit:cover"
+               onerror="this.outerHTML='<div style=\'padding:8px;font-size:13px\'>📷 Imagem (não disponível)</div>'">
+        </a>${legenda}`;
     } else if (m.tipo === 'imagem') {
       conteudoHtml = `📷 Imagem${m.conteudo?.texto ? ': ' + m.conteudo.texto : ''}`;
+    } else if (m.tipo === 'audio' && m.conteudo?.url) {
+      conteudoHtml = `<audio controls style="max-width:240px;margin:2px 0"><source src="${m.conteudo.url}">🎤 Áudio</audio>`;
     } else if (m.tipo === 'audio') {
       conteudoHtml = `🎤 Áudio`;
+    } else if (m.tipo === 'video' && m.conteudo?.url) {
+      const legenda = m.conteudo.texto ? `<div style="margin-top:6px;font-size:var(--text-xs);opacity:.85">${m.conteudo.texto}</div>` : '';
+      conteudoHtml = `
+        <video controls style="max-width:240px;border-radius:8px;display:block"
+               onerror="this.outerHTML='<div style=\'padding:8px;font-size:13px\'>🎥 Vídeo (não disponível)</div>'">
+          <source src="${m.conteudo.url}">🎥 Vídeo
+        </video>${legenda}`;
     } else if (m.tipo === 'video') {
       conteudoHtml = `🎥 Vídeo${m.conteudo?.texto ? ': ' + m.conteudo.texto : ''}`;
+    } else if (m.tipo === 'documento' && m.conteudo?.url) {
+      const nome = m.conteudo.nome || 'Documento';
+      conteudoHtml = `<a href="${m.conteudo.url}" target="_blank" style="display:flex;align-items:center;gap:6px;color:inherit;text-decoration:none">${lc('file', 14, 'currentColor')} ${nome}</a>`;
     } else if (m.tipo === 'documento') {
       conteudoHtml = `📄 Documento`;
+    } else if (m.tipo === 'sticker' && m.conteudo?.url) {
+      conteudoHtml = `<img src="${m.conteudo.url}" alt="Sticker" style="max-width:120px;max-height:120px;display:block" onerror="this.outerHTML='😊 Sticker'">`;
     } else if (m.tipo === 'sticker') {
       conteudoHtml = `😊 Sticker`;
     } else {
@@ -554,43 +579,129 @@ function _atdInserirRespostaRapida(conteudo) {
   campo.focus();
 }
 
-function _atdRenderPainel(conversa) {
+async function _atdRenderPainel(conversa) {
   const c = conversa.atd_contatos || {};
   const nome = c.nome || c.telefone || 'Sem nome';
   const pedido = conversa.pedido_data;
-  const tagsAtuais = new Set(_atdState.tagsConversaAtual);
+  const painel = document.getElementById('atdPainelContato');
 
-  const chipsTags = _atdState.todasTags.map(tag => {
-    const ativa = tagsAtuais.has(tag.id);
-    const cor = tag.cor || 'var(--purple)';
-    return `<span class="atd-tag-chip" data-tag-id="${tag.id}" onclick="_atdToggleTag('${conversa.id}', '${tag.id}')"
-        style="cursor:pointer;display:inline-block;padding:3px 9px;border-radius:999px;font-size:var(--text-2xs);font-weight:700;margin:0 4px 6px 0;border:1px solid ${cor};
-        ${ativa ? `background:${cor};color:#fff` : `background:transparent;color:${cor}`}">${tag.nome}</span>`;
-  }).join('');
+  // Cabeçalho e pedido vinculado imediatos (sem esperar histórico)
+  const avatarHtml = c.avatar_url
+    ? `<img src="${c.avatar_url}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block">`
+    : `<span style="width:56px;height:56px;border-radius:50%;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;margin:0 auto 8px">${nome.charAt(0).toUpperCase()}</span>`;
 
-  document.getElementById('atdPainelContato').innerHTML = `
-    <div style="padding:18px 16px;border-bottom:1px solid var(--border);text-align:center">
-      <span style="width:56px;height:56px;border-radius:50%;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;margin:0 auto 8px">${nome.charAt(0).toUpperCase()}</span>
-      <div style="font-weight:800;color:var(--text)">${nome}</div>
-      <div style="font-size:var(--text-xs);color:var(--fg-subtle);display:flex;align-items:center;justify-content:center;gap:4px;margin-top:2px">
+  const pedidoVinculadoHtml = pedido ? `
+    <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">Pedido vinculado</div>
+      <div style="font-size:var(--text-sm);color:var(--text);font-weight:700">#${pedido.display_id ?? '—'}</div>
+      <div style="font-size:var(--text-xs);color:var(--fg-muted)">${pedido.status ?? ''}</div>
+      ${pedido.total ? `<div style="font-size:var(--text-sm);color:var(--text);font-weight:700;margin-top:2px">R$ ${Number(pedido.total).toFixed(2)}</div>` : ''}
+      ${pedido.delivery_address ? `
+        <button class="btn btn-ghost" style="margin-top:8px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(pedido.delivery_address).replace(/"/g, '&quot;')})">
+          ${lc('map-pin', 13, 'var(--purple)')} Ver endereço de entrega
+        </button>` : ''}
+    </div>` : '';
+
+  painel.innerHTML = `
+    <div style="padding:18px 14px;border-bottom:1px solid var(--border);text-align:center">
+      ${avatarHtml}
+      <div style="font-weight:800;color:var(--text);font-size:var(--text-sm)">${nome}</div>
+      <div style="font-size:var(--text-xs);color:var(--fg-subtle);display:flex;align-items:center;justify-content:center;gap:4px;margin-top:3px">
         ${lc('phone', 11, 'currentColor')} ${c.telefone || '—'}
       </div>
-      ${c.total_pedidos ? `<div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:4px">${lc('package', 11, 'currentColor')} ${c.total_pedidos} pedido(s)</div>` : ''}
     </div>
-    ${pedido ? `
-      <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
-        <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Pedido vinculado</div>
-        <div style="font-size:var(--text-sm);color:var(--text)">#${pedido.display_id ?? '—'} · ${pedido.status ?? ''}</div>
-        ${pedido.total ? `<div style="font-size:var(--text-sm);color:var(--fg-muted)">R$ ${Number(pedido.total).toFixed(2)}</div>` : ''}
-        ${pedido.delivery_address ? `
-          <button class="btn btn-ghost" style="margin-top:8px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(pedido.delivery_address).replace(/"/g, '&quot;')})">
-            ${lc('map-pin', 13, 'var(--purple)')} Ver endereço de entrega
-          </button>` : ''}
-      </div>` : ''}
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
-      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Tags</div>
-      <div>${chipsTags || `<span style="font-size:var(--text-xs);color:var(--fg-subtle)">Nenhuma tag cadastrada</span>`}</div>
+    ${pedidoVinculadoHtml}
+    <div id="atdHistoricoCliente" style="padding:12px 14px">
+      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+        ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
+      </div>
+      <div style="color:var(--fg-subtle);font-size:var(--text-xs)">Carregando...</div>
     </div>
+  `;
+
+  // Carrega histórico do cliente assincronamente
+  if (c.telefone) {
+    _atdCarregarHistoricoCliente(c.telefone);
+  } else {
+    document.getElementById('atdHistoricoCliente').innerHTML = `
+      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+        ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
+      </div>
+      <div style="color:var(--fg-subtle);font-size:var(--text-xs)">Sem telefone cadastrado</div>
+    `;
+  }
+}
+
+async function _atdCarregarHistoricoCliente(telefone) {
+  const sb = _atdGetSbClient();
+  // Normaliza: remove DDI 55 e não-dígitos para comparar
+  const digitos = String(telefone).replace(/\D/g, '');
+  const semDdi = digitos.startsWith('55') ? digitos.slice(2) : digitos;
+  const comDdi = digitos.startsWith('55') ? digitos : `55${digitos}`;
+
+  const { data: pedidos } = await sb
+    .from('cw_pedidos')
+    .select('id, display_id, status, total, items, cw_created_at, customer_name')
+    .or(`customer_phone.eq.${semDdi},customer_phone.eq.${comDdi}`)
+    .order('cw_created_at', { ascending: false })
+    .limit(20);
+
+  const el = document.getElementById('atdHistoricoCliente');
+  if (!el) return;
+
+  if (!pedidos || pedidos.length === 0) {
+    el.innerHTML = `
+      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+        ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
+      </div>
+      <div style="color:var(--fg-subtle);font-size:var(--text-xs)">Nenhum pedido encontrado</div>`;
+    return;
+  }
+
+  const total = pedidos.reduce((s, p) => s + (Number(p.total) || 0), 0);
+  const ticketMedio = total / pedidos.length;
+
+  const linhas = pedidos.slice(0, 8).map(p => {
+    const data = p.cw_created_at ? new Date(p.cw_created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '—';
+    const valor = p.total ? `R$ ${Number(p.total).toFixed(2)}` : '—';
+    const statusCor = { 'CONCLUDED': 'var(--green)', 'CANCELLED': 'var(--danger)', 'PLACED': 'var(--warning-fg)' }[p.status] || 'var(--fg-subtle)';
+    const itensResumo = Array.isArray(p.items) && p.items.length > 0
+      ? p.items.slice(0, 2).map(i => i.name || i.item?.name || '').filter(Boolean).join(', ') + (p.items.length > 2 ? ` +${p.items.length - 2}` : '')
+      : '';
+    return `
+      <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">#${p.display_id || p.id?.slice(0,6)}</span>
+          <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">${valor}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1px">
+          <span style="font-size:10px;color:${statusCor};font-weight:600">${p.status || '—'}</span>
+          <span style="font-size:10px;color:var(--fg-subtle)">${data}</span>
+        </div>
+        ${itensResumo ? `<div style="font-size:10px;color:var(--fg-subtle);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${itensResumo}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+      ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;text-align:center">
+      <div style="background:var(--bg-subtle);border-radius:var(--r8);padding:8px 4px">
+        <div style="font-size:15px;font-weight:800;color:var(--purple)">${pedidos.length}</div>
+        <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Pedidos</div>
+      </div>
+      <div style="background:var(--bg-subtle);border-radius:var(--r8);padding:8px 4px">
+        <div style="font-size:13px;font-weight:800;color:var(--text)">R$${ticketMedio.toFixed(0)}</div>
+        <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Ticket médio</div>
+      </div>
+      <div style="background:var(--bg-subtle);border-radius:var(--r8);padding:8px 4px">
+        <div style="font-size:13px;font-weight:800;color:var(--text)">R$${total.toFixed(0)}</div>
+        <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Total gasto</div>
+      </div>
+    </div>
+    <div>${linhas}</div>
+    ${pedidos.length > 8 ? `<div style="font-size:10px;color:var(--fg-subtle);text-align:center;padding-top:6px">+${pedidos.length - 8} pedidos anteriores</div>` : ''}
   `;
 }
 
@@ -723,9 +834,10 @@ function _atdAssinarRealtime() {
           if (msg.conteudo?.texto) conv.ultima_mensagem = { texto: msg.conteudo.texto, origem: 'cliente' };
           _atdRenderLista();
           _atdTocarSom();
-          // Pisca o título da aba
           const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
           if (totalNaoLidas > 0) document.title = `(${totalNaoLidas}) VTP Atendimento`;
+          const navBadge = document.getElementById('atdNavBadgeInbox');
+          if (navBadge) { navBadge.textContent = totalNaoLidas; navBadge.style.display = 'flex'; }
         }
       }
 
@@ -926,8 +1038,92 @@ const ATD_CANAIS_DEFINICAO = [
   { tipo: 'google', nome: 'Google Meu Negócio', cor: '#4285F4', disponivel: false },
 ];
 
+function _atdRenderRespostas() {
+  document.getElementById('atdConteudo').innerHTML = `
+    <div class="card" style="max-width:760px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        ${lc('zap', 18, 'var(--purple)')}
+        <h2 style="font-size:var(--text-base);font-weight:800;color:var(--text);margin:0">Respostas</h2>
+      </div>
+      <p style="font-size:var(--text-sm);color:var(--fg-muted);margin:0 0 20px">
+        Configure respostas rápidas e o tom de voz da IA para o atendimento.
+      </p>
+      <div style="display:flex;gap:6px;margin-bottom:20px">
+        <button class="atd-canal-tab active" data-resp="padrao" onclick="_atdRespostasAba('padrao')">Padrão (/)</button>
+        <button class="atd-canal-tab" data-resp="ia" onclick="_atdRespostasAba('ia')">IA — Tom de voz</button>
+      </div>
+      <div id="atdRespostasConteudo"></div>
+    </div>`;
+  _atdRespostasAba('padrao');
+}
+
+function _atdRespostasAba(aba) {
+  document.querySelectorAll('[data-resp]').forEach(b => b.classList.toggle('active', b.dataset.resp === aba));
+  const el = document.getElementById('atdRespostasConteudo');
+  if (aba === 'padrao') {
+    el.innerHTML = `<div class="atd-skeleton-page">${lc('zap', 36, 'var(--fg-subtle)')}<h3>Respostas Padrão</h3><p>CRUD das respostas rápidas acionadas pelo atalho <code>/</code> no chat. Em construção.</p></div>`;
+  } else {
+    el.innerHTML = `<div class="atd-skeleton-page">${lc('cpu', 36, 'var(--fg-subtle)')}<h3>Tom de voz da IA</h3><p>Configure a personalidade, formalidade e regras de resposta da marca. Em construção.</p></div>`;
+  }
+}
+
+function _atdRenderEstatisticas() {
+  document.getElementById('atdConteudo').innerHTML = `
+    <div style="max-width:900px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        ${lc('bar-chart-2', 18, 'var(--purple)')}
+        <h2 style="font-size:var(--text-base);font-weight:800;color:var(--text);margin:0">Estatísticas</h2>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:20px">
+        <button class="atd-canal-tab active" data-est="reputacao" onclick="_atdEstatAba('reputacao')">Reputação</button>
+        <button class="atd-canal-tab" data-est="sentimento" onclick="_atdEstatAba('sentimento')">Sentimento</button>
+        <button class="atd-canal-tab" data-est="performance" onclick="_atdEstatAba('performance')">Performance</button>
+      </div>
+      <div id="atdEstatConteudo"></div>
+    </div>`;
+  _atdEstatAba('reputacao');
+}
+
+function _atdEstatAba(aba) {
+  document.querySelectorAll('[data-est]').forEach(b => b.classList.toggle('active', b.dataset.est === aba));
+  const el = document.getElementById('atdEstatConteudo');
+  const skeletons = {
+    reputacao:   [lc('star', 36, 'var(--fg-subtle)'),   'Reputação',   'Avaliações em tempo real do Google, iFood e 99Food com alertas de novas avaliações negativas.'],
+    sentimento:  [lc('tag', 36, 'var(--fg-subtle)'),    'Sentimento',  'Tags mais usadas na análise semântica das conversas, com tendência e exemplos representativos.'],
+    performance: [lc('award', 36, 'var(--fg-subtle)'),  'Performance', 'Tempo de primeira resposta, agilidade, nota de qualidade por IA (0–100) e score geral por atendente.'],
+  };
+  const [icon, titulo, descricao] = skeletons[aba];
+  el.innerHTML = `<div class="atd-skeleton-page">${icon}<h3>${titulo}</h3><p>${descricao} Em construção.</p></div>`;
+}
+
+function _atdRenderConfiguracoes() {
+  document.getElementById('atdConteudo').innerHTML = `
+    <div style="max-width:760px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        ${lc('settings', 18, 'var(--purple)')}
+        <h2 style="font-size:var(--text-base);font-weight:800;color:var(--text);margin:0">Configurações</h2>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:20px">
+        <button class="atd-canal-tab active" data-cfg="tags" onclick="_atdCfgAba('tags')">Tags</button>
+        <button class="atd-canal-tab" data-cfg="geral" onclick="_atdCfgAba('geral')">Geral</button>
+      </div>
+      <div id="atdCfgConteudo"></div>
+    </div>`;
+  _atdCfgAba('tags');
+}
+
+function _atdCfgAba(aba) {
+  document.querySelectorAll('[data-cfg]').forEach(b => b.classList.toggle('active', b.dataset.cfg === aba));
+  const el = document.getElementById('atdCfgConteudo');
+  if (aba === 'tags') {
+    el.innerHTML = `<div class="atd-skeleton-page">${lc('tag', 36, 'var(--fg-subtle)')}<h3>Tags</h3><p>Cadastro de tags e regras de auto-tag por IA ao encerrar conversas. Em construção.</p></div>`;
+  } else {
+    el.innerHTML = `<div class="atd-skeleton-page">${lc('sliders', 36, 'var(--fg-subtle)')}<h3>Configurações Gerais</h3><p>Horário de atendimento, tempo de inatividade para encerramento automático e nome do assistente. Em construção.</p></div>`;
+  }
+}
+
 async function _atdRenderIntegracoes() {
-  const wrap = document.getElementById('atdAbaIntegracoes');
+  const wrap = document.getElementById('atdConteudo');
   wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle)">Carregando...</div>`;
 
   const sb = _atdGetSbClient();
