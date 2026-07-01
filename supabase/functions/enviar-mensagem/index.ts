@@ -122,7 +122,10 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'mensagem enviada mas falhou ao salvar', detalhe: msgErr }), { status: 500, headers: CORS_HEADERS });
   }
 
-  await sb.from('atd_conversas').update({ atualizado_em: new Date().toISOString() }).eq('id', body.conversa_id);
+  // Atualiza conversa: timestamp + registra primeiro atendente que respondeu
+  const updateData: Record<string, unknown> = { atualizado_em: new Date().toISOString() };
+  if (body.atendente_id) updateData.atendente_id = body.atendente_id;
+  await sb.from('atd_conversas').update(updateData).eq('id', body.conversa_id);
 
   return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
 });

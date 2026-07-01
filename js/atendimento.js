@@ -119,13 +119,18 @@ function _atdRenderInbox() {
           <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:10px;font-size:var(--text-xs)" onclick="_atdAbrirBuscaPedido()">
             ${lc('search', 13, '#fff')} Buscar pedido / cliente
           </button>
-          <div id="atdCanalTabs" style="display:flex;gap:6px;flex-wrap:wrap">
+          <div id="atdCanalTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
             <button class="atd-canal-tab active" data-canal="chat" onclick="_atdAplicarFiltro('chat')">
-              Chat <span class="atd-tab-badge" id="atdBadgeChat">0</span>
+              Chat <span class="atd-tab-badge" id="atdBadgeChat" style="display:none"></span>
             </button>
             <button class="atd-canal-tab" data-canal="avaliacoes" onclick="_atdAplicarFiltro('avaliacoes')">
-              Avaliações <span class="atd-tab-badge" id="atdBadgeAvaliacoes">0</span>
+              Avaliações <span class="atd-tab-badge" id="atdBadgeAvaliacoes" style="display:none"></span>
             </button>
+          </div>
+          <div id="atdSubFiltros" style="display:flex;gap:5px">
+            <button class="atd-canal-tab active" data-sub="todas" onclick="_atdAplicarSubFiltro('todas')" style="font-size:10px;padding:3px 9px">Todas</button>
+            <button class="atd-canal-tab" data-sub="minhas" onclick="_atdAplicarSubFiltro('minhas')" style="font-size:10px;padding:3px 9px">Minhas</button>
+            <button class="atd-canal-tab" data-sub="sem_atendente" onclick="_atdAplicarSubFiltro('sem_atendente')" style="font-size:10px;padding:3px 9px">Sem resposta</button>
           </div>
         </div>
         <div id="atdListaConversas" style="flex:1;overflow-y:auto"></div>
@@ -181,18 +186,42 @@ async function _atdCarregarConversas() {
 }
 
 function _atdAplicarFiltro(filtro) {
-  document.querySelectorAll('.atd-canal-tab').forEach(b => b.classList.toggle('active', b.dataset.canal === filtro));
+  document.querySelectorAll('#atdCanalTabs .atd-canal-tab').forEach(b => b.classList.toggle('active', b.dataset.canal === filtro));
   _atdState.filtroAtivo = filtro;
   _atdRenderLista();
+}
+
+function _atdAplicarSubFiltro(sub) {
+  document.querySelectorAll('#atdSubFiltros .atd-canal-tab').forEach(b => b.classList.toggle('active', b.dataset.sub === sub));
+  _atdState.subFiltroAtivo = sub;
+  _atdRenderLista();
+}
+
+function _atdTocarSom() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.setValueAtTime(520, ctx.currentTime);
+    o.frequency.setValueAtTime(640, ctx.currentTime + 0.1);
+    g.gain.setValueAtTime(0.25, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.35);
+  } catch { /* sem som se browser bloquear */ }
 }
 
 const _ATD_CANAIS_CHAT = ['whatsapp', 'instagram'];
 const _ATD_CANAIS_AVAL = ['ifood', '99food'];
 
 function _atdRenderLista() {
+  const user = getCurrentUser();
   const filtro = _atdState.filtroAtivo || 'chat';
+  const sub = _atdState.subFiltroAtivo || 'todas';
   const canais = filtro === 'avaliacoes' ? _ATD_CANAIS_AVAL : _ATD_CANAIS_CHAT;
-  const lista = _atdState.conversas.filter(c => canais.includes(c.canal_tipo));
+  let lista = _atdState.conversas.filter(c => canais.includes(c.canal_tipo));
+  if (sub === 'minhas') lista = lista.filter(c => c.atendente_id === user?.id);
+  else if (sub === 'sem_atendente') lista = lista.filter(c => !c.atendente_id);
 
   // Atualiza badges das abas
   const totalChat = _atdState.conversas.filter(c => _ATD_CANAIS_CHAT.includes(c.canal_tipo)).reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
@@ -264,6 +293,8 @@ async function _atdAbrirConversa(conversaId) {
     _atdGetSbClient().from('atd_conversas').update({ mensagens_nao_lidas: 0 }).eq('id', conversaId).then(() => {});
   }
   _atdRenderLista();
+  const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
+  document.title = totalNaoLidas > 0 ? `(${totalNaoLidas}) VTP Atendimento` : 'VTP Atendimento';
 
   document.getElementById('atdChatVazio').style.display = 'none';
   document.getElementById('atdChatAtivo').style.display  = 'flex';
@@ -591,12 +622,17 @@ function _atdAssinarRealtime() {
       const msg = payload.new;
       const convId = msg?.conversa_id;
 
-      // Incrementa badge localmente sem esperar trigger+realtime do banco
+      // Incrementa badge + som + título da aba
       if (msg?.origem === 'cliente' && convId && convId !== _atdState.conversaAtivaId) {
         const conv = _atdState.conversas.find(c => c.id === convId);
         if (conv) {
           conv.mensagens_nao_lidas = (conv.mensagens_nao_lidas || 0) + 1;
+          if (msg.conteudo?.texto) conv.ultima_mensagem = { texto: msg.conteudo.texto, origem: 'cliente' };
           _atdRenderLista();
+          _atdTocarSom();
+          // Pisca o título da aba
+          const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
+          if (totalNaoLidas > 0) document.title = `(${totalNaoLidas}) VTP Atendimento`;
         }
       }
 
