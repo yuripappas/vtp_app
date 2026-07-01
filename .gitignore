@@ -1,6 +1,8 @@
 .DS_Store
 Icon?
 **/Icon?
+!assets/icons/
+!assets/icons/*
 .claude/
 *.local
 node_modules/
