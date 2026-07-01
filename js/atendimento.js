@@ -959,7 +959,7 @@ async function _atdQRDesconectar() {
     : '';
   const acoesDiv = document.getElementById('atdQRAcoes');
   if (acoesDiv) acoesDiv.innerHTML = `<div style="color:var(--fg-muted);font-size:var(--text-sm)">Desconectando...</div>`;
-  await fetch(`${BASE}/wpp-connect`, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: VTP_SUPABASE_KEY }, body: JSON.stringify({ action: 'disconnect' }) });
+  await fetch(`${BASE}/wpp-connect`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` }, body: JSON.stringify({ action: 'disconnect' }) });
   await _atdQRVerificarStatus();
 }
 
