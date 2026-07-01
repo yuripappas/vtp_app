@@ -171,7 +171,7 @@ async function _atdCarregarConversas() {
   const sb = _atdGetSbClient();
   const { data, error } = await sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, atd_contatos(nome, telefone, instagram_id, avatar_url)')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, atd_contatos(nome, telefone, instagram_id, avatar_url)')
     .eq('status', 'aberta')
     .order('atualizado_em', { ascending: false });
 
@@ -241,9 +241,11 @@ function _atdRenderLista() {
             <div class="conv-nome" style="font-weight:700;font-size:var(--text-sm);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
             ${naoLidas ? `<span class="conv-nao-lidas">${naoLidas}</span>` : ''}
           </div>
-          <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:3px;display:flex;align-items:center;gap:6px">
+          <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${c.ultima_mensagem?.origem === 'atendente' ? `<span style="color:var(--fg-subtle)">${lc('check', 10, 'var(--fg-subtle)')} </span>` : ''}${c.ultima_mensagem?.texto || (c.atendente_id ? 'atribuída' : 'sem atendente')}
+          </div>
+          <div style="font-size:10px;color:var(--fg-subtle);margin-top:2px;display:flex;align-items:center;gap:5px">
             ${canalIcone}
-            <span>${c.atendente_id ? lc('user-check', 10, 'var(--green)') + ' atribuída' : 'sem atendente'}</span>
           </div>
         </div>
       </div>`;
@@ -547,6 +549,10 @@ async function _atdEnviarMensagem(conversaId) {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'falha ao enviar');
+    // Atualiza preview local imediatamente
+    const convLocal = _atdState.conversas.find(c => c.id === conversaId);
+    if (convLocal && visibilidade === 'publica') convLocal.ultima_mensagem = { texto, origem: 'atendente' };
+    _atdRenderLista();
     await _atdAbrirConversa(conversaId);
   } catch (e) {
     toast('Erro ao enviar mensagem: ' + e.message, 'err');
