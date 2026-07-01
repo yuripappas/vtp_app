@@ -583,10 +583,25 @@ function _atdAssinarRealtime() {
   if (_atdState.realtimeChannel) sb.removeChannel(_atdState.realtimeChannel);
 
   _atdState.realtimeChannel = sb.channel('atd-realtime')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'atd_mensagens' }, payload => {
-      if (payload.new?.conversa_id === _atdState.conversaAtivaId) {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'atd_mensagens' }, payload => {
+      const msg = payload.new;
+      const convId = msg?.conversa_id;
+
+      // Incrementa badge localmente sem esperar trigger+realtime do banco
+      if (msg?.origem === 'cliente' && convId && convId !== _atdState.conversaAtivaId) {
+        const conv = _atdState.conversas.find(c => c.id === convId);
+        if (conv) {
+          conv.mensagens_nao_lidas = (conv.mensagens_nao_lidas || 0) + 1;
+          _atdRenderLista();
+        }
+      }
+
+      // Se a conversa está aberta, recarrega o chat
+      if (convId === _atdState.conversaAtivaId) {
         _atdAbrirConversa(_atdState.conversaAtivaId);
       }
+
+      // Recarrega lista completa para pegar novas conversas que ainda não estão no estado
       _atdCarregarConversas();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'atd_conversas' }, () => {
