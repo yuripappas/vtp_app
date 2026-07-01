@@ -238,6 +238,31 @@ function _handleNavOperacao() {
   }
 }
 
+// Submenu items de Omnichannel
+const _OMNI_SUBMENU_ITEMS = [
+  { id: 'inbox',         icon: 'inbox',       label: 'Inbox'          },
+  { id: 'respostas',     icon: 'zap',         label: 'Respostas'      },
+  { id: 'estatisticas',  icon: 'bar-chart-2', label: 'Estatísticas'   },
+  { id: 'integracoes',   icon: 'link',        label: 'Integrações'    },
+  { id: 'configuracoes', icon: 'settings',    label: 'Configurações'  },
+];
+
+function _handleNavOmnichannel() {
+  const action = (id) => `_atdPaginaAtiva='${id}'; goModule('omnichannel');`;
+  if (window.innerWidth <= 480) {
+    _openMobileSubmenu(
+      _OMNI_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
+      'Omnichannel'
+    );
+  } else {
+    _openSubPanel(
+      _OMNI_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
+      'Omnichannel',
+      'omnichannel'
+    );
+  }
+}
+
 function _handleNavConfiguracoes() {
   if (window.innerWidth <= 480) {
     _openMobileSubmenu(
