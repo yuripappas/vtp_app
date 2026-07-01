@@ -1217,7 +1217,176 @@ function _atdRespostasAba(aba) {
   if (aba === 'padrao') {
     _atdRespostasPadraoRender();
   } else {
-    el.innerHTML = `<div class="atd-skeleton-page">${lc('cpu', 36, 'var(--fg-subtle)')}<h3>Tom de voz da IA</h3><p>Configure a personalidade, formalidade e regras de resposta da marca. Em construção.</p></div>`;
+    _atdIARender();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// RESPOSTAS / IA — base de conhecimento + preview
+// ══════════════════════════════════════════════════════════════
+
+const _ATD_IA_SECOES = [
+  { id: 'tom_voz',          icon: 'message-circle', label: 'Tom de voz',         desc: 'Personalidade, estilo e regras de linguagem da marca.' },
+  { id: 'gestao_crise',     icon: 'alert-triangle', label: 'Gestão de crise',    desc: 'Protocolos para atrasos, reclamações e situações críticas.' },
+  { id: 'compensacoes',     icon: 'gift',           label: 'Compensações',       desc: 'Cupons, reenvios e o que pode ser ofertado sem escalar.' },
+  { id: 'slas',             icon: 'clock',          label: 'SLAs',               desc: 'Tempos de resposta prometidos e limites de espera.' },
+  { id: 'info_loja',        icon: 'map-pin',        label: 'Info da loja',       desc: 'Horários, endereço, área de entrega, redes sociais.' },
+  { id: 'politicas_gerais', icon: 'file-text',      label: 'Políticas gerais',   desc: 'Regras de cancelamento, troca, pagamento e outros.' },
+];
+
+async function _atdIARender() {
+  const el = document.getElementById('atdRespostasConteudo');
+  el.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm);padding:16px 0">Carregando...</div>`;
+
+  const sb = _atdGetSbClient();
+  const { data, error } = await sb.from('atd_base_conhecimento').select('*').eq('ativo', true);
+  if (error) { el.innerHTML = `<div style="color:var(--danger)">Erro ao carregar base de conhecimento.</div>`; return; }
+
+  const porSecao = {};
+  (data || []).forEach(r => { porSecao[r.secao] = r; });
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:16px;min-height:400px">
+      <!-- sidebar de seções -->
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${_ATD_IA_SECOES.map((s, i) => `
+          <button class="atd-ia-sec-btn${i === 0 ? ' active' : ''}" data-sec="${s.id}"
+            onclick="_atdIASecaoClick('${s.id}')"
+            style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:none;border-radius:var(--r6);cursor:pointer;text-align:left;font-size:var(--text-xs);font-weight:600;background:${i === 0 ? 'var(--purple-xlight)' : 'transparent'};color:${i === 0 ? 'var(--purple)' : 'var(--text)'}">
+            ${lc(s.icon, 13, 'currentColor')} ${s.label}
+          </button>`).join('')}
+        <div style="border-top:1px solid var(--border);margin:8px 0"></div>
+        <div style="padding:8px 10px;font-size:var(--text-xs);color:var(--fg-subtle);line-height:1.5">
+          ${lc('zap', 11, 'var(--purple)')} A IA usa todas as seções ativas para gerar respostas no chat.
+        </div>
+      </div>
+      <!-- editor -->
+      <div id="atdIAEditor"></div>
+    </div>`;
+
+  _atdIASecaoRender(_ATD_IA_SECOES[0].id, porSecao);
+}
+
+function _atdIASecaoClick(secId) {
+  document.querySelectorAll('.atd-ia-sec-btn').forEach(b => {
+    const active = b.dataset.sec === secId;
+    b.style.background = active ? 'var(--purple-xlight)' : 'transparent';
+    b.style.color = active ? 'var(--purple)' : 'var(--text)';
+  });
+  // Busca dados atuais do DOM (o editor já tem o state)
+  const sb = _atdGetSbClient();
+  sb.from('atd_base_conhecimento').select('*').eq('ativo', true).then(({ data }) => {
+    const porSecao = {};
+    (data || []).forEach(r => { porSecao[r.secao] = r; });
+    _atdIASecaoRender(secId, porSecao);
+  });
+}
+
+function _atdIASecaoRender(secId, porSecao) {
+  const secInfo = _ATD_IA_SECOES.find(s => s.id === secId);
+  const reg = porSecao[secId];
+  const el = document.getElementById('atdIAEditor');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div>
+      <div style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          ${lc(secInfo.icon, 16, 'var(--purple)')}
+          <span style="font-weight:700;font-size:var(--text-base);color:var(--text)">${secInfo.label}</span>
+          ${reg ? `<span style="font-size:10px;color:var(--green);background:var(--success-bg);padding:1px 6px;border-radius:4px">Configurado</span>` : `<span style="font-size:10px;color:var(--fg-subtle);background:var(--bg-subtle);padding:1px 6px;border-radius:4px">Vazio</span>`}
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--fg-muted)">${secInfo.desc}</div>
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">CONTEÚDO</label>
+        <textarea id="atdIAConteudo" class="inp" rows="10" placeholder="Descreva as regras, tom e informações para esta seção..."
+          style="font-family:monospace;font-size:var(--text-xs);line-height:1.6;resize:vertical">${reg?.conteudo || ''}</textarea>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="_atdIAPreview('${secId}')">
+          ${lc('play', 12, 'var(--purple)')} Testar IA
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="_atdIASalvar('${secId}','${reg?.id || ''}')">
+          ${lc('save', 12, '#fff')} Salvar seção
+        </button>
+      </div>
+      <div id="atdIAPreviewBox" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:var(--r8);overflow:hidden">
+        <div style="padding:8px 12px;background:var(--bg-subtle);border-bottom:1px solid var(--border);font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:flex;align-items:center;gap:6px">
+          ${lc('zap', 11, 'var(--purple)')} Preview da IA
+        </div>
+        <div style="padding:12px;display:flex;gap:8px;align-items:flex-end">
+          <input id="atdIAMsgTeste" class="inp" style="flex:1;font-size:var(--text-xs)" placeholder="Minha pizza chegou fria..."
+            onkeydown="if(event.key==='Enter'){_atdIATestar('${secId}')}">
+          <button class="btn btn-primary btn-sm" onclick="_atdIATestar('${secId}')">
+            ${lc('send', 12, '#fff')}
+          </button>
+        </div>
+        <div id="atdIARespostaBox" style="display:none;padding:12px;border-top:1px solid var(--border)">
+          <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-bottom:6px">Resposta gerada:</div>
+          <div id="atdIAResposta" style="font-size:var(--text-sm);color:var(--text);line-height:1.6;white-space:pre-wrap;background:var(--success-bg);padding:10px 12px;border-radius:var(--r6)"></div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="document.getElementById('atdIARespostaBox').style.display='none'">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function _atdIASalvar(secId, id) {
+  const conteudo = document.getElementById('atdIAConteudo')?.value.trim();
+  if (!conteudo) { toast('Conteúdo não pode estar vazio', 'err'); return; }
+
+  const secInfo = _ATD_IA_SECOES.find(s => s.id === secId);
+  const sb = _atdGetSbClient();
+  let error;
+
+  if (id) {
+    ({ error } = await sb.from('atd_base_conhecimento').update({ conteudo, atualizado_em: new Date().toISOString() }).eq('id', id));
+  } else {
+    ({ error } = await sb.from('atd_base_conhecimento').insert({ secao: secId, titulo: secInfo.label, conteudo }));
+  }
+
+  if (error) { toast('Erro ao salvar: ' + error.message, 'err'); return; }
+  toast(`${secInfo.label} salvo!`, 'ok');
+  _atdIARender();
+}
+
+function _atdIAPreview(secId) {
+  const box = document.getElementById('atdIAPreviewBox');
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') document.getElementById('atdIAMsgTeste')?.focus();
+}
+
+async function _atdIATestar(secId) {
+  const msg = document.getElementById('atdIAMsgTeste')?.value.trim();
+  if (!msg) return;
+
+  const conteudoAtual = document.getElementById('atdIAConteudo')?.value.trim() || '';
+  const respostaBox = document.getElementById('atdIARespostaBox');
+  const respostaEl = document.getElementById('atdIAResposta');
+
+  respostaBox.style.display = 'block';
+  respostaEl.textContent = 'Gerando resposta...';
+
+  try {
+    const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/gerar-resposta-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      body: JSON.stringify({ mensagem: msg, tom_voz: conteudoAtual, secao: secId }),
+    });
+
+    if (!res.ok) {
+      // Fallback: usa a função principal se a preview não existir
+      respostaEl.textContent = '(Salve a seção e teste via chat — o preview dedicado será adicionado em breve)';
+      return;
+    }
+
+    const json = await res.json();
+    respostaEl.textContent = json.resposta || 'Sem resposta gerada.';
+  } catch {
+    respostaEl.textContent = '(Salve a seção e teste via chat — o preview usa a função de produção)';
   }
 }
 
