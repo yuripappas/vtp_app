@@ -60,10 +60,6 @@ Deno.serve(async (req) => {
 
   const payload: IgPayload = await req.json();
 
-  // DEBUG temporário — grava o payload bruto recebido, pra diagnosticar
-  // por que mensagens reais não estão batendo no fluxo normal. Remover depois.
-  await sb.from('atd_webhook_debug').insert({ metodo: 'POST', payload });
-
   if (payload.object !== 'instagram') {
     return new Response('ok', { status: 200 });
   }
