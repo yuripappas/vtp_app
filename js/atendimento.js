@@ -282,7 +282,6 @@ async function _atdAbrirConversa(conversaId) {
   _atdRenderLista();
   const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
   document.title = totalNaoLidas > 0 ? `(${totalNaoLidas}) VTP Atendimento` : 'VTP Atendimento';
-  if (navBadge) { navBadge.textContent = totalNaoLidas || ''; navBadge.style.display = totalNaoLidas > 0 ? 'flex' : 'none'; }
 
   document.getElementById('atdChatVazio').style.display = 'none';
   document.getElementById('atdChatAtivo').style.display  = 'flex';
