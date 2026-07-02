@@ -64,29 +64,50 @@ function getMidiaInfo(msg: EvoMessage, tipo: string): { url?: string; mimetype?:
   }
 }
 
-// Baixa mídia do WhatsApp e faz upload para Supabase Storage.
+// Baixa mídia via Evolution API (getBase64FromMediaMessage) e salva no Supabase Storage.
 // Retorna a URL pública permanente ou null se falhar.
 async function salvarMidiaStorage(
   sb: ReturnType<typeof createClient>,
   supabaseUrl: string,
   tipo: string,
   externalId: string,
-  midiaInfo: { url?: string; mimetype?: string; fileName?: string }
+  midiaInfo: { url?: string; mimetype?: string; fileName?: string },
+  evoUrl: string,
+  evoKey: string,
+  evoInstance: string,
+  messageKey: Record<string, unknown>
 ): Promise<string | null> {
-  if (!midiaInfo.url) return null;
-
   try {
-    const res = await fetch(midiaInfo.url);
-    if (!res.ok) {
-      console.warn('[webhook-wpp] falha ao baixar mídia:', res.status, midiaInfo.url);
+    // Usa o endpoint da Evolution API para obter o conteúdo em base64
+    const evoRes = await fetch(`${evoUrl}/message/getBase64FromMediaMessage/${evoInstance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: evoKey },
+      body: JSON.stringify({ key: messageKey }),
+    });
+
+    if (!evoRes.ok) {
+      console.warn('[webhook-wpp] falha ao obter base64 da Evolution API:', evoRes.status);
       return null;
     }
 
-    const contentType = res.headers.get('content-type') || midiaInfo.mimetype || 'application/octet-stream';
-    const mimeBase = contentType.split(';')[0].trim();
+    const evoData = await evoRes.json();
+    const base64: string = evoData?.base64 || evoData?.data?.base64;
+    const mimetype: string = evoData?.mimetype || evoData?.data?.mimetype || midiaInfo.mimetype || 'application/octet-stream';
+
+    if (!base64) {
+      console.warn('[webhook-wpp] base64 não retornado pela Evolution API');
+      return null;
+    }
+
+    // Decodifica base64 → Uint8Array
+    const binaryStr = atob(base64.includes(',') ? base64.split(',')[1] : base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+    const mimeBase = mimetype.split(';')[0].trim();
     const ext = MIME_TO_EXT[mimeBase] || midiaInfo.fileName?.split('.').pop() || 'bin';
     const path = `${tipo}/${externalId}.${ext}`;
-    const buffer = await res.arrayBuffer();
+    const buffer = bytes.buffer;
 
     const { error: upErr } = await sb.storage
       .from('atd-midias')
@@ -106,8 +127,11 @@ async function salvarMidiaStorage(
 }
 
 Deno.serve(async (req) => {
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-  const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
+  const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const EVO_URL       = Deno.env.get('EVOLUTION_API_URL')!;
+  const EVO_KEY       = Deno.env.get('EVOLUTION_API_KEY')!;
+  const EVO_INSTANCE  = Deno.env.get('EVOLUTION_INSTANCE_NAME') || 'vtp-main';
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
   const payload: EvoPayload = await req.json();
@@ -176,9 +200,12 @@ Deno.serve(async (req) => {
   } else if (tipo === 'texto') {
     conteudo = { texto: payload.data.message.conversation || '' };
   } else {
-    // Mídia: baixa e salva no Storage
+    // Mídia: baixa via Evolution API e salva no Storage
     const midiaInfo = getMidiaInfo(payload.data.message, tipo)!;
-    const urlStorage = await salvarMidiaStorage(sb, SUPABASE_URL, tipo, externalId, midiaInfo);
+    const urlStorage = await salvarMidiaStorage(
+      sb, SUPABASE_URL, tipo, externalId, midiaInfo,
+      EVO_URL, EVO_KEY, EVO_INSTANCE, payload.data.key
+    );
 
     if (tipo === 'audio') {
       conteudo = {
