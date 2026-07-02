@@ -23,7 +23,10 @@ const _atdState = {
   respostasRapidas: [],
   todasTags: [],
   tagsConversaAtual: [],
-  corrigirAtivoPorConversa: {}, // { [conversaId]: boolean } — desativado por padrão (economiza tokens)
+  corrigirAtivoPorConversa: {},
+  viewMode: 'ativos',        // 'ativos' | 'concluidos' | 'busca'
+  filtroAtivo: 'chat',       // 'chat' | 'avaliacoes'
+  buscaRapidaTermo: '',
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -98,26 +101,44 @@ function _atdRenderInbox() {
     <div class="atd-layout" style="display:flex;height:calc(100vh - 120px);background:var(--bg-elevated);border-radius:var(--r16);overflow:hidden;border:1px solid var(--border)">
 
       <!-- COLUNA A — lista de conversas -->
-      <div class="atd-sidebar" style="width:280px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface2)">
-        <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
-          <div style="font-size:var(--text-base);font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            ${lc('message-circle', 18, 'var(--purple)')} Atendimento
-          </div>
-          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:10px;font-size:var(--text-xs)" onclick="_atdAbrirBuscaPedido()">
-            ${lc('search', 13, '#fff')} Buscar pedido / cliente
-          </button>
-          <div id="atdCanalTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <button class="atd-canal-tab active" data-canal="chat" onclick="_atdAplicarFiltro('chat')">
+      <div class="atd-sidebar" style="width:300px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface2)">
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+
+          <!-- Tabs Chat / Avaliações -->
+          <div id="atdCanalTabs" style="display:flex;gap:6px;margin-bottom:10px">
+            <button class="atd-canal-tab active" data-canal="chat" onclick="_atdAplicarFiltro('chat')" style="flex:1;justify-content:center">
               Chat <span class="atd-tab-badge" id="atdBadgeChat" style="display:none"></span>
             </button>
-            <button class="atd-canal-tab" data-canal="avaliacoes" onclick="_atdAplicarFiltro('avaliacoes')">
+            <button class="atd-canal-tab" data-canal="avaliacoes" onclick="_atdAplicarFiltro('avaliacoes')" style="flex:1;justify-content:center">
               Avaliações <span class="atd-tab-badge" id="atdBadgeAvaliacoes" style="display:none"></span>
             </button>
           </div>
-          <div id="atdSubFiltros" style="display:flex;gap:5px">
-            <button class="atd-canal-tab active" data-sub="todas" onclick="_atdAplicarSubFiltro('todas')" style="font-size:10px;padding:3px 9px">Todas</button>
-            <button class="atd-canal-tab" data-sub="minhas" onclick="_atdAplicarSubFiltro('minhas')" style="font-size:10px;padding:3px 9px">Minhas</button>
-            <button class="atd-canal-tab" data-sub="sem_atendente" onclick="_atdAplicarSubFiltro('sem_atendente')" style="font-size:10px;padding:3px 9px">Sem resposta</button>
+
+          <!-- Busca rápida de conversas -->
+          <div style="position:relative;margin-bottom:8px">
+            <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none">
+              ${lc('search', 13, 'var(--fg-subtle)')}
+            </span>
+            <input id="atdBuscaRapida" type="text" placeholder="Buscar conversas..."
+              style="width:100%;padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:var(--r8);font-size:var(--text-xs);background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"
+              oninput="_atdBuscaRapidaFiltrar(this.value)" />
+            <button id="atdBuscaAvancadaBtn" onclick="_atdAbrirBuscaAvancada()"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center;color:var(--fg-subtle)"
+              title="Busca avançada">
+              ${lc('sliders', 13, 'var(--fg-subtle)')}
+            </button>
+          </div>
+
+          <!-- Ativos / Concluídos / Buscar pedidos -->
+          <div style="display:flex;gap:5px">
+            <button id="atdTabAtivos" class="atd-canal-tab active" onclick="_atdSetViewMode('ativos')"
+              style="flex:1;justify-content:center;font-size:10px;padding:4px 8px">Ativos</button>
+            <button id="atdTabConcluidos" class="atd-canal-tab" onclick="_atdSetViewMode('concluidos')"
+              style="flex:1;justify-content:center;font-size:10px;padding:4px 8px">Concluídos</button>
+            <button class="btn btn-warm" onclick="_atdAbrirBuscaPedido()"
+              style="font-size:10px;padding:4px 8px;white-space:nowrap">
+              ${lc('package', 12, 'var(--text)')} Pedidos
+            </button>
           </div>
         </div>
         <div id="atdListaConversas" style="flex:1;overflow-y:auto"></div>
@@ -161,15 +182,121 @@ async function _atdCarregarTodasTags() {
 
 async function _atdCarregarConversas() {
   const sb = _atdGetSbClient();
+  const viewMode = _atdState.viewMode || 'ativos';
+  const statusFiltro = viewMode === 'concluidos'
+    ? ['concluida', 'expirada']
+    : ['aberta', 'em_atendimento', 'aguardando_cliente'];
+
   const { data, error } = await sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
-    .in('status', ['aberta', 'em_atendimento', 'aguardando_cliente'])
-    .order('atualizado_em', { ascending: false });
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
+    .in('status', statusFiltro)
+    .order('atualizado_em', { ascending: false })
+    .limit(viewMode === 'concluidos' ? 200 : 500);
 
   if (error) { console.error('[atendimento] erro ao carregar conversas', error); return; }
-  console.log('[atd] conversas carregadas:', (data || []).map(c => ({ id: c.id.slice(0,8), status: c.status, canal: c.canal_tipo })));
   _atdState.conversas = data || [];
+  _atdRenderLista();
+}
+
+function _atdSetViewMode(mode) {
+  _atdState.viewMode = mode;
+  _atdState.buscaRapidaTermo = '';
+  const inp = document.getElementById('atdBuscaRapida');
+  if (inp) inp.value = '';
+  document.getElementById('atdTabAtivos')?.classList.toggle('active', mode === 'ativos');
+  document.getElementById('atdTabConcluidos')?.classList.toggle('active', mode === 'concluidos');
+  // Limpa conversa ativa ao entrar em histórico
+  if (mode === 'concluidos') {
+    _atdState.conversaAtivaId = null;
+    const vazio = document.getElementById('atdChatVazio');
+    const ativo = document.getElementById('atdChatAtivo');
+    const painel = document.getElementById('atdPainelContato');
+    if (vazio) vazio.style.display = 'flex';
+    if (ativo) ativo.style.display = 'none';
+    if (painel) painel.style.display = 'none';
+  }
+  _atdCarregarConversas();
+}
+
+function _atdBuscaRapidaFiltrar(termo) {
+  _atdState.buscaRapidaTermo = (termo || '').toLowerCase().trim();
+  _atdRenderLista();
+}
+
+function _atdAbrirBuscaAvancada() {
+  const overlay = document.createElement('div');
+  overlay.id = 'atdBuscaAvancadaOverlay';
+  overlay.className = 'overlay';
+  overlay.style.cssText = 'z-index:9000';
+  overlay.innerHTML = `
+    <div class="mbox" style="width:420px;max-width:95vw" onclick="event.stopPropagation()">
+      <div style="font-weight:800;font-size:var(--text-base);margin-bottom:16px;display:flex;align-items:center;gap:8px">
+        ${lc('search', 16, 'var(--purple)')} Busca avançada
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Nome ou telefone</label>
+        <input id="atdBuscaNome" class="inp" type="text" placeholder="Camila Oliveira ou 11999..." style="font-size:var(--text-sm)">
+      </div>
+      <div class="f2" style="gap:10px;margin-bottom:12px">
+        <div class="field">
+          <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Data início</label>
+          <input id="atdBuscaDataInicio" class="inp" type="date" style="font-size:var(--text-sm)">
+        </div>
+        <div class="field">
+          <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Data fim</label>
+          <input id="atdBuscaDataFim" class="inp" type="date" style="font-size:var(--text-sm)">
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Número do pedido</label>
+        <input id="atdBuscaPedidoNum" class="inp" type="text" placeholder="Ex: 1042" style="font-size:var(--text-sm)">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="document.getElementById('atdBuscaAvancadaOverlay').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="_atdExecutarBuscaAvancada()">
+          ${lc('search', 13, '#fff')} Buscar
+        </button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
+}
+
+async function _atdExecutarBuscaAvancada() {
+  const nome   = document.getElementById('atdBuscaNome')?.value.trim() || '';
+  const di     = document.getElementById('atdBuscaDataInicio')?.value || '';
+  const df     = document.getElementById('atdBuscaDataFim')?.value || '';
+  const pedido = document.getElementById('atdBuscaPedidoNum')?.value.trim() || '';
+  document.getElementById('atdBuscaAvancadaOverlay')?.remove();
+
+  const sb = _atdGetSbClient();
+  let q = sb
+    .from('atd_conversas')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
+    .order('atualizado_em', { ascending: false })
+    .limit(300);
+
+  if (di) q = q.gte('atualizado_em', di);
+  if (df) q = q.lte('atualizado_em', df + 'T23:59:59');
+  if (pedido) q = q.contains('pedido_data', { display_id: pedido });
+
+  const { data, error } = await q;
+  if (error) { toast('Erro na busca', 'err'); return; }
+
+  let resultado = data || [];
+  if (nome) {
+    const t = nome.toLowerCase();
+    resultado = resultado.filter(c => {
+      const ct = c.atd_contatos || {};
+      return (ct.nome || '').toLowerCase().includes(t) || (ct.telefone || '').includes(t);
+    });
+  }
+
+  _atdState.conversas = resultado;
+  _atdState.viewMode = 'busca';
+  document.getElementById('atdTabAtivos')?.classList.remove('active');
+  document.getElementById('atdTabConcluidos')?.classList.remove('active');
   _atdRenderLista();
 }
 
@@ -180,7 +307,6 @@ function _atdAplicarFiltro(filtro) {
 }
 
 function _atdAplicarSubFiltro(sub) {
-  document.querySelectorAll('#atdSubFiltros .atd-canal-tab').forEach(b => b.classList.toggle('active', b.dataset.sub === sub));
   _atdState.subFiltroAtivo = sub;
   _atdRenderLista();
 }
@@ -203,21 +329,29 @@ const _ATD_CANAIS_CHAT = ['whatsapp', 'instagram'];
 const _ATD_CANAIS_AVAL = ['ifood', '99food'];
 
 function _atdRenderLista() {
-  const user = getCurrentUser();
-  const filtro = _atdState.filtroAtivo || 'chat';
-  const sub = _atdState.subFiltroAtivo || 'todas';
-  const canais = filtro === 'avaliacoes' ? _ATD_CANAIS_AVAL : _ATD_CANAIS_CHAT;
+  const filtro  = _atdState.filtroAtivo || 'chat';
+  const canais  = filtro === 'avaliacoes' ? _ATD_CANAIS_AVAL : _ATD_CANAIS_CHAT;
+  const termo   = _atdState.buscaRapidaTermo || '';
+  const viewMode = _atdState.viewMode || 'ativos';
+
   let lista = _atdState.conversas.filter(c => canais.includes(c.canal_tipo));
-  if (sub === 'minhas') lista = lista.filter(c => c.atendente_id === user?.id);
-  else if (sub === 'sem_atendente') lista = lista.filter(c => !c.atendente_id);
-  // Garante que a conversa atualmente aberta nunca desapareça da lista por filtro
+
+  // Busca rápida por nome/telefone
+  if (termo) {
+    lista = lista.filter(c => {
+      const ct = c.atd_contatos || {};
+      return (ct.nome || '').toLowerCase().includes(termo) || (ct.telefone || '').includes(termo);
+    });
+  }
+
+  // Garante que a conversa atualmente aberta nunca some da lista
   const ativaId = _atdState.conversaAtivaId;
-  if (ativaId && !lista.find(c => c.id === ativaId)) {
+  if (ativaId && viewMode === 'ativos' && !lista.find(c => c.id === ativaId)) {
     const convAtiva = _atdState.conversas.find(c => c.id === ativaId);
     if (convAtiva) lista = [convAtiva, ...lista];
   }
 
-  // Atualiza badges das abas
+  // Atualiza badges de não-lidas nas abas
   const totalChat = _atdState.conversas.filter(c => _ATD_CANAIS_CHAT.includes(c.canal_tipo)).reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
   const totalAval = _atdState.conversas.filter(c => _ATD_CANAIS_AVAL.includes(c.canal_tipo)).reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
   const badgeChat = document.getElementById('atdBadgeChat');
@@ -229,11 +363,10 @@ function _atdRenderLista() {
   if (!el) return;
 
   if (!lista.length) {
-    el.innerHTML = `<div style="padding:24px 16px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Nenhuma conversa aqui.</div>`;
+    const msg = viewMode === 'concluidos' ? 'Nenhuma conversa concluída.' : viewMode === 'busca' ? 'Nenhum resultado encontrado.' : 'Nenhuma conversa ativa.';
+    el.innerHTML = `<div style="padding:32px 16px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">${lc('inbox', 28, 'var(--border)')}<br><br>${msg}</div>`;
     return;
   }
-
-  const CANAL_COR = { whatsapp: '#25D366', instagram: '#E1306C', ifood: '#EA1D2C', '99food': '#FFC700' };
 
   const agora = Date.now();
 
@@ -241,6 +374,8 @@ function _atdRenderLista() {
     aberta:             { label: 'Nova',        cor: 'var(--purple)',      bg: 'var(--purple-xlight)' },
     em_atendimento:     { label: 'Atendendo',   cor: 'var(--green)',       bg: 'var(--success-bg)'    },
     aguardando_cliente: { label: 'Aguardando',  cor: 'var(--warning-fg)',  bg: 'var(--warning-bg)'    },
+    concluida:          { label: 'Concluída',   cor: 'var(--fg-subtle)',   bg: 'var(--surface2)'      },
+    expirada:           { label: 'Expirada',    cor: 'var(--danger)',      bg: 'var(--danger-bg)'     },
   };
 
   el.innerHTML = lista.map(c => {
@@ -249,55 +384,83 @@ function _atdRenderLista() {
     const inicial = nome.charAt(0).toUpperCase();
     const ativa = c.id === _atdState.conversaAtivaId;
     const naoLidas = c.mensagens_nao_lidas || 0;
+    const isConcluida = c.status === 'concluida' || c.status === 'expirada';
 
     const avatar = contato.avatar_url
-      ? `<img class="conv-avatar" src="${contato.avatar_url}" alt="${inicial}" onerror="this.outerHTML='<div class=conv-avatar-inicial>${inicial}</div>'">`
-      : `<div class="conv-avatar-inicial">${inicial}</div>`;
-
-    const previewTexto = c.ultima_mensagem?.texto || '';
-    const previewCheck = c.ultima_mensagem?.origem === 'atendente'
-      ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>`
-      : '';
+      ? `<img class="conv-avatar" src="${contato.avatar_url}" alt="${inicial}" style="${isConcluida ? 'opacity:.55' : ''}" onerror="this.outerHTML='<div class=conv-avatar-inicial style=\\'${isConcluida ? 'opacity:.55' : ''}\\'>  ${inicial}</div>'">`
+      : `<div class="conv-avatar-inicial" style="${isConcluida ? 'opacity:.55;background:var(--surface3)' : ''}">${inicial}</div>`;
 
     const st = STATUS_CONV[c.status] || STATUS_CONV.aberta;
-    const statusBadge = `<span style="font-size:10px;font-weight:700;color:${st.cor};background:${st.bg};padding:1px 6px;border-radius:999px;white-space:nowrap">${st.label}</span>`;
+    const statusBadge = `<span style="font-size:9px;font-weight:700;color:${st.cor};background:${st.bg};padding:1px 6px;border-radius:999px;white-space:nowrap;flex-shrink:0">${st.label}</span>`;
 
-    // Timer: se aguardando_cliente → tempo desde última msg do atendente
-    //        se aberta/em_atendimento → tempo desde última msg do cliente sem resposta
+    // Timer de espera (só em conversas ativas)
     let timerHtml = '';
-    const refTs = c.status === 'aguardando_cliente'
-      ? c.ultima_msg_atendente_em
-      : (c.status === 'em_atendimento' || c.status === 'aberta') ? c.ultima_msg_cliente_em : null;
-    if (refTs) {
-      const diffMin = Math.floor((agora - new Date(refTs).getTime()) / 60000);
-      if (diffMin >= 1) {
-        const cor = diffMin >= 60 ? 'var(--danger)' : diffMin >= 15 ? 'var(--warning-fg)' : 'var(--fg-subtle)';
-        const label = diffMin < 60 ? `${diffMin}min` : `${Math.floor(diffMin/60)}h${diffMin%60 ? String(diffMin%60).padStart(2,'0')+'m' : ''}`;
-        timerHtml = `<span style="font-size:10px;color:${cor};font-weight:600;white-space:nowrap;flex-shrink:0">${lc('clock', 10, cor)} ${label}</span>`;
+    if (!isConcluida) {
+      const refTs = c.status === 'aguardando_cliente'
+        ? c.ultima_msg_atendente_em
+        : c.ultima_msg_cliente_em;
+      if (refTs) {
+        const diffMin = Math.floor((agora - new Date(refTs).getTime()) / 60000);
+        if (diffMin >= 1) {
+          const cor = diffMin >= 60 ? 'var(--danger)' : diffMin >= 15 ? 'var(--warning-fg)' : 'var(--fg-subtle)';
+          const label = diffMin < 60 ? `${diffMin}min` : `${Math.floor(diffMin/60)}h${diffMin%60 ? String(diffMin%60).padStart(2,'0')+'m' : ''}`;
+          timerHtml = `<span style="font-size:9px;color:${cor};font-weight:600;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('clock', 9, cor)} ${label}</span>`;
+        }
       }
     }
 
+    // Preview da última mensagem
+    const previewTexto = c.ultima_mensagem?.texto || '';
+    const previewOrigem = c.ultima_mensagem?.origem;
+    const previewPrefix = previewOrigem === 'atendente'
+      ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--fg-subtle)"><polyline points="20 6 9 17 4 12"/></svg>`
+      : '';
+
+    // Data/hora relativa
+    const ts = c.atualizado_em ? new Date(c.atualizado_em) : null;
+    let dataHtml = '';
+    if (ts) {
+      const diffH = (agora - ts.getTime()) / 3600000;
+      const dataLabel = diffH < 24
+        ? ts.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      dataHtml = `<span style="font-size:10px;color:var(--fg-subtle);flex-shrink:0;white-space:nowrap">${dataLabel}</span>`;
+    }
+
+    // Pedido vinculado (se tiver)
+    const pedidoHtml = c.pedido_data?.display_id
+      ? `<span style="font-size:9px;color:var(--fg-subtle);background:var(--surface3);padding:1px 5px;border-radius:4px;flex-shrink:0">#${c.pedido_data.display_id}</span>`
+      : '';
+
     return `
-      <div class="conv-item ${ativa ? 'active' : ''}" data-canal="${c.canal_tipo || ''}" onclick="_atdAbrirConversa('${c.id}')">
+      <div class="conv-item ${ativa ? 'active' : ''}" onclick="_atdAbrirConversa('${c.id}')">
+        <!-- Avatar com ícone do canal -->
         <div style="position:relative;flex-shrink:0">
           ${avatar}
-          <span style="position:absolute;bottom:-1px;right:-1px;width:16px;height:16px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff">
-            ${_atdIconeCanal(c.canal_tipo, 13)}
+          <span style="position:absolute;bottom:-1px;right:-1px;width:15px;height:15px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center">
+            ${_atdIconeCanal(c.canal_tipo, 12)}
           </span>
         </div>
+
+        <!-- Conteúdo principal -->
         <div style="flex:1;min-width:0">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px">
-            <div class="conv-nome" style="font-weight:700;font-size:var(--text-sm);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+          <!-- Linha 1: Nome (destaque) + data + não-lidas -->
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:2px">
+            <div style="font-weight:800;font-size:var(--text-sm);color:${isConcluida ? 'var(--fg-subtle)' : 'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
             <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
-              ${timerHtml}
+              ${dataHtml}
               ${naoLidas ? `<span class="conv-nao-lidas">${naoLidas}</span>` : ''}
             </div>
           </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:3px;gap:4px">
-            <div style="font-size:var(--text-xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;min-width:0">
-              ${previewCheck}${previewTexto}
-            </div>
+          <!-- Linha 2: Preview da mensagem -->
+          <div style="font-size:var(--text-xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;margin-bottom:4px">
+            ${previewPrefix}${previewTexto || '<em style="opacity:.6">Sem mensagens</em>'}
+          </div>
+          <!-- Linha 3: Status + timer + pedido -->
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
             ${statusBadge}
+            ${timerHtml}
+            ${pedidoHtml}
           </div>
         </div>
       </div>`;
@@ -800,14 +963,9 @@ async function _atdEnviarMensagem(conversaId) {
     const convLocal = _atdState.conversas.find(c => c.id === conversaId);
     if (convLocal && visibilidade === 'publica') {
       convLocal.ultima_mensagem = { texto, origem: 'atendente' };
-      if (user?.id) convLocal.atendente_id = user.id; // necessário para filtro "sem_atendente"
+      if (user?.id) convLocal.atendente_id = user.id;
     }
-    // Se estava em "Sem resposta", migrar para "Minhas" (conversa agora tem atendente)
-    if (_atdState.subFiltroAtivo === 'sem_atendente') {
-      _atdAplicarSubFiltro('minhas');
-    } else {
-      _atdRenderLista();
-    }
+    _atdRenderLista();
     await _atdAbrirConversa(conversaId);
   } catch (e) {
     toast('Erro ao enviar mensagem: ' + e.message, 'err');
