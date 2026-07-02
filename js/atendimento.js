@@ -168,6 +168,7 @@ async function _atdCarregarConversas() {
     .order('atualizado_em', { ascending: false });
 
   if (error) { console.error('[atendimento] erro ao carregar conversas', error); return; }
+  console.log('[atd] conversas carregadas:', (data || []).map(c => ({ id: c.id.slice(0,8), status: c.status, canal: c.canal_tipo })));
   _atdState.conversas = data || [];
   _atdRenderLista();
 }
