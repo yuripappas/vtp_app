@@ -600,6 +600,7 @@ function _atdRenderChat(conversa) {
     }
 
     // Label interno do atendente (visível só no app, não vai pro WhatsApp/IG)
+    if (m.origem === 'atendente') console.log('[atd] msg atendente_id:', m.atendente_id, 'cache:', _atdState.perfisCache);
     const nomeAtendente = (m.origem === 'atendente' && m.atendente_id)
       ? (_atdState.perfisCache?.[m.atendente_id] || 'Atendente')
       : null;
