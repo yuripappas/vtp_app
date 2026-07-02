@@ -79,23 +79,31 @@ async function salvarMidiaStorage(
 ): Promise<string | null> {
   try {
     // Usa o endpoint da Evolution API para obter o conteúdo em base64
-    const evoRes = await fetch(`${evoUrl}/message/getBase64FromMediaMessage/${evoInstance}`, {
+    const evoEndpoint = `${evoUrl}/message/getBase64FromMediaMessage/${evoInstance}`;
+    console.log('[webhook-wpp] chamando Evolution API:', evoEndpoint, 'key:', JSON.stringify(messageKey));
+
+    const evoRes = await fetch(evoEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: evoKey },
       body: JSON.stringify({ key: messageKey }),
     });
+
+    const evoRawText = await evoRes.text();
+    console.log('[webhook-wpp] Evolution API status:', evoRes.status, 'body:', evoRawText.slice(0, 300));
 
     if (!evoRes.ok) {
       console.warn('[webhook-wpp] falha ao obter base64 da Evolution API:', evoRes.status);
       return null;
     }
 
-    const evoData = await evoRes.json();
-    const base64: string = evoData?.base64 || evoData?.data?.base64;
-    const mimetype: string = evoData?.mimetype || evoData?.data?.mimetype || midiaInfo.mimetype || 'application/octet-stream';
+    const evoData = JSON.parse(evoRawText);
+    const base64: string = evoData?.base64 || evoData?.data?.base64 || evoData?.mediaData?.base64;
+    const mimetype: string = evoData?.mimetype || evoData?.data?.mimetype || evoData?.mediaData?.mimetype || midiaInfo.mimetype || 'application/octet-stream';
+
+    console.log('[webhook-wpp] base64 length:', base64?.length ?? 0, 'mimetype:', mimetype);
 
     if (!base64) {
-      console.warn('[webhook-wpp] base64 não retornado pela Evolution API');
+      console.warn('[webhook-wpp] base64 não retornado pela Evolution API. Keys:', Object.keys(evoData));
       return null;
     }
 
