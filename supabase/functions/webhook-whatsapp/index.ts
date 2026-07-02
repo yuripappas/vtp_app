@@ -9,6 +9,7 @@ interface EvoLocation { degreesLatitude?: number; degreesLongitude?: number; }
 interface EvoMedia   { url?: string; caption?: string; seconds?: number; fileName?: string; mimetype?: string; base64?: string; }
 interface EvoMessage {
   conversation?: string;
+  base64?:          string;   // adicionado pela Evolution API quando webhookBase64=true
   imageMessage?:    EvoMedia;
   audioMessage?:    EvoMedia;
   videoMessage?:    EvoMedia;
@@ -112,20 +113,6 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ignorado: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 
-  // LOG TEMPORÁRIO: inspeciona estrutura do payload de mídia
-  const msgType = payload.data?.messageType;
-  if (msgType && msgType !== 'conversation' && msgType !== 'extendedTextMessage') {
-    const dataKeys = Object.keys(payload.data || {});
-    const msgKeys = Object.keys(payload.data?.message || {});
-    const mediaObj = (payload.data?.message as Record<string, unknown>)?.[Object.keys(payload.data?.message || {}).find(k => k.endsWith('Message')) || ''] as Record<string, unknown> | undefined;
-    const mediaKeys = Object.keys(mediaObj || {});
-    console.log('[webhook-wpp] PAYLOAD KEYS data:', JSON.stringify(dataKeys));
-    console.log('[webhook-wpp] PAYLOAD KEYS message:', JSON.stringify(msgKeys));
-    console.log('[webhook-wpp] PAYLOAD KEYS mediaObj:', JSON.stringify(mediaKeys));
-    console.log('[webhook-wpp] tem base64 em data?', 'base64' in (payload.data as Record<string, unknown>));
-    console.log('[webhook-wpp] tem base64 em mediaObj?', mediaObj && 'base64' in mediaObj);
-    if (mediaObj?.base64) console.log('[webhook-wpp] base64 length:', String(mediaObj.base64).length);
-  }
 
   const telefone = normalizarJid(payload.data.key.remoteJid);
   if (!telefone) {
@@ -186,7 +173,8 @@ Deno.serve(async (req) => {
     conteudo = { texto: payload.data.message.conversation || '' };
   } else {
     const midia = getMidia(payload.data.message, tipo)!;
-    const base64 = midia.base64;
+    // base64 fica em data.message.base64, NÃO dentro de imageMessage/audioMessage/etc
+    const base64 = payload.data.message.base64;
     const mimetype = midia.mimetype || 'application/octet-stream';
 
     console.log('[webhook-wpp] tipo:', tipo, 'tem base64:', !!base64, 'mimetype:', mimetype);
