@@ -599,16 +599,15 @@ function _atdRenderChat(conversa) {
       conteudoHtml = `${prefixo}${m.conteudo?.texto ?? ''}`;
     }
 
-    // Label interno do atendente (visível só no app, não vai pro WhatsApp/IG)
-    if (m.origem === 'atendente') console.log('[atd] msg atendente_id:', m.atendente_id, 'cache:', _atdState.perfisCache);
+    // Label interno do remetente (visível só no app, acima da bolha)
     const nomeAtendente = (m.origem === 'atendente' && m.atendente_id)
       ? (_atdState.perfisCache?.[m.atendente_id] || 'Atendente')
       : null;
     const labelAtendente = nomeAtendente
-      ? `<div style="font-size:9px;font-weight:700;color:var(--purple);opacity:.7;margin-bottom:3px;letter-spacing:.2px">${nomeAtendente}</div>`
+      ? `<div style="text-align:right;font-size:9px;font-weight:700;color:var(--fg-subtle);margin-bottom:2px;padding-right:2px">${nomeAtendente}</div>`
       : '';
 
-    return `<div class="msg-bubble ${classe}">${labelAtendente}${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
+    return `${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
   }).join('');
 
   _atdState.modoNotaInterna = false;
