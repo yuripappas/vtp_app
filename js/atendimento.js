@@ -562,6 +562,14 @@ function _atdRenderChat(conversa) {
             </button>
           </div>
         </div>`;
+    } else if (m.tipo === 'imagem' && m.conteudo?.expirado) {
+      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('image-off',13,'currentColor')} Imagem expirada</div>`;
+    } else if (m.tipo === 'audio' && m.conteudo?.expirado) {
+      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('mic-off',13,'currentColor')} Áudio expirado</div>`;
+    } else if (m.tipo === 'video' && m.conteudo?.expirado) {
+      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('video-off',13,'currentColor')} Vídeo expirado</div>`;
+    } else if (m.tipo === 'documento' && m.conteudo?.expirado) {
+      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('file-x',13,'currentColor')} Documento expirado</div>`;
     } else if (m.tipo === 'imagem' && m.conteudo?.url) {
       const legenda = m.conteudo.texto
         ? `<div style="padding:4px 10px 2px;font-size:var(--text-xs);opacity:.9">${m.conteudo.texto}</div>` : '';
