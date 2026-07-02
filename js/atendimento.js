@@ -563,36 +563,59 @@ function _atdRenderChat(conversa) {
           </div>
         </div>`;
     } else if (m.tipo === 'imagem' && m.conteudo?.url) {
-      const legenda = m.conteudo.texto ? `<div style="margin-top:6px;font-size:var(--text-xs);opacity:.85">${m.conteudo.texto}</div>` : '';
-      conteudoHtml = `
-        <a href="${m.conteudo.url}" target="_blank" style="display:block">
-          <img src="${m.conteudo.url}"
-               alt="Imagem"
-               style="max-width:240px;max-height:300px;border-radius:8px;display:block;object-fit:cover"
-               onerror="this.outerHTML='<div style=\'padding:8px;font-size:13px\'>📷 Imagem (não disponível)</div>'">
+      const legenda = m.conteudo.texto
+        ? `<div style="padding:4px 10px 2px;font-size:var(--text-xs);opacity:.9">${m.conteudo.texto}</div>` : '';
+      conteudoHtml = `__MEDIA_BUBBLE__
+        <a href="${m.conteudo.url}" target="_blank" style="display:block;line-height:0">
+          <img src="${m.conteudo.url}" alt="Imagem"
+            style="width:260px;max-height:320px;object-fit:cover;display:block;border-radius:inherit"
+            onerror="this.closest('a').outerHTML='<div style=\\'padding:10px 12px;font-size:13px\\'>📷 Imagem não disponível</div>'">
         </a>${legenda}`;
     } else if (m.tipo === 'imagem') {
       conteudoHtml = `📷 Imagem${m.conteudo?.texto ? ': ' + m.conteudo.texto : ''}`;
     } else if (m.tipo === 'audio' && m.conteudo?.url) {
-      conteudoHtml = `<audio controls style="max-width:240px;margin:2px 0"><source src="${m.conteudo.url}">🎤 Áudio</audio>`;
+      conteudoHtml = `__MEDIA_BUBBLE__
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;min-width:220px">
+          <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc('mic', 16, classe === 'cliente' ? 'var(--purple)' : '#fff')}
+          </div>
+          <div style="flex:1;min-width:0">
+            <audio controls style="width:100%;height:32px;outline:none" preload="metadata">
+              <source src="${m.conteudo.url}">
+            </audio>
+          </div>
+        </div>`;
     } else if (m.tipo === 'audio') {
       conteudoHtml = `🎤 Áudio`;
     } else if (m.tipo === 'video' && m.conteudo?.url) {
-      const legenda = m.conteudo.texto ? `<div style="margin-top:6px;font-size:var(--text-xs);opacity:.85">${m.conteudo.texto}</div>` : '';
-      conteudoHtml = `
-        <video controls style="max-width:240px;border-radius:8px;display:block"
-               onerror="this.outerHTML='<div style=\'padding:8px;font-size:13px\'>🎥 Vídeo (não disponível)</div>'">
-          <source src="${m.conteudo.url}">🎥 Vídeo
+      const legenda = m.conteudo.texto
+        ? `<div style="padding:4px 10px 2px;font-size:var(--text-xs);opacity:.9">${m.conteudo.texto}</div>` : '';
+      conteudoHtml = `__MEDIA_BUBBLE__
+        <video controls preload="metadata"
+          style="width:260px;max-height:320px;display:block;border-radius:inherit;background:#000"
+          onerror="this.outerHTML='<div style=\\'padding:10px 12px;font-size:13px\\'>🎥 Vídeo não disponível</div>'">
+          <source src="${m.conteudo.url}">
         </video>${legenda}`;
     } else if (m.tipo === 'video') {
       conteudoHtml = `🎥 Vídeo${m.conteudo?.texto ? ': ' + m.conteudo.texto : ''}`;
     } else if (m.tipo === 'documento' && m.conteudo?.url) {
-      const nome = m.conteudo.nome || 'Documento';
-      conteudoHtml = `<a href="${m.conteudo.url}" target="_blank" style="display:flex;align-items:center;gap:6px;color:inherit;text-decoration:none">${lc('file', 14, 'currentColor')} ${nome}</a>`;
+      const nomeArq = m.conteudo.nome || 'Documento';
+      const ext = nomeArq.split('.').pop().toUpperCase();
+      conteudoHtml = `__MEDIA_BUBBLE__
+        <a href="${m.conteudo.url}" target="_blank" download style="display:flex;align-items:center;gap:12px;padding:12px 14px;text-decoration:none;color:inherit">
+          <div style="width:40px;height:40px;border-radius:8px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:800">
+            ${ext}
+          </div>
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:var(--text-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${nomeArq}</div>
+            <div style="font-size:10px;opacity:.7;margin-top:2px">Toque para baixar</div>
+          </div>
+          ${lc('download', 14, 'currentColor')}
+        </a>`;
     } else if (m.tipo === 'documento') {
       conteudoHtml = `📄 Documento`;
     } else if (m.tipo === 'sticker' && m.conteudo?.url) {
-      conteudoHtml = `<img src="${m.conteudo.url}" alt="Sticker" style="max-width:120px;max-height:120px;display:block" onerror="this.outerHTML='😊 Sticker'">`;
+      conteudoHtml = `__NO_BUBBLE__<img src="${m.conteudo.url}" alt="Sticker" style="max-width:140px;max-height:140px;display:block" onerror="this.outerHTML='😊 Sticker'">`;
     } else if (m.tipo === 'sticker') {
       conteudoHtml = `😊 Sticker`;
     } else {
@@ -607,6 +630,14 @@ function _atdRenderChat(conversa) {
       ? `<div style="text-align:right;font-size:9px;font-weight:700;color:var(--fg-subtle);margin-bottom:2px;padding-right:2px">${nomeAtendente}</div>`
       : '';
 
+    // Mídia: bolha sem padding interno (a mídia ocupa todo o espaço)
+    if (conteudoHtml.startsWith('__NO_BUBBLE__')) {
+      return `${labelAtendente}${conteudoHtml.slice(13)}`;
+    }
+    if (conteudoHtml.startsWith('__MEDIA_BUBBLE__')) {
+      const inner = conteudoHtml.slice(16);
+      return `${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0;overflow:hidden">${inner}<div style="font-size:10px;opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
+    }
     return `${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
   }).join('');
 
