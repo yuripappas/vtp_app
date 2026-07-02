@@ -520,13 +520,15 @@ async function _atdAbrirConversa(conversaId) {
     .eq('conversa_id', conversaId);
 
   // Busca nomes dos atendentes que participaram (para label interno nas bolhas)
+  console.log('[atd] total mensagens:', (mensagens||[]).length, 'sample:', (mensagens||[]).slice(0,2).map(m=>({origem:m.origem, atendente_id:m.atendente_id})));
   const atendenteIds = [...new Set((mensagens || []).filter(m => m.atendente_id).map(m => m.atendente_id))];
-  console.log('[atd] atendente_ids nas mensagens:', atendenteIds);
+  console.log('[atd] atendente_ids:', atendenteIds);
   if (atendenteIds.length) {
-    const { data: perfis, error: perfisErr } = await sb.from('profiles').select('id, nome').in('id', atendenteIds);
-    console.log('[atd] perfis retornados:', perfis, 'erro:', perfisErr);
-    _atdState.perfisCache = Object.fromEntries((perfis || []).map(p => [p.id, p.nome || 'Atendente']));
-    console.log('[atd] perfisCache:', _atdState.perfisCache);
+    const { data: perfis, error: perfisErr } = await sb.from('profiles').select('*').in('id', atendenteIds);
+    console.log('[atd] perfis:', perfis, 'erro:', perfisErr);
+    _atdState.perfisCache = Object.fromEntries((perfis || []).map(p => [p.id, p.nome || p.full_name || p.email || 'Atendente']));
+  } else {
+    console.log('[atd] nenhuma mensagem tem atendente_id — nomes nao serao exibidos');
   }
 
   _atdState.mensagens = mensagens || [];
