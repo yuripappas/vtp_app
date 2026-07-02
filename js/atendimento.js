@@ -210,6 +210,12 @@ function _atdRenderLista() {
   let lista = _atdState.conversas.filter(c => canais.includes(c.canal_tipo));
   if (sub === 'minhas') lista = lista.filter(c => c.atendente_id === user?.id);
   else if (sub === 'sem_atendente') lista = lista.filter(c => !c.atendente_id);
+  // Garante que a conversa atualmente aberta nunca desapareça da lista por filtro
+  const ativaId = _atdState.conversaAtivaId;
+  if (ativaId && !lista.find(c => c.id === ativaId)) {
+    const convAtiva = _atdState.conversas.find(c => c.id === ativaId);
+    if (convAtiva) lista = [convAtiva, ...lista];
+  }
 
   // Atualiza badges das abas
   const totalChat = _atdState.conversas.filter(c => _ATD_CANAIS_CHAT.includes(c.canal_tipo)).reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
@@ -790,10 +796,18 @@ async function _atdEnviarMensagem(conversaId) {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'falha ao enviar');
-    // Atualiza preview local imediatamente
+    // Atualiza state local imediatamente (evita desaparecer do filtro)
     const convLocal = _atdState.conversas.find(c => c.id === conversaId);
-    if (convLocal && visibilidade === 'publica') convLocal.ultima_mensagem = { texto, origem: 'atendente' };
-    _atdRenderLista();
+    if (convLocal && visibilidade === 'publica') {
+      convLocal.ultima_mensagem = { texto, origem: 'atendente' };
+      if (user?.id) convLocal.atendente_id = user.id; // necessário para filtro "sem_atendente"
+    }
+    // Se estava em "Sem resposta", migrar para "Minhas" (conversa agora tem atendente)
+    if (_atdState.subFiltroAtivo === 'sem_atendente') {
+      _atdAplicarSubFiltro('minhas');
+    } else {
+      _atdRenderLista();
+    }
     await _atdAbrirConversa(conversaId);
   } catch (e) {
     toast('Erro ao enviar mensagem: ' + e.message, 'err');
