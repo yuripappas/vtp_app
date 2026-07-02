@@ -522,8 +522,8 @@ async function _atdAbrirConversa(conversaId) {
   // Busca nomes dos atendentes que participaram (para label interno nas bolhas)
   const atendenteIds = [...new Set((mensagens || []).filter(m => m.atendente_id).map(m => m.atendente_id))];
   if (atendenteIds.length) {
-    const { data: perfis } = await sb.from('profiles').select('id, full_name').in('id', atendenteIds);
-    _atdState.perfisCache = Object.fromEntries((perfis || []).map(p => [p.id, p.full_name || 'Atendente']));
+    const { data: perfis } = await sb.from('profiles').select('id, nome').in('id', atendenteIds);
+    _atdState.perfisCache = Object.fromEntries((perfis || []).map(p => [p.id, p.nome || 'Atendente']));
   }
 
   _atdState.mensagens = mensagens || [];
