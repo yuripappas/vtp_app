@@ -177,22 +177,25 @@ Deno.serve(async (req) => {
     const base64 = payload.data.message.base64;
     const mimetype = midia.mimetype || 'application/octet-stream';
 
-    console.log('[webhook-wpp] tipo:', tipo, 'tem base64:', !!base64, 'mimetype:', mimetype);
+    // DEBUG TEMPORÁRIO: grava o que chegou para inspeção
+    const debugInfo = {
+      temBase64: !!base64,
+      base64Len: base64 ? base64.length : 0,
+      mimetype,
+      msgKeys: Object.keys(payload.data.message),
+    };
 
     let urlFinal: string | null = null;
     if (base64) {
       urlFinal = await salvarBase64(sb, tipo, externalId, base64, mimetype, midia.fileName);
     }
 
-    // Fallback para URL original se não tiver base64 (não deve acontecer com WEBHOOK_BASE64=true)
-    if (!urlFinal) urlFinal = midia.url ?? null;
-
     if (tipo === 'audio') {
-      conteudo = { url: urlFinal, duracao: midia.seconds };
+      conteudo = { url: urlFinal || midia.url || null, duracao: midia.seconds, _debug: debugInfo };
     } else if (tipo === 'documento') {
-      conteudo = { url: urlFinal, nome: midia.fileName || 'documento', texto: '' };
+      conteudo = { url: urlFinal || midia.url || null, nome: midia.fileName || 'documento', texto: '', _debug: debugInfo };
     } else {
-      conteudo = { url: urlFinal, texto: midia.caption || '' };
+      conteudo = { url: urlFinal || midia.url || null, texto: midia.caption || '', _debug: debugInfo };
     }
   }
 
