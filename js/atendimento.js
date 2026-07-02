@@ -520,15 +520,10 @@ async function _atdAbrirConversa(conversaId) {
     .eq('conversa_id', conversaId);
 
   // Busca nomes dos atendentes que participaram (para label interno nas bolhas)
-  console.log('[atd] total mensagens:', (mensagens||[]).length, 'sample:', (mensagens||[]).slice(0,2).map(m=>({origem:m.origem, atendente_id:m.atendente_id})));
-  const atendenteIds = [...new Set((mensagens || []).filter(m => m.atendente_id).map(m => m.atendente_id))];
-  console.log('[atd] atendente_ids:', atendenteIds);
-  if (atendenteIds.length) {
-    const { data: perfis, error: perfisErr } = await sb.from('profiles').select('*').in('id', atendenteIds);
-    console.log('[atd] perfis:', perfis, 'erro:', perfisErr);
-    _atdState.perfisCache = Object.fromEntries((perfis || []).map(p => [p.id, p.nome || p.full_name || p.email || 'Atendente']));
-  } else {
-    console.log('[atd] nenhuma mensagem tem atendente_id — nomes nao serao exibidos');
+  // Monta cache de nomes usando o usuário local (auth via sessionStorage)
+  const userAtual = getCurrentUser();
+  if (userAtual?.id) {
+    _atdState.perfisCache = { [userAtual.id]: userAtual.name || userAtual.nome || 'Você' };
   }
 
   _atdState.mensagens = mensagens || [];
