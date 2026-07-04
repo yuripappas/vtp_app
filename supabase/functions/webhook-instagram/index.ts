@@ -102,20 +102,24 @@ Deno.serve(async (req) => {
     try {
       // Direto via Instagram Graph API — funciona para usuários que interagiram com o negócio
       const r = await fetch(
-        `https://graph.instagram.com/v21.0/${igsid}?fields=name,profile_pic,username,follower_count,following_count,media_count&access_token=${token}`
+        `https://graph.instagram.com/v21.0/${igsid}?fields=name,profile_pic,username,follower_count,is_verified_user&access_token=${token}`
       );
       if (r.ok) {
         const p = await r.json();
+        console.log('[ig-wh] profile response:', JSON.stringify(p));
         if (!p.error) {
           return {
             nome:      p.name           ?? null,
             avatar:    p.profile_pic    ?? null,
             followers: p.follower_count ?? null,
-            following: p.following_count ?? null,
-            posts:     p.media_count    ?? null,
+            following: null,
+            posts:     null,
             username:  p.username       ?? null,
           };
         }
+      } else {
+        const err = await r.text();
+        console.log('[ig-wh] profile error:', r.status, err);
       }
     } catch { /* continua */ }
     try {
