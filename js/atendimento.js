@@ -539,8 +539,21 @@ function _atdRenderLista() {
     }
 
     // Preview da última mensagem
-    const previewTexto = c.ultima_mensagem?.texto || '';
-    const previewOrigem = c.ultima_mensagem?.origem;
+    const ultiMsg = c.ultima_mensagem || {};
+    const previewOrigem = ultiMsg.origem;
+    const previewTexto = (() => {
+      const tipo = ultiMsg.tipo;
+      if (tipo === 'story_mention') return '📸 Mencionou no story';
+      if (tipo === 'imagem')        return '📷 Imagem';
+      if (tipo === 'video')         return '🎥 Vídeo';
+      if (tipo === 'audio')         return '🎤 Áudio';
+      if (tipo === 'documento')     return '📄 Documento';
+      if (tipo === 'sticker')       return '😊 Sticker';
+      if (tipo === 'localizacao')   return '📍 Localização';
+      const texto = ultiMsg.texto || '';
+      if (!texto && ultiMsg.story_reply) return '↩ Respondeu ao story';
+      return texto;
+    })();
     const previewPrefix = previewOrigem === 'atendente'
       ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--fg-subtle)"><polyline points="20 6 9 17 4 12"/></svg>`
       : '';
@@ -782,8 +795,36 @@ function _atdRenderChat(conversa) {
       conteudoHtml = `__NO_BUBBLE__<img src="${m.conteudo.url}" alt="Sticker" style="max-width:140px;max-height:140px;display:block" onerror="this.outerHTML='😊 Sticker'">`;
     } else if (m.tipo === 'sticker') {
       conteudoHtml = `😊 Sticker`;
+    } else if (m.tipo === 'story_mention') {
+      // Cliente mencionou o perfil da empresa em um story dele
+      const storyUrl = m.conteudo?.story_url;
+      conteudoHtml = `
+        <div style="display:flex;align-items:center;gap:8px;padding:2px 0 6px">
+          <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${lc('at-sign', 14, '#fff')}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:var(--text-xs)">Mencionou no story</div>
+            <div style="font-size:10px;opacity:.7">Este contato citou o seu perfil em um story</div>
+          </div>
+        </div>
+        ${storyUrl ? `<a href="${storyUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:${classe==='cliente'?'var(--purple)':'rgba(255,255,255,.8)'};text-decoration:none;padding-top:4px;border-top:1px solid rgba(255,255,255,.15)">
+          ${lc('external-link', 11, 'currentColor')} Ver story
+        </a>` : ''}`;
     } else {
-      conteudoHtml = `${prefixo}${m.conteudo?.texto ?? ''}`;
+      // Texto comum — pode ter contexto de story_reply
+      const storyReply = m.conteudo?.story_reply;
+      const storyCtxHtml = storyReply
+        ? `<div style="border-left:3px solid rgba(255,255,255,.4);padding:4px 8px;margin-bottom:6px;border-radius:0 4px 4px 0;background:rgba(0,0,0,.12);font-size:10px">
+            <div style="display:flex;align-items:center;gap:4px;font-weight:700;opacity:.8;margin-bottom:2px">
+              ${lc('image', 10, 'currentColor')} Respondeu ao seu story
+            </div>
+            ${storyReply.story_url
+              ? `<a href="${storyReply.story_url}" target="_blank" rel="noopener" style="color:inherit;opacity:.7;font-size:10px">Ver story ↗</a>`
+              : '<span style="opacity:.6">Story não disponível</span>'}
+          </div>`
+        : '';
+      conteudoHtml = `${storyCtxHtml}${prefixo}${m.conteudo?.texto ?? ''}`;
     }
 
     // Label interno do remetente (visível só no app, acima da bolha)
