@@ -550,9 +550,9 @@ function _atdRenderChat(conversa) {
             ${lc('map-pin', 14, classe === 'cliente' ? 'var(--text)' : '#fff')}
             <span style="font-weight:700">Localização</span>
           </div>
-          <img src="https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=15&size=240x140&markers=${lat},${lng}&key=AIzaSyD-stub"
-               onerror="this.outerHTML='<div style=\'background:var(--border);border-radius:8px;width:240px;height:80px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--fg-subtle)\'>📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>'"
-               style="width:240px;height:140px;border-radius:8px;object-fit:cover;display:block;margin-bottom:8px">
+          <div style="width:240px;height:80px;background:var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--fg-subtle);margin-bottom:8px">
+            📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}
+          </div>
           <div style="display:flex;gap:6px">
             <a href="${mapsUrl}" target="_blank" style="flex:1;text-align:center;padding:5px 8px;background:rgba(0,0,0,.12);border-radius:6px;font-size:11px;font-weight:700;color:inherit;text-decoration:none">
               ${lc('external-link', 11, 'currentColor')} Abrir Maps
