@@ -28,6 +28,12 @@ const _atdState = {
   filtroAtivo: 'chat',       // 'chat' | 'avaliacoes'
   buscaRapidaTermo: '',
   perfisCache: {},           // { [id]: nome } — nomes dos atendentes p/ label interno
+  filtrosAvancados: {        // filtros persistentes da busca avançada
+    canais: [],              // [] = todos | ['whatsapp'] | ['instagram'] | ambos
+    de: '',
+    ate: '',
+    statusResposta: '',      // '' | 'aguardando_cliente' | 'respondidas'
+  },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -191,7 +197,7 @@ async function _atdCarregarConversas() {
 
   const { data, error } = await sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, atd_contatos(nome, telefone, instagram_id, avatar_url, ig_followers, ig_following, ig_posts)')
     .in('status', statusFiltro)
     .order('atualizado_em', { ascending: false })
     .limit(viewMode === 'concluidos' ? 200 : 500);
@@ -227,37 +233,86 @@ function _atdBuscaRapidaFiltrar(termo) {
 }
 
 function _atdAbrirBuscaAvancada() {
+  if (document.getElementById('atdBuscaAvancadaOverlay')) {
+    document.getElementById('atdBuscaAvancadaOverlay').remove();
+    return;
+  }
+  const f = _atdState.filtrosAvancados;
+  const chkWpp = f.canais.includes('whatsapp') ? 'checked' : '';
+  const chkIg  = f.canais.includes('instagram') ? 'checked' : '';
+  const selSt  = (v) => f.statusResposta === v ? 'selected' : '';
+
   const overlay = document.createElement('div');
   overlay.id = 'atdBuscaAvancadaOverlay';
-  overlay.className = 'overlay';
-  overlay.style.cssText = 'z-index:9000';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25)';
   overlay.innerHTML = `
-    <div class="mbox" style="width:420px;max-width:95vw" onclick="event.stopPropagation()">
-      <div style="font-weight:800;font-size:var(--text-base);margin-bottom:16px;display:flex;align-items:center;gap:8px">
-        ${lc('search', 16, 'var(--purple)')} Busca avançada
-      </div>
-      <div class="field" style="margin-bottom:12px">
-        <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Nome ou telefone</label>
-        <input id="atdBuscaNome" class="inp" type="text" placeholder="Camila Oliveira ou 11999..." style="font-size:var(--text-sm)">
-      </div>
-      <div class="f2" style="gap:10px;margin-bottom:12px">
-        <div class="field">
-          <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Data início</label>
-          <input id="atdBuscaDataInicio" class="inp" type="date" style="font-size:var(--text-sm)">
+    <div onclick="event.stopPropagation()" style="position:absolute;top:0;right:0;bottom:0;width:320px;background:var(--bg);border-left:1px solid var(--border);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,.12)">
+      <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-weight:800;font-size:var(--text-sm);display:flex;align-items:center;gap:8px">
+          ${lc('sliders', 15, 'var(--purple)')} Filtrar conversas
         </div>
-        <div class="field">
-          <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Data fim</label>
-          <input id="atdBuscaDataFim" class="inp" type="date" style="font-size:var(--text-sm)">
+        <button onclick="document.getElementById('atdBuscaAvancadaOverlay').remove()" style="background:none;border:none;cursor:pointer;color:var(--fg-muted)">
+          ${lc('x', 16, 'currentColor')}
+        </button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:18px">
+
+        <!-- Canal -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Canal</div>
+          <div style="display:flex;gap:8px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);cursor:pointer;flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+              <input type="checkbox" id="atdFiltroWpp" ${chkWpp} style="accent-color:#25D366">
+              <span style="font-weight:600;color:#25D366">WhatsApp</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);cursor:pointer;flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+              <input type="checkbox" id="atdFiltroIg" ${chkIg} style="accent-color:#E1306C">
+              <span style="font-weight:600;color:#E1306C">Instagram</span>
+            </label>
+          </div>
         </div>
+
+        <!-- Período -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Período</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <label style="font-size:10px;color:var(--fg-muted);display:block;margin-bottom:3px">De</label>
+              <input id="atdBuscaDataInicio" class="inp" type="date" value="${f.de}" style="font-size:var(--text-xs)">
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--fg-muted);display:block;margin-bottom:3px">Até</label>
+              <input id="atdBuscaDataFim" class="inp" type="date" value="${f.ate}" style="font-size:var(--text-xs)">
+            </div>
+          </div>
+        </div>
+
+        <!-- Status de resposta -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Status de resposta</div>
+          <select id="atdFiltroStatusResp" class="inp" style="font-size:var(--text-sm);width:100%">
+            <option value="" ${selSt('')}>Todos</option>
+            <option value="aguardando_cliente" ${selSt('aguardando_cliente')}>Aguardando resposta do cliente</option>
+            <option value="aberta" ${selSt('aberta')}>Sem atendimento iniciado</option>
+            <option value="em_atendimento" ${selSt('em_atendimento')}>Em atendimento</option>
+          </select>
+        </div>
+
+        <!-- Busca por nome / pedido -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Nome ou telefone</div>
+          <input id="atdBuscaNome" class="inp" type="text" placeholder="Camila Oliveira ou 11999..." style="font-size:var(--text-sm)">
+        </div>
+        <div style="margin-bottom:8px">
+          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Número do pedido</div>
+          <input id="atdBuscaPedidoNum" class="inp" type="text" placeholder="Ex: 1042" style="font-size:var(--text-sm)">
+        </div>
+
       </div>
-      <div class="field" style="margin-bottom:16px">
-        <label style="font-size:var(--text-xs);font-weight:600;color:var(--fg-subtle);margin-bottom:4px;display:block">Número do pedido</label>
-        <input id="atdBuscaPedidoNum" class="inp" type="text" placeholder="Ex: 1042" style="font-size:var(--text-sm)">
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-ghost" onclick="document.getElementById('atdBuscaAvancadaOverlay').remove()">Cancelar</button>
-        <button class="btn btn-primary" onclick="_atdExecutarBuscaAvancada()">
-          ${lc('search', 13, '#fff')} Buscar
+      <div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px">
+        <button class="btn btn-ghost" style="flex:1" onclick="_atdLimparFiltrosAvancados()">Limpar</button>
+        <button class="btn btn-primary" style="flex:1" onclick="_atdExecutarBuscaAvancada()">
+          ${lc('search', 13, '#fff')} Aplicar
         </button>
       </div>
     </div>`;
@@ -265,23 +320,61 @@ function _atdAbrirBuscaAvancada() {
   document.body.appendChild(overlay);
 }
 
+function _atdLimparFiltrosAvancados() {
+  _atdState.filtrosAvancados = { canais: [], de: '', ate: '', statusResposta: '' };
+  document.getElementById('atdBuscaAvancadaOverlay')?.remove();
+  _atdState.viewMode = 'ativos';
+  _atdCarregarConversas();
+  _atdAtualizarBotaoFiltro();
+}
+
+function _atdAtualizarBotaoFiltro() {
+  const btn = document.getElementById('atdBuscaAvancadaBtn');
+  if (!btn) return;
+  const f = _atdState.filtrosAvancados;
+  const count = (f.canais.length > 0 ? 1 : 0) + (f.de || f.ate ? 1 : 0) + (f.statusResposta ? 1 : 0);
+  if (count > 0) {
+    btn.style.color = 'var(--purple)';
+    btn.title = `${count} filtro(s) ativo(s)`;
+    btn.innerHTML = lc('sliders', 13, 'var(--purple)') + `<span style="background:var(--purple);color:#fff;font-size:9px;border-radius:999px;padding:0 4px;min-width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px">${count}</span>`;
+  } else {
+    btn.style.color = '';
+    btn.title = 'Busca avançada';
+    btn.innerHTML = lc('sliders', 13, 'var(--fg-subtle)');
+  }
+}
+
 async function _atdExecutarBuscaAvancada() {
   const nome   = document.getElementById('atdBuscaNome')?.value.trim() || '';
   const di     = document.getElementById('atdBuscaDataInicio')?.value || '';
   const df     = document.getElementById('atdBuscaDataFim')?.value || '';
   const pedido = document.getElementById('atdBuscaPedidoNum')?.value.trim() || '';
+  const wpp    = document.getElementById('atdFiltroWpp')?.checked || false;
+  const ig     = document.getElementById('atdFiltroIg')?.checked || false;
+  const statusResp = document.getElementById('atdFiltroStatusResp')?.value || '';
+
+  // Persiste os filtros no estado
+  _atdState.filtrosAvancados = {
+    canais: [...(wpp ? ['whatsapp'] : []), ...(ig ? ['instagram'] : [])],
+    de: di, ate: df, statusResposta: statusResp,
+  };
+
   document.getElementById('atdBuscaAvancadaOverlay')?.remove();
+  _atdAtualizarBotaoFiltro();
 
   const sb = _atdGetSbClient();
   let q = sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, atd_contatos(nome, telefone, instagram_id, avatar_url)')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, atd_contatos(nome, telefone, instagram_id, avatar_url, ig_followers, ig_following, ig_posts)')
     .order('atualizado_em', { ascending: false })
     .limit(300);
 
   if (di) q = q.gte('atualizado_em', di);
   if (df) q = q.lte('atualizado_em', df + 'T23:59:59');
   if (pedido) q = q.contains('pedido_data', { display_id: pedido });
+  if (statusResp) q = q.eq('status', statusResp);
+  if (wpp && !ig) q = q.eq('canal_tipo', 'whatsapp');
+  if (ig && !wpp) q = q.eq('canal_tipo', 'instagram');
 
   const { data, error } = await q;
   if (error) { toast('Erro na busca', 'err'); return; }
@@ -434,8 +527,14 @@ function _atdRenderLista() {
       ? `<span style="font-size:9px;color:var(--fg-subtle);background:var(--surface3);padding:1px 5px;border-radius:4px;flex-shrink:0">#${c.pedido_data.display_id}</span>`
       : '';
 
+    // Badge influenciador Instagram (>5000 seguidores)
+    const isInfluencer = c.canal_tipo === 'instagram' && (contato.ig_followers || 0) >= 5000;
+    const influencerBadge = isInfluencer
+      ? `<span style="font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:1px 6px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('star', 9, '#E1306C')} Influencer</span>`
+      : '';
+
     return `
-      <div class="conv-item ${ativa ? 'active' : ''}" onclick="_atdAbrirConversa('${c.id}')">
+      <div class="conv-item ${ativa ? 'active' : ''}" data-canal="${c.canal_tipo || ''}" onclick="_atdAbrirConversa('${c.id}')">
         <!-- Avatar com ícone do canal -->
         <div style="position:relative;flex-shrink:0">
           ${avatar}
@@ -448,7 +547,7 @@ function _atdRenderLista() {
         <div style="flex:1;min-width:0">
           <!-- Linha 1: Nome (destaque) + data + não-lidas -->
           <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;margin-bottom:2px">
-            <div style="font-weight:800;font-size:var(--text-sm);color:${isConcluida ? 'var(--fg-subtle)' : 'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+            <div class="conv-nome" style="font-weight:800;font-size:var(--text-sm);color:${isConcluida ? 'var(--fg-subtle)' : 'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
             <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
               ${dataHtml}
               ${naoLidas ? `<span class="conv-nao-lidas">${naoLidas}</span>` : ''}
@@ -458,11 +557,12 @@ function _atdRenderLista() {
           <div style="font-size:var(--text-xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;margin-bottom:4px">
             ${previewPrefix}${previewTexto || '<em style="opacity:.6">Sem mensagens</em>'}
           </div>
-          <!-- Linha 3: Status + timer + pedido -->
+          <!-- Linha 3: Status + timer + pedido + influencer -->
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
             ${statusBadge}
             ${timerHtml}
             ${pedidoHtml}
+            ${influencerBadge}
           </div>
         </div>
       </div>`;
@@ -673,17 +773,39 @@ function _atdRenderChat(conversa) {
 
   _atdState.modoNotaInterna = false;
   const corrigirAtivo = !!_atdState.corrigirAtivoPorConversa[conversa.id];
-  const canalLabel = conversa.canal_tipo === 'instagram' ? 'Instagram' : 'WhatsApp';
-  const canalCor   = conversa.canal_tipo === 'instagram' ? '#E1306C' : '#25D366';
+  const isIg = conversa.canal_tipo === 'instagram';
+  const canalLabel = isIg ? 'Instagram' : 'WhatsApp';
+  const canalCor   = isIg ? '#E1306C' : '#25D366';
+  const ct = conversa.atd_contatos || {};
+  const igHandle = ct.instagram_id ? `@${ct.instagram_id}` : null;
+  const igFollowers = ct.ig_followers;
+  const isInfluencer = isIg && (igFollowers || 0) >= 5000;
+
+  // Linha de stats Instagram (só quando canal = instagram e tiver pelo menos seguidores)
+  const igStatsHtml = isIg && igFollowers != null ? `
+    <div style="display:flex;gap:12px;font-size:10px;color:var(--fg-subtle);margin-top:3px">
+      ${ct.ig_posts     != null ? `<span><strong style="color:var(--text)">${_atdFmtNum(ct.ig_posts)}</strong> pub</span>` : ''}
+      ${ct.ig_followers != null ? `<span><strong style="color:var(--text)">${_atdFmtNum(ct.ig_followers)}</strong> seg</span>` : ''}
+      ${ct.ig_following != null ? `<span><strong style="color:var(--text)">${_atdFmtNum(ct.ig_following)}</strong> seguindo</span>` : ''}
+    </div>` : '';
+
+  // Nome clicável no Instagram
+  const nomeHtml = isIg && igHandle
+    ? `<a href="https://instagram.com/${ct.instagram_id}" target="_blank" rel="noopener"
+        style="font-weight:700;font-size:var(--text-base);color:var(--text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
+        onmouseover="this.style.color='#E1306C'" onmouseout="this.style.color='var(--text)'">${nome}</a>`
+    : `<div style="font-weight:700;font-size:var(--text-base);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${nome}</div>`;
 
   document.getElementById('atdChatAtivo').innerHTML = `
-    <!-- HEADER: nome + canal + tags -->
+    <!-- HEADER: nome + canal + stats IG + badge influencer + tags -->
     <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-        <div style="font-weight:700;font-size:var(--text-base);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${nome}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        ${nomeHtml}
+        ${isInfluencer ? `<span style="font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:2px 7px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;gap:3px">${lc('star', 9, '#E1306C')} Influencer</span>` : ''}
         <span style="font-size:10px;font-weight:700;color:${canalCor};flex-shrink:0">${canalLabel}</span>
       </div>
-      <div id="atdHeaderTags" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:22px">
+      ${igStatsHtml}
+      <div id="atdHeaderTags" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:22px;margin-top:5px">
         ${_atdTagsHeaderHtml(conversa.id)}
       </div>
     </div>
@@ -729,6 +851,13 @@ function _atdRenderChat(conversa) {
 
   const wrap = document.getElementById('atdMensagensWrap');
   if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+function _atdFmtNum(n) {
+  if (n == null) return '—';
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace('.0', '') + 'M';
+  if (n >= 1000)    return (n / 1000).toFixed(1).replace('.0', '') + 'K';
+  return String(n);
 }
 
 function _atdTagsHeaderHtml(conversaId) {
