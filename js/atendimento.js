@@ -32,7 +32,8 @@ const _atdState = {
     canais: [],              // [] = todos | ['whatsapp'] | ['instagram'] | ambos
     de: '',
     ate: '',
-    statusResposta: '',      // '' | 'aguardando_cliente' | 'respondidas'
+    statusResposta: '',      // '' | 'nao_respondidas' | 'respondidas'
+    avaliacao: 0,            // 0 = todas | 1..5 = estrelas mínimas
   },
 };
 
@@ -241,6 +242,9 @@ function _atdAbrirBuscaAvancada() {
   const chkWpp = f.canais.includes('whatsapp') ? 'checked' : '';
   const chkIg  = f.canais.includes('instagram') ? 'checked' : '';
   const selSt  = (v) => f.statusResposta === v ? 'selected' : '';
+  const starHtml = (n) => [1,2,3,4,5].map(i =>
+    `<span onclick="_atdFiltroEstrela(${n===i?0:i})" style="cursor:pointer;font-size:22px;color:${i<=(f.avaliacao||0)?'#F5A800':'var(--border)'}">★</span>`
+  ).join('');
 
   const overlay = document.createElement('div');
   overlay.id = 'atdBuscaAvancadaOverlay';
@@ -290,12 +294,30 @@ function _atdAbrirBuscaAvancada() {
         <!-- Status de resposta -->
         <div style="margin-bottom:18px">
           <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Status de resposta</div>
-          <select id="atdFiltroStatusResp" class="inp" style="font-size:var(--text-sm);width:100%">
-            <option value="" ${selSt('')}>Todos</option>
-            <option value="aguardando_cliente" ${selSt('aguardando_cliente')}>Aguardando resposta do cliente</option>
-            <option value="aberta" ${selSt('aberta')}>Sem atendimento iniciado</option>
-            <option value="em_atendimento" ${selSt('em_atendimento')}>Em atendimento</option>
-          </select>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+              <input type="radio" name="atdStatusResp" value="" ${selSt('')} onchange="_atdState.filtrosAvancados.statusResposta=this.value" style="accent-color:var(--purple)">
+              Todas as conversas
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+              <input type="radio" name="atdStatusResp" value="nao_respondidas" ${selSt('nao_respondidas')} onchange="_atdState.filtrosAvancados.statusResposta=this.value" style="accent-color:var(--purple)">
+              <span>Não respondidas <span style="font-size:10px;color:var(--fg-subtle)">(cliente esperando equipe)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+              <input type="radio" name="atdStatusResp" value="respondidas" ${selSt('respondidas')} onchange="_atdState.filtrosAvancados.statusResposta=this.value" style="accent-color:var(--purple)">
+              <span>Respondidas <span style="font-size:10px;color:var(--fg-subtle)">(equipe respondeu por último)</span></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Avaliação -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">Avaliação mínima</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            ${starHtml(f.avaliacao||0)}
+            ${f.avaliacao ? `<span style="font-size:10px;color:var(--fg-subtle);margin-left:6px">${f.avaliacao}★ ou mais</span>` : '<span style="font-size:10px;color:var(--fg-subtle);margin-left:6px">Todas</span>'}
+          </div>
+          <div style="font-size:10px;color:var(--fg-subtle);margin-top:4px">Clique numa estrela para filtrar · clique novamente para remover</div>
         </div>
 
         <!-- Busca por nome / pedido -->
@@ -320,8 +342,15 @@ function _atdAbrirBuscaAvancada() {
   document.body.appendChild(overlay);
 }
 
+function _atdFiltroEstrela(n) {
+  _atdState.filtrosAvancados.avaliacao = n;
+  // Re-render apenas as estrelas no drawer aberto
+  const drawer = document.getElementById('atdBuscaAvancadaOverlay');
+  if (drawer) { _atdAbrirBuscaAvancada(); _atdAbrirBuscaAvancada(); } // fecha e reabre para atualizar
+}
+
 function _atdLimparFiltrosAvancados() {
-  _atdState.filtrosAvancados = { canais: [], de: '', ate: '', statusResposta: '' };
+  _atdState.filtrosAvancados = { canais: [], de: '', ate: '', statusResposta: '', avaliacao: 0 };
   document.getElementById('atdBuscaAvancadaOverlay')?.remove();
   _atdState.viewMode = 'ativos';
   _atdCarregarConversas();
@@ -332,7 +361,7 @@ function _atdAtualizarBotaoFiltro() {
   const btn = document.getElementById('atdBuscaAvancadaBtn');
   if (!btn) return;
   const f = _atdState.filtrosAvancados;
-  const count = (f.canais.length > 0 ? 1 : 0) + (f.de || f.ate ? 1 : 0) + (f.statusResposta ? 1 : 0);
+  const count = (f.canais.length > 0 ? 1 : 0) + (f.de || f.ate ? 1 : 0) + (f.statusResposta ? 1 : 0) + (f.avaliacao > 0 ? 1 : 0);
   if (count > 0) {
     btn.style.color = 'var(--purple)';
     btn.title = `${count} filtro(s) ativo(s)`;
@@ -349,14 +378,15 @@ async function _atdExecutarBuscaAvancada() {
   const di     = document.getElementById('atdBuscaDataInicio')?.value || '';
   const df     = document.getElementById('atdBuscaDataFim')?.value || '';
   const pedido = document.getElementById('atdBuscaPedidoNum')?.value.trim() || '';
-  const wpp    = document.getElementById('atdFiltroWpp')?.checked || false;
-  const ig     = document.getElementById('atdFiltroIg')?.checked || false;
-  const statusResp = document.getElementById('atdFiltroStatusResp')?.value || '';
+  const wpp        = document.getElementById('atdFiltroWpp')?.checked || false;
+  const ig         = document.getElementById('atdFiltroIg')?.checked || false;
+  const statusResp = _atdState.filtrosAvancados.statusResposta || '';
+  const avaliacao  = _atdState.filtrosAvancados.avaliacao || 0;
 
   // Persiste os filtros no estado
   _atdState.filtrosAvancados = {
     canais: [...(wpp ? ['whatsapp'] : []), ...(ig ? ['instagram'] : [])],
-    de: di, ate: df, statusResposta: statusResp,
+    de: di, ate: df, statusResposta: statusResp, avaliacao,
   };
 
   document.getElementById('atdBuscaAvancadaOverlay')?.remove();
@@ -372,9 +402,13 @@ async function _atdExecutarBuscaAvancada() {
   if (di) q = q.gte('atualizado_em', di);
   if (df) q = q.lte('atualizado_em', df + 'T23:59:59');
   if (pedido) q = q.contains('pedido_data', { display_id: pedido });
-  if (statusResp) q = q.eq('status', statusResp);
   if (wpp && !ig) q = q.eq('canal_tipo', 'whatsapp');
   if (ig && !wpp) q = q.eq('canal_tipo', 'instagram');
+  // respondidas/não respondidas: filtra pela origem da última mensagem
+  if (statusResp === 'nao_respondidas') q = q.filter('ultima_mensagem->>origem', 'eq', 'cliente');
+  if (statusResp === 'respondidas')     q = q.filter('ultima_mensagem->>origem', 'eq', 'atendente');
+  // avaliação mínima (coluna avaliacao INT na atd_conversas, 1-5)
+  if (avaliacao > 0) q = q.gte('avaliacao', avaliacao);
 
   const { data, error } = await q;
   if (error) { toast('Erro na busca', 'err'); return; }
