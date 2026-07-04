@@ -843,17 +843,23 @@ function _atdRenderChat(conversa) {
       const storyReply = m.conteudo?.story_reply;
       const previewUrl = storyReply?.story_preview_url || storyReply?.story_url;
       const storyCtxHtml = storyReply
-        ? `<div style="border-left:3px solid rgba(255,255,255,.4);padding:6px 8px;margin-bottom:6px;border-radius:0 6px 6px 0;background:rgba(0,0,0,.12)">
-            <div style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;opacity:.8;margin-bottom:4px">
-              ${lc('image', 10, 'currentColor')} Respondeu ao seu story
-            </div>
-            ${previewUrl
-              ? `<a href="${storyReply.story_url || previewUrl}" target="_blank" rel="noopener" style="display:block;border-radius:6px;overflow:hidden;max-width:120px;margin-bottom:2px">
-                  <img src="${previewUrl}" alt="Story" style="width:100%;display:block;border-radius:6px" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-                  <span style="display:none;font-size:10px;opacity:.7">Ver story ↗</span>
-                </a>`
-              : '<span style="font-size:10px;opacity:.6">Story não disponível</span>'}
-          </div>`
+        ? (() => {
+            const isVid = previewUrl && (previewUrl.endsWith('.mp4') || previewUrl.includes('video'));
+            const mediaEl = previewUrl
+              ? (isVid
+                  ? `<video src="${previewUrl}" style="width:100%;max-width:160px;border-radius:6px;max-height:120px;display:block;margin-bottom:4px" muted playsinline preload="metadata"></video>`
+                  : `<img src="${previewUrl}" alt="Story" style="width:100%;max-width:160px;display:block;border-radius:6px;margin-bottom:4px" onerror="this.style.display='none'">`)
+              : '';
+            const link = (storyReply.story_url || previewUrl)
+              ? `<a href="${storyReply.story_url || previewUrl}" target="_blank" rel="noopener" style="font-size:10px;opacity:.7;color:inherit">Ver story ↗</a>`
+              : '<span style="font-size:10px;opacity:.6">Story não disponível</span>';
+            return `<div style="border-left:3px solid rgba(255,255,255,.4);padding:6px 8px;margin-bottom:6px;border-radius:0 6px 6px 0;background:rgba(0,0,0,.12)">
+              <div style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;opacity:.8;margin-bottom:4px">
+                ${lc('image', 10, 'currentColor')} Respondeu ao seu story
+              </div>
+              ${mediaEl}${link}
+            </div>`;
+          })()
         : '';
       conteudoHtml = `${storyCtxHtml}${prefixo}${m.conteudo?.texto ?? ''}`;
     }
