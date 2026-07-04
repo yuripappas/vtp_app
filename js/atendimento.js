@@ -68,6 +68,7 @@ function renderOmnichannel() {
       .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
       .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
       .msg-bubble.interna { background:var(--warning-bg); border:1px dashed var(--warning-border); align-self:stretch; font-size:var(--text-xs); }
+      .chat-date-sep { align-self:center; background:var(--surface2); color:var(--fg-subtle); font-size:var(--text-xs); font-weight:600; padding:3px 10px; border-radius:var(--r12); margin:4px 0; pointer-events:none; user-select:none; }
       .atd-skeleton-page { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:340px; color:var(--fg-subtle); text-align:center; }
       .atd-skeleton-page h3 { font-size:var(--text-base); font-weight:700; color:var(--text); margin:0; }
       .atd-skeleton-page p { font-size:var(--text-sm); color:var(--fg-muted); margin:0; max-width:380px; line-height:1.6; }
@@ -532,12 +533,31 @@ async function _atdAbrirConversa(conversaId) {
   _atdRenderPainel(conversa);
 }
 
+function _atdLabelData(date) {
+  const hoje = new Date();
+  const d = new Date(date);
+  const diffDias = Math.floor((new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()) -
+                               new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  if (diffDias === 0) return 'Hoje';
+  if (diffDias === 1) return 'Ontem';
+  if (diffDias < 7) return d.toLocaleDateString('pt-BR', { weekday: 'long' })
+    .replace(/^\w/, c => c.toUpperCase()).replace('-feira', '-feira');
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 function _atdRenderChat(conversa) {
   const nome = conversa.atd_contatos?.nome || conversa.atd_contatos?.telefone || 'Sem nome';
+  let ultimaData = null;
   const bubbles = _atdState.mensagens.map(m => {
     const classe = m.visibilidade === 'interna' ? 'interna' : (m.origem === 'cliente' ? 'cliente' : 'atendente');
     const hora = new Date(m.enviado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const prefixo = classe === 'interna' ? `${lc('lock', 11, 'var(--warning-fg)')} ` : '';
+
+    const diaMsg = new Date(m.enviado_em).toDateString();
+    const sepData = diaMsg !== ultimaData
+      ? `<div class="chat-date-sep">${_atdLabelData(m.enviado_em)}</div>`
+      : '';
+    ultimaData = diaMsg;
 
     let conteudoHtml;
     if (m.tipo === 'localizacao' && m.conteudo?.latitude != null) {
@@ -642,13 +662,13 @@ function _atdRenderChat(conversa) {
 
     // Mídia: bolha sem padding interno (a mídia ocupa todo o espaço)
     if (conteudoHtml.startsWith('__NO_BUBBLE__')) {
-      return `${labelAtendente}${conteudoHtml.slice(13)}`;
+      return `${sepData}${labelAtendente}${conteudoHtml.slice(13)}`;
     }
     if (conteudoHtml.startsWith('__MEDIA_BUBBLE__')) {
       const inner = conteudoHtml.slice(16);
-      return `${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0">${inner}<div style="font-size:10px;opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
+      return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0">${inner}<div style="font-size:10px;opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
     }
-    return `${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
+    return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
   }).join('');
 
   _atdState.modoNotaInterna = false;
