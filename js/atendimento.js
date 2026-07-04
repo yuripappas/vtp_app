@@ -886,39 +886,67 @@ function _atdRenderChat(conversa) {
   _atdState.modoNotaInterna = false;
   const corrigirAtivo = !!_atdState.corrigirAtivoPorConversa[conversa.id];
   const isIg = conversa.canal_tipo === 'instagram';
-  const canalLabel = isIg ? 'Instagram' : 'WhatsApp';
-  const canalCor   = isIg ? '#E1306C' : '#25D366';
   const ct = conversa.atd_contatos || {};
-  const igHandle = ct.instagram_id ? `@${ct.instagram_id}` : null;
   const igFollowers = ct.ig_followers;
   const isInfluencer = isIg && (igFollowers || 0) >= 5000;
+  const igUsername = ct.instagram_handle || ct.instagram_id;
 
-  // Linha de stats Instagram (só quando canal = instagram e tiver pelo menos seguidores)
+  // Stats Instagram
   const igStatsHtml = isIg && igFollowers != null ? `
-    <div style="display:flex;gap:12px;font-size:10px;color:var(--fg-subtle);margin-top:3px">
-      ${ct.ig_posts     != null ? `<span><strong style="color:var(--text)">${_atdFmtNum(ct.ig_posts)}</strong> pub</span>` : ''}
-      ${ct.ig_followers != null ? `<span><strong style="color:var(--text)">${_atdFmtNum(ct.ig_followers)}</strong> seg</span>` : ''}
-      ${ct.ig_following != null ? `<span><strong style="color:var(--text)">${_atdFmtNum(ct.ig_following)}</strong> seguindo</span>` : ''}
+    <div style="display:flex;gap:14px;font-size:11px;color:var(--fg-subtle);margin-top:2px">
+      ${ct.ig_posts     != null ? `<span><strong style="color:var(--text);font-weight:600">${_atdFmtNum(ct.ig_posts)}</strong> publicações</span>` : ''}
+      ${ct.ig_followers != null ? `<span><strong style="color:var(--text);font-weight:600">${_atdFmtNum(ct.ig_followers)}</strong> seguidores</span>` : ''}
+      ${ct.ig_following != null ? `<span><strong style="color:var(--text);font-weight:600">${_atdFmtNum(ct.ig_following)}</strong> seguindo</span>` : ''}
     </div>` : '';
 
-  // Nome clicável no Instagram
-  const nomeHtml = isIg && igHandle
-    ? `<a href="https://instagram.com/${ct.instagram_id}" target="_blank" rel="noopener"
-        style="font-weight:700;font-size:var(--text-base);color:var(--text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1"
-        onmouseover="this.style.color='#E1306C'" onmouseout="this.style.color='var(--text)'">${nome}</a>`
-    : `<div style="font-weight:700;font-size:var(--text-base);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${nome}</div>`;
+  // Canal row
+  const igLogoSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="5" stroke="#E1306C" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="#E1306C" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="#E1306C"/></svg>`;
+  const wppLogoSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.978-1.413A9.953 9.953 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a7.95 7.95 0 01-4.073-1.117l-.292-.174-3.018.857.872-2.944-.19-.302A7.95 7.95 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z"/></svg>`;
+  const canalHtml = isIg
+    ? `<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--fg-subtle);margin-top:4px">${igLogoSvg}<span>Via Instagram${ct.nome ? '' : ''}</span></div>`
+    : `<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--fg-subtle);margin-top:4px">${wppLogoSvg}<span>Via WhatsApp</span></div>`;
+
+  // Nome — rosa clicável no Instagram
+  const nomeHtml = isIg && igUsername
+    ? `<a href="https://instagram.com/${igUsername}" target="_blank" rel="noopener"
+        style="font-weight:700;font-size:15px;color:#E1306C;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</a>`
+    : `<span style="font-weight:700;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</span>`;
+
+  // Badge influencer
+  const influencerBadge = isInfluencer
+    ? `<span title="Influenciador (${_atdFmtNum(igFollowers)} seguidores)" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:2px 7px;border-radius:999px;flex-shrink:0">${lc('star', 9, '#E1306C')} Influencer</span>`
+    : '';
+
+  // Botão de tags com contagem
+  const tagsConv = _atdState.tagsConversaAtual || [];
+  const tagsAtivas = _atdState.todasTags.filter(t => tagsConv.includes(t.id));
+  const tagBtnColor = tagsAtivas.length > 0 ? 'var(--purple)' : 'var(--fg-subtle)';
+  const tagCountBadge = tagsAtivas.length > 0
+    ? `<span style="background:var(--purple);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 5px;min-width:16px;text-align:center;line-height:16px">${tagsAtivas.length}</span>`
+    : '';
+  const tagBtnHtml = `
+    <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
+      ${tagsAtivas.map(t => `<span style="background:${t.cor||'var(--purple)'};color:#fff;font-size:9px;font-weight:600;padding:2px 8px;border-radius:999px;cursor:pointer;white-space:nowrap" title="Remover tag" onclick="_atdToggleTag('${conversa.id}','${t.id}')">${t.nome}</span>`).join('')}
+      <button onclick="_atdAbrirTagPickerHeader('${conversa.id}')" title="Tags" class="btn btn-ghost btn-xs" style="padding:3px 6px;display:flex;align-items:center;gap:3px;color:${tagBtnColor}">
+        ${lc('tag', 13, tagBtnColor)}${tagCountBadge}
+      </button>
+    </div>`;
 
   document.getElementById('atdChatAtivo').innerHTML = `
-    <!-- HEADER: nome + canal + stats IG + badge influencer + tags -->
-    <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        ${nomeHtml}
-        ${isInfluencer ? `<span style="font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:2px 7px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;gap:3px">${lc('star', 9, '#E1306C')} Influencer</span>` : ''}
-        <span style="font-size:10px;font-weight:700;color:${canalCor};flex-shrink:0">${canalLabel}</span>
-      </div>
-      ${igStatsHtml}
-      <div id="atdHeaderTags" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:22px;margin-top:5px">
-        ${_atdTagsHeaderHtml(conversa.id)}
+    <!-- HEADER -->
+    <div style="padding:10px 16px 8px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="min-width:0;flex:1">
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+            ${nomeHtml}
+            ${influencerBadge}
+          </div>
+          ${igStatsHtml}
+          ${canalHtml}
+        </div>
+        <div id="atdHeaderTags" style="display:flex;align-items:center;padding-top:2px">
+          ${tagBtnHtml}
+        </div>
       </div>
     </div>
     <!-- MENSAGENS -->
