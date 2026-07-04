@@ -166,6 +166,22 @@ Deno.serve(async (req) => {
     return nova.id as string;
   }
 
+  // ── Salva imagem no Storage antes de expirar (URLs do CDN Meta expiram) ──
+  async function salvarMidiaStorage(url: string, pasta: string, nome: string): Promise<string | null> {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return null;
+      const buf  = await resp.arrayBuffer();
+      const ct   = resp.headers.get('content-type') || 'image/jpeg';
+      const ext  = ct.includes('video') ? 'mp4' : ct.includes('png') ? 'png' : 'jpg';
+      const path = `${pasta}/${nome}.${ext}`;
+      const { error } = await sb.storage.from('atd-midias').upload(path, buf, { contentType: ct, upsert: true });
+      if (error) return null;
+      const { data } = sb.storage.from('atd-midias').getPublicUrl(path);
+      return data.publicUrl;
+    } catch { return null; }
+  }
+
   // ── Salva mensagem (dedupe por external_id) ───────────────────────────────
   async function salvarMensagem(conversaId: string, tipo: string, conteudo: Record<string, unknown>, externalId?: string | null) {
     const { error } = await sb.from('atd_mensagens').upsert({
@@ -193,10 +209,17 @@ Deno.serve(async (req) => {
       const conversaId = await upsertConversa(contatoId);
       if (!conversaId) continue;
 
-      // Contexto de story reply (cliente respondeu ao nosso story via DM)
-      const storyCtx = message.reply_to?.story
-        ? { story_id: message.reply_to.story.id ?? null, story_url: message.reply_to.story.url ?? null }
-        : null;
+      // Contexto de story reply — salva mídia no Storage antes de expirar
+      let storyCtx: Record<string, unknown> | null = null;
+      if (message.reply_to?.story) {
+        const rawUrl = message.reply_to.story.url ?? null;
+        const storyId = message.reply_to.story.id ?? null;
+        let previewUrl: string | null = null;
+        if (rawUrl) {
+          previewUrl = await salvarMidiaStorage(rawUrl, `stories/${conversaId}`, storyId ?? Date.now().toString());
+        }
+        storyCtx = { story_id: storyId, story_url: rawUrl, story_preview_url: previewUrl };
+      }
 
       if (message.text) {
         await salvarMensagem(conversaId, 'texto', {
@@ -234,14 +257,26 @@ Deno.serve(async (req) => {
       const conversaId = await upsertConversa(contatoId);
       if (!conversaId) continue;
 
-      // Busca URL do story/post para exibir no contexto
+      // Busca permalink + thumbnail do post/story para preview
       let mediaUrl: string | null = null;
+      let mediaThumb: string | null = null;
       if (mediaId && (PAGE_TOKEN || IG_TOKEN)) {
         try {
+          const token = PAGE_TOKEN ?? IG_TOKEN;
           const r = await fetch(
-            `https://graph.facebook.com/v21.0/${mediaId}?fields=permalink&access_token=${PAGE_TOKEN ?? IG_TOKEN}`
+            `https://graph.facebook.com/v21.0/${mediaId}?fields=permalink,thumbnail_url,media_url,media_type&access_token=${token}`
           );
-          if (r.ok) { const d = await r.json(); mediaUrl = d.permalink ?? null; }
+          if (r.ok) {
+            const d = await r.json();
+            mediaUrl = d.permalink ?? null;
+            // thumbnail_url para vídeos/reels, media_url para imagens
+            const rawThumb = d.thumbnail_url ?? d.media_url ?? null;
+            if (rawThumb) {
+              // Salva no Storage para não expirar
+              mediaThumb = await salvarMidiaStorage(rawThumb, `story-comments/${conversaId}`, `comment_${commentId}`);
+              if (!mediaThumb) mediaThumb = rawThumb; // fallback para URL original
+            }
+          }
         } catch { /* best-effort */ }
       }
 
@@ -249,6 +284,7 @@ Deno.serve(async (req) => {
         texto,
         media_id:        mediaId,
         media_url:       mediaUrl,
+        media_thumb:     mediaThumb,
         media_type:      mediaType,   // 'STORY' | 'FEED' | 'REELS'
         is_story:        mediaType === 'STORY',
       }, `comment_${commentId}`);

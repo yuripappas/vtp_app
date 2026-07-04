@@ -814,16 +814,22 @@ function _atdRenderChat(conversa) {
         </a>` : ''}`;
     } else if (m.tipo === 'story_comment') {
       // Cliente comentou em um story/post da empresa
-      const isStory  = m.conteudo?.is_story !== false && (m.conteudo?.media_type === 'STORY' || m.conteudo?.is_story);
-      const mediaUrl = m.conteudo?.media_url;
-      const texto    = m.conteudo?.texto ?? '';
+      const isStory   = m.conteudo?.media_type === 'STORY' || m.conteudo?.is_story;
+      const mediaUrl  = m.conteudo?.media_url;
+      const mediaThumb = m.conteudo?.media_thumb;
+      const texto     = m.conteudo?.texto ?? '';
       const tipoLabel = isStory ? 'Comentou no seu story' : (m.conteudo?.media_type === 'REELS' ? 'Comentou no seu Reels' : 'Comentou no seu post');
-      const tipoIcon  = isStory ? lc('image', 14, '#fff') : lc('grid', 14, '#fff');
       const linkColor = classe === 'cliente' ? 'var(--purple)' : 'rgba(255,255,255,.8)';
+      const thumbHtml = mediaThumb
+        ? `<a href="${mediaUrl || mediaThumb}" target="_blank" rel="noopener" style="display:block;margin-bottom:6px;border-radius:8px;overflow:hidden;max-width:180px">
+            <img src="${mediaThumb}" alt="Story" style="width:100%;display:block;border-radius:8px" onerror="this.parentElement.style.display='none'">
+          </a>`
+        : '';
       conteudoHtml = `
-        <div style="display:flex;align-items:center;gap:8px;padding:2px 0 6px">
-          <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            ${tipoIcon}
+        ${thumbHtml}
+        <div style="display:flex;align-items:center;gap:8px;${thumbHtml ? '' : 'padding:2px 0 6px'}">
+          <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${isStory ? lc('image', 12, '#fff') : lc('grid', 12, '#fff')}
           </div>
           <div>
             <div style="font-weight:700;font-size:var(--text-xs)">${tipoLabel}</div>
@@ -831,18 +837,22 @@ function _atdRenderChat(conversa) {
                        : `<div style="font-size:10px;opacity:.6">Publicação não disponível</div>`}
           </div>
         </div>
-        ${texto ? `<div style="font-size:var(--text-sm);padding-top:4px;border-top:1px solid rgba(255,255,255,.15)">${texto}</div>` : ''}`;
+        ${texto ? `<div style="font-size:var(--text-sm);padding-top:6px;border-top:1px solid rgba(255,255,255,.15);margin-top:4px">"${texto}"</div>` : ''}`;
     } else {
       // Texto comum — pode ter contexto de story_reply
       const storyReply = m.conteudo?.story_reply;
+      const previewUrl = storyReply?.story_preview_url || storyReply?.story_url;
       const storyCtxHtml = storyReply
-        ? `<div style="border-left:3px solid rgba(255,255,255,.4);padding:4px 8px;margin-bottom:6px;border-radius:0 4px 4px 0;background:rgba(0,0,0,.12);font-size:10px">
-            <div style="display:flex;align-items:center;gap:4px;font-weight:700;opacity:.8;margin-bottom:2px">
+        ? `<div style="border-left:3px solid rgba(255,255,255,.4);padding:6px 8px;margin-bottom:6px;border-radius:0 6px 6px 0;background:rgba(0,0,0,.12)">
+            <div style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;opacity:.8;margin-bottom:4px">
               ${lc('image', 10, 'currentColor')} Respondeu ao seu story
             </div>
-            ${storyReply.story_url
-              ? `<a href="${storyReply.story_url}" target="_blank" rel="noopener" style="color:inherit;opacity:.7;font-size:10px">Ver story ↗</a>`
-              : '<span style="opacity:.6">Story não disponível</span>'}
+            ${previewUrl
+              ? `<a href="${storyReply.story_url || previewUrl}" target="_blank" rel="noopener" style="display:block;border-radius:6px;overflow:hidden;max-width:120px;margin-bottom:2px">
+                  <img src="${previewUrl}" alt="Story" style="width:100%;display:block;border-radius:6px" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+                  <span style="display:none;font-size:10px;opacity:.7">Ver story ↗</span>
+                </a>`
+              : '<span style="font-size:10px;opacity:.6">Story não disponível</span>'}
           </div>`
         : '';
       conteudoHtml = `${storyCtxHtml}${prefixo}${m.conteudo?.texto ?? ''}`;
