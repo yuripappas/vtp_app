@@ -673,47 +673,109 @@ function _atdRenderChat(conversa) {
 
   _atdState.modoNotaInterna = false;
   const corrigirAtivo = !!_atdState.corrigirAtivoPorConversa[conversa.id];
+  const canalLabel = conversa.canal_tipo === 'instagram' ? 'Instagram' : 'WhatsApp';
+  const canalCor   = conversa.canal_tipo === 'instagram' ? '#E1306C' : '#25D366';
 
   document.getElementById('atdChatAtivo').innerHTML = `
-    <div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <div style="font-weight:700;font-size:var(--text-base);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
-      <button class="btn btn-primary" style="font-size:var(--text-xs);background:var(--green);border-color:var(--green);flex-shrink:0" onclick="_atdConcluirConversa('${conversa.id}')">
-        ${lc('check-circle', 14, '#fff')} Concluir conversa
-      </button>
+    <!-- HEADER: nome + canal + tags -->
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <div style="font-weight:700;font-size:var(--text-base);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${nome}</div>
+        <span style="font-size:10px;font-weight:700;color:${canalCor};flex-shrink:0">${canalLabel}</span>
+      </div>
+      <div id="atdHeaderTags" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:22px">
+        ${_atdTagsHeaderHtml(conversa.id)}
+      </div>
     </div>
+    <!-- MENSAGENS -->
     <div id="atdMensagensWrap" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
       ${bubbles || '<div style="color:var(--fg-subtle);font-size:var(--text-sm);text-align:center;margin-top:40px">Sem mensagens ainda.</div>'}
     </div>
-    <div style="padding:12px 16px;border-top:1px solid var(--border);position:relative">
-      <div id="atdRespostasRapidasDropdown" style="display:none;position:absolute;bottom:100%;left:16px;right:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.1);max-height:180px;overflow-y:auto;margin-bottom:6px;z-index:10"></div>
+    <!-- TOOLBAR compacta: textarea em cima, ícones + ações embaixo -->
+    <div style="padding:10px 14px 12px;border-top:1px solid var(--border);position:relative">
+      <div id="atdRespostasRapidasDropdown" style="display:none;position:absolute;bottom:100%;left:14px;right:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.1);max-height:180px;overflow-y:auto;margin-bottom:4px;z-index:10"></div>
       <input type="file" id="atdInputArquivo" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
         onchange="_atdUploadArquivo('${conversa.id}', this)">
-      <div style="display:flex;gap:8px;align-items:flex-end">
-        <button id="atdBtnNotaInterna" class="btn btn-ghost" title="Nota interna (só a equipe vê)" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdToggleNotaInterna('${conversa.id}')">
-          ${lc('lock', 14, 'var(--fg-muted)')}
-        </button>
-        <button class="btn btn-ghost" title="Enviar arquivo/imagem" style="font-size:var(--text-xs);flex-shrink:0" onclick="document.getElementById('atdInputArquivo').click()">
-          ${lc('paperclip', 14, 'var(--fg-muted)')}
-        </button>
-        <button id="atdBtnGerarResposta" class="btn btn-ghost" title="Gerar resposta ideal com IA" style="font-size:var(--text-xs);flex-shrink:0" onclick="_atdGerarResposta('${conversa.id}')">
-          ${lc('zap', 14, 'var(--purple)')}
-        </button>
-        <button id="atdBtnCorrecaoAuto" class="btn btn-ghost" title="${corrigirAtivo ? 'Correção automática ATIVADA — sua mensagem é corrigida ao enviar. Clique para desativar' : 'Correção automática DESATIVADA — clique para ativar'}"
-          style="font-size:var(--text-xs);flex-shrink:0;${corrigirAtivo ? 'background:var(--purple);' : ''}" onclick="_atdToggleModoCorrecao('${conversa.id}')">
-          ${lc('pencil', 14, corrigirAtivo ? '#fff' : 'var(--fg-muted)')}
-        </button>
-        <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
-          style="flex:1;resize:none" oninput="_atdCampoOnInput()"
-          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_atdEnviarMensagem('${conversa.id}')}"></textarea>
-        <button class="btn btn-primary" onclick="_atdEnviarMensagem('${conversa.id}')">
-          ${lc('send', 15, '#fff')}
-        </button>
+      <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
+        style="width:100%;resize:none;box-sizing:border-box;margin-bottom:7px" oninput="_atdCampoOnInput()"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_atdEnviarMensagem('${conversa.id}')}"></textarea>
+      <div style="display:flex;align-items:center;gap:4px">
+        <div style="display:flex;gap:2px;flex:1">
+          <button id="atdBtnNotaInterna" class="btn btn-ghost btn-xs" title="Nota interna (só a equipe vê)" onclick="_atdToggleNotaInterna('${conversa.id}')" style="padding:4px 7px">
+            ${lc('lock', 13, 'var(--fg-muted)')}
+          </button>
+          <button class="btn btn-ghost btn-xs" title="Enviar arquivo/imagem" onclick="document.getElementById('atdInputArquivo').click()" style="padding:4px 7px">
+            ${lc('paperclip', 13, 'var(--fg-muted)')}
+          </button>
+          <button id="atdBtnGerarResposta" class="btn btn-ghost btn-xs" title="Gerar resposta ideal com IA" onclick="_atdGerarResposta('${conversa.id}')" style="padding:4px 7px">
+            ${lc('zap', 13, 'var(--purple)')}
+          </button>
+          <button id="atdBtnCorrecaoAuto" class="btn btn-ghost btn-xs" title="${corrigirAtivo ? 'Correção automática ATIVADA — clique para desativar' : 'Correção automática DESATIVADA — clique para ativar'}"
+            style="padding:4px 7px;${corrigirAtivo ? 'background:var(--purple);' : ''}" onclick="_atdToggleModoCorrecao('${conversa.id}')">
+            ${lc('pencil', 13, corrigirAtivo ? '#fff' : 'var(--fg-muted)')}
+          </button>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-primary btn-sm" onclick="_atdEnviarMensagem('${conversa.id}')">
+            ${lc('send', 13, '#fff')} Enviar
+          </button>
+          <button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green);white-space:nowrap" onclick="_atdConcluirConversa('${conversa.id}')">
+            ${lc('check-circle', 13, '#fff')} Concluir
+          </button>
+        </div>
       </div>
     </div>
   `;
 
   const wrap = document.getElementById('atdMensagensWrap');
   if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+function _atdTagsHeaderHtml(conversaId) {
+  const marcadas = _atdState.todasTags.filter(t => _atdState.tagsConversaAtual.includes(t.id));
+  const chips = marcadas.map(t =>
+    `<span style="background:${t.cor||'var(--purple)'};color:#fff;font-size:10px;font-weight:600;padding:2px 9px;border-radius:999px;cursor:pointer;line-height:18px"
+      title="Clique para remover tag" onclick="_atdToggleTag('${conversaId}','${t.id}')">${t.nome}</span>`
+  ).join('');
+  const btnAdd = `<button onclick="_atdAbrirTagPickerHeader('${conversaId}')"
+    style="background:none;border:1px dashed var(--border);border-radius:999px;padding:1px 8px;font-size:10px;color:var(--fg-subtle);cursor:pointer;display:flex;align-items:center;gap:3px;line-height:18px">
+    ${lc('plus', 9, 'currentColor')} tag
+  </button>`;
+  return chips + btnAdd;
+}
+
+function _atdRenderTagsHeader(conversaId) {
+  const el = document.getElementById('atdHeaderTags');
+  if (el) el.innerHTML = _atdTagsHeaderHtml(conversaId);
+}
+
+function _atdAbrirTagPickerHeader(conversaId) {
+  const el = document.getElementById('atdHeaderTags');
+  if (!el || !_atdState.todasTags.length) return;
+
+  const existeDropdown = document.getElementById('atdTagPickerDropdown');
+  if (existeDropdown) { existeDropdown.remove(); return; }
+
+  const dropdown = document.createElement('div');
+  dropdown.id = 'atdTagPickerDropdown';
+  dropdown.style.cssText = `position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 4px 16px rgba(0,0,0,.12);padding:6px;z-index:200;display:flex;flex-wrap:wrap;gap:4px;max-width:260px`;
+
+  dropdown.innerHTML = _atdState.todasTags.map(t => {
+    const ativa = _atdState.tagsConversaAtual.includes(t.id);
+    return `<span style="background:${ativa ? (t.cor||'var(--purple)') : 'transparent'};color:${ativa ? '#fff' : (t.cor||'var(--purple)')};border:1px solid ${t.cor||'var(--purple)'};font-size:10px;font-weight:600;padding:2px 9px;border-radius:999px;cursor:pointer;line-height:18px"
+      onclick="_atdToggleTag('${conversaId}','${t.id}');document.getElementById('atdTagPickerDropdown')?.remove()">${t.nome}</span>`;
+  }).join('');
+
+  const rect = el.getBoundingClientRect();
+  const chat = document.getElementById('atdChatAtivo');
+  const chatRect = chat.getBoundingClientRect();
+  dropdown.style.top = (rect.bottom - chatRect.top + 4) + 'px';
+  dropdown.style.left = (rect.left - chatRect.left) + 'px';
+  chat.style.position = 'relative';
+  chat.appendChild(dropdown);
+
+  const fechar = (e) => { if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', fechar); } };
+  setTimeout(() => document.addEventListener('click', fechar), 10);
 }
 
 function _atdToggleNotaInterna(conversaId) {
@@ -958,6 +1020,7 @@ async function _atdToggleTag(conversaId, tagId) {
     chip.style.background = ativa ? cor : 'transparent';
     chip.style.color = ativa ? '#fff' : cor;
   }
+  _atdRenderTagsHeader(conversaId);
 }
 
 function _atdAbrirEndereco(addr) {
