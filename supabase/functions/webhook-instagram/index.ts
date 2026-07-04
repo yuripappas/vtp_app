@@ -92,39 +92,56 @@ Deno.serve(async (req) => {
     return Deno.env.get('INSTAGRAM_BUSINESS_ACCOUNT_ID') ?? null;
   }
 
-  // ── Busca perfil do remetente (Business Discovery API) ─────────────────
-  // Funciona para contas públicas Business/Creator; retorna null para pessoais
+  // ── Busca perfil do remetente ────────────────────────────────────────────
+  // 1ª tentativa: Instagram Messaging API (funciona com instagram_manage_messages)
+  // 2ª tentativa: Business Discovery API (requer Page Token — opcional)
   async function fetchIgProfile(igsid: string) {
     const empty = { nome: null, avatar: null, followers: null, following: null, posts: null, username: null };
     const token = PAGE_TOKEN || IG_TOKEN;
     if (!token) return empty;
-    const ownId = await getOwnIgAcctId();
-    if (!ownId) return empty;
     try {
-      // Business Discovery: acessa perfil de outro usuário via nossa conta business
+      // Direto via Instagram Graph API — funciona para usuários que interagiram com o negócio
       const r = await fetch(
-        `https://graph.facebook.com/v21.0/${ownId}?fields=business_discovery.fields(followers_count,follows_count,media_count,name,profile_picture_url,username)&access_token=${token}&business_discovery_user_id=${igsid}`
+        `https://graph.instagram.com/v21.0/${igsid}?fields=name,profile_pic,username,follower_count,following_count,media_count&access_token=${token}`
       );
-      if (!r.ok) {
-        // Fallback: tenta o endpoint direto (funciona se o usuário autorizou o app)
-        const r2 = await fetch(
-          `https://graph.instagram.com/v21.0/${igsid}?fields=name,profile_pic,username&access_token=${IG_TOKEN ?? ''}`
-        );
-        if (!r2.ok) return empty;
-        const p2 = await r2.json();
-        return { nome: p2.name ?? null, avatar: p2.profile_pic ?? null, followers: null, following: null, posts: null, username: p2.username ?? null };
+      if (r.ok) {
+        const p = await r.json();
+        if (!p.error) {
+          return {
+            nome:      p.name           ?? null,
+            avatar:    p.profile_pic    ?? null,
+            followers: p.follower_count ?? null,
+            following: p.following_count ?? null,
+            posts:     p.media_count    ?? null,
+            username:  p.username       ?? null,
+          };
+        }
       }
-      const d = await r.json();
-      const bd = d.business_discovery ?? {};
-      return {
-        nome:      bd.name                ?? null,
-        avatar:    bd.profile_picture_url ?? null,
-        followers: bd.followers_count     ?? null,
-        following: bd.follows_count       ?? null,
-        posts:     bd.media_count         ?? null,
-        username:  bd.username            ?? null,
-      };
-    } catch { return empty; }
+    } catch { /* continua */ }
+    try {
+      // Business Discovery (requer Page Token + conta business pública do contato)
+      const ownId = await getOwnIgAcctId();
+      if (ownId) {
+        const r = await fetch(
+          `https://graph.facebook.com/v21.0/${ownId}?fields=business_discovery.fields(followers_count,follows_count,media_count,name,profile_picture_url,username)&access_token=${token}&business_discovery_user_id=${igsid}`
+        );
+        if (r.ok) {
+          const d = await r.json();
+          const bd = d.business_discovery ?? {};
+          if (bd.name || bd.followers_count) {
+            return {
+              nome:      bd.name                ?? null,
+              avatar:    bd.profile_picture_url ?? null,
+              followers: bd.followers_count     ?? null,
+              following: bd.follows_count       ?? null,
+              posts:     bd.media_count         ?? null,
+              username:  bd.username            ?? null,
+            };
+          }
+        }
+      }
+    } catch { /* continua */ }
+    return empty;
   }
 
   // ── Upsert contato ────────────────────────────────────────────────────────
