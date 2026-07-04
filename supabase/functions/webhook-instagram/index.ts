@@ -260,7 +260,28 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 2. Comentários em posts/stories (comments field) ───────────────────
+    // ── 2. Read receipts (messaging_read) ────────────────────────────────────
+    for (const ev of entry.messaging ?? []) {
+      const read = (ev as Record<string, unknown>).read as { watermark?: number } | undefined;
+      if (!read?.watermark) continue;
+      const senderId = (ev as Record<string, unknown>).sender as { id?: string } | undefined;
+      if (!senderId?.id) continue;
+      // Marca como lidas todas mensagens do atendente enviadas antes do watermark
+      const watermarkIso = new Date(read.watermark * 1000).toISOString();
+      const { data: conv } = await sb.from('atd_conversas')
+        .select('id, contato_id')
+        .eq('canal_tipo', 'instagram')
+        .limit(1).maybeSingle();
+      if (!conv) continue;
+      await sb.from('atd_mensagens')
+        .update({ status: 'read' })
+        .eq('conversa_id', conv.id)
+        .eq('origem', 'atendente')
+        .lte('enviado_em', watermarkIso)
+        .neq('status', 'read');
+    }
+
+    // ── 3. Comentários em posts/stories (comments field) ───────────────────
     for (const change of entry.changes ?? []) {
       if (change.field !== 'comments') continue;
       const val = change.value;

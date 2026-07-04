@@ -21,12 +21,18 @@ interface EvoPayload {
   event: string;
   instance: string;
   data: {
-    key: { remoteJid: string; id: string; fromMe?: boolean };
-    message: EvoMessage;
-    messageType: string;
+    key?: { remoteJid: string; id: string; fromMe?: boolean };
+    message?: EvoMessage;
+    messageType?: string;
     pushName?: string;
-    messageTimestamp: number;
-  };
+    messageTimestamp?: number;
+    // messages.update
+    update?: { status?: string };
+    keyId?: string; // ID da mensagem atualizada (messages.update)
+  } | Array<{
+    key: { remoteJid: string; id: string; fromMe?: boolean };
+    update: { status?: string };
+  }>;
 }
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -109,7 +115,25 @@ Deno.serve(async (req) => {
 
   const payload: EvoPayload = await req.json();
 
-  if (payload.event !== 'messages.upsert' || payload.data?.key?.fromMe) {
+  // ── messages.update: atualiza status (delivered / read) ──────────────────
+  if (payload.event === 'messages.update') {
+    const updates = Array.isArray(payload.data) ? payload.data : [payload.data];
+    for (const upd of updates) {
+      if (!upd || !upd.key?.fromMe) continue; // só mensagens enviadas pelo atendente
+      const rawStatus = upd.update?.status ?? '';
+      let status: string | null = null;
+      if (rawStatus === 'DELIVERY_ACK' || rawStatus === '3') status = 'delivered';
+      if (rawStatus === 'READ'         || rawStatus === '4') status = 'read';
+      if (rawStatus === 'PLAYED'       || rawStatus === '5') status = 'read';
+      if (!status) continue;
+      await sb.from('atd_mensagens')
+        .update({ status })
+        .eq('external_id', upd.key.id);
+    }
+    return new Response('ok', { status: 200 });
+  }
+
+  if (payload.event !== 'messages.upsert' || (payload.data as { key?: { fromMe?: boolean } })?.key?.fromMe) {
     return new Response(JSON.stringify({ ignorado: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 

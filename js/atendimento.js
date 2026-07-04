@@ -880,7 +880,15 @@ function _atdRenderChat(conversa) {
       const inner = conteudoHtml.slice(16);
       return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0">${inner}<div style="font-size:10px;opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
     }
-    return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
+    // Check de status (só para mensagens do atendente)
+    const statusCheck = (() => {
+      if (classe !== 'atendente') return '';
+      const s = m.status || 'sent';
+      if (s === 'read')      return `<span title="Lida" style="display:inline-flex;margin-left:3px;vertical-align:middle">${_atdDoubleCheck('#93c5fd')}</span>`;
+      if (s === 'delivered') return `<span title="Entregue" style="display:inline-flex;margin-left:3px;vertical-align:middle">${_atdDoubleCheck('rgba(255,255,255,.5)')}</span>`;
+      return `<span title="Enviada" style="display:inline-flex;margin-left:3px;vertical-align:middle">${_atdSingleCheck('rgba(255,255,255,.5)')}</span>`;
+    })();
+    return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px;display:flex;align-items:center;justify-content:flex-end;gap:2px">${hora}${statusCheck}</div></div>`;
   }).join('');
 
   _atdState.modoNotaInterna = false;
@@ -991,6 +999,13 @@ function _atdRenderChat(conversa) {
 
   const wrap = document.getElementById('atdMensagensWrap');
   if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+function _atdSingleCheck(color) {
+  return `<svg width="14" height="10" viewBox="0 0 14 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 5L5 9L13 1" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+function _atdDoubleCheck(color) {
+  return `<svg width="18" height="10" viewBox="0 0 18 10" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 5L5 9L13 1" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 5L9 9L17 1" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 function _atdFmtNum(n) {
