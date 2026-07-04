@@ -847,7 +847,7 @@ function _atdRenderChat(conversa) {
             const isVid = previewUrl && (previewUrl.endsWith('.mp4') || previewUrl.includes('video'));
             const mediaEl = previewUrl
               ? (isVid
-                  ? `<video src="${previewUrl}" style="width:100%;max-width:160px;border-radius:6px;max-height:120px;display:block;margin-bottom:4px" muted playsinline preload="metadata"></video>`
+                  ? `<video src="${previewUrl}" style="width:100%;max-width:180px;border-radius:6px;max-height:140px;display:block;margin-bottom:4px;background:#000" muted playsinline preload="auto" controls></video>`
                   : `<img src="${previewUrl}" alt="Story" style="width:100%;max-width:160px;display:block;border-radius:6px;margin-bottom:4px" onerror="this.style.display='none'">`)
               : '';
             const link = (storyReply.story_url || previewUrl)
