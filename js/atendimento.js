@@ -601,9 +601,10 @@ function _atdRenderChat(conversa) {
         ? `<div style="padding:4px 10px 2px;font-size:var(--text-xs);opacity:.9">${m.conteudo.texto}</div>` : '';
       conteudoHtml = `__MEDIA_BUBBLE__
         <video controls preload="metadata"
-          style="width:260px;max-height:320px;display:block;border-radius:inherit;background:#000"
+          style="width:260px;height:200px;display:block;border-radius:inherit;background:#000"
+          onloadedmetadata="(function(v){v.style.height='auto';})(this)"
           onerror="this.outerHTML='<div style=\\'padding:10px 12px;font-size:13px\\'>🎥 Vídeo não disponível</div>'">
-          <source src="${m.conteudo.url}">
+          <source src="${m.conteudo.url}" onerror="this.parentElement.outerHTML='<div style=\\'padding:10px 12px;font-size:13px\\'>🎥 Vídeo não disponível</div>'">
         </video>${legenda}`;
     } else if (m.tipo === 'video') {
       conteudoHtml = `🎥 Vídeo${m.conteudo?.texto ? ': ' + m.conteudo.texto : ''}`;
@@ -1181,7 +1182,9 @@ function _atdAssinarRealtime() {
       const msg = payload.new;
       const convId = msg?.conversa_id;
 
-      // Incrementa badge + som + título da aba
+      console.log('[atd-rt] nova msg tipo:', msg?.tipo, '| convId:', convId, '| ativaId:', _atdState.conversaAtivaId, '| match:', convId === _atdState.conversaAtivaId);
+
+      // Incrementa badge + som + título da aba (apenas se não for a conversa aberta)
       if (msg?.origem === 'cliente' && convId && convId !== _atdState.conversaAtivaId) {
         const conv = _atdState.conversas.find(c => c.id === convId);
         if (conv) {
@@ -1199,8 +1202,20 @@ function _atdAssinarRealtime() {
         _atdAbrirConversa(_atdState.conversaAtivaId);
       }
 
-      // Recarrega lista completa para pegar novas conversas que ainda não estão no estado
-      _atdCarregarConversas();
+      // Recarrega lista + verifica se é uma nova conversa do mesmo contato que está aberto
+      _atdCarregarConversas().then(() => {
+        // Se a msg veio de uma conversa diferente mas o contato é o mesmo que está aberto,
+        // abre automaticamente a nova conversa
+        if (convId && convId !== _atdState.conversaAtivaId) {
+          const convAtiva = _atdState.conversas.find(c => c.id === _atdState.conversaAtivaId);
+          const convNova  = _atdState.conversas.find(c => c.id === convId);
+          if (convAtiva && convNova &&
+              convAtiva.atd_contatos?.telefone === convNova.atd_contatos?.telefone) {
+            console.log('[atd-rt] mesma pessoa, nova conversa — abrindo:', convId);
+            _atdAbrirConversa(convId);
+          }
+        }
+      });
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'atd_conversas' }, () => {
       _atdCarregarConversas();
