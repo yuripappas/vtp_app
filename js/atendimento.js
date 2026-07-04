@@ -646,7 +646,7 @@ function _atdRenderChat(conversa) {
     }
     if (conteudoHtml.startsWith('__MEDIA_BUBBLE__')) {
       const inner = conteudoHtml.slice(16);
-      return `${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0;overflow:hidden">${inner}<div style="font-size:10px;opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
+      return `${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0">${inner}<div style="font-size:10px;opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
     }
     return `${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px">${hora}</div></div>`;
   }).join('');
