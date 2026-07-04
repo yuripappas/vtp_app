@@ -574,9 +574,10 @@ function _atdRenderChat(conversa) {
       const legenda = m.conteudo.texto
         ? `<div style="padding:4px 10px 2px;font-size:var(--text-xs);opacity:.9">${m.conteudo.texto}</div>` : '';
       conteudoHtml = `__MEDIA_BUBBLE__
-        <a href="${m.conteudo.url}" target="_blank" style="display:block;line-height:0">
+        <a href="${m.conteudo.url}" target="_blank" style="display:block">
           <img src="${m.conteudo.url}" alt="Imagem"
-            style="width:260px;max-height:320px;object-fit:cover;display:block;border-radius:inherit"
+            style="width:260px;max-width:100%;height:auto;display:block;border-radius:inherit"
+            onload="(function(el){var w=document.getElementById('atdMensagensWrap');if(w)w.scrollTop=w.scrollHeight;})(this)"
             onerror="this.closest('a').outerHTML='<div style=\\'padding:10px 12px;font-size:13px\\'>📷 Imagem não disponível</div>'">
         </a>${legenda}`;
     } else if (m.tipo === 'imagem') {
