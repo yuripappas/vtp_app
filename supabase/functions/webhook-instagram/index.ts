@@ -72,20 +72,38 @@ Deno.serve(async (req) => {
   if (payload.object !== 'instagram') return new Response('ok', { status: 200 });
 
   const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'instagram').maybeSingle();
-  const IG_TOKEN    = Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
-  const PAGE_TOKEN  = Deno.env.get('FACEBOOK_PAGE_ACCESS_TOKEN'); // token da página, para Business Discovery
-  const IG_ACCT_ID = Deno.env.get('INSTAGRAM_BUSINESS_ACCOUNT_ID'); // ID da conta IG da empresa
+  const IG_TOKEN   = Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
+  const PAGE_TOKEN = Deno.env.get('FACEBOOK_PAGE_ACCESS_TOKEN');
+
+  // Auto-descobre o ID da própria conta IG Business a partir do token configurado
+  async function getOwnIgAcctId(): Promise<string | null> {
+    const token = PAGE_TOKEN || IG_TOKEN;
+    if (!token) return null;
+    // Tenta Graph API (retorna ID da conta IG Business vinculada à página)
+    try {
+      const r = await fetch(`https://graph.facebook.com/v21.0/me?fields=id&access_token=${token}`);
+      if (r.ok) { const d = await r.json(); if (d.id) return d.id as string; }
+    } catch { /* continua */ }
+    // Fallback: Instagram Graph API
+    try {
+      const r = await fetch(`https://graph.instagram.com/v21.0/me?fields=id&access_token=${token}`);
+      if (r.ok) { const d = await r.json(); if (d.id) return d.id as string; }
+    } catch { /* continua */ }
+    return Deno.env.get('INSTAGRAM_BUSINESS_ACCOUNT_ID') ?? null;
+  }
 
   // ── Busca perfil do remetente (Business Discovery API) ─────────────────
   // Funciona para contas públicas Business/Creator; retorna null para pessoais
   async function fetchIgProfile(igsid: string) {
     const empty = { nome: null, avatar: null, followers: null, following: null, posts: null, username: null };
     const token = PAGE_TOKEN || IG_TOKEN;
-    if (!token || !IG_ACCT_ID) return empty;
+    if (!token) return empty;
+    const ownId = await getOwnIgAcctId();
+    if (!ownId) return empty;
     try {
       // Business Discovery: acessa perfil de outro usuário via nossa conta business
       const r = await fetch(
-        `https://graph.facebook.com/v21.0/${IG_ACCT_ID}?fields=business_discovery.fields(followers_count,follows_count,media_count,name,profile_picture_url,username)&access_token=${token}&business_discovery_user_id=${igsid}`
+        `https://graph.facebook.com/v21.0/${ownId}?fields=business_discovery.fields(followers_count,follows_count,media_count,name,profile_picture_url,username)&access_token=${token}&business_discovery_user_id=${igsid}`
       );
       if (!r.ok) {
         // Fallback: tenta o endpoint direto (funciona se o usuário autorizou o app)
