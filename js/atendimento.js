@@ -544,6 +544,7 @@ function _atdRenderLista() {
     const previewTexto = (() => {
       const tipo = ultiMsg.tipo;
       if (tipo === 'story_mention') return '📸 Mencionou no story';
+      if (tipo === 'story_comment') return '💬 Comentou no story';
       if (tipo === 'imagem')        return '📷 Imagem';
       if (tipo === 'video')         return '🎥 Vídeo';
       if (tipo === 'audio')         return '🎤 Áudio';
@@ -811,6 +812,26 @@ function _atdRenderChat(conversa) {
         ${storyUrl ? `<a href="${storyUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:${classe==='cliente'?'var(--purple)':'rgba(255,255,255,.8)'};text-decoration:none;padding-top:4px;border-top:1px solid rgba(255,255,255,.15)">
           ${lc('external-link', 11, 'currentColor')} Ver story
         </a>` : ''}`;
+    } else if (m.tipo === 'story_comment') {
+      // Cliente comentou em um story/post da empresa
+      const isStory  = m.conteudo?.is_story !== false && (m.conteudo?.media_type === 'STORY' || m.conteudo?.is_story);
+      const mediaUrl = m.conteudo?.media_url;
+      const texto    = m.conteudo?.texto ?? '';
+      const tipoLabel = isStory ? 'Comentou no seu story' : (m.conteudo?.media_type === 'REELS' ? 'Comentou no seu Reels' : 'Comentou no seu post');
+      const tipoIcon  = isStory ? lc('image', 14, '#fff') : lc('grid', 14, '#fff');
+      const linkColor = classe === 'cliente' ? 'var(--purple)' : 'rgba(255,255,255,.8)';
+      conteudoHtml = `
+        <div style="display:flex;align-items:center;gap:8px;padding:2px 0 6px">
+          <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            ${tipoIcon}
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:var(--text-xs)">${tipoLabel}</div>
+            ${mediaUrl ? `<a href="${mediaUrl}" target="_blank" rel="noopener" style="font-size:10px;color:${linkColor};opacity:.8;text-decoration:none">Ver publicação ↗</a>`
+                       : `<div style="font-size:10px;opacity:.6">Publicação não disponível</div>`}
+          </div>
+        </div>
+        ${texto ? `<div style="font-size:var(--text-sm);padding-top:4px;border-top:1px solid rgba(255,255,255,.15)">${texto}</div>` : ''}`;
     } else {
       // Texto comum — pode ter contexto de story_reply
       const storyReply = m.conteudo?.story_reply;
