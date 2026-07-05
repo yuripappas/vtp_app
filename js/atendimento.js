@@ -34,7 +34,9 @@ const _atdState = {
     ate: '',
     statusResposta: '',      // '' | 'nao_respondidas' | 'respondidas'
     avaliacao: 0,            // 0 = todas | 1..5 = estrelas mínimas
+    ocultarEmojiStory: true, // F4: ocultar reações emoji de story por padrão
   },
+  selecionadas: new Set(),   // F3: IDs de conversas selecionadas para ação em lote
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -71,6 +73,12 @@ function renderOmnichannel() {
       .conv-avatar { width:40px; height:40px; border-radius:50%; flex-shrink:0; object-fit:cover; }
       .conv-avatar-inicial { width:40px; height:40px; border-radius:50%; background:var(--purple); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:15px; flex-shrink:0; }
       .conv-nao-lidas { background:#E1306C; color:#fff; font-size:10px; font-weight:800; min-width:18px; height:18px; border-radius:999px; display:flex; align-items:center; justify-content:center; padding:0 4px; flex-shrink:0; }
+      /* F3: hover mostra checkbox, selected destaca item */
+      .conv-item:hover .conv-cb-wrap { opacity:1 !important; }
+      .conv-item:hover .conv-avatar-img { opacity:0 !important; pointer-events:none !important; }
+      .conv-item:hover .conv-canal-badge { opacity:0 !important; }
+      .conv-item.conv-selected { background:var(--purple-xlight) !important; }
+      .conv-item.conv-selected .conv-canal-badge { opacity:0 !important; }
       .msg-bubble { padding:9px 13px; border-radius:var(--r12); max-width:75%; word-break:break-word; font-size:var(--text-sm); line-height:1.5; }
       .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
       .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
@@ -150,6 +158,24 @@ function _atdRenderInbox() {
             </button>
           </div>
         </div>
+
+        <!-- F3: Barra de seleção em massa (aparece quando há itens selecionados) -->
+        <div id="atdBulkBar" style="display:none;padding:8px 12px;background:var(--purple);color:#fff;align-items:center;gap:8px;font-size:var(--text-xs)">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0">
+            <input type="checkbox" id="atdCheckAll" onchange="_atdToggleSelecionarTodos(this.checked)"
+              style="accent-color:#fff;width:15px;height:15px;cursor:pointer">
+            <span id="atdBulkCount" style="font-weight:700"></span>
+          </label>
+          <div style="flex:1"></div>
+          <button onclick="_atdConcluirSelecionadas()" class="btn btn-xs"
+            style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);font-size:10px;padding:4px 10px;white-space:nowrap">
+            ${lc('check-circle', 11, '#fff')} Concluir
+          </button>
+          <button onclick="_atdLimparSelecao()" style="background:none;border:none;cursor:pointer;padding:2px;color:rgba(255,255,255,.7)">
+            ${lc('x', 14, 'currentColor')}
+          </button>
+        </div>
+
         <div id="atdListaConversas" style="flex:1;overflow-y:auto"></div>
       </div>
 
@@ -320,6 +346,20 @@ function _atdAbrirBuscaAvancada() {
           <div style="font-size:10px;color:var(--fg-subtle);margin-top:4px">Clique numa estrela para filtrar · clique novamente para remover</div>
         </div>
 
+        <!-- F4: Toggle emoji stories -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Instagram</div>
+          <label style="display:flex;align-items:center;gap:10px;font-size:var(--text-sm);cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r8)">
+            <input type="checkbox" id="atdFiltroEmojiStory" ${_atdState.filtrosAvancados.ocultarEmojiStory !== false ? 'checked' : ''}
+              onchange="_atdState.filtrosAvancados.ocultarEmojiStory=this.checked"
+              style="accent-color:var(--purple);width:16px;height:16px;cursor:pointer">
+            <div>
+              <div style="font-weight:600">Ocultar reações de story (emojis)</div>
+              <div style="font-size:10px;color:var(--fg-subtle);margin-top:1px">Esconde comentários com apenas emojis (ex: "🔥", "❤️")</div>
+            </div>
+          </label>
+        </div>
+
         <!-- Busca por nome / pedido -->
         <div style="margin-bottom:18px">
           <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Nome ou telefone</div>
@@ -350,7 +390,7 @@ function _atdFiltroEstrela(n) {
 }
 
 function _atdLimparFiltrosAvancados() {
-  _atdState.filtrosAvancados = { canais: [], de: '', ate: '', statusResposta: '', avaliacao: 0 };
+  _atdState.filtrosAvancados = { canais: [], de: '', ate: '', statusResposta: '', avaliacao: 0, ocultarEmojiStory: true };
   document.getElementById('atdBuscaAvancadaOverlay')?.remove();
   _atdState.viewMode = 'ativos';
   _atdCarregarConversas();
@@ -440,6 +480,91 @@ function _atdAplicarSubFiltro(sub) {
   _atdRenderLista();
 }
 
+// ── F3: Seleção em massa ──────────────────────────────────────────────────────
+
+function _atdConvHoverIn(el) {
+  // Nada a fazer — CSS :hover cuida do visual
+}
+function _atdConvHoverOut(el) {
+  // Nada a fazer — CSS :hover cuida do visual
+}
+
+function _atdToggleSelecionar(id, checked) {
+  if (checked) {
+    _atdState.selecionadas.add(id);
+  } else {
+    _atdState.selecionadas.delete(id);
+  }
+  _atdAtualizarBulkBar();
+  _atdRenderLista();
+}
+
+function _atdToggleSelecionarTodos(checked) {
+  const filtro  = _atdState.filtroAtivo || 'chat';
+  const canais  = filtro === 'avaliacoes' ? _ATD_CANAIS_AVAL : _ATD_CANAIS_CHAT;
+  const visíveis = _atdState.conversas.filter(c => canais.includes(c.canal_tipo));
+  if (checked) {
+    visíveis.forEach(c => _atdState.selecionadas.add(c.id));
+  } else {
+    _atdState.selecionadas.clear();
+  }
+  _atdAtualizarBulkBar();
+  _atdRenderLista();
+}
+
+function _atdLimparSelecao() {
+  _atdState.selecionadas.clear();
+  _atdAtualizarBulkBar();
+  _atdRenderLista();
+}
+
+function _atdAtualizarBulkBar() {
+  const bar = document.getElementById('atdBulkBar');
+  const count = document.getElementById('atdBulkCount');
+  const chkAll = document.getElementById('atdCheckAll');
+  if (!bar) return;
+  const n = _atdState.selecionadas.size;
+  if (n > 0) {
+    bar.style.display = 'flex';
+    if (count) count.textContent = `${n} selecionada${n > 1 ? 's' : ''}`;
+    // Atualiza estado do "marcar todos"
+    const filtro = _atdState.filtroAtivo || 'chat';
+    const canais = filtro === 'avaliacoes' ? _ATD_CANAIS_AVAL : _ATD_CANAIS_CHAT;
+    const total = _atdState.conversas.filter(c => canais.includes(c.canal_tipo)).length;
+    if (chkAll) chkAll.indeterminate = n > 0 && n < total;
+    if (chkAll) chkAll.checked = n === total;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+async function _atdConcluirSelecionadas() {
+  const ids = [..._atdState.selecionadas];
+  if (!ids.length) return;
+  const confirmou = confirm(`Concluir ${ids.length} conversa${ids.length > 1 ? 's' : ''}? Esta ação não pode ser desfeita.`);
+  if (!confirmou) return;
+  const sb = _atdGetSbClient();
+  const { error } = await sb
+    .from('atd_conversas')
+    .update({ status: 'concluida', concluida_em: new Date().toISOString() })
+    .in('id', ids);
+  if (error) { toast('Erro ao concluir conversas', 'err'); return; }
+  toast(`${ids.length} conversa${ids.length > 1 ? 's concluídas' : ' concluída'} ✓`, 'ok');
+  // Se a conversa ativa estava entre as selecionadas, limpa o chat
+  if (_atdState.conversaAtivaId && _atdState.selecionadas.has(_atdState.conversaAtivaId)) {
+    _atdState.conversaAtivaId = null;
+    const vazio = document.getElementById('atdChatVazio');
+    const ativo = document.getElementById('atdChatAtivo');
+    const painel = document.getElementById('atdPainelContato');
+    if (vazio) vazio.style.display = 'flex';
+    if (ativo) ativo.style.display = 'none';
+    if (painel) painel.style.display = 'none';
+  }
+  _atdState.selecionadas.clear();
+  _atdAtualizarBulkBar();
+  await _atdCarregarConversas();
+}
+
 function _atdTocarSom() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -512,12 +637,22 @@ function _atdRenderLista() {
     const nome = contato.nome || contato.telefone || (contato.instagram_id ? '@' + contato.instagram_id : 'Sem nome');
     const inicial = nome.charAt(0).toUpperCase();
     const ativa = c.id === _atdState.conversaAtivaId;
+    const selecionada = _atdState.selecionadas.has(c.id);
     const naoLidas = c.mensagens_nao_lidas || 0;
     const isConcluida = c.status === 'concluida' || c.status === 'expirada';
 
-    const avatar = contato.avatar_url
+    // F3: wrapper do avatar — ao hover mostra checkbox, ao selecionar substitui avatar
+    const avatarImg = contato.avatar_url
       ? `<img class="conv-avatar" src="${contato.avatar_url}" alt="${inicial}" style="${isConcluida ? 'opacity:.55' : ''}" onerror="this.outerHTML='<div class=conv-avatar-inicial style=\\'${isConcluida ? 'opacity:.55' : ''}\\'>  ${inicial}</div>'">`
       : `<div class="conv-avatar-inicial" style="${isConcluida ? 'opacity:.55;background:var(--surface3)' : ''}">${inicial}</div>`;
+    const avatar = `
+      <div class="conv-avatar-wrap" style="position:relative;flex-shrink:0;width:40px;height:40px">
+        <div class="conv-avatar-img" style="transition:opacity .15s;${selecionada ? 'opacity:0;pointer-events:none' : ''}">${avatarImg}</div>
+        <div class="conv-cb-wrap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:${selecionada ? '1' : '0'};transition:opacity .15s">
+          <input type="checkbox" ${selecionada ? 'checked' : ''} onclick="event.stopPropagation();_atdToggleSelecionar('${c.id}',this.checked)"
+            style="width:20px;height:20px;accent-color:var(--purple);cursor:pointer;border-radius:4px">
+        </div>
+      </div>`;
 
     const st = STATUS_CONV[c.status] || STATUS_CONV.aberta;
     const statusBadge = `<span style="font-size:9px;font-weight:700;color:${st.cor};background:${st.bg};padding:1px 6px;border-radius:999px;white-space:nowrap;flex-shrink:0">${st.label}</span>`;
@@ -538,13 +673,17 @@ function _atdRenderLista() {
       }
     }
 
-    // Preview da última mensagem
+    // Preview da última mensagem — F4: story_comment emoji-only não aparece como preview
     const ultiMsg = c.ultima_mensagem || {};
     const previewOrigem = ultiMsg.origem;
     const previewTexto = (() => {
       const tipo = ultiMsg.tipo;
       if (tipo === 'story_mention') return '📸 Mencionou no story';
-      if (tipo === 'story_comment') return '💬 Comentou no story';
+      if (tipo === 'story_comment') {
+        // F4: oculta reações emoji — mostra preview neutro se filtrado
+        if (ultiMsg.filtrado && _atdState.filtrosAvancados.ocultarEmojiStory !== false) return '💬 Comentou no story';
+        return '💬 Comentou no story';
+      }
       if (tipo === 'imagem')        return '📷 Imagem';
       if (tipo === 'video')         return '🎥 Vídeo';
       if (tipo === 'audio')         return '🎤 Áudio';
@@ -582,11 +721,13 @@ function _atdRenderLista() {
       : '';
 
     return `
-      <div class="conv-item ${ativa ? 'active' : ''}" data-canal="${c.canal_tipo || ''}" onclick="_atdAbrirConversa('${c.id}')">
-        <!-- Avatar com ícone do canal -->
+      <div class="conv-item ${ativa ? 'active' : ''} ${selecionada ? 'conv-selected' : ''}" data-canal="${c.canal_tipo || ''}"
+        onclick="_atdState.selecionadas.size>0?_atdToggleSelecionar('${c.id}',!_atdState.selecionadas.has('${c.id}')):_atdAbrirConversa('${c.id}')"
+        onmouseenter="_atdConvHoverIn(this)" onmouseleave="_atdConvHoverOut(this)">
+        <!-- Avatar com checkbox hover (F3) -->
         <div style="position:relative;flex-shrink:0">
           ${avatar}
-          <span style="position:absolute;bottom:-1px;right:-1px;width:15px;height:15px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center">
+          <span class="conv-canal-badge" style="position:absolute;bottom:-1px;right:-1px;width:15px;height:15px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;transition:opacity .15s">
             ${_atdIconeCanal(c.canal_tipo, 12)}
           </span>
         </div>
@@ -696,7 +837,11 @@ function _atdLabelData(date) {
 function _atdRenderChat(conversa) {
   const nome = conversa.atd_contatos?.nome || conversa.atd_contatos?.telefone || 'Sem nome';
   let ultimaData = null;
-  const bubbles = _atdState.mensagens.map(m => {
+  const bubbles = _atdState.mensagens.filter(m => {
+    // F4: oculta story_comments que são só emojis (filtrado = true)
+    if (m.tipo === 'story_comment' && m.conteudo?.filtrado) return false;
+    return true;
+  }).map(m => {
     const classe = m.visibilidade === 'interna' ? 'interna' : (m.origem === 'cliente' ? 'cliente' : 'atendente');
     const hora = new Date(m.enviado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const prefixo = classe === 'interna' ? `${lc('lock', 11, 'var(--warning-fg)')} ` : '';

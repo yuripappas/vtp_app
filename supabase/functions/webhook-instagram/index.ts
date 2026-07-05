@@ -36,6 +36,14 @@ interface IgEntry   {
 }
 interface IgPayload { object?: string; entry?: IgEntry[]; }
 
+// Retorna true se o texto for composto apenas de emojis/espaço (sem conteúdo textual real)
+function isEmojiOnly(text: string): boolean {
+  if (!text || !text.trim()) return false;
+  // Remove emojis (incluindo sequências com ZWJ, variantes, flags) e espaços
+  const stripped = text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}\p{Emoji}️‍\s]+/gu, '').trim();
+  return stripped.length === 0;
+}
+
 function attachmentToTipo(type: string): string {
   switch (type) {
     case 'image':   return 'imagem';
@@ -322,6 +330,9 @@ Deno.serve(async (req) => {
         } catch { /* best-effort */ }
       }
 
+      // Filtra reações de emoji puro (ex: "🔥", "❤️") — ruído de posts com alto engajamento
+      const filtrado = isEmojiOnly(texto);
+
       await salvarMensagem(conversaId, 'story_comment', {
         texto,
         media_id:        mediaId,
@@ -329,6 +340,7 @@ Deno.serve(async (req) => {
         media_thumb:     mediaThumb,
         media_type:      mediaType,   // 'STORY' | 'FEED' | 'REELS'
         is_story:        mediaType === 'STORY',
+        filtrado,
       }, `comment_${commentId}`);
     }
   }
