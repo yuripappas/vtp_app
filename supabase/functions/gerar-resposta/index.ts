@@ -69,13 +69,30 @@ Deno.serve(async (req) => {
     const msg = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 1024,
-      system: `Você é um atendente de uma pizzaria (Vai Ter Pizza!) respondendo clientes via WhatsApp. Escreva a MELHOR resposta possível para a última mensagem do cliente, considerando todo o histórico da conversa. Seja direto, resolutivo e cordial. Responda em português do Brasil.${tomVoz?.conteudo ? `\n\nTom de voz da marca:\n${tomVoz.conteudo}` : ''}\n\nResponda APENAS com o texto da mensagem pronta para enviar ao cliente — sem comentários, sem aspas, sem explicações sobre a escolha.`,
-      messages: [{ role: 'user', content: `Histórico da conversa:\n${transcript}\n\nEscreva a resposta ideal para a última mensagem do cliente.` }],
+      system: `Você é um atendente de uma pizzaria (Vai Ter Pizza!) respondendo clientes via WhatsApp. Escreva a MELHOR resposta possível para a última mensagem do cliente, considerando todo o histórico da conversa. Seja direto, resolutivo e cordial. Responda em português do Brasil.${tomVoz?.conteudo ? `\n\nTom de voz da marca:\n${tomVoz.conteudo}` : ''}
+
+Responda em JSON com dois campos:
+- "resposta": o texto pronto para enviar ao cliente (sem aspas, sem comentários)
+- "needs_human": true se a situação exige intervenção humana (reclamação grave, pedido de reembolso, cliente irritado, dúvida fora do escopo, situação ambígua ou delicada), false caso contrário
+
+Exemplo: {"resposta":"Olá! Seu pedido está a caminho.","needs_human":false}`,
+      messages: [{ role: 'user', content: `Histórico da conversa:\n${transcript}\n\nResponda em JSON conforme instruído.` }],
     });
 
-    const resposta = msg.content.find((b) => b.type === 'text')?.text?.trim() || '';
+    const raw = msg.content.find((b) => b.type === 'text')?.text?.trim() || '{}';
+    let resposta = '';
+    let needs_human = false;
+    try {
+      // Extrai JSON mesmo que o modelo adicione texto antes/depois
+      const match = raw.match(/\{[\s\S]*\}/);
+      const parsed = match ? JSON.parse(match[0]) : {};
+      resposta = (parsed.resposta ?? raw).trim();
+      needs_human = !!parsed.needs_human;
+    } catch {
+      resposta = raw;
+    }
 
-    return new Response(JSON.stringify({ resposta }), {
+    return new Response(JSON.stringify({ resposta, needs_human }), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   } catch (e) {

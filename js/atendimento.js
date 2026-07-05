@@ -91,6 +91,27 @@ function renderOmnichannel() {
       .atd-skeleton-page { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:340px; color:var(--fg-subtle); text-align:center; }
       .atd-skeleton-page h3 { font-size:var(--text-base); font-weight:700; color:var(--text); margin:0; }
       .atd-skeleton-page p { font-size:var(--text-sm); color:var(--fg-muted); margin:0; max-width:380px; line-height:1.6; }
+      /* F2: animações de alerta humano — 3 níveis de urgência */
+      @keyframes atd-pulse-yellow {
+        0%,100% { box-shadow:0 0 0 0 rgba(245,168,0,.5); }
+        50%      { box-shadow:0 0 0 7px rgba(245,168,0,0); }
+      }
+      @keyframes atd-pulse-red {
+        0%,100% { box-shadow:0 0 0 0 rgba(220,38,38,.6); }
+        50%      { box-shadow:0 0 0 9px rgba(220,38,38,0); }
+      }
+      @keyframes atd-shake {
+        0%,100% { transform:translateX(0); }
+        20%      { transform:translateX(-3px); }
+        40%      { transform:translateX(3px); }
+        60%      { transform:translateX(-3px); }
+        80%      { transform:translateX(3px); }
+      }
+      .atd-alerta-1 { border-left:3px solid var(--yellow) !important; animation:atd-pulse-yellow 2s infinite; }
+      .atd-alerta-2 { border-left:3px solid var(--red) !important; background:var(--red-light) !important; animation:atd-pulse-red 1s infinite; }
+      .atd-alerta-3 { border-left:3px solid var(--red) !important; background:#fecaca !important; animation:atd-pulse-red .6s infinite, atd-shake 1.2s infinite; }
+      /* F1: bot ativo — ícone ⚡ na lista */
+      .atd-bot-badge { display:inline-flex;align-items:center;gap:2px;font-size:9px;font-weight:700;color:var(--green);background:#dcfce7;padding:1px 5px;border-radius:999px;flex-shrink:0; }
       @media (max-width:900px) { .atd-panel { display:none !important; } }
       @media (max-width:640px) {
         .atd-layout { flex-direction:column; height:auto; min-height:calc(100vh - 64px); }
@@ -201,6 +222,17 @@ function _atdRenderInbox() {
   _atdAssinarRealtime();
   _atdCarregarRespostasRapidas();
   _atdCarregarTodasTags();
+  _atdIniciarTimerAlerta();
+}
+
+// Atualiza o nível visual do alerta F2 a cada 60s (nível muda com o tempo)
+let _atdAlertaTimerId = null;
+function _atdIniciarTimerAlerta() {
+  if (_atdAlertaTimerId) clearInterval(_atdAlertaTimerId);
+  _atdAlertaTimerId = setInterval(() => {
+    const temAlerta = _atdState.conversas.some(c => c.precisa_humano);
+    if (temAlerta) _atdRenderLista();
+  }, 60000);
 }
 
 async function _atdCarregarRespostasRapidas() {
@@ -228,7 +260,7 @@ async function _atdCarregarConversas() {
 
   const { data, error } = await sb
     .from('atd_conversas')
-    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, atd_contatos(nome, telefone, instagram_id, avatar_url, ig_followers, ig_following, ig_posts)')
+    .select('id, status, atendente_id, canal_tipo, pedido_data, atualizado_em, mensagens_nao_lidas, ultima_mensagem, ultima_msg_atendente_em, ultima_msg_cliente_em, concluida_em, bot_ativo, precisa_humano, humano_solicitado_em, atd_contatos(nome, telefone, instagram_id, avatar_url, ig_followers, ig_following, ig_posts)')
     .in('status', statusFiltro)
     .order('atualizado_em', { ascending: false })
     .limit(viewMode === 'concluidos' ? 200 : 500);
@@ -727,8 +759,26 @@ function _atdRenderLista() {
       ? `<span style="font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:1px 6px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('star', 9, '#E1306C')} Influencer</span>`
       : '';
 
+    // F1: badge bot ativo
+    const botBadge = c.bot_ativo
+      ? `<span class="atd-bot-badge">${lc('zap', 8, 'var(--green)')} Bot</span>`
+      : '';
+
+    // F2: nível de urgência baseado no tempo desde que precisa_humano foi ativado
+    let alertaClass = '';
+    let alertaTimerHtml = '';
+    if (c.precisa_humano && c.humano_solicitado_em) {
+      const minAguard = Math.floor((agora - new Date(c.humano_solicitado_em).getTime()) / 60000);
+      alertaClass = minAguard >= 5 ? 'atd-alerta-3' : minAguard >= 2 ? 'atd-alerta-2' : 'atd-alerta-1';
+      const alertaCor = minAguard >= 2 ? 'var(--red)' : 'var(--yellow)';
+      const alertaLabel = minAguard < 60 ? `${minAguard}min` : `${Math.floor(minAguard/60)}h${minAguard%60?String(minAguard%60).padStart(2,'0')+'m':''}`;
+      alertaTimerHtml = `<span style="font-size:9px;color:${alertaCor};font-weight:800;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:2px;animation:atd-pulse-${minAguard>=2?'red':'yellow'} 1.5s infinite">
+        ${lc('alert-circle', 9, alertaCor)} ${alertaLabel} sem resposta
+      </span>`;
+    }
+
     return `
-      <div class="conv-item ${ativa ? 'active' : ''} ${selecionada ? 'conv-selected' : ''}" data-canal="${c.canal_tipo || ''}"
+      <div class="conv-item ${ativa ? 'active' : ''} ${selecionada ? 'conv-selected' : ''} ${alertaClass}" data-canal="${c.canal_tipo || ''}"
         onclick="_atdState.selecionadas.size>0?_atdToggleSelecionar('${c.id}',!_atdState.selecionadas.has('${c.id}')):_atdAbrirConversa('${c.id}')"
         onmouseenter="_atdConvHoverIn(this)" onmouseleave="_atdConvHoverOut(this)">
         <!-- Avatar com checkbox hover (F3) -->
@@ -753,12 +803,13 @@ function _atdRenderLista() {
           <div style="font-size:var(--text-xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;margin-bottom:4px">
             ${previewPrefix}${previewTexto || '<em style="opacity:.6">Sem mensagens</em>'}
           </div>
-          <!-- Linha 3: Status + timer + pedido + influencer -->
+          <!-- Linha 3: Status + timer + pedido + influencer + bot + alerta -->
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
             ${statusBadge}
-            ${timerHtml}
+            ${alertaTimerHtml || timerHtml}
             ${pedidoHtml}
             ${influencerBadge}
+            ${botBadge}
           </div>
         </div>
       </div>`;
@@ -1092,6 +1143,22 @@ function _atdRenderChat(conversa) {
       </button>
     </div>`;
 
+  const isBotAtivo = !!conversa.bot_ativo;
+  const isPrecisaHumano = !!conversa.precisa_humano;
+
+  // F2: banner de alerta — aparece acima das mensagens quando precisa_humano
+  const alertaBannerHtml = isPrecisaHumano ? `
+    <div id="atdAlertaHumano" style="background:#fef3c7;border-bottom:1px solid #fcd34d;padding:8px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:16px">🚨</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:var(--text-xs);font-weight:800;color:#92400e">Intervenção humana necessária</div>
+        <div style="font-size:10px;color:#b45309">A IA identificou que este cliente precisa de atenção especial</div>
+      </div>
+      <button onclick="_atdAssumirConversa('${conversa.id}')" class="btn btn-sm" style="background:#d97706;color:#fff;border-color:#d97706;white-space:nowrap;flex-shrink:0">
+        ${lc('user-check', 12, '#fff')} Assumir
+      </button>
+    </div>` : '';
+
   document.getElementById('atdChatAtivo').innerHTML = `
     <!-- HEADER -->
     <div style="padding:10px 16px 8px;border-bottom:1px solid var(--border)">
@@ -1104,11 +1171,20 @@ function _atdRenderChat(conversa) {
           ${igStatsHtml}
           ${canalHtml}
         </div>
-        <div id="atdHeaderTags" style="display:flex;align-items:center;padding-top:2px">
-          ${tagBtnHtml}
+        <div style="display:flex;align-items:center;gap:6px;padding-top:2px;flex-shrink:0">
+          <!-- F1: toggle bot -->
+          <button id="atdBtnBot" onclick="_atdToggleBot('${conversa.id}')"
+            title="${isBotAtivo ? 'Bot ativo — clique para desativar' : 'Ativar modo automático (bot)'}"
+            class="btn btn-ghost btn-xs"
+            style="padding:4px 8px;gap:4px;display:flex;align-items:center;${isBotAtivo ? 'background:#dcfce7;border-color:var(--green);color:var(--green)' : 'color:var(--fg-muted)'}">
+            ${lc('zap', 12, isBotAtivo ? 'var(--green)' : 'var(--fg-muted)')}
+            <span style="font-size:10px;font-weight:700">${isBotAtivo ? 'Bot On' : 'Bot'}</span>
+          </button>
+          <div id="atdHeaderTags">${tagBtnHtml}</div>
         </div>
       </div>
     </div>
+    ${alertaBannerHtml}
     <!-- MENSAGENS -->
     <div id="atdMensagensWrap" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px">
       ${bubbles || '<div style="color:var(--fg-subtle);font-size:var(--text-sm);text-align:center;margin-top:40px">Sem mensagens ainda.</div>'}
@@ -1539,6 +1615,102 @@ async function _atdConcluirConversa(conversaId) {
   _atdCarregarConversas();
 }
 
+// ── F1: Toggle bot por conversa ───────────────────────────────────────────────
+async function _atdToggleBot(conversaId) {
+  const sb = _atdGetSbClient();
+  const conv = _atdState.conversas.find(c => c.id === conversaId);
+  const novoEstado = !(conv?.bot_ativo);
+  const { error } = await sb.from('atd_conversas')
+    .update({ bot_ativo: novoEstado })
+    .eq('id', conversaId);
+  if (error) { toast('Erro ao alterar modo bot', 'err'); return; }
+  if (conv) conv.bot_ativo = novoEstado;
+  toast(novoEstado ? '⚡ Bot ativado — respostas automáticas ligadas' : 'Bot desativado', novoEstado ? 'ok' : 'info');
+  _atdRenderLista();
+  // Re-render o chat para atualizar o botão
+  const { data: conversaAtual } = await sb.from('atd_conversas').select('*, atd_contatos(*)').eq('id', conversaId).single();
+  if (conversaAtual) _atdRenderChat(conversaAtual);
+}
+
+// ── F2: Assumir conversa (limpa alerta humano) ────────────────────────────────
+async function _atdAssumirConversa(conversaId) {
+  const sb = _atdGetSbClient();
+  const user = getCurrentUser();
+  await sb.from('atd_conversas').update({
+    precisa_humano: false,
+    humano_solicitado_em: null,
+    bot_ativo: false,
+    atendente_id: user?.id ?? null,
+    status: 'em_atendimento',
+  }).eq('id', conversaId);
+  const conv = _atdState.conversas.find(c => c.id === conversaId);
+  if (conv) { conv.precisa_humano = false; conv.bot_ativo = false; conv.status = 'em_atendimento'; }
+  toast('Você assumiu esta conversa', 'ok');
+  _atdRenderLista();
+  const { data: conversaAtual } = await sb.from('atd_conversas').select('*, atd_contatos(*)').eq('id', conversaId).single();
+  if (conversaAtual) _atdRenderChat(conversaAtual);
+}
+
+// ── F2: Som de alerta humano (diferente do som de mensagem normal) ────────────
+function _atdTocarSomAlerta() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Três beeps rápidos — padrão de urgência
+    [0, 0.18, 0.36].forEach(offset => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.setValueAtTime(880, ctx.currentTime + offset);
+      g.gain.setValueAtTime(0.3, ctx.currentTime + offset);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.14);
+      o.start(ctx.currentTime + offset);
+      o.stop(ctx.currentTime + offset + 0.14);
+    });
+  } catch { /* sem som se browser bloquear */ }
+}
+
+// ── F1+F2: Auto-resposta do bot quando chega mensagem ────────────────────────
+async function _atdBotAutoResponder(conversaId) {
+  const sb = _atdGetSbClient();
+  try {
+    const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/gerar-resposta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      body: JSON.stringify({ conversa_id: conversaId }),
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+
+    if (json.needs_human) {
+      // Bot detectou situação que precisa de humano — desliga bot e aciona alerta
+      await sb.from('atd_conversas').update({
+        bot_ativo: false,
+        precisa_humano: true,
+        humano_solicitado_em: new Date().toISOString(),
+      }).eq('id', conversaId);
+      const conv = _atdState.conversas.find(c => c.id === conversaId);
+      if (conv) { conv.bot_ativo = false; conv.precisa_humano = true; conv.humano_solicitado_em = new Date().toISOString(); }
+      _atdTocarSomAlerta();
+      _atdRenderLista();
+      // Se conversa está aberta, atualiza o banner
+      if (_atdState.conversaAtivaId === conversaId) _atdAbrirConversa(conversaId);
+      return;
+    }
+
+    if (json.resposta) {
+      // Envia resposta automática
+      const user = getCurrentUser();
+      await fetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+        body: JSON.stringify({ conversa_id: conversaId, texto: json.resposta, atendente_id: user?.id ?? null, visibilidade: 'publica' }),
+      });
+    }
+  } catch (e) {
+    console.warn('[atd-bot] falha ao auto-responder:', e);
+  }
+}
+
 function _atdToggleStatusMenu(conversaId) {
   const menu = document.getElementById('atdStatusMenu');
   if (!menu) return;
@@ -1709,8 +1881,16 @@ function _atdAssinarRealtime() {
         if (conv) {
           conv.mensagens_nao_lidas = (conv.mensagens_nao_lidas || 0) + 1;
           if (msg.conteudo?.texto) conv.ultima_mensagem = { texto: msg.conteudo.texto, origem: 'cliente' };
+
+          // F1: bot ativo — auto-responde (não toca som normal, não incrementa badge visual)
+          if (conv.bot_ativo) {
+            _atdBotAutoResponder(convId);
+          } else {
+            // F2: se já precisa_humano, toca som de alerta; senão, som normal
+            if (conv.precisa_humano) _atdTocarSomAlerta(); else _atdTocarSom();
+          }
+
           _atdRenderLista();
-          _atdTocarSom();
           const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
           if (totalNaoLidas > 0) document.title = `(${totalNaoLidas}) VTP Atendimento`;
         }
