@@ -37,6 +37,7 @@ const _atdState = {
     ocultarEmojiStory: true, // F4: ocultar reações emoji de story por padrão
   },
   selecionadas: new Set(),   // F3: IDs de conversas selecionadas para ação em lote
+  botGlobalAtivo: !!localStorage.getItem('atd_bot_global'), // F1: bot global persiste na sessão
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -145,6 +146,27 @@ function _atdRenderInbox() {
       <!-- COLUNA A — lista de conversas -->
       <div class="atd-sidebar" style="width:300px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface2)">
         <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
+
+          <!-- F1: Toggle Bot Global -->
+          <div id="atdBotGlobalBar" onclick="_atdToggleBotGlobal()"
+            style="cursor:pointer;border-radius:var(--r8);padding:8px 10px;margin-bottom:10px;display:flex;align-items:center;gap:8px;transition:background .2s;border:1.5px solid;
+              ${_atdState.botGlobalAtivo
+                ? 'background:#dcfce7;border-color:#86efac;'
+                : 'background:var(--surface3);border-color:var(--border);'}">
+            <div style="width:36px;height:20px;border-radius:999px;position:relative;flex-shrink:0;transition:background .2s;
+              background:${_atdState.botGlobalAtivo ? 'var(--green)' : 'var(--border)'}">
+              <div style="position:absolute;top:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s;
+                left:${_atdState.botGlobalAtivo ? '18px' : '2px'}"></div>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--text-xs);font-weight:800;color:${_atdState.botGlobalAtivo ? '#166534' : 'var(--text)'}">
+                ${_atdState.botGlobalAtivo ? '⚡ Bot ativo — respondendo automaticamente' : '🤖 Modo automático (bot)'}
+              </div>
+              <div style="font-size:10px;color:${_atdState.botGlobalAtivo ? '#15803d' : 'var(--fg-subtle)'}">
+                ${_atdState.botGlobalAtivo ? 'Você será alertado se precisar intervir' : 'Clique para ativar respostas automáticas'}
+              </div>
+            </div>
+          </div>
 
           <!-- Tabs Chat / Avaliações -->
           <div id="atdCanalTabs" style="display:flex;gap:6px;margin-bottom:10px">
@@ -759,10 +781,7 @@ function _atdRenderLista() {
       ? `<span style="font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:1px 6px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('star', 9, '#E1306C')} Influencer</span>`
       : '';
 
-    // F1: badge bot ativo
-    const botBadge = c.bot_ativo
-      ? `<span class="atd-bot-badge">${lc('zap', 8, 'var(--green)')} Bot</span>`
-      : '';
+    const botBadge = ''; // bot é global — não tem badge por conversa
 
     // F2: nível de urgência baseado no tempo desde que precisa_humano foi ativado
     let alertaClass = '';
@@ -1143,7 +1162,6 @@ function _atdRenderChat(conversa) {
       </button>
     </div>`;
 
-  const isBotAtivo = !!conversa.bot_ativo;
   const isPrecisaHumano = !!conversa.precisa_humano;
 
   // F2: banner de alerta — aparece acima das mensagens quando precisa_humano
@@ -1172,14 +1190,6 @@ function _atdRenderChat(conversa) {
           ${canalHtml}
         </div>
         <div style="display:flex;align-items:center;gap:6px;padding-top:2px;flex-shrink:0">
-          <!-- F1: toggle bot -->
-          <button id="atdBtnBot" onclick="_atdToggleBot('${conversa.id}')"
-            title="${isBotAtivo ? 'Bot ativo — clique para desativar' : 'Ativar modo automático (bot)'}"
-            class="btn btn-ghost btn-xs"
-            style="padding:4px 8px;gap:4px;display:flex;align-items:center;${isBotAtivo ? 'background:#dcfce7;border-color:var(--green);color:var(--green)' : 'color:var(--fg-muted)'}">
-            ${lc('zap', 12, isBotAtivo ? 'var(--green)' : 'var(--fg-muted)')}
-            <span style="font-size:10px;font-weight:700">${isBotAtivo ? 'Bot On' : 'Bot'}</span>
-          </button>
           <div id="atdHeaderTags">${tagBtnHtml}</div>
         </div>
       </div>
@@ -1615,21 +1625,19 @@ async function _atdConcluirConversa(conversaId) {
   _atdCarregarConversas();
 }
 
-// ── F1: Toggle bot por conversa ───────────────────────────────────────────────
-async function _atdToggleBot(conversaId) {
-  const sb = _atdGetSbClient();
-  const conv = _atdState.conversas.find(c => c.id === conversaId);
-  const novoEstado = !(conv?.bot_ativo);
-  const { error } = await sb.from('atd_conversas')
-    .update({ bot_ativo: novoEstado })
-    .eq('id', conversaId);
-  if (error) { toast('Erro ao alterar modo bot', 'err'); return; }
-  if (conv) conv.bot_ativo = novoEstado;
-  toast(novoEstado ? '⚡ Bot ativado — respostas automáticas ligadas' : 'Bot desativado', novoEstado ? 'ok' : 'info');
-  _atdRenderLista();
-  // Re-render o chat para atualizar o botão
-  const { data: conversaAtual } = await sb.from('atd_conversas').select('*, atd_contatos(*)').eq('id', conversaId).single();
-  if (conversaAtual) _atdRenderChat(conversaAtual);
+// ── F1: Toggle bot GLOBAL ─────────────────────────────────────────────────────
+function _atdToggleBotGlobal() {
+  _atdState.botGlobalAtivo = !_atdState.botGlobalAtivo;
+  // Persiste na sessão do browser
+  if (_atdState.botGlobalAtivo) {
+    localStorage.setItem('atd_bot_global', '1');
+    toast('⚡ Bot ativado — todas as mensagens serão respondidas automaticamente', 'ok');
+  } else {
+    localStorage.removeItem('atd_bot_global');
+    toast('Bot desativado — modo manual', 'info');
+  }
+  // Re-render a sidebar para atualizar o toggle visual
+  _atdRenderInbox();
 }
 
 // ── F2: Assumir conversa (limpa alerta humano) ────────────────────────────────
@@ -1639,12 +1647,11 @@ async function _atdAssumirConversa(conversaId) {
   await sb.from('atd_conversas').update({
     precisa_humano: false,
     humano_solicitado_em: null,
-    bot_ativo: false,
     atendente_id: user?.id ?? null,
     status: 'em_atendimento',
   }).eq('id', conversaId);
   const conv = _atdState.conversas.find(c => c.id === conversaId);
-  if (conv) { conv.precisa_humano = false; conv.bot_ativo = false; conv.status = 'em_atendimento'; }
+  if (conv) { conv.precisa_humano = false; conv.status = 'em_atendimento'; }
   toast('Você assumiu esta conversa', 'ok');
   _atdRenderLista();
   const { data: conversaAtual } = await sb.from('atd_conversas').select('*, atd_contatos(*)').eq('id', conversaId).single();
@@ -1682,14 +1689,13 @@ async function _atdBotAutoResponder(conversaId) {
     const json = await res.json();
 
     if (json.needs_human) {
-      // Bot detectou situação que precisa de humano — desliga bot e aciona alerta
+      // Bot detectou situação que precisa de humano — aciona alerta F2
       await sb.from('atd_conversas').update({
-        bot_ativo: false,
         precisa_humano: true,
         humano_solicitado_em: new Date().toISOString(),
       }).eq('id', conversaId);
       const conv = _atdState.conversas.find(c => c.id === conversaId);
-      if (conv) { conv.bot_ativo = false; conv.precisa_humano = true; conv.humano_solicitado_em = new Date().toISOString(); }
+      if (conv) { conv.precisa_humano = true; conv.humano_solicitado_em = new Date().toISOString(); }
       _atdTocarSomAlerta();
       _atdRenderLista();
       // Se conversa está aberta, atualiza o banner
@@ -1882,11 +1888,11 @@ function _atdAssinarRealtime() {
           conv.mensagens_nao_lidas = (conv.mensagens_nao_lidas || 0) + 1;
           if (msg.conteudo?.texto) conv.ultima_mensagem = { texto: msg.conteudo.texto, origem: 'cliente' };
 
-          // F1: bot ativo — auto-responde (não toca som normal, não incrementa badge visual)
-          if (conv.bot_ativo) {
+          // F1: bot global ativo — auto-responde sem interação do atendente
+          if (_atdState.botGlobalAtivo && !conv.precisa_humano) {
             _atdBotAutoResponder(convId);
           } else {
-            // F2: se já precisa_humano, toca som de alerta; senão, som normal
+            // F2: se já precisa_humano, toca som de alerta urgente; senão, som normal
             if (conv.precisa_humano) _atdTocarSomAlerta(); else _atdTocarSom();
           }
 
