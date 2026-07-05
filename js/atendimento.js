@@ -79,6 +79,10 @@ function renderOmnichannel() {
       .conv-item:hover .conv-canal-badge { opacity:0 !important; }
       .conv-item.conv-selected { background:var(--purple-xlight) !important; }
       .conv-item.conv-selected .conv-canal-badge { opacity:0 !important; }
+      /* Quando há seleção ativa, TODOS os checkboxes ficam visíveis */
+      .atd-lista-selecionando .conv-cb-wrap { opacity:1 !important; }
+      .atd-lista-selecionando .conv-avatar-img { opacity:0 !important; pointer-events:none !important; }
+      .atd-lista-selecionando .conv-canal-badge { opacity:0 !important; }
       .msg-bubble { padding:9px 13px; border-radius:var(--r12); max-width:75%; word-break:break-word; font-size:var(--text-sm); line-height:1.5; }
       .msg-bubble.cliente { background:var(--surface2); align-self:flex-start; border-radius:2px var(--r12) var(--r12) var(--r12); }
       .msg-bubble.atendente { background:var(--purple); color:#fff; align-self:flex-end; border-radius:var(--r12) 2px var(--r12) var(--r12); }
@@ -615,6 +619,9 @@ function _atdRenderLista() {
 
   const el = document.getElementById('atdListaConversas');
   if (!el) return;
+
+  // F3: classe no container ativa modo seleção visível em todos os itens
+  el.classList.toggle('atd-lista-selecionando', _atdState.selecionadas.size > 0);
 
   if (!lista.length) {
     const msg = viewMode === 'concluidos' ? 'Nenhuma conversa concluída.' : viewMode === 'busca' ? 'Nenhum resultado encontrado.' : 'Nenhuma conversa ativa.';
