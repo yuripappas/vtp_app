@@ -2463,19 +2463,21 @@ async function _atdRespostasPadraoRender() {
   const lista = data || [];
 
   el.innerHTML = `
-    <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div>
-        <div style="font-size:var(--text-sm);font-weight:700;color:var(--text)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} rápida${lista.length !== 1 ? 's' : ''}</div>
-        <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/atalho</code> no campo de mensagem</div>
+    <div style="background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--radius-lg);overflow:hidden">
+
+      <!-- cabeçalho -->
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:var(--text-sm);font-weight:700;color:var(--text)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} rápida${lista.length !== 1 ? 's' : ''}</div>
+          <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/atalho</code> no campo de mensagem</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="_atdRespostaAbrirModal(null)">
+          ${lc('plus', 14, '#fff')} Nova resposta
+        </button>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="_atdRespostaAbrirModal(null)">
-        ${lc('plus', 14, '#fff')} Nova resposta
-      </button>
-    </div>
 
     ${lista.length === 0 ? `
-      <div style="text-align:center;padding:48px 0;color:var(--fg-subtle)">
+      <div style="text-align:center;padding:48px 20px;color:var(--fg-subtle)">
         ${lc('zap', 36, 'var(--border)')}
         <div style="margin-top:12px;font-size:var(--text-sm);font-weight:600;color:var(--fg-muted)">Nenhuma resposta criada ainda</div>
         <div style="font-size:var(--text-xs);margin-top:4px;color:var(--fg-subtle)">Ex: <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/horario</code> → "Funcionamos de terça a dom, das 18h às 23h30!"</div>
@@ -2483,15 +2485,15 @@ async function _atdRespostasPadraoRender() {
           ${lc('plus', 13, '#fff')} Criar primeira resposta
         </button>
       </div>` : `
-      <div style="display:flex;flex-direction:column;gap:6px">
+      <div>
         ${lista.map(r => `
-          <div style="display:grid;grid-template-columns:160px 1fr auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r8);background:var(--surface)${r.ativo ? '' : ';opacity:.45'}">
+          <div style="display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border);${r.ativo ? '' : 'opacity:.45;'}">
             <div>
               <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">/${r.atalho}</code>
-              ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<span style="display:block;font-size:9px;color:var(--fg-subtle);margin-top:3px;text-transform:uppercase;letter-spacing:.3px">${r.canal_tipo}</span>` : ''}
+              ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:3px;text-transform:uppercase;letter-spacing:.4px">${r.canal_tipo}</div>` : ''}
             </div>
             <div style="min-width:0">
-              <div style="font-weight:600;font-size:var(--text-xs);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? ' <span style="font-size:9px;color:var(--fg-subtle);font-weight:400">(inativo)</span>' : ''}</div>
+              <div style="font-weight:600;font-size:var(--text-sm);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? `<span style="font-size:10px;color:var(--fg-subtle);font-weight:400;margin-left:6px">inativo</span>` : ''}</div>
               <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
             </div>
             <div style="display:flex;gap:2px;flex-shrink:0">
