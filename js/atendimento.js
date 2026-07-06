@@ -64,6 +64,15 @@ function renderOmnichannel() {
         min-width:17px; height:17px; border-radius:999px; display:flex; align-items:center; justify-content:center; padding:0 4px;
       }
       .atd-canal-tab:not(.active) .atd-tab-badge { background:#E1306C; color:#fff; }
+      .atd-resp-tab {
+        border:none; background:transparent; color:var(--fg-muted);
+        font-size:var(--text-sm); font-weight:600; padding:7px 14px 9px; border-radius:0; cursor:pointer;
+        display:inline-flex; align-items:center; gap:5px;
+        border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s,border-color .15s;
+      }
+      .atd-resp-tab:hover { color:var(--text); }
+      .atd-resp-tab-active { color:var(--purple) !important; border-bottom-color:var(--purple) !important; }
+      .atd-resp-tabs { border-bottom:1px solid var(--border); margin-bottom:20px; }
       .conv-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; position:relative; border-left:3px solid transparent; }
       .conv-item:hover { background:var(--bg-hover); }
       .conv-item.active { background:#ede8ff; border-left-color:var(--purple); }
@@ -2125,13 +2134,11 @@ function _atdRenderRespostas() {
           <div style="font-size:var(--text-xs);color:var(--fg-muted)">Atalhos rápidos e regras do assistente de IA</div>
         </div>
       </div>
-      <div style="display:flex;gap:2px;margin-bottom:24px;border-bottom:2px solid var(--border)">
-        <button class="atd-canal-tab active" data-resp="padrao" onclick="_atdRespostasAba('padrao')"
-          style="padding:8px 16px 10px;margin-bottom:-2px;border-bottom:2px solid transparent">
+      <div class="atd-resp-tabs" style="display:flex;gap:0">
+        <button class="atd-resp-tab atd-resp-tab-active" data-resp="padrao" onclick="_atdRespostasAba('padrao')">
           ${lc('zap', 13, 'currentColor')} Respostas rápidas
         </button>
-        <button class="atd-canal-tab" data-resp="ia" onclick="_atdRespostasAba('ia')"
-          style="padding:8px 16px 10px;margin-bottom:-2px;border-bottom:2px solid transparent">
+        <button class="atd-resp-tab" data-resp="ia" onclick="_atdRespostasAba('ia')">
           ${lc('cpu', 13, 'currentColor')} Regras da IA
         </button>
       </div>
@@ -2143,9 +2150,7 @@ function _atdRenderRespostas() {
 function _atdRespostasAba(aba) {
   document.querySelectorAll('[data-resp]').forEach(b => {
     const active = b.dataset.resp === aba;
-    b.classList.toggle('active', active);
-    b.style.borderBottomColor = active ? 'var(--purple)' : 'transparent';
-    b.style.color = active ? 'var(--purple)' : 'var(--fg-muted)';
+    b.classList.toggle('atd-resp-tab-active', active);
   });
   if (aba === 'padrao') _atdRespostasPadraoRender();
   else _atdIARender();
@@ -2293,32 +2298,41 @@ async function _atdIARender() {
   const pct = Math.round((preenchidas / total) * 100);
 
   el.innerHTML = `
-    <div style="margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <span style="font-size:var(--text-xs);color:var(--fg-muted);font-weight:600">${preenchidas} de ${total} seções configuradas</span>
-        <span style="font-size:var(--text-xs);color:${pct === 100 ? 'var(--green)' : 'var(--fg-muted)'}">
-          ${pct === 100 ? lc('check-circle', 11, 'var(--green)') + ' Completo' : `${pct}%`}
-        </span>
-      </div>
-      <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${pct === 100 ? 'var(--green)' : 'var(--purple)'};border-radius:2px;transition:width .4s"></div>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:220px 1fr;gap:20px;min-height:480px">
-      <div style="display:flex;flex-direction:column;gap:2px">
-        ${_ATD_IA_SECOES.map((s, i) => {
-          const ok = !!_atdIAPorSecao[s.id]?.conteudo;
-          return `<button data-ia-sec="${s.id}" onclick="_atdIASecaoClick('${s.id}')"
-            style="display:flex;align-items:center;gap:8px;padding:9px 10px;border:none;border-radius:var(--r6);cursor:pointer;text-align:left;width:100%;background:${i === 0 ? 'var(--purple-xlight)' : 'transparent'};color:${i === 0 ? 'var(--purple)' : 'var(--text)'}">
-            <span style="width:7px;height:7px;border-radius:50%;background:${ok ? 'var(--green)' : 'var(--border)'};flex-shrink:0;border:1.5px solid ${ok ? 'var(--green)' : 'var(--fg-subtle)'}"></span>
-            <span style="font-size:var(--text-xs);font-weight:600;flex:1">${s.label}</span>
-          </button>`;
-        }).join('')}
-        <div style="border-top:1px solid var(--border);margin:8px 0;padding-top:10px;font-size:var(--text-xs);color:var(--fg-subtle);line-height:1.6;padding-left:4px">
-          ${lc('zap', 10, 'var(--purple)')} A IA usa todas as seções para responder no chat.
+    <div class="card" style="padding:0;overflow:hidden">
+      <!-- barra de progresso no topo do card -->
+      <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);background:var(--bg-elevated)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:var(--text-xs);color:var(--fg-muted);font-weight:600">${preenchidas} de ${total} seções configuradas</span>
+          <span style="font-size:var(--text-xs);font-weight:700;color:${pct === 100 ? 'var(--green)' : 'var(--purple)'}">
+            ${pct === 100 ? lc('check-circle', 11, 'var(--green)') + ' Completo' : `${pct}%`}
+          </span>
+        </div>
+        <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${pct === 100 ? 'var(--green)' : 'var(--purple)'};border-radius:3px;transition:width .4s"></div>
         </div>
       </div>
-      <div id="atdIAEditor"></div>
+      <!-- grid: nav lateral + editor -->
+      <div style="display:grid;grid-template-columns:200px 1fr;min-height:500px">
+        <!-- sidebar -->
+        <div style="background:var(--bg-elevated);border-right:1px solid var(--border);padding:12px 8px;display:flex;flex-direction:column;gap:2px">
+          ${_ATD_IA_SECOES.map((s, i) => {
+            const ok = !!_atdIAPorSecao[s.id]?.conteudo;
+            return `<button data-ia-sec="${s.id}" onclick="_atdIASecaoClick('${s.id}')"
+              style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:none;border-radius:var(--r6);cursor:pointer;text-align:left;width:100%;transition:background .15s;background:${i === 0 ? 'var(--purple-xlight)' : 'transparent'};color:${i === 0 ? 'var(--purple)' : 'var(--text)'}">
+              <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${ok ? 'var(--green)' : 'var(--border)'};border:1.5px solid ${ok ? 'var(--green)' : 'var(--fg-subtle)'}"></span>
+              <span style="font-size:var(--text-xs);font-weight:600">${s.label}</span>
+            </button>`;
+          }).join('')}
+          <div style="margin-top:auto;padding:10px 8px 4px;border-top:1px solid var(--border);margin-left:-8px;margin-right:-8px;padding-left:16px">
+            <div style="font-size:10px;color:var(--fg-subtle);line-height:1.5;display:flex;gap:4px;align-items:flex-start">
+              ${lc('zap', 9, 'var(--purple)')}
+              <span>A IA usa todas as seções para responder no chat.</span>
+            </div>
+          </div>
+        </div>
+        <!-- editor -->
+        <div id="atdIAEditor" style="padding:24px;overflow-y:auto"></div>
+      </div>
     </div>`;
 
   _atdIASecaoRender(_ATD_IA_SECOES[0].id);
@@ -2449,32 +2463,38 @@ async function _atdRespostasPadraoRender() {
   const lista = data || [];
 
   el.innerHTML = `
+    <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-size:var(--text-sm);color:var(--fg-muted)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} cadastrada${lista.length !== 1 ? 's' : ''}</div>
+      <div>
+        <div style="font-size:var(--text-sm);font-weight:700;color:var(--text)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} rápida${lista.length !== 1 ? 's' : ''}</div>
+        <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/atalho</code> no campo de mensagem</div>
+      </div>
       <button class="btn btn-primary btn-sm" onclick="_atdRespostaAbrirModal(null)">
         ${lc('plus', 14, '#fff')} Nova resposta
       </button>
     </div>
 
     ${lista.length === 0 ? `
-      <div style="text-align:center;padding:40px 0;color:var(--fg-subtle)">
-        ${lc('zap', 32, 'var(--fg-subtle)')}
-        <div style="margin-top:8px;font-size:var(--text-sm)">Nenhuma resposta cadastrada ainda.</div>
-        <div style="font-size:var(--text-xs);margin-top:4px">Crie respostas rápidas que os atendentes acionam com <code>/atalho</code> no chat.</div>
+      <div style="text-align:center;padding:48px 0;color:var(--fg-subtle)">
+        ${lc('zap', 36, 'var(--border)')}
+        <div style="margin-top:12px;font-size:var(--text-sm);font-weight:600;color:var(--fg-muted)">Nenhuma resposta criada ainda</div>
+        <div style="font-size:var(--text-xs);margin-top:4px;color:var(--fg-subtle)">Ex: <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/horario</code> → "Funcionamos de terça a dom, das 18h às 23h30!"</div>
+        <button class="btn btn-primary btn-sm" style="margin-top:16px" onclick="_atdRespostaAbrirModal(null)">
+          ${lc('plus', 13, '#fff')} Criar primeira resposta
+        </button>
       </div>` : `
-      <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;flex-direction:column;gap:6px">
         ${lista.map(r => `
-          <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r8);background:var(--surface)${r.ativo ? '' : ';opacity:.5'}">
-            <div style="flex:1;min-width:0">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 7px;border-radius:4px">/${r.atalho}</code>
-                <span style="font-weight:600;font-size:var(--text-sm);color:var(--text)">${r.titulo}</span>
-                ${!r.ativo ? `<span style="font-size:10px;color:var(--fg-subtle);background:var(--bg-subtle);padding:1px 6px;border-radius:4px">Inativo</span>` : ''}
-                ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<span style="font-size:10px;color:var(--fg-subtle);background:var(--bg-subtle);padding:1px 6px;border-radius:4px">${r.canal_tipo}</span>` : ''}
-              </div>
-              <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:pre-wrap;line-height:1.5">${r.conteudo}</div>
+          <div style="display:grid;grid-template-columns:160px 1fr auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r8);background:var(--surface)${r.ativo ? '' : ';opacity:.45'}">
+            <div>
+              <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">/${r.atalho}</code>
+              ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<span style="display:block;font-size:9px;color:var(--fg-subtle);margin-top:3px;text-transform:uppercase;letter-spacing:.3px">${r.canal_tipo}</span>` : ''}
             </div>
-            <div style="display:flex;gap:4px;flex-shrink:0">
+            <div style="min-width:0">
+              <div style="font-weight:600;font-size:var(--text-xs);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? ' <span style="font-size:9px;color:var(--fg-subtle);font-weight:400">(inativo)</span>' : ''}</div>
+              <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
+            </div>
+            <div style="display:flex;gap:2px;flex-shrink:0">
               <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="_atdRespostaAbrirModal(${JSON.stringify(JSON.stringify(r))})">
                 ${lc('edit-2', 14, 'var(--fg-muted)')}
               </button>
@@ -2486,7 +2506,8 @@ async function _atdRespostasPadraoRender() {
               </button>
             </div>
           </div>`).join('')}
-      </div>`}`;
+      </div>`}
+    </div>`;
 }
 
 function _atdRespostaAbrirModal(jsonStr) {
