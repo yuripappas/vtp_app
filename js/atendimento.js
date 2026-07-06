@@ -2111,19 +2111,29 @@ const ATD_CANAIS_DEFINICAO = [
   { tipo: 'google', nome: 'Google Meu Negócio', cor: '#4285F4', disponivel: false },
 ];
 
+// ══════════════════════════════════════════════════════════════
+// RESPOSTAS — módulo completo (Rápidas + Regras da IA)
+// ══════════════════════════════════════════════════════════════
+
 function _atdRenderRespostas() {
   document.getElementById('page-omnichannel').innerHTML = `
-    <div class="card" style="max-width:760px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <div style="max-width:960px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
         ${lc('zap', 18, 'var(--purple)')}
-        <h2 style="font-size:var(--text-base);font-weight:800;color:var(--text);margin:0">Respostas</h2>
+        <div>
+          <h2 style="font-size:var(--text-lg);font-weight:800;color:var(--text);margin:0;line-height:1.2">Respostas</h2>
+          <div style="font-size:var(--text-xs);color:var(--fg-muted)">Atalhos rápidos e regras do assistente de IA</div>
+        </div>
       </div>
-      <p style="font-size:var(--text-sm);color:var(--fg-muted);margin:0 0 20px">
-        Configure respostas rápidas e o tom de voz da IA para o atendimento.
-      </p>
-      <div style="display:flex;gap:6px;margin-bottom:20px">
-        <button class="atd-canal-tab active" data-resp="padrao" onclick="_atdRespostasAba('padrao')">Padrão (/)</button>
-        <button class="atd-canal-tab" data-resp="ia" onclick="_atdRespostasAba('ia')">IA — Tom de voz</button>
+      <div style="display:flex;gap:2px;margin-bottom:24px;border-bottom:2px solid var(--border)">
+        <button class="atd-canal-tab active" data-resp="padrao" onclick="_atdRespostasAba('padrao')"
+          style="padding:8px 16px 10px;margin-bottom:-2px;border-bottom:2px solid transparent">
+          ${lc('zap', 13, 'currentColor')} Respostas rápidas
+        </button>
+        <button class="atd-canal-tab" data-resp="ia" onclick="_atdRespostasAba('ia')"
+          style="padding:8px 16px 10px;margin-bottom:-2px;border-bottom:2px solid transparent">
+          ${lc('cpu', 13, 'currentColor')} Regras da IA
+        </button>
       </div>
       <div id="atdRespostasConteudo"></div>
     </div>`;
@@ -2131,27 +2141,141 @@ function _atdRenderRespostas() {
 }
 
 function _atdRespostasAba(aba) {
-  document.querySelectorAll('[data-resp]').forEach(b => b.classList.toggle('active', b.dataset.resp === aba));
-  const el = document.getElementById('atdRespostasConteudo');
-  if (aba === 'padrao') {
-    _atdRespostasPadraoRender();
-  } else {
-    _atdIARender();
-  }
+  document.querySelectorAll('[data-resp]').forEach(b => {
+    const active = b.dataset.resp === aba;
+    b.classList.toggle('active', active);
+    b.style.borderBottomColor = active ? 'var(--purple)' : 'transparent';
+    b.style.color = active ? 'var(--purple)' : 'var(--fg-muted)';
+  });
+  if (aba === 'padrao') _atdRespostasPadraoRender();
+  else _atdIARender();
 }
 
-// ══════════════════════════════════════════════════════════════
-// RESPOSTAS / IA — base de conhecimento + preview
-// ══════════════════════════════════════════════════════════════
-
+// ── Questionários estruturados por seção ───────────────────────
 const _ATD_IA_SECOES = [
-  { id: 'tom_voz',          icon: 'message-circle', label: 'Tom de voz',         desc: 'Personalidade, estilo e regras de linguagem da marca.' },
-  { id: 'gestao_crise',     icon: 'alert-triangle', label: 'Gestão de crise',    desc: 'Protocolos para atrasos, reclamações e situações críticas.' },
-  { id: 'compensacoes',     icon: 'gift',           label: 'Compensações',       desc: 'Cupons, reenvios e o que pode ser ofertado sem escalar.' },
-  { id: 'slas',             icon: 'clock',          label: 'SLAs',               desc: 'Tempos de resposta prometidos e limites de espera.' },
-  { id: 'info_loja',        icon: 'map-pin',        label: 'Info da loja',       desc: 'Horários, endereço, área de entrega, redes sociais.' },
-  { id: 'politicas_gerais', icon: 'file-text',      label: 'Políticas gerais',   desc: 'Regras de cancelamento, troca, pagamento e outros.' },
+  { id: 'tom_voz',          icon: 'smile',          label: 'Personalidade',   desc: 'Como o assistente fala e se comporta com os clientes.' },
+  { id: 'gestao_crise',     icon: 'alert-triangle', label: 'Reclamações',     desc: 'Protocolos para atrasos, reclamações e clientes insatisfeitos.' },
+  { id: 'compensacoes',     icon: 'gift',           label: 'Compensações',    desc: 'O que a IA pode oferecer sem precisar de aprovação humana.' },
+  { id: 'slas',             icon: 'clock',          label: 'Tempos',          desc: 'Prazos de entrega e horários de funcionamento.' },
+  { id: 'info_loja',        icon: 'map-pin',        label: 'Info da loja',    desc: 'Endereço, cardápio, área de entrega e contatos.' },
+  { id: 'politicas_gerais', icon: 'file-text',      label: 'Políticas',       desc: 'Cancelamento, pagamento, troca e regras gerais.' },
 ];
+
+const _ATD_IA_QUESTIONARIOS = {
+  tom_voz: [
+    { id: 'intro',             tipo: 'input',    label: 'Como o assistente se apresenta?',             placeholder: 'Olá! Sou a Pizzinha, da Vai Ter Pizza! 🍕' },
+    { id: 'tom',               tipo: 'radio',    label: 'Tom da marca',                                opcoes: ['Caloroso e descontraído', 'Formal e profissional', 'Divertido e jovem'] },
+    { id: 'emojis',            tipo: 'radio',    label: 'Uso de emojis',                               opcoes: ['Sim, com moderação', 'Sim, à vontade', 'Não usar'] },
+    { id: 'emojis_principais', tipo: 'input',    label: 'Emojis preferidos da marca (opcional)',       placeholder: '🍕 ❤️ ✅' },
+    { id: 'nunca_dizer',       tipo: 'textarea', label: 'Frases que NUNCA devem aparecer',             placeholder: 'Prezado(a), Lamentamos o ocorrido, Conforme solicitado...' },
+    { id: 'encerramento',      tipo: 'input',    label: 'Frase de encerramento padrão',                placeholder: 'Qualquer dúvida é só chamar! 🍕' },
+  ],
+  gestao_crise: [
+    { id: 'responsavel',       tipo: 'input',    label: 'Quem resolve reclamações graves?',            placeholder: 'Gerente Paulo — (11) 99999-9999' },
+    { id: 'oferta_atraso',     tipo: 'radio',    label: 'O que oferecer em caso de atraso?',           opcoes: ['Só pedir desculpas', 'Desconto na próxima compra', 'Cupom imediato', 'Reenvio gratuito'] },
+    { id: 'valor_cupom_crise', tipo: 'input',    label: 'Valor do cupom em caso de crise (R$)',        placeholder: '15,00' },
+    { id: 'escalar_quando',    tipo: 'checkbox', label: 'Quando transferir para atendente humano?',    opcoes: ['Reclamação grave', 'Pedido de reembolso', 'Cliente irritado', 'Menção a avaliação/nota', 'Pedido perdido'] },
+    { id: 'msg_atraso',        tipo: 'textarea', label: 'Mensagem padrão para atraso',                placeholder: 'Olá! Identificamos um atraso no seu pedido. Pedimos desculpas pelo inconveniente...' },
+  ],
+  compensacoes: [
+    { id: 'pode_desconto',     tipo: 'radio',    label: 'Pode oferecer desconto sem autorização?',     opcoes: ['Sim', 'Não'] },
+    { id: 'valor_max_cupom',   tipo: 'input',    label: 'Valor máximo de cupom automático (R$)',       placeholder: '20,00' },
+    { id: 'autoriza_acima',    tipo: 'input',    label: 'Quem autoriza valores acima do limite?',      placeholder: 'Gerente — WhatsApp (11) 99999-9999' },
+    { id: 'reenvio',           tipo: 'radio',    label: 'Política de reenvio de pedido',               opcoes: ['Sempre que solicitado', 'Nunca sem aprovação', 'Só com foto do problema'] },
+    { id: 'validade_cupom',    tipo: 'input',    label: 'Validade dos cupons (dias)',                  placeholder: '30' },
+  ],
+  slas: [
+    { id: 'tempo_entrega',     tipo: 'input',    label: 'Tempo prometido de entrega (minutos)',        placeholder: '45' },
+    { id: 'tempo_alerta',      tipo: 'input',    label: 'Avisar cliente após quantos min de atraso?',  placeholder: '20' },
+    { id: 'horario_seg_sex',   tipo: 'input',    label: 'Horário de funcionamento — Seg a Sex',        placeholder: '18h às 23h' },
+    { id: 'horario_sab_dom',   tipo: 'input',    label: 'Horário de funcionamento — Sáb e Dom',        placeholder: '17h às 00h' },
+    { id: 'fora_horario',      tipo: 'radio',    label: 'Fora do horário, o assistente deve:',         opcoes: ['Informar horário e encerrar', 'Capturar pedido para depois', 'Redirecionar para app de delivery'] },
+  ],
+  info_loja: [
+    { id: 'nome',              tipo: 'input',    label: 'Nome da pizzaria',                            placeholder: 'Vai Ter Pizza!' },
+    { id: 'endereco',          tipo: 'input',    label: 'Endereço completo',                           placeholder: 'Rua das Pizzas, 123 — Bairro, Cidade/SP' },
+    { id: 'telefone',          tipo: 'input',    label: 'Telefone para contato',                       placeholder: '(11) 99999-9999' },
+    { id: 'bairros',           tipo: 'textarea', label: 'Área de entrega (bairros ou raio em km)',     placeholder: 'Centro, Vila Mariana, Moema...' },
+    { id: 'cardapio_link',     tipo: 'input',    label: 'Link do cardápio',                            placeholder: 'https://cardapio.vaiterPizza.com.br' },
+    { id: 'instagram',         tipo: 'input',    label: 'Instagram',                                   placeholder: '@vaiterPizza' },
+  ],
+  politicas_gerais: [
+    { id: 'cancelamento',      tipo: 'radio',    label: 'Aceita cancelamento após o preparo iniciar?', opcoes: ['Sim, sempre', 'Não, nunca', 'Depende do caso'] },
+    { id: 'cancel_regra',      tipo: 'input',    label: 'Regra de cancelamento (detalhe)',             placeholder: 'Cancela se o motoboy ainda não saiu' },
+    { id: 'pagamentos',        tipo: 'checkbox', label: 'Formas de pagamento aceitas',                 opcoes: ['Pix', 'Cartão crédito', 'Cartão débito', 'Dinheiro', 'Vale Refeição/Alimentação'] },
+    { id: 'taxa_entrega',      tipo: 'radio',    label: 'Taxa de entrega',                             opcoes: ['Grátis', 'Valor fixo', 'Varia por bairro'] },
+    { id: 'taxa_valor',        tipo: 'input',    label: 'Valor da taxa (se fixo, em R$)',              placeholder: '5,00' },
+    { id: 'troca',             tipo: 'radio',    label: 'Aceita devolução / troca?',                   opcoes: ['Sim', 'Não', 'Só com foto do problema'] },
+  ],
+};
+
+// Gera texto legível para a IA a partir das respostas do questionário
+function _atdGerarConteudoIA(secId, dados) {
+  if (!dados || Object.keys(dados).length === 0) return '';
+  const linhas = [];
+  const q = _ATD_IA_QUESTIONARIOS[secId] || [];
+  q.forEach(campo => {
+    const val = dados[campo.id];
+    if (!val || (Array.isArray(val) && val.length === 0)) return;
+    const v = Array.isArray(val) ? val.join(', ') : val;
+    linhas.push(`${campo.label}: ${v}`);
+  });
+  return linhas.join('\n');
+}
+
+// Render campo do questionário
+function _atdIACampoHTML(campo, valor) {
+  const v = valor ?? '';
+  if (campo.tipo === 'input') {
+    return `<input id="iaq_${campo.id}" class="inp" style="font-size:var(--text-sm)" placeholder="${campo.placeholder || ''}" value="${String(v).replace(/"/g, '&quot;')}">`;
+  }
+  if (campo.tipo === 'textarea') {
+    return `<textarea id="iaq_${campo.id}" class="inp" rows="3" style="font-size:var(--text-sm);resize:vertical" placeholder="${campo.placeholder || ''}">${v}</textarea>`;
+  }
+  if (campo.tipo === 'radio') {
+    return `<div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${(campo.opcoes || []).map(op => `
+        <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);background:var(--surface);user-select:none"
+          onclick="document.querySelectorAll('[name=iaq_${campo.id}]').forEach(r=>{r.closest('label').style.borderColor='var(--border)';r.closest('label').style.background='var(--surface)';r.closest('label').style.color='var(--text)'}); this.style.borderColor='var(--purple)'; this.style.background='var(--purple-xlight)'; this.style.color='var(--purple)';"
+          style="${v === op ? 'border-color:var(--purple);background:var(--purple-xlight);color:var(--purple)' : 'color:var(--text)'}">
+          <input type="radio" name="iaq_${campo.id}" value="${op}" ${v === op ? 'checked' : ''} style="display:none"> ${op}
+        </label>`).join('')}
+    </div>`;
+  }
+  if (campo.tipo === 'checkbox') {
+    const selecionados = Array.isArray(v) ? v : (v ? v.split(', ') : []);
+    return `<div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${(campo.opcoes || []).map(op => {
+        const checked = selecionados.includes(op);
+        return `<label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);background:var(--surface);user-select:none;${checked ? 'border-color:var(--purple);background:var(--purple-xlight);color:var(--purple)' : 'color:var(--text)'}"
+          onclick="this.querySelector('input').checked=!this.querySelector('input').checked; this.style.borderColor=this.querySelector('input').checked?'var(--purple)':'var(--border)'; this.style.background=this.querySelector('input').checked?'var(--purple-xlight)':'var(--surface)'; this.style.color=this.querySelector('input').checked?'var(--purple)':'var(--text)';">
+          <input type="checkbox" name="iaq_${campo.id}" value="${op}" ${checked ? 'checked' : ''} style="display:none"> ${op}
+        </label>`;
+      }).join('')}
+    </div>`;
+  }
+  return '';
+}
+
+// Lê valores do formulário de questionário
+function _atdIALerFormulario(secId) {
+  const dados = {};
+  const q = _ATD_IA_QUESTIONARIOS[secId] || [];
+  q.forEach(campo => {
+    if (campo.tipo === 'input' || campo.tipo === 'textarea') {
+      dados[campo.id] = document.getElementById(`iaq_${campo.id}`)?.value.trim() || '';
+    } else if (campo.tipo === 'radio') {
+      const checked = document.querySelector(`[name="iaq_${campo.id}"]:checked`);
+      dados[campo.id] = checked?.value || '';
+    } else if (campo.tipo === 'checkbox') {
+      const all = document.querySelectorAll(`[name="iaq_${campo.id}"]:checked`);
+      dados[campo.id] = Array.from(all).map(c => c.value);
+    }
+  });
+  return dados;
+}
+
+let _atdIAPorSecao = {};
 
 async function _atdIARender() {
   const el = document.getElementById('atdRespostasConteudo');
@@ -2159,153 +2283,158 @@ async function _atdIARender() {
 
   const sb = _atdGetSbClient();
   const { data, error } = await sb.from('atd_base_conhecimento').select('*').eq('ativo', true);
-  if (error) { el.innerHTML = `<div style="color:var(--danger)">Erro ao carregar base de conhecimento.</div>`; return; }
+  if (error) { el.innerHTML = `<div style="color:var(--danger)">Erro ao carregar.</div>`; return; }
 
-  const porSecao = {};
-  (data || []).forEach(r => { porSecao[r.secao] = r; });
+  _atdIAPorSecao = {};
+  (data || []).forEach(r => { _atdIAPorSecao[r.secao] = r; });
+
+  const preenchidas = _ATD_IA_SECOES.filter(s => _atdIAPorSecao[s.id]?.conteudo).length;
+  const total = _ATD_IA_SECOES.length;
+  const pct = Math.round((preenchidas / total) * 100);
 
   el.innerHTML = `
-    <div style="display:grid;grid-template-columns:200px 1fr;gap:16px;min-height:400px">
-      <!-- sidebar de seções -->
-      <div style="display:flex;flex-direction:column;gap:4px">
-        ${_ATD_IA_SECOES.map((s, i) => `
-          <button class="atd-ia-sec-btn${i === 0 ? ' active' : ''}" data-sec="${s.id}"
-            onclick="_atdIASecaoClick('${s.id}')"
-            style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:none;border-radius:var(--r6);cursor:pointer;text-align:left;font-size:var(--text-xs);font-weight:600;background:${i === 0 ? 'var(--purple-xlight)' : 'transparent'};color:${i === 0 ? 'var(--purple)' : 'var(--text)'}">
-            ${lc(s.icon, 13, 'currentColor')} ${s.label}
-          </button>`).join('')}
-        <div style="border-top:1px solid var(--border);margin:8px 0"></div>
-        <div style="padding:8px 10px;font-size:var(--text-xs);color:var(--fg-subtle);line-height:1.5">
-          ${lc('zap', 11, 'var(--purple)')} A IA usa todas as seções ativas para gerar respostas no chat.
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:var(--text-xs);color:var(--fg-muted);font-weight:600">${preenchidas} de ${total} seções configuradas</span>
+        <span style="font-size:var(--text-xs);color:${pct === 100 ? 'var(--green)' : 'var(--fg-muted)'}">
+          ${pct === 100 ? lc('check-circle', 11, 'var(--green)') + ' Completo' : `${pct}%`}
+        </span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${pct === 100 ? 'var(--green)' : 'var(--purple)'};border-radius:2px;transition:width .4s"></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:20px;min-height:480px">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        ${_ATD_IA_SECOES.map((s, i) => {
+          const ok = !!_atdIAPorSecao[s.id]?.conteudo;
+          return `<button data-ia-sec="${s.id}" onclick="_atdIASecaoClick('${s.id}')"
+            style="display:flex;align-items:center;gap:8px;padding:9px 10px;border:none;border-radius:var(--r6);cursor:pointer;text-align:left;width:100%;background:${i === 0 ? 'var(--purple-xlight)' : 'transparent'};color:${i === 0 ? 'var(--purple)' : 'var(--text)'}">
+            <span style="width:7px;height:7px;border-radius:50%;background:${ok ? 'var(--green)' : 'var(--border)'};flex-shrink:0;border:1.5px solid ${ok ? 'var(--green)' : 'var(--fg-subtle)'}"></span>
+            <span style="font-size:var(--text-xs);font-weight:600;flex:1">${s.label}</span>
+          </button>`;
+        }).join('')}
+        <div style="border-top:1px solid var(--border);margin:8px 0;padding-top:10px;font-size:var(--text-xs);color:var(--fg-subtle);line-height:1.6;padding-left:4px">
+          ${lc('zap', 10, 'var(--purple)')} A IA usa todas as seções para responder no chat.
         </div>
       </div>
-      <!-- editor -->
       <div id="atdIAEditor"></div>
     </div>`;
 
-  _atdIASecaoRender(_ATD_IA_SECOES[0].id, porSecao);
+  _atdIASecaoRender(_ATD_IA_SECOES[0].id);
 }
 
 function _atdIASecaoClick(secId) {
-  document.querySelectorAll('.atd-ia-sec-btn').forEach(b => {
-    const active = b.dataset.sec === secId;
+  document.querySelectorAll('[data-ia-sec]').forEach(b => {
+    const active = b.dataset.iaSec === secId;
     b.style.background = active ? 'var(--purple-xlight)' : 'transparent';
-    b.style.color = active ? 'var(--purple)' : 'var(--text)';
+    b.style.color      = active ? 'var(--purple)' : 'var(--text)';
   });
-  // Busca dados atuais do DOM (o editor já tem o state)
-  const sb = _atdGetSbClient();
-  sb.from('atd_base_conhecimento').select('*').eq('ativo', true).then(({ data }) => {
-    const porSecao = {};
-    (data || []).forEach(r => { porSecao[r.secao] = r; });
-    _atdIASecaoRender(secId, porSecao);
-  });
+  _atdIASecaoRender(secId);
 }
 
-function _atdIASecaoRender(secId, porSecao) {
+function _atdIASecaoRender(secId) {
   const secInfo = _ATD_IA_SECOES.find(s => s.id === secId);
-  const reg = porSecao[secId];
+  const reg = _atdIAPorSecao[secId];
+  const dados = reg?.dados || {};
   const el = document.getElementById('atdIAEditor');
   if (!el) return;
 
+  const campos = _ATD_IA_QUESTIONARIOS[secId] || [];
+  const ok = !!reg?.conteudo;
+
   el.innerHTML = `
     <div>
-      <div style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          ${lc(secInfo.icon, 16, 'var(--purple)')}
-          <span style="font-weight:700;font-size:var(--text-base);color:var(--text)">${secInfo.label}</span>
-          ${reg ? `<span style="font-size:10px;color:var(--green);background:var(--success-bg);padding:1px 6px;border-radius:4px">Configurado</span>` : `<span style="font-size:10px;color:var(--fg-subtle);background:var(--bg-subtle);padding:1px 6px;border-radius:4px">Vazio</span>`}
-        </div>
-        <div style="font-size:var(--text-xs);color:var(--fg-muted)">${secInfo.desc}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        ${lc(secInfo.icon, 16, 'var(--purple)')}
+        <span style="font-weight:800;font-size:var(--text-base);color:var(--text)">${secInfo.label}</span>
+        <span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:4px;${ok ? 'color:var(--green);background:var(--success-bg)' : 'color:var(--fg-subtle);background:var(--bg-subtle)'}">
+          ${ok ? '✓ Configurado' : 'Não preenchido'}
+        </span>
       </div>
-      <div class="field" style="margin-bottom:8px">
-        <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">CONTEÚDO</label>
-        <textarea id="atdIAConteudo" class="inp" rows="10" placeholder="Descreva as regras, tom e informações para esta seção..."
-          style="font-family:monospace;font-size:var(--text-xs);line-height:1.6;resize:vertical">${reg?.conteudo || ''}</textarea>
+      <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-bottom:20px">${secInfo.desc}</div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${campos.map(campo => `
+          <div>
+            <label style="display:block;font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${campo.label}</label>
+            ${_atdIACampoHTML(campo, dados[campo.id])}
+          </div>`).join('')}
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-ghost btn-sm" onclick="_atdIAPreview('${secId}')">
-          ${lc('play', 12, 'var(--purple)')} Testar IA
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
+        <button class="btn btn-ghost btn-sm" onclick="_atdIATestarSecao('${secId}')">
+          ${lc('play', 12, 'var(--purple)')} Testar IA com esta seção
         </button>
         <button class="btn btn-primary btn-sm" onclick="_atdIASalvar('${secId}','${reg?.id || ''}')">
-          ${lc('save', 12, '#fff')} Salvar seção
+          ${lc('save', 12, '#fff')} Salvar
         </button>
       </div>
+
       <div id="atdIAPreviewBox" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:var(--r8);overflow:hidden">
         <div style="padding:8px 12px;background:var(--bg-subtle);border-bottom:1px solid var(--border);font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:flex;align-items:center;gap:6px">
-          ${lc('zap', 11, 'var(--purple)')} Preview da IA
+          ${lc('zap', 11, 'var(--purple)')} Testar resposta da IA
         </div>
         <div style="padding:12px;display:flex;gap:8px;align-items:flex-end">
           <input id="atdIAMsgTeste" class="inp" style="flex:1;font-size:var(--text-xs)" placeholder="Minha pizza chegou fria..."
-            onkeydown="if(event.key==='Enter'){_atdIATestar('${secId}')}">
-          <button class="btn btn-primary btn-sm" onclick="_atdIATestar('${secId}')">
+            onkeydown="if(event.key==='Enter'){_atdIAChamarPreview('${secId}')}">
+          <button class="btn btn-primary btn-sm" onclick="_atdIAChamarPreview('${secId}')">
             ${lc('send', 12, '#fff')}
           </button>
         </div>
         <div id="atdIARespostaBox" style="display:none;padding:12px;border-top:1px solid var(--border)">
           <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-bottom:6px">Resposta gerada:</div>
           <div id="atdIAResposta" style="font-size:var(--text-sm);color:var(--text);line-height:1.6;white-space:pre-wrap;background:var(--success-bg);padding:10px 12px;border-radius:var(--r6)"></div>
-          <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="document.getElementById('atdIARespostaBox').style.display='none'">
-            Fechar
-          </button>
         </div>
       </div>
     </div>`;
 }
 
 async function _atdIASalvar(secId, id) {
-  const conteudo = document.getElementById('atdIAConteudo')?.value.trim();
-  if (!conteudo) { toast('Conteúdo não pode estar vazio', 'err'); return; }
+  const dados    = _atdIALerFormulario(secId);
+  const conteudo = _atdGerarConteudoIA(secId, dados);
+  if (!conteudo) { toast('Preencha pelo menos um campo antes de salvar', 'warn'); return; }
 
   const secInfo = _ATD_IA_SECOES.find(s => s.id === secId);
   const sb = _atdGetSbClient();
   let error;
 
   if (id) {
-    ({ error } = await sb.from('atd_base_conhecimento').update({ conteudo, atualizado_em: new Date().toISOString() }).eq('id', id));
+    ({ error } = await sb.from('atd_base_conhecimento').update({ conteudo, dados, atualizado_em: new Date().toISOString() }).eq('id', id));
   } else {
-    ({ error } = await sb.from('atd_base_conhecimento').insert({ secao: secId, titulo: secInfo.label, conteudo }));
+    ({ error } = await sb.from('atd_base_conhecimento').insert({ secao: secId, titulo: secInfo.label, conteudo, dados }));
   }
 
   if (error) { toast('Erro ao salvar: ' + error.message, 'err'); return; }
   toast(`${secInfo.label} salvo!`, 'ok');
-  _atdIARender();
+  await _atdIARender();
+  _atdIASecaoClick(secId);
 }
 
-function _atdIAPreview(secId) {
+function _atdIATestarSecao(secId) {
   const box = document.getElementById('atdIAPreviewBox');
   if (!box) return;
   box.style.display = box.style.display === 'none' ? 'block' : 'none';
   if (box.style.display === 'block') document.getElementById('atdIAMsgTeste')?.focus();
 }
 
-async function _atdIATestar(secId) {
+async function _atdIAChamarPreview(secId) {
   const msg = document.getElementById('atdIAMsgTeste')?.value.trim();
   if (!msg) return;
-
-  const conteudoAtual = document.getElementById('atdIAConteudo')?.value.trim() || '';
   const respostaBox = document.getElementById('atdIARespostaBox');
-  const respostaEl = document.getElementById('atdIAResposta');
-
+  const respostaEl  = document.getElementById('atdIAResposta');
   respostaBox.style.display = 'block';
   respostaEl.textContent = 'Gerando resposta...';
-
   try {
     const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/gerar-resposta-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
-      body: JSON.stringify({ mensagem: msg, tom_voz: conteudoAtual, secao: secId }),
+      body: JSON.stringify({ mensagem: msg, secao: secId }),
     });
-
-    if (!res.ok) {
-      // Fallback: usa a função principal se a preview não existir
-      respostaEl.textContent = '(Salve a seção e teste via chat — o preview dedicado será adicionado em breve)';
-      return;
-    }
-
-    const json = await res.json();
-    respostaEl.textContent = json.resposta || 'Sem resposta gerada.';
+    const json = res.ok ? await res.json() : null;
+    respostaEl.textContent = json?.resposta || '(Salve a seção e use o chat para testar — preview ainda não configurado)';
   } catch {
-    respostaEl.textContent = '(Salve a seção e teste via chat — o preview usa a função de produção)';
+    respostaEl.textContent = '(Salve a seção e use o chat para testar)';
   }
 }
 
