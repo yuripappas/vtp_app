@@ -564,10 +564,15 @@ function _ftInit(fichaTecnica, mode = 'preparo', prefix = '') {
 function _ftAddRow() {
   _ftRows.push({ item_id: null, peso_g: 0 });
   _ftRenderTable();
-  // Foca no select do novo row
-  const selects = document.querySelectorAll(`#${_ftId('ftTable')} select[id^="${_ftId('ftItem')}-"]`);
-  const last = selects[selects.length - 1];
-  if (last) setTimeout(() => last.focus(), 40);
+  if (_ftMode === 'flat') {
+    const inputs = document.querySelectorAll(`#${_ftId('ftTable')} input[id^="${_ftId('ftSearch')}-"]`);
+    const last = inputs[inputs.length - 1];
+    if (last) setTimeout(() => last.focus(), 40);
+  } else {
+    const selects = document.querySelectorAll(`#${_ftId('ftTable')} select[id^="${_ftId('ftItem')}-"]`);
+    const last = selects[selects.length - 1];
+    if (last) setTimeout(() => last.focus(), 40);
+  }
 }
 
 function _ftRemoveRow(idx) {
@@ -600,10 +605,96 @@ function _ftUpdateRow(idx) {
   if (totPeso)  totPeso.textContent  = _ftCalcTotalPeso() + ' g';
 }
 
+// ── Modo 'flat' (Produto/Opção): busca de insumo por texto + qtde na
+// unidade nativa do insumo (kg/un/L/g — o que estiver cadastrado), sem
+// assumir grama. Custo = quantidade digitada × custo unitário do insumo.
+function _ftPoolFlat() {
+  return items.filter(i => i.active !== false);
+}
+
+function _ftSearchInsumo(idx, query) {
+  const drop = document.getElementById(`${_ftId('ftDrop')}-${idx}`);
+  if (!drop) return;
+  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const q = norm(query);
+  if (!q) { drop.style.display = 'none'; drop.innerHTML = ''; return; }
+  const matches = _ftPoolFlat().filter(i => norm(i.name).includes(q)).slice(0, 8);
+  if (!matches.length) {
+    drop.innerHTML = `<div class="ft-ac-item" style="cursor:default;color:var(--muted)">Nenhum insumo encontrado</div>`;
+    drop.style.display = 'block';
+    return;
+  }
+  drop.innerHTML = matches.map(m => `
+    <div class="ft-ac-item" onmousedown="event.preventDefault();_ftPickInsumo(${idx},${m.id})">
+      <span>${m.name}</span>
+      <span class="ft-ac-cat">${m.cat || ''}</span>
+    </div>`).join('');
+  drop.style.display = 'block';
+}
+
+function _ftPickInsumo(idx, itemId) {
+  const ins = items.find(i => i.id === itemId);
+  if (!_ftRows[idx]) return;
+  _ftRows[idx].item_id = itemId;
+  const input = document.getElementById(`${_ftId('ftSearch')}-${idx}`);
+  if (input) input.value = ins?.name || '';
+  _ftCloseDropdown(idx);
+  _ftRenderFlatRowCusto(idx);
+  _ftRecalc();
+  // Foca a qtde em seguida — próximo passo natural
+  const qtdInput = document.getElementById(`${_ftId('ftPeso')}-${idx}`);
+  if (qtdInput) setTimeout(() => qtdInput.focus(), 20);
+}
+
+function _ftCloseDropdown(idx) {
+  const drop = document.getElementById(`${_ftId('ftDrop')}-${idx}`);
+  if (drop) { drop.style.display = 'none'; drop.innerHTML = ''; }
+}
+
+function _ftUpdateQtdFlat(idx) {
+  const inp = document.getElementById(`${_ftId('ftPeso')}-${idx}`);
+  if (!inp || !_ftRows[idx]) return;
+  _ftRows[idx].peso_g = parseFloat(inp.value) || 0;
+  _ftRenderFlatRowCusto(idx);
+  _ftRecalc();
+}
+
+function _ftRenderFlatRowCusto(idx) {
+  const row     = _ftRows[idx];
+  const ins     = row ? items.find(i => i.id === row.item_id) : null;
+  const custo   = ins ? (row.peso_g || 0) * ins.cost : 0;
+  const total   = _ftCalcTotalCusto();
+  const pct     = total > 0 ? (custo / total) * 100 : 0;
+  const custoEl = document.getElementById(`${_ftId('ftCustoLn')}-${idx}`);
+  const pctEl   = document.getElementById(`${_ftId('ftCustoPct')}-${idx}`);
+  const unitEl  = document.getElementById(`${_ftId('ftUnit')}-${idx}`);
+  if (custoEl) custoEl.textContent = 'R$ ' + fmt(custo);
+  if (pctEl)   pctEl.textContent   = custo > 0 ? fmt(pct) + '%' : '';
+  if (unitEl)  unitEl.textContent  = ins?.unit || '';
+  const totCusto = document.getElementById(_ftId('ftTotalCusto'));
+  if (totCusto) totCusto.textContent = 'R$ ' + fmt(total);
+}
+
 function _ftCalcTotalCusto() {
+  if (_ftMode === 'flat') {
+    return _ftRows.reduce((sum, row) => {
+      const ins = items.find(i => i.id === row.item_id);
+      return sum + (ins ? (row.peso_g || 0) * ins.cost : 0);
+    }, 0);
+  }
   return _ftRows.reduce((sum, row) => {
     const ins = items.find(i => i.id === row.item_id);
     return sum + (ins ? (row.peso_g / 1000) * ins.cost : 0);
+  }, 0);
+}
+
+// Calcula o custo de uma ficha técnica já salva, sem depender do estado
+// global _ftRows — usado pelos cards da lista (Produtos/Opções).
+function _calcCustoFicha(fichaTecnica) {
+  if (!fichaTecnica?.ingredientes?.length) return 0;
+  return fichaTecnica.ingredientes.reduce((sum, r) => {
+    const ins = items.find(i => i.id === r.item_id);
+    return sum + (ins ? (r.peso_g || 0) * ins.cost : 0);
   }, 0);
 }
 
@@ -673,18 +764,19 @@ function _ftRenderTable() {
   const el = document.getElementById(_ftId('ftTable'));
   if (!el) return;
 
-  // Modo 'flat' (Produto/Opção) precisa poder puxar tanto insumo quanto
-  // preparado interno (ex: massa e molho são preparados, não insumo cru)
-  const pool = _ftMode === 'flat' ? items.filter(i => i.active !== false) : items.filter(i => !i.isProd);
-
   if (_ftRows.length === 0) {
-    el.innerHTML = `<div style="text-align:center;padding:18px 12px;font-size:.76rem;color:var(--muted)">
-      Nenhum ingrediente adicionado — clique em "+ Adicionar insumo"
+    el.innerHTML = `<div style="text-align:center;padding:24px 12px;font-size:.86rem;color:var(--muted);border:1.5px dashed var(--border);border-radius:var(--r8)">
+      Nenhum insumo adicionado — clique em "+ Adicionar insumo"
     </div>`;
     return;
   }
 
-  // Agrupa por categoria para optgroup (preparados já caem em "PREPARADOS")
+  if (_ftMode === 'flat') { _ftRenderTableFlat(el); return; }
+
+  // Modo 'preparo' (Pré-produção) — só insumo, custo/kg dividido por rendimento
+  const pool = items.filter(i => !i.isProd);
+
+  // Agrupa por categoria para optgroup
   const cats = [...new Set(pool.map(i => i.cat || 'Outros'))].sort();
 
   el.innerHTML = `
@@ -742,6 +834,53 @@ function _ftRenderTable() {
       <div></div>
       <div id="${_ftId('ftTotalCusto')}" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--purple)">R$ ${fmt(_ftCalcTotalCusto())}</div>
       <div></div>
+    </div>
+  `;
+}
+
+// Tabela do modo 'flat' (Produto/Opção) — 3 colunas (Insumo, Qtde, Custo),
+// busca por texto em vez de dropdown, sem assumir unidade de medida.
+function _ftRenderTableFlat(el) {
+  const total = _ftCalcTotalCusto();
+
+  el.innerHTML = `
+    <div class="ft-table-head">
+      <span>Insumo</span><span style="text-align:right">Qtde</span><span style="text-align:right">Custo</span><span></span>
+    </div>
+    ${_ftRows.map((row, i) => {
+      const ins   = items.find(x => x.id === row.item_id);
+      const custo = ins ? (row.peso_g || 0) * ins.cost : 0;
+      const pct   = total > 0 ? (custo / total) * 100 : 0;
+      return `
+        <div class="ft-table-row">
+          <div class="ft-ac-wrap">
+            <input type="text" id="${_ftId('ftSearch')}-${i}" class="inp" placeholder="Pesquise um insumo ou preparado..."
+              value="${ins?.name ? ins.name.replace(/"/g,'&quot;') : ''}"
+              oninput="_ftSearchInsumo(${i}, this.value)"
+              onfocus="_ftSearchInsumo(${i}, this.value)"
+              onblur="setTimeout(()=>_ftCloseDropdown(${i}),150)">
+            <div class="ft-ac-list" id="${_ftId('ftDrop')}-${i}" style="display:none"></div>
+          </div>
+          <div class="ft-qtd-cell">
+            <input type="number" id="${_ftId('ftPeso')}-${i}" class="inp" value="${row.peso_g || ''}"
+              min="0" step="any" placeholder="0"
+              oninput="_ftUpdateQtdFlat(${i})">
+            <span class="ft-qtd-unit" id="${_ftId('ftUnit')}-${i}">${ins?.unit || ''}</span>
+          </div>
+          <div class="ft-custo-cell">
+            <div id="${_ftId('ftCustoLn')}-${i}" style="font-weight:700;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">${custo > 0 ? 'R$ ' + fmt(custo) : '—'}</div>
+            <span class="ft-custo-pct" id="${_ftId('ftCustoPct')}-${i}">${custo > 0 ? fmt(pct) + '%' : ''}</span>
+          </div>
+          <button onclick="_ftRemoveRow(${i})"
+            style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem;padding:2px 4px;border-radius:4px;display:flex;align-items:center;justify-content:center"
+            title="Remover">×</button>
+        </div>
+      `;
+    }).join('')}
+    <div class="ft-table-total">
+      <span>TOTAL</span><span></span>
+      <span id="${_ftId('ftTotalCusto')}" style="text-align:right;color:var(--purple)">R$ ${fmt(total)}</span>
+      <span></span>
     </div>
   `;
 }
@@ -1414,23 +1553,27 @@ function renderCadSabores() {
 let _fichaSel = null; // { tipo:'produto'|'opcao', id: number|null }
 
 function renderCadFichas() {
+  _fichaSel = null;
+  document.getElementById('fichaListView').style.display = '';
+  document.getElementById('fichaDetailView').style.display = 'none';
   _renderListaProdutosPizza();
   _renderListaOpcoes();
-  _renderFichaDetail();
 }
 
 function _renderListaProdutosPizza() {
   const el = document.getElementById('listaProdutosPizza');
   if (!el) return;
+  document.getElementById('cntProdutosPizza').textContent = `(${produtosPizza.length})`;
   el.innerHTML = produtosPizza.map(p => {
     const hasFt = p.fichaTecnica?.ingredientes?.length > 0;
-    const sel   = _fichaSel?.tipo === 'produto' && _fichaSel.id === p.id;
-    return `<div onclick="_selecionarFicha('produto',${p.id})" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r8);cursor:pointer;background:${sel?'var(--purple-xlight)':'var(--surface)'};border:1.5px solid ${sel?'var(--purple)':'var(--border)'}">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:.76rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.nome}</div>
-        <div style="font-size:.64rem;color:var(--muted)">${p.tamanho==='grande'?'Grande':'Pequena'} · ${p.categoria==='doce'?'Doce':'Salgada'}</div>
+    const custo = _calcCustoFicha(p.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('produto',${p.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${p.nome}</div>
+        <div class="ft-list-sub">${p.tamanho==='grande'?'Grande':'Pequena'} · ${p.categoria==='doce'?'Doce':'Salgada'}</div>
       </div>
-      ${hasFt ? '' : `<span style="font-size:9px;background:var(--surface2);color:var(--muted);border-radius:4px;padding:1px 5px;flex-shrink:0">sem ficha</span>`}
+      <div class="ft-list-cost">${hasFt ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
     </div>`;
   }).join('');
 }
@@ -1442,35 +1585,38 @@ function _renderListaOpcoes() {
   const lista = opcoes
     .filter(o => !q || o.nome.toLowerCase().includes(q))
     .sort((a,b) => a.nome.localeCompare(b.nome));
+  document.getElementById('cntOpcoes').textContent = `(${opcoes.length})`;
   if (!lista.length) {
-    el.innerHTML = `<div style="font-size:.72rem;color:var(--muted);padding:8px">Nenhuma opção encontrada</div>`;
+    el.innerHTML = `<div class="ft-empty-list">Nenhuma opção encontrada</div>`;
     return;
   }
   el.innerHTML = lista.map(o => {
     const hasFt = o.fichaTecnica?.ingredientes?.length > 0;
-    const sel   = _fichaSel?.tipo === 'opcao' && _fichaSel.id === o.id;
-    return `<div onclick="_selecionarFicha('opcao',${o.id})" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r8);cursor:pointer;background:${sel?'var(--purple-xlight)':'var(--surface)'};border:1.5px solid ${sel?'var(--purple)':'var(--border)'}">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:.76rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.nome}</div>
-        <div style="font-size:.64rem;color:var(--muted)">${o.categoria==='doce'?'Doce':'Salgada'}</div>
+    const custo = _calcCustoFicha(o.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('opcao',${o.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${o.nome}</div>
+        <div class="ft-list-sub">${o.categoria==='doce'?'Doce':'Salgada'}</div>
       </div>
-      ${hasFt ? '' : `<span style="font-size:9px;background:var(--surface2);color:var(--muted);border-radius:4px;padding:1px 5px;flex-shrink:0">sem ficha</span>`}
+      <div class="ft-list-cost">${hasFt ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
     </div>`;
   }).join('');
 }
 
 function _selecionarFicha(tipo, id) {
   _fichaSel = { tipo, id };
-  _renderListaProdutosPizza();
-  _renderListaOpcoes();
+  document.getElementById('fichaListView').style.display = 'none';
+  document.getElementById('fichaDetailView').style.display = '';
   _renderFichaDetail();
 }
 
 function _novaFicha(tipo) {
-  _fichaSel = { tipo, id: null };
-  _renderListaProdutosPizza();
-  _renderListaOpcoes();
-  _renderFichaDetail();
+  _selecionarFicha(tipo, null);
+}
+
+function _voltarListaFichas() {
+  renderCadFichas();
 }
 
 function _irParaFicha(tipo, id) {
@@ -1480,13 +1626,8 @@ function _irParaFicha(tipo, id) {
 }
 
 function _renderFichaDetail() {
-  const el = document.getElementById('fichaDetailPanel');
-  if (!el) return;
-
-  if (!_fichaSel) {
-    el.innerHTML = `<div class="empty"><div class="empty-icon">${lc('clipboard',22,'currentColor')}</div><div style="font-weight:700;margin-bottom:4px">Selecione um Produto ou Opção</div><div>Ou cadastre um novo na lista à esquerda</div></div>`;
-    return;
-  }
+  const el = document.getElementById('fichaDetailView');
+  if (!el || !_fichaSel) return;
 
   const isProduto = _fichaSel.tipo === 'produto';
   const registro  = _fichaSel.id
@@ -1494,33 +1635,34 @@ function _renderFichaDetail() {
     : null;
 
   el.innerHTML = `
-    <div class="card" style="padding:16px">
-      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
-        ${isProduto ? 'Produto (base — massa, molho, embalagem)' : 'Opção (cobertura — a "1/2 porção" do sabor)'}
-      </div>
-      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-        <input class="inp" id="xNome" placeholder="Nome" value="${registro?.nome ? registro.nome.replace(/"/g,'&quot;') : ''}" style="flex:1;min-width:180px;font-size:.82rem;padding:8px 10px">
-        ${isProduto ? `
-          <select class="inp" id="xTamanho" style="max-width:130px;font-size:.82rem;padding:8px 10px">
-            <option value="pequena"${registro?.tamanho==='pequena'?' selected':''}>Pequena</option>
-            <option value="grande"${registro?.tamanho==='grande'?' selected':''}>Grande</option>
-          </select>` : ''}
-        <select class="inp" id="xCategoria" style="max-width:130px;font-size:.82rem;padding:8px 10px">
-          <option value="salgada"${registro?.categoria!=='doce'?' selected':''}>Salgada</option>
-          <option value="doce"${registro?.categoria==='doce'?' selected':''}>Doce</option>
-        </select>
-      </div>
-      <div id="xftTable"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
-        <button class="btn btn-outline btn-xs" onclick="_ftAddRow()">+ Adicionar insumo</button>
-        <div id="xftCustoDisplay" style="font-size:.82rem;font-weight:700;padding:5px 12px;border-radius:var(--r8);border:1.5px solid var(--border)"></div>
-      </div>
-      <div id="xftCustoSub" style="font-size:.68rem;color:var(--muted);margin-top:4px;text-align:right"></div>
-      <div style="display:flex;justify-content:space-between;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
-        ${registro ? `<button class="btn btn-red btn-sm" onclick="_excluirFicha()">Excluir</button>` : '<span></span>'}
+    <button class="ft-editor-back" onclick="_voltarListaFichas()">${lc('arrow-left',16,'currentColor')} Voltar para a lista</button>
+    <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">
+      ${isProduto ? 'Produto (base — massa, molho, embalagem)' : 'Opção (cobertura — a "1/2 porção" do sabor)'}
+    </div>
+    <div class="ft-editor-head">
+      <input class="inp" id="xNome" placeholder="Nome" value="${registro?.nome ? registro.nome.replace(/"/g,'&quot;') : ''}" style="flex:2;min-width:260px">
+      ${isProduto ? `
+        <select class="inp" id="xTamanho" style="flex:1;min-width:140px">
+          <option value="pequena"${registro?.tamanho==='pequena'?' selected':''}>Pequena</option>
+          <option value="grande"${registro?.tamanho==='grande'?' selected':''}>Grande</option>
+        </select>` : ''}
+      <select class="inp" id="xCategoria" style="flex:1;min-width:140px">
+        <option value="salgada"${registro?.categoria!=='doce'?' selected':''}>Salgada</option>
+        <option value="doce"${registro?.categoria==='doce'?' selected':''}>Doce</option>
+      </select>
+    </div>
+    <div class="ft-summary-row">
+      <div><span class="ft-summary-val" id="xftCustoDisplay"></span><div class="ft-summary-label" id="xftCustoSub"></div></div>
+    </div>
+    <div id="xftTable"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+      <button class="btn btn-outline btn-sm" onclick="_ftAddRow()">+ Adicionar insumo</button>
+      <div style="display:flex;gap:10px">
+        ${registro ? `<button class="btn btn-red btn-sm" onclick="_excluirFicha()">Excluir</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="_salvarFicha()">Salvar</button>
       </div>
-    </div>`;
+    </div>
+  `;
 
   _ftInit(registro?.fichaTecnica || null, 'flat', 'x');
 }
@@ -1543,7 +1685,6 @@ function _salvarFicha() {
       _fichaSel.id = novo.id;
     }
     saveProdPizza();
-    _renderListaProdutosPizza();
   } else {
     if (_fichaSel.id) {
       const idx = opcoes.findIndex(o => o.id === _fichaSel.id);
@@ -1554,10 +1695,10 @@ function _salvarFicha() {
       _fichaSel.id = nova.id;
     }
     saveOpcoes();
-    _renderListaOpcoes();
     renderCadSabores(); // atualiza badges "ficha ok" nos sabores vinculados
   }
   toast(`${lc("check-circle",14,"var(--green)")} Ficha técnica salva!`);
+  _voltarListaFichas();
 }
 
 function _excluirFicha() {
@@ -1574,16 +1715,13 @@ function _excluirFicha() {
       if (isProduto) {
         produtosPizza = produtosPizza.filter(p => p.id !== _fichaSel.id);
         saveProdPizza();
-        _renderListaProdutosPizza();
       } else {
         opcoes = opcoes.filter(o => o.id !== _fichaSel.id);
         saveOpcoes();
-        _renderListaOpcoes();
         renderCadSabores();
       }
-      _fichaSel = null;
-      _renderFichaDetail();
       toast(`${lc("trash-2",14,"currentColor")} "${nome}" excluído.`);
+      _voltarListaFichas();
     }
   });
 }

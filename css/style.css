@@ -1099,17 +1099,96 @@ svg { display: block; }
 .cfg-row-sub { font-size: var(--text-xs); color: var(--muted); font-weight: 400; margin-top: 1px; }
 .cfg-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
-/* === Fichas Técnicas (Produto/Opção) — mestre-detalhe === */
-/* Tela de cadastro, uso predominantemente desktop: layout em 2 colunas
-   com a lista fixa à esquerda; colapsa em telas menores (tablet/mobile). */
-.cad-fichas-grid {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 16px;
-  align-items: start;
+/* === Fichas Técnicas (Produto/Opção) — lista full-width + editor === */
+/* Sem painel fixo ao lado (ruim em telas largas) — lista ocupa a largura
+   toda; clicar num item troca para o editor em tela cheia. */
+.ft-section { margin-bottom: 32px; }
+.ft-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; gap: 12px; flex-wrap: wrap;
 }
-@media (max-width: 1024px) {
-  .cad-fichas-grid { grid-template-columns: 1fr; }
+.ft-section-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+.ft-section-count { font-size: .8rem; color: var(--muted); font-weight: 500; margin-left: 8px; }
+
+.ft-list-row {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r10, var(--r8));
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: border-color .15s, background .15s;
+}
+.ft-list-row:hover { border-color: var(--purple); background: var(--purple-xlight); }
+.ft-list-main { flex: 1; min-width: 0; }
+.ft-list-name { font-size: 1rem; font-weight: 700; color: var(--text); }
+.ft-list-sub { font-size: .84rem; color: var(--muted); margin-top: 3px; }
+.ft-list-cost { font-size: 1.05rem; font-weight: 700; color: var(--purple); white-space: nowrap; }
+.ft-list-empty {
+  font-size: .78rem; font-weight: 600; color: var(--muted);
+  background: var(--surface2); padding: 4px 11px; border-radius: var(--r6);
+}
+.ft-empty-list { font-size: .86rem; color: var(--muted); padding: 14px 4px; }
+
+/* Editor — tela cheia */
+.ft-editor-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .86rem; font-weight: 600; color: var(--muted);
+  background: none; border: none; cursor: pointer; padding: 6px 0; margin-bottom: 16px;
+}
+.ft-editor-back:hover { color: var(--purple); }
+.ft-editor-head { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end; }
+.ft-editor-head .inp { font-size: 1.05rem; padding: 12px 14px; }
+.ft-summary-row { display: flex; align-items: baseline; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+.ft-summary-val { font-size: 1.4rem; font-weight: 700; color: var(--purple); }
+.ft-summary-label { font-size: .84rem; color: var(--muted); font-weight: 500; }
+
+.ft-table-head, .ft-table-row {
+  display: grid; grid-template-columns: 1fr 160px 160px 36px;
+  gap: 14px; align-items: center; padding: 12px 14px;
+}
+.ft-table-head {
+  background: var(--surface2); border-radius: var(--r8) var(--r8) 0 0;
+  font-size: .74rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px;
+}
+.ft-table-row { border: 1px solid var(--border); border-top: none; background: var(--surface); font-size: .92rem; }
+.ft-table-row:last-of-type { border-radius: 0 0 var(--r8) var(--r8); }
+.ft-table-total {
+  display: grid; grid-template-columns: 1fr 160px 160px 36px; gap: 14px;
+  padding: 12px 14px; background: var(--surface2); border-radius: 0 0 var(--r8) var(--r8);
+  font-size: .92rem; font-weight: 700;
+}
+.ft-qtd-cell { display: flex; align-items: center; gap: 6px; }
+.ft-qtd-cell input { text-align: right; }
+.ft-qtd-unit { font-size: .78rem; color: var(--muted); min-width: 22px; }
+.ft-custo-cell { text-align: right; }
+.ft-custo-pct { font-size: .72rem; color: var(--muted); display: block; margin-top: 1px; }
+
+.ft-ac-wrap { position: relative; }
+.ft-ac-list {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+  background: var(--surface); border: 1.5px solid var(--purple);
+  border-radius: var(--r8); max-height: 260px; overflow-y: auto; z-index: 30;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+}
+.ft-ac-item {
+  padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between;
+  gap: 10px; font-size: .88rem; border-bottom: 1px solid var(--border);
+}
+.ft-ac-item:last-child { border-bottom: none; }
+.ft-ac-item:hover { background: var(--purple-xlight); }
+.ft-ac-cat { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+
+@media (max-width: 768px) {
+  .ft-table-head { display: none; }
+  .ft-table-row {
+    grid-template-columns: 1fr; gap: 8px; padding: 14px;
+    border-radius: var(--r8); border: 1.5px solid var(--border); margin-bottom: 8px;
+  }
+  .ft-table-total { grid-template-columns: 1fr; }
+  .ft-list-row { padding: 13px 14px; }
+  .ft-list-name { font-size: .92rem; }
 }
 
 /* === Config Category Group (collapsible) === */

@@ -403,25 +403,27 @@
             <button id="prod-tab-outros" onclick="setProdTab('outros')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Outros</button>
           </div>
           <div id="cadSaboresGrid"></div>
-          <div id="cadFichasGrid" class="cad-fichas-grid" style="display:none">
-            <div style="display:flex;flex-direction:column;gap:20px">
-              <div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                  <span style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Produtos (base)</span>
-                  <button class="btn btn-outline btn-xs" onclick="_novaFicha('produto')">+ Novo</button>
+          <div id="cadFichasGrid" style="display:none">
+            <div id="fichaListView">
+              <div class="ft-section">
+                <div class="ft-section-head">
+                  <div><span class="ft-section-title">Produtos (base)</span><span class="ft-section-count" id="cntProdutosPizza"></span></div>
+                  <button class="btn btn-outline btn-sm" onclick="_novaFicha('produto')">+ Novo Produto</button>
                 </div>
-                <div id="listaProdutosPizza" style="display:flex;flex-direction:column;gap:4px"></div>
+                <div id="listaProdutosPizza"></div>
               </div>
-              <div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                  <span style="font-size:.7rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Opções (coberturas)</span>
-                  <button class="btn btn-outline btn-xs" onclick="_novaFicha('opcao')">+ Nova</button>
+              <div class="ft-section">
+                <div class="ft-section-head">
+                  <div><span class="ft-section-title">Opções (coberturas)</span><span class="ft-section-count" id="cntOpcoes"></span></div>
+                  <div style="display:flex;gap:10px;align-items:center">
+                    <input class="inp" id="srchOpcoes" placeholder="Buscar opção..." oninput="_renderListaOpcoes()" style="width:220px">
+                    <button class="btn btn-outline btn-sm" onclick="_novaFicha('opcao')">+ Nova Opção</button>
+                  </div>
                 </div>
-                <input class="inp" id="srchOpcoes" placeholder="Buscar opção..." oninput="_renderListaOpcoes()" style="margin-bottom:6px;font-size:.76rem;padding:6px 10px;width:100%">
-                <div id="listaOpcoes" style="display:flex;flex-direction:column;gap:4px;max-height:420px;overflow-y:auto"></div>
+                <div id="listaOpcoes"></div>
               </div>
             </div>
-            <div id="fichaDetailPanel"></div>
+            <div id="fichaDetailView" style="display:none"></div>
           </div>
           <div id="cadProdutosGrid" style="display:none"></div>
         </div>
@@ -1371,9 +1373,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/db.js?v=98"></script>
+<script src="js/db.js?v=99"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=98"></script>
+<script src="js/init.js?v=99"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">
