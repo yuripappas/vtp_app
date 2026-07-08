@@ -264,11 +264,19 @@ function _handleNavOmnichannel() {
 }
 
 function _handleNavConfiguracoes() {
+  // IMPORTANTE: nunca atribuir "_cfgSection='x'" antes de goModule() aqui.
+  // setCfgSection() decide o que limpar comparando a seção NOVA com o valor
+  // atual de _cfgSection (a seção anterior) — se essa variável já tiver sido
+  // sobrescrita antes da chamada, a comparação vira sempre "igual" e o
+  // conteúdo da seção antiga fica grudado por baixo da nova (bug reportado).
+  // goModule('configuracoes') primeiro re-renderiza a seção ainda atual
+  // (sem custo visual, roda no mesmo tick) e só depois setCfgSection(id)
+  // faz a transição de verdade, com a seção anterior intacta pra comparar.
   if (window.innerWidth <= 480) {
     _openMobileSubmenu(
       _CFG_SUBMENU_ITEMS.map(item => ({
         ...item,
-        action: `_cfgSection='${item.id}'; goModule('configuracoes');`
+        action: `goModule('configuracoes'); setCfgSection('${item.id}');`
       })),
       'Configurações'
     );
@@ -276,7 +284,7 @@ function _handleNavConfiguracoes() {
     _openSubPanel(
       _CFG_SUBMENU_ITEMS.map(item => ({
         ...item,
-        action: `_cfgSection='${item.id}'; goModule('configuracoes');`
+        action: `goModule('configuracoes'); setCfgSection('${item.id}');`
       })),
       'Configurações',
       'configuracoes'
@@ -392,8 +400,10 @@ function goModule(mod) {
   else if (mod === 'usuarios') {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-configuracoes')?.classList.add('active');
-    _cfgSection = 'usuarios';
-    renderConfiguracoes();
+    // Não atribuir _cfgSection antes de setCfgSection — veja o comentário
+    // em _handleNavConfiguracoes() sobre por que isso corrompe a transição.
+    _initCfgNav();
+    setCfgSection('usuarios');
   }
   else if (mod === 'checklist')  renderChecklist();
   else if (mod === 'manutencao') renderManutencao();
