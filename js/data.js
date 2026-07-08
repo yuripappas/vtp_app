@@ -357,6 +357,57 @@ const saveP   = () => db._set('vtp_produtos', produtos);
 const saveSab = () => db._set('vtp_sabores',  sabores);
 
 // ══════════════════════════════════════════════════════════════
+// PRODUTO (base da pizza) & OPÇÃO (cobertura/sabor) — ficha técnica
+// Produto = massa+molho+embalagem, indivisível, 1x por pizza sempre.
+// Opção   = a "1/2 porção" de um sabor — mesma receita serve de
+//           cobertura inteira da pequena (1x) ou metade da grande (1x/2x).
+// ══════════════════════════════════════════════════════════════
+let produtosPizza = db._get('vtp_produtos_pizza', null);
+const saveProdPizza = () => db._set('vtp_produtos_pizza', produtosPizza);
+if (!produtosPizza) {
+  produtosPizza = PIZZA_TIPOS.map((t, i) => ({
+    id:           i + 1,
+    nome:         t.label,
+    tamanho:      t.grande ? 'grande' : 'pequena',
+    categoria:    t.id.endsWith('_doc') ? 'doce' : 'salgada',
+    fichaTecnica: { ingredientes: [] },
+    active:       true,
+  }));
+  saveProdPizza();
+}
+let nextProdPizzaId = Math.max(...(produtosPizza.length ? produtosPizza.map(p => p.id) : [0]), 0) + 1;
+
+let opcoes = db._get('vtp_opcoes', null);
+const saveOpcoes = () => db._set('vtp_opcoes', opcoes);
+if (!opcoes) {
+  // Migração: uma Opção por sabor único, casando "Calabresa" (pequena)
+  // com "1/2 Calabresa" (grande) pelo nome — é a mesma cobertura física.
+  const porChave = {};
+  sabores.forEach(s => {
+    const categoria = s.tipo.endsWith('_doc') ? 'doce' : 'salgada';
+    const nome      = s.name.replace(/^1\/2\s+/i, '').trim();
+    const chave     = categoria + '|' + nome.toLowerCase();
+    if (!porChave[chave]) porChave[chave] = { nome, categoria };
+  });
+  opcoes = Object.values(porChave).map((o, i) => ({
+    id:           i + 1,
+    nome:         o.nome,
+    categoria:    o.categoria,
+    fichaTecnica: { ingredientes: [] },
+    active:       true,
+  }));
+  sabores.forEach(s => {
+    const categoria = s.tipo.endsWith('_doc') ? 'doce' : 'salgada';
+    const nome      = s.name.replace(/^1\/2\s+/i, '').trim();
+    const opc = opcoes.find(o => o.categoria === categoria && o.nome.toLowerCase() === nome.toLowerCase());
+    s.opcaoId = opc ? opc.id : null;
+  });
+  saveOpcoes();
+  saveSab();
+}
+let nextOpcaoId = Math.max(...(opcoes.length ? opcoes.map(o => o.id) : [0]), 0) + 1;
+
+// ══════════════════════════════════════════════════════════════
 // PERMISSÕES
 // ══════════════════════════════════════════════════════════════
 let PERMS = {

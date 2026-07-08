@@ -1099,6 +1099,19 @@ svg { display: block; }
 .cfg-row-sub { font-size: var(--text-xs); color: var(--muted); font-weight: 400; margin-top: 1px; }
 .cfg-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+/* === Fichas Técnicas (Produto/Opção) — mestre-detalhe === */
+/* Tela de cadastro, uso predominantemente desktop: layout em 2 colunas
+   com a lista fixa à esquerda; colapsa em telas menores (tablet/mobile). */
+.cad-fichas-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .cad-fichas-grid { grid-template-columns: 1fr; }
+}
+
 /* === Config Category Group (collapsible) === */
 .cfg-cat-group { margin-bottom: 16px; }
 .cfg-cat-toggle {

@@ -536,15 +536,26 @@ let editPreparoId = null;
 // FICHA TÉCNICA DE CUSTO — estado e funções
 // ══════════════════════════════════════════════════════════════
 
-// Rows em memória enquanto o modal está aberto
+// Rows em memória enquanto o editor está aberto
 // Cada row: { item_id: number, peso_g: number }
-let _ftRows = [];
+// Componente reaproveitado em 2 contextos, diferenciados por _ftMode/_ftPrefix:
+//  - 'preparo' (prefixo '', Pré-produção): só insumos, custo dividido por rendimento_kg
+//  - 'flat'    (prefixo 'x', Produto/Opção): insumos + preparados, custo = soma direta
+// _ftPrefix evita colisão de id no DOM quando os dois editores existem na página
+// ao mesmo tempo (modal de Preparo fica sempre no DOM, só escondido).
+let _ftRows   = [];
+let _ftMode   = 'preparo';
+let _ftPrefix = '';
 
-function _ftInit(fichaTecnica) {
+function _ftId(base) { return _ftPrefix + base; }
+
+function _ftInit(fichaTecnica, mode = 'preparo', prefix = '') {
+  _ftMode   = mode;
+  _ftPrefix = prefix;
   _ftRows = fichaTecnica?.ingredientes
     ? fichaTecnica.ingredientes.map(r => ({ ...r }))
     : [];
-  const rend = document.getElementById('ftRendimento');
+  const rend = document.getElementById(_ftId('ftRendimento'));
   if (rend) rend.value = fichaTecnica?.rendimento_kg || '';
   _ftRenderTable();
   _ftRecalc();
@@ -554,7 +565,7 @@ function _ftAddRow() {
   _ftRows.push({ item_id: null, peso_g: 0 });
   _ftRenderTable();
   // Foca no select do novo row
-  const selects = document.querySelectorAll('#ftTable select[id^="ftItem-"]');
+  const selects = document.querySelectorAll(`#${_ftId('ftTable')} select[id^="${_ftId('ftItem')}-"]`);
   const last = selects[selects.length - 1];
   if (last) setTimeout(() => last.focus(), 40);
 }
@@ -566,8 +577,8 @@ function _ftRemoveRow(idx) {
 }
 
 function _ftUpdateRow(idx) {
-  const sel  = document.getElementById(`ftItem-${idx}`);
-  const peso = document.getElementById(`ftPeso-${idx}`);
+  const sel  = document.getElementById(`${_ftId('ftItem')}-${idx}`);
+  const peso = document.getElementById(`${_ftId('ftPeso')}-${idx}`);
   if (!sel || !peso) return;
   _ftRows[idx] = {
     item_id: parseInt(sel.value) || null,
@@ -578,13 +589,13 @@ function _ftUpdateRow(idx) {
   const ins     = items.find(i => i.id === _ftRows[idx].item_id);
   const preco   = ins ? ins.cost : 0;
   const custo   = ins ? (_ftRows[idx].peso_g / 1000) * preco : 0;
-  const custoEl = document.getElementById(`ftCustoLn-${idx}`);
-  const precoEl = document.getElementById(`ftPrecoKg-${idx}`);
+  const custoEl = document.getElementById(`${_ftId('ftCustoLn')}-${idx}`);
+  const precoEl = document.getElementById(`${_ftId('ftPrecoKg')}-${idx}`);
   if (custoEl) custoEl.textContent = 'R$ ' + fmt(custo);
   if (precoEl) precoEl.textContent = 'R$ ' + fmt(preco);
   // Atualiza totais
-  const totCusto = document.getElementById('ftTotalCusto');
-  const totPeso  = document.getElementById('ftTotalPeso');
+  const totCusto = document.getElementById(_ftId('ftTotalCusto'));
+  const totPeso  = document.getElementById(_ftId('ftTotalPeso'));
   if (totCusto) totCusto.textContent = 'R$ ' + fmt(_ftCalcTotalCusto());
   if (totPeso)  totPeso.textContent  = _ftCalcTotalPeso() + ' g';
 }
@@ -602,14 +613,33 @@ function _ftCalcTotalPeso() {
 
 function _ftRecalc() {
   const totalCusto = _ftCalcTotalCusto();
-  const rendimento = parseFloat(document.getElementById('ftRendimento')?.value) || 0;
-  const custoKg    = (rendimento > 0) ? totalCusto / rendimento : 0;
-
-  const display = document.getElementById('ftCustoDisplay');
-  const sub     = document.getElementById('ftCustoSub');
-  const hidden  = document.getElementById('fpCost');
+  const display = document.getElementById(_ftId('ftCustoDisplay'));
+  const sub     = document.getElementById(_ftId('ftCustoSub'));
+  const hidden  = document.getElementById(_ftId('fpCost'));
 
   if (!display) return;
+
+  if (_ftMode === 'flat') {
+    // Produto/Opção: cada cadastro já É uma unidade (não um lote) — custo é soma direta
+    if (_ftRows.length === 0) {
+      display.textContent = 'R$ 0,00';
+      display.style.color = 'var(--muted)';
+      display.style.background = 'var(--surface2)';
+      display.style.borderColor = 'var(--border)';
+      if (sub) sub.textContent = 'Adicione insumos ou preparados';
+    } else {
+      display.textContent = `R$ ${fmt(totalCusto)}`;
+      display.style.color = 'var(--brand-purple,#6B21D4)';
+      display.style.background = 'var(--purple-xlight,#EDE9FE)';
+      display.style.borderColor = 'var(--brand-purple,#6B21D4)';
+      if (sub) sub.textContent = `${_ftRows.length} item(ns) somado(s)`;
+    }
+    if (hidden) hidden.value = totalCusto.toFixed(4);
+    return;
+  }
+
+  const rendimento = parseFloat(document.getElementById(_ftId('ftRendimento'))?.value) || 0;
+  const custoKg    = (rendimento > 0) ? totalCusto / rendimento : 0;
 
   if (_ftRows.length === 0) {
     display.textContent = 'R$ 0,00/kg';
@@ -640,10 +670,12 @@ function _ftRecalc() {
 }
 
 function _ftRenderTable() {
-  const el = document.getElementById('ftTable');
+  const el = document.getElementById(_ftId('ftTable'));
   if (!el) return;
 
-  const insumos = items.filter(i => !i.isProd);
+  // Modo 'flat' (Produto/Opção) precisa poder puxar tanto insumo quanto
+  // preparado interno (ex: massa e molho são preparados, não insumo cru)
+  const pool = _ftMode === 'flat' ? items.filter(i => i.active !== false) : items.filter(i => !i.isProd);
 
   if (_ftRows.length === 0) {
     el.innerHTML = `<div style="text-align:center;padding:18px 12px;font-size:.76rem;color:var(--muted)">
@@ -652,15 +684,8 @@ function _ftRenderTable() {
     return;
   }
 
-  // Agrupa insumos por categoria para optgroup
-  const cats = [...new Set(insumos.map(i => i.cat || 'Outros'))].sort();
-  const optGroupsHtml = cats.map(cat => `
-    <optgroup label="${cat}">
-      ${insumos.filter(i => (i.cat || 'Outros') === cat).map(ins =>
-        `<option value="${ins.id}">${ins.name}</option>`
-      ).join('')}
-    </optgroup>
-  `).join('');
+  // Agrupa por categoria para optgroup (preparados já caem em "PREPARADOS")
+  const cats = [...new Set(pool.map(i => i.cat || 'Outros'))].sort();
 
   el.innerHTML = `
     <!-- Header -->
@@ -674,14 +699,13 @@ function _ftRenderTable() {
 
     <!-- Rows -->
     ${_ftRows.map((row, i) => {
-      const ins   = insumos.find(x => x.id === row.item_id);
+      const ins   = pool.find(x => x.id === row.item_id);
       const preco = ins ? ins.cost : 0;
       const custo = ins ? (row.peso_g / 1000) * preco : 0;
 
-      // Rebuild select com selected
       const opts = cats.map(cat => `
         <optgroup label="${cat}">
-          ${insumos.filter(x => (x.cat || 'Outros') === cat).map(x =>
+          ${pool.filter(x => (x.cat || 'Outros') === cat).map(x =>
             `<option value="${x.id}"${x.id === row.item_id ? ' selected' : ''}>${x.name}</option>`
           ).join('')}
         </optgroup>
@@ -689,19 +713,19 @@ function _ftRenderTable() {
 
       return `
         <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 28px;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);align-items:center;background:var(--surface)">
-          <select id="ftItem-${i}" class="inp" style="font-size:.74rem;padding:5px 8px"
+          <select id="${_ftId('ftItem')}-${i}" class="inp" style="font-size:.74rem;padding:5px 8px"
             onchange="_ftUpdateRow(${i})">
             <option value="">Selecione...</option>
             ${opts}
           </select>
-          <input type="number" id="ftPeso-${i}" class="inp" value="${row.peso_g || ''}"
+          <input type="number" id="${_ftId('ftPeso')}-${i}" class="inp" value="${row.peso_g || ''}"
             min="0" step="1" placeholder="0"
             style="font-size:.74rem;padding:5px 8px;text-align:right"
             oninput="_ftUpdateRow(${i})">
-          <div id="ftPrecoKg-${i}" style="font-size:.74rem;text-align:right;color:var(--muted);padding:0 4px">
+          <div id="${_ftId('ftPrecoKg')}-${i}" style="font-size:.74rem;text-align:right;color:var(--muted);padding:0 4px">
             ${preco > 0 ? 'R$ ' + fmt(preco) : '—'}
           </div>
-          <div id="ftCustoLn-${i}" style="font-size:.74rem;font-weight:700;text-align:right;padding:0 4px;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">
+          <div id="${_ftId('ftCustoLn')}-${i}" style="font-size:.74rem;font-weight:700;text-align:right;padding:0 4px;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">
             ${custo > 0 ? 'R$ ' + fmt(custo) : '—'}
           </div>
           <button onclick="_ftRemoveRow(${i})"
@@ -714,9 +738,9 @@ function _ftRenderTable() {
     <!-- Totals -->
     <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 28px;gap:6px;padding:7px 10px;background:var(--surface2);align-items:center">
       <span style="font-size:.72rem;font-weight:700;color:var(--muted)">TOTAL</span>
-      <div id="ftTotalPeso" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--muted)">${_ftCalcTotalPeso()} g</div>
+      <div id="${_ftId('ftTotalPeso')}" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--muted)">${_ftCalcTotalPeso()} g</div>
       <div></div>
-      <div id="ftTotalCusto" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--purple)">R$ ${fmt(_ftCalcTotalCusto())}</div>
+      <div id="${_ftId('ftTotalCusto')}" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--purple)">R$ ${fmt(_ftCalcTotalCusto())}</div>
       <div></div>
     </div>
   `;
@@ -1315,19 +1339,27 @@ function deleteProd() {
 // ══════════════════════════════════════════════════════════════
 
 function setProdTab(tab) {
-  ['sabores','outros'].forEach(t => {
+  ['sabores','fichas','outros'].forEach(t => {
     const btn = document.getElementById('prod-tab-' + t);
     if (!btn) return;
     const isActive = t === tab;
     btn.style.color             = isActive ? 'var(--purple)' : 'var(--muted)';
     btn.style.borderBottomColor = isActive ? 'var(--purple)' : 'transparent';
   });
-  const sabGrid  = document.getElementById('cadSaboresGrid');
-  const prodGrid = document.getElementById('cadProdutosGrid');
-  if (sabGrid)  sabGrid.style.display  = tab === 'sabores' ? '' : 'none';
-  if (prodGrid) prodGrid.style.display = tab === 'outros'  ? '' : 'none';
-  if (tab === 'sabores') renderCadSabores();
-  else renderCadProdutos();
+  const sabGrid    = document.getElementById('cadSaboresGrid');
+  const fichasGrid = document.getElementById('cadFichasGrid');
+  const prodGrid   = document.getElementById('cadProdutosGrid');
+  if (sabGrid)    sabGrid.style.display    = tab === 'sabores' ? '' : 'none';
+  if (fichasGrid) fichasGrid.style.display = tab === 'fichas'  ? '' : 'none';
+  if (prodGrid)   prodGrid.style.display   = tab === 'outros'  ? '' : 'none';
+  // Botões do cabeçalho (Novo Sabor / Outro Produto) só fazem sentido fora de Fichas
+  const btnSabor = document.getElementById('btnNovoSabor');
+  const btnOutro = document.getElementById('btnOutroProduto');
+  if (btnSabor) btnSabor.style.display = tab === 'sabores' ? '' : 'none';
+  if (btnOutro) btnOutro.style.display = tab === 'outros'  ? '' : 'none';
+  if      (tab === 'sabores') renderCadSabores();
+  else if (tab === 'fichas')  renderCadFichas();
+  else                        renderCadProdutos();
 }
 
 function renderCadSabores() {
@@ -1350,19 +1382,210 @@ function renderCadSabores() {
         <button class="btn btn-outline btn-xs" onclick="openSaborModal('${tipo.id}')">+ Sabor</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px">
-        ${cat.items.sort((a,b)=>a.acr-b.acr||a.name.localeCompare(b.name)).map(s => `
+        ${cat.items.sort((a,b)=>a.acr-b.acr||a.name.localeCompare(b.name)).map(s => {
+          const opc     = opcoes.find(o => o.id === s.opcaoId);
+          const hasFt   = opc?.fichaTecnica?.ingredientes?.length > 0;
+          const ftBadge = opc
+            ? `<button onclick="event.stopPropagation();_irParaFicha('opcao',${opc.id})" title="${hasFt ? 'Ver ficha técnica' : 'Cadastrar ficha técnica'}"
+                style="font-size:9px;background:${hasFt ? 'var(--purple-xlight)' : 'var(--surface2)'};color:${hasFt ? 'var(--purple)' : 'var(--muted)'};border:none;border-radius:4px;padding:2px 7px;cursor:pointer;margin-left:8px;font-weight:600">${hasFt ? 'ficha ok' : 'sem ficha'}</button>`
+            : '';
+          return `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface);border:1.5px solid ${s.active===false?'var(--border)':'var(--border)'};border-radius:var(--r6);opacity:${s.active===false?0.5:1}">
             <div style="flex:1">
               <span style="font-size:var(--text-sm);font-weight:600">${s.name}</span>
               <span style="font-size:var(--text-xs);color:var(--muted);margin-left:8px">${s.acr > 0 ? '+R$ ' + fmt(s.acr) : 'Incluso'}</span>
               <span style="font-size:var(--text-xs);color:var(--purple);font-weight:700;margin-left:8px">= R$ ${fmt(tipo.basePrice + s.acr)}</span>
+              ${ftBadge}
             </div>
             <button class="btn btn-outline btn-xs" onclick="openSaborModal('${tipo.id}', ${s.id})">${lc("edit-2",13,"currentColor")}️</button>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
         ${cat.items.length === 0 ? `<div style="font-size:var(--text-xs);color:var(--muted);padding:8px">Nenhum sabor cadastrado</div>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// FICHAS TÉCNICAS — Produto (base) & Opção (cobertura)
+// Layout mestre-detalhe: lista à esquerda, editor de ficha à direita.
+// ══════════════════════════════════════════════════════════════
+
+let _fichaSel = null; // { tipo:'produto'|'opcao', id: number|null }
+
+function renderCadFichas() {
+  _renderListaProdutosPizza();
+  _renderListaOpcoes();
+  _renderFichaDetail();
+}
+
+function _renderListaProdutosPizza() {
+  const el = document.getElementById('listaProdutosPizza');
+  if (!el) return;
+  el.innerHTML = produtosPizza.map(p => {
+    const hasFt = p.fichaTecnica?.ingredientes?.length > 0;
+    const sel   = _fichaSel?.tipo === 'produto' && _fichaSel.id === p.id;
+    return `<div onclick="_selecionarFicha('produto',${p.id})" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r8);cursor:pointer;background:${sel?'var(--purple-xlight)':'var(--surface)'};border:1.5px solid ${sel?'var(--purple)':'var(--border)'}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.76rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.nome}</div>
+        <div style="font-size:.64rem;color:var(--muted)">${p.tamanho==='grande'?'Grande':'Pequena'} · ${p.categoria==='doce'?'Doce':'Salgada'}</div>
+      </div>
+      ${hasFt ? '' : `<span style="font-size:9px;background:var(--surface2);color:var(--muted);border-radius:4px;padding:1px 5px;flex-shrink:0">sem ficha</span>`}
+    </div>`;
+  }).join('');
+}
+
+function _renderListaOpcoes() {
+  const el = document.getElementById('listaOpcoes');
+  if (!el) return;
+  const q = document.getElementById('srchOpcoes')?.value?.toLowerCase() || '';
+  const lista = opcoes
+    .filter(o => !q || o.nome.toLowerCase().includes(q))
+    .sort((a,b) => a.nome.localeCompare(b.nome));
+  if (!lista.length) {
+    el.innerHTML = `<div style="font-size:.72rem;color:var(--muted);padding:8px">Nenhuma opção encontrada</div>`;
+    return;
+  }
+  el.innerHTML = lista.map(o => {
+    const hasFt = o.fichaTecnica?.ingredientes?.length > 0;
+    const sel   = _fichaSel?.tipo === 'opcao' && _fichaSel.id === o.id;
+    return `<div onclick="_selecionarFicha('opcao',${o.id})" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r8);cursor:pointer;background:${sel?'var(--purple-xlight)':'var(--surface)'};border:1.5px solid ${sel?'var(--purple)':'var(--border)'}">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.76rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.nome}</div>
+        <div style="font-size:.64rem;color:var(--muted)">${o.categoria==='doce'?'Doce':'Salgada'}</div>
+      </div>
+      ${hasFt ? '' : `<span style="font-size:9px;background:var(--surface2);color:var(--muted);border-radius:4px;padding:1px 5px;flex-shrink:0">sem ficha</span>`}
+    </div>`;
+  }).join('');
+}
+
+function _selecionarFicha(tipo, id) {
+  _fichaSel = { tipo, id };
+  _renderListaProdutosPizza();
+  _renderListaOpcoes();
+  _renderFichaDetail();
+}
+
+function _novaFicha(tipo) {
+  _fichaSel = { tipo, id: null };
+  _renderListaProdutosPizza();
+  _renderListaOpcoes();
+  _renderFichaDetail();
+}
+
+function _irParaFicha(tipo, id) {
+  setCadTab('produtos');
+  setProdTab('fichas');
+  _selecionarFicha(tipo, id);
+}
+
+function _renderFichaDetail() {
+  const el = document.getElementById('fichaDetailPanel');
+  if (!el) return;
+
+  if (!_fichaSel) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">${lc('clipboard',22,'currentColor')}</div><div style="font-weight:700;margin-bottom:4px">Selecione um Produto ou Opção</div><div>Ou cadastre um novo na lista à esquerda</div></div>`;
+    return;
+  }
+
+  const isProduto = _fichaSel.tipo === 'produto';
+  const registro  = _fichaSel.id
+    ? (isProduto ? produtosPizza.find(p => p.id === _fichaSel.id) : opcoes.find(o => o.id === _fichaSel.id))
+    : null;
+
+  el.innerHTML = `
+    <div class="card" style="padding:16px">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">
+        ${isProduto ? 'Produto (base — massa, molho, embalagem)' : 'Opção (cobertura — a "1/2 porção" do sabor)'}
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <input class="inp" id="xNome" placeholder="Nome" value="${registro?.nome ? registro.nome.replace(/"/g,'&quot;') : ''}" style="flex:1;min-width:180px;font-size:.82rem;padding:8px 10px">
+        ${isProduto ? `
+          <select class="inp" id="xTamanho" style="max-width:130px;font-size:.82rem;padding:8px 10px">
+            <option value="pequena"${registro?.tamanho==='pequena'?' selected':''}>Pequena</option>
+            <option value="grande"${registro?.tamanho==='grande'?' selected':''}>Grande</option>
+          </select>` : ''}
+        <select class="inp" id="xCategoria" style="max-width:130px;font-size:.82rem;padding:8px 10px">
+          <option value="salgada"${registro?.categoria!=='doce'?' selected':''}>Salgada</option>
+          <option value="doce"${registro?.categoria==='doce'?' selected':''}>Doce</option>
+        </select>
+      </div>
+      <div id="xftTable"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+        <button class="btn btn-outline btn-xs" onclick="_ftAddRow()">+ Adicionar insumo</button>
+        <div id="xftCustoDisplay" style="font-size:.82rem;font-weight:700;padding:5px 12px;border-radius:var(--r8);border:1.5px solid var(--border)"></div>
+      </div>
+      <div id="xftCustoSub" style="font-size:.68rem;color:var(--muted);margin-top:4px;text-align:right"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+        ${registro ? `<button class="btn btn-red btn-sm" onclick="_excluirFicha()">Excluir</button>` : '<span></span>'}
+        <button class="btn btn-primary btn-sm" onclick="_salvarFicha()">Salvar</button>
+      </div>
+    </div>`;
+
+  _ftInit(registro?.fichaTecnica || null, 'flat', 'x');
+}
+
+function _salvarFicha() {
+  if (!_fichaSel) return;
+  const nome = document.getElementById('xNome').value.trim();
+  if (!nome) { toast('Informe o nome', 'err'); return; }
+  const categoria    = document.getElementById('xCategoria').value;
+  const fichaTecnica = { ingredientes: _ftRows.filter(r => r.item_id) };
+
+  if (_fichaSel.tipo === 'produto') {
+    const tamanho = document.getElementById('xTamanho').value;
+    if (_fichaSel.id) {
+      const idx = produtosPizza.findIndex(p => p.id === _fichaSel.id);
+      if (idx >= 0) produtosPizza[idx] = { ...produtosPizza[idx], nome, tamanho, categoria, fichaTecnica };
+    } else {
+      const novo = { id: nextProdPizzaId++, nome, tamanho, categoria, fichaTecnica, active: true };
+      produtosPizza.push(novo);
+      _fichaSel.id = novo.id;
+    }
+    saveProdPizza();
+    _renderListaProdutosPizza();
+  } else {
+    if (_fichaSel.id) {
+      const idx = opcoes.findIndex(o => o.id === _fichaSel.id);
+      if (idx >= 0) opcoes[idx] = { ...opcoes[idx], nome, categoria, fichaTecnica };
+    } else {
+      const nova = { id: nextOpcaoId++, nome, categoria, fichaTecnica, active: true };
+      opcoes.push(nova);
+      _fichaSel.id = nova.id;
+    }
+    saveOpcoes();
+    _renderListaOpcoes();
+    renderCadSabores(); // atualiza badges "ficha ok" nos sabores vinculados
+  }
+  toast(`${lc("check-circle",14,"var(--green)")} Ficha técnica salva!`);
+}
+
+function _excluirFicha() {
+  if (!_fichaSel?.id) return;
+  const isProduto = _fichaSel.tipo === 'produto';
+  const nome = isProduto
+    ? produtosPizza.find(p => p.id === _fichaSel.id)?.nome
+    : opcoes.find(o => o.id === _fichaSel.id)?.nome;
+  vtpConfirm({
+    title: `Excluir "${nome}"`,
+    message: 'Esta ação não pode ser desfeita.',
+    confirmLabel: 'Excluir',
+    onConfirm: () => {
+      if (isProduto) {
+        produtosPizza = produtosPizza.filter(p => p.id !== _fichaSel.id);
+        saveProdPizza();
+        _renderListaProdutosPizza();
+      } else {
+        opcoes = opcoes.filter(o => o.id !== _fichaSel.id);
+        saveOpcoes();
+        _renderListaOpcoes();
+        renderCadSabores();
+      }
+      _fichaSel = null;
+      _renderFichaDetail();
+      toast(`${lc("trash-2",14,"currentColor")} "${nome}" excluído.`);
+    }
+  });
 }
 
 // renderCadProdutos already handles cadProdutosGrid correctly
