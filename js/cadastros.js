@@ -1752,184 +1752,201 @@ function _excluirFicha() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// PRODUTOS (CARDÁPIO WEB) — descoberta automática + mapeamento
+// PRODUTOS (CARDÁPIO WEB) — interpretação estrutural + mapeamento
 //
-// O catálogo NÃO é cadastrado à mão: é descoberto varrendo os pedidos
-// reais já sincronizados em cw_pedidos. Cada nome distinto (item ou
-// opção) vira uma linha com contagem de vendas e estado de mapeamento.
-// O mapa (vtp_cw_mapa, kv_store) é o contrato que o parser de débito
-// vai consumir: nome normalizado → o que debitar.
+// O catálogo NÃO é cadastrado à mão nem classificado por nome de item.
+// O sistema INTERPRETA a estrutura de cada pedido (item → opções →
+// option_group_name) para descobrir, independente do canal (iFood /
+// 99Food / site), o que foi vendido — e reduz tudo a duas coisas que
+// precisam de ficha técnica:
 //
-// Tipos de mapeamento:
-//   meia          → 1× Opção (a "1/2 porção"); a base grande é derivada:
-//                   cada 2 meias num item = 1× base Pizza Grande
-//   pizza_pequena → 1× base Pizza Pequena + 1× Opção
-//   insumo        → débito direto de N un do insumo (revenda: refri etc)
-//   container     → não debita nada (combo/grupo — as opções é que debitam)
-//   ignorar       → explicitamente sem débito
+//   SABORES — cada sabor distinto de pizza (Calabresa, Portuguesa...),
+//             não importa em qual das ~5 formas de nome ele apareça.
+//             Mapeia para uma Opção (a "1/2 porção"). Tamanho e base
+//             são DERIVADOS da estrutura, nunca digitados.
+//   BEBIDAS — refrigerantes e itens de revenda. Mapeiam para um Produto
+//             de "Outros" (débito via ficha técnica) ou insumo direto.
+//
+// Como a estrutura é lida (validado nos pedidos reais):
+//   • Grupo "Pizza Grande/Pequena (N Pedaços) | Pizza Salgada/Doce"
+//     → é um TRILHO de sabores: o grupo diz o tamanho, cada opção é um
+//       sabor; a quantidade da opção é a contagem de meias porções
+//       (grande inteira de 1 sabor vem como x2; meio a meio, 1+1).
+//   • Item "Sabor | Pizza Tradicional" com opção "Pizza Grande/Pequena"
+//     → o sabor está no nome do item, o tamanho na opção (layout iFood).
+//   • Grupo com "bebida" no nome, ou opção sem grupo que não é tamanho,
+//     ou item avulso sem opções → BEBIDA.
+//
+// O mapa (vtp_cw_mapa) é o contrato que o parser de débito vai consumir:
+//   { sabores: { <chaveSabor>: {opcaoId, auto} },
+//     bebidas: { <chaveBebida>: {tipo:'produto'|'insumo', id, auto} } }
 // ══════════════════════════════════════════════════════════════
 
-let _cwMapa        = db._get('vtp_cw_mapa', {});
-const saveCwMapa   = () => db._set('vtp_cw_mapa', _cwMapa);
-let _cwDescobertos = null;  // cache da sessão: [{chave, nome, origem, vendas, ultimoPreco, ultimaVenda}]
-let _cwEditChave   = null;  // linha com o form de mapeamento aberto
+let _cwMapa = db._get('vtp_cw_mapa', null);
+if (!_cwMapa || !_cwMapa.sabores || !_cwMapa.bebidas) _cwMapa = { sabores: {}, bebidas: {} };
+const saveCwMapa = () => db._set('vtp_cw_mapa', _cwMapa);
 
-const _CW_TIPOS = {
-  meia:          { label: 'Meia porção (Opção)',                    alvo: 'opcao'   },
-  pizza_pequena: { label: 'Pizza pequena inteira (base + 1× Opção)', alvo: 'opcao'   },
-  pizza_grande:  { label: 'Pizza grande inteira (base + 2× Opção)',  alvo: 'opcao'   },
-  produto:       { label: 'Produto de "Outros" (bebida, sobremesa)', alvo: 'produto' },
-  insumo:        { label: 'Insumo direto (sem produto cadastrado)',  alvo: 'insumo'  },
-  container:     { label: 'Container (combo/grupo)',                alvo: null      },
-  ignorar:       { label: 'Ignorar (não debita)',                   alvo: null      },
-};
+let _cwDados     = null;   // { sabores:[...], bebidas:[...] } — cache da sessão
+let _cwEditKind  = null;   // 'sabor' | 'bebida' — seção com form aberto
+let _cwEditKey   = null;   // chave da linha em edição
+let _cwAlvoSel   = null;   // destino escolhido no form { tipo, id }
 
 function _cwNorm(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// Casa um nome CW com uma Opção cadastrada, tirando os enfeites que
-// aparecem nos nomes ("1/2 ", " | Pizza Doce"...) — dos DOIS lados,
-// porque o catálogo de Opções também pode ter sido cadastrado com o
-// prefixo "1/2" no nome.
-function _cwLimparNome(s) {
-  return _cwNorm(s).replace(/^1\/2\s+/, '').replace(/\s*\|.*$/, '');
-}
-function _cwMatchOpcao(nomeCW) {
-  const alvo = _cwLimparNome(nomeCW);
-  return opcoes.find(o => _cwLimparNome(o.nome) === alvo) || null;
+// Reduz qualquer forma de nome de sabor à sua "chave" canônica:
+//   "1/2 Quatro Queijos"        → "quatro queijos"
+//   "Quatro Queijos"            → "quatro queijos"
+//   "Sonho de Valsa | Pizza Doce" → "sonho de valsa"
+//   "Pizza de Calabresa"        → "calabresa"
+function _cwSaborKey(nome) {
+  return _cwNorm(nome)
+    .replace(/^1\/2\s+/, '')
+    .replace(/\s*\|\s*pizza.*$/, '')
+    .replace(/^pizza\s+(de\s+)?/, '')
+    .trim();
 }
 
-async function _cwDescobrirItens(dias = 60) {
+// ── Regras de estrutura ────────────────────────────────────────
+const _RE_SLOT     = /pizza\s+(grande|pequena).*pizza\s+(salgada|doce)/i; // grupo = trilho de sabores
+const _RE_SIZE_OPT = /^pizza\s+(grande|pequena)\b/i;                       // opção = seletor de tamanho (layout B)
+const _RE_BEBIDA   = /bebida/i;                                           // grupo de bebida
+const _RE_CONTAINER= /combo|promo|leve\s*\d|pague|pizza\s+(grande|pequena)/i; // item que é container/pizza, não bebida
+
+function _cwTamDoGrupo(g)  { return /grande/i.test(g) ? 'grande' : 'pequena'; }
+function _cwTamDaOpcao(n)  { return /grande/i.test(n) ? 'grande' : 'pequena'; }
+
+async function _cwDescobrir(dias = 90) {
   const sb = _cwGetSbClient();
   const inicio = new Date(Date.now() - dias * 864e5).toISOString();
   const { data, error } = await sb
     .from('cw_pedidos')
     .select('items, cw_created_at')
     .gte('cw_created_at', inicio)
-    .limit(5000);
+    .limit(6000);
   if (error) throw new Error(error.message);
 
-  const regs = {}; // chave → registro agregado
-  const add = (nome, origem, qtd, preco, quando, contexto) => {
+  const sab = {}; // chave → { chave, nome, vendas, tamanhos:Set, formas:Set }
+  const beb = {}; // chave → { chave, nome, vendas, ultimoPreco }
+
+  const addSaborUm = (nome, tam, qtd) => {
+    const chave = _cwSaborKey(nome);
+    if (!chave) return;
+    // Guarda: descritor de tamanho ("Pizza Grande", "Pequena (4 Pedaços)") não é sabor
+    if (/^(grande|pequena)\b/.test(chave) || /pedaco/.test(chave)) return;
+    if (!sab[chave]) sab[chave] = { chave, nome: _cwTitulo(chave), vendas: 0, tamanhos: new Set(), formas: new Set() };
+    sab[chave].vendas += qtd || 1;
+    if (tam) sab[chave].tamanhos.add(tam);
+    sab[chave].formas.add(nome);
+  };
+  // Nome pode conter vários sabores ("1/2 A + 1/2 B | Pizza Grande") — quebra em cada um
+  const addSabor = (nome, tam, qtd) => {
+    (nome || '').split('|')[0].split('+').forEach(parte => addSaborUm(parte, tam, qtd));
+  };
+  const addBebida = (nome, qtd, preco) => {
     const chave = _cwNorm(nome);
     if (!chave) return;
-    if (!regs[chave]) regs[chave] = { chave, nome, origem, vendas: 0, ultimoPreco: 0, ultimaVenda: '', grupos: new Set() };
-    const r = regs[chave];
-    r.vendas += qtd || 1;
-    if (preco > 0) r.ultimoPreco = preco;
-    if (quando > r.ultimaVenda) r.ultimaVenda = quando;
-    if (contexto) r.grupos.add(contexto);
+    if (!beb[chave]) beb[chave] = { chave, nome, vendas: 0, ultimoPreco: 0 };
+    beb[chave].vendas += qtd || 1;
+    if (preco > 0) beb[chave].ultimoPreco = preco;
   };
 
-  const visitarItem = (it, quando) => {
+  const walk = (it, mult) => {
     if (!it || it.status === 'canceled') return;
-    const qtd = it.quantity || 1;
-    add(it.name, 'item', qtd, it.unit_price || 0, quando, null);
+    const qtd = (it.quantity || 1) * mult;
+    const opts = it.options || [];
 
-    // Sabores embutidos no nome do item (formato marketplace):
-    // "1/2 Frango Cremoso + 1/2 Calabresa | Pizza Grande"
-    const antesPipe = (it.name || '').split('|')[0];
-    if (antesPipe.includes('+')) {
-      antesPipe.split('+').map(p => p.trim()).forEach(parte => {
-        if (/^1\/2\s+/i.test(parte)) add(parte, 'opcao', qtd, 0, quando, it.name);
-      });
+    // Layout B: tamanho vem numa opção "Pizza Grande/Pequena", sabor no nome do item
+    const sizeOpt = opts.find(o => _RE_SIZE_OPT.test(o.name || ''));
+    if (sizeOpt) {
+      addSabor(it.name, _cwTamDaOpcao(sizeOpt.name), qtd);
     }
 
-    for (const op of (it.options || [])) {
-      // Contexto = grupo da opção (ou o item pai) — ajuda a decidir o
-      // mapeamento de nomes ambíguos ("Calabresa" pode ser sabor de
-      // pequena num grupo e pizza grande inteira numa promo)
-      add(op.name, 'opcao', (op.quantity || 1) * qtd, op.unit_price || 0, quando, op.option_group_name || it.name);
+    for (const o of opts) {
+      const g = o.option_group_name || '';
+      const oq = (o.quantity || 1) * qtd;
+      if (_RE_SLOT.test(g)) {
+        addSabor(o.name, _cwTamDoGrupo(g), oq);            // trilho de sabores
+      } else if (_RE_BEBIDA.test(g)) {
+        addBebida(o.name, oq, o.unit_price || 0);          // bebida (grátis/upsell)
+      } else if (_RE_SIZE_OPT.test(o.name || '')) {
+        // opção de tamanho (layout B) já tratada acima → ignora
+      } else if (/\|\s*pizza/i.test(o.name || '')) {
+        addSabor(o.name, null, oq);                        // opção que é sabor ("Smores | Pizza Doce")
+      } else if (!g) {
+        addBebida(o.name, oq, o.unit_price || 0);          // opção solta → bebida/revenda
+      }
     }
-    for (const sub of (it.items || [])) visitarItem(sub, quando);
+
+    // Item avulso sem opção de tamanho e sem trilho de sabores:
+    if (!sizeOpt && !opts.some(o => _RE_SLOT.test(o.option_group_name || ''))) {
+      if (/\|\s*pizza/i.test(it.name || '')) {
+        // Layout B sem opção de tamanho (ex: "Smores | Pizza Doce") — é sabor,
+        // tamanho será derivado no débito pela estrutura do pedido
+        addSabor(it.name, null, qtd);
+      } else if (!opts.length && !_RE_CONTAINER.test(it.name || '')) {
+        // Item avulso de verdade (bebida/revenda)
+        addBebida(it.name, qtd, it.unit_price || 0);
+      }
+    }
+
+    for (const sub of (it.items || [])) walk(sub, qtd);
   };
 
   for (const p of (data || [])) {
-    const quando = (p.cw_created_at || '').slice(0, 10);
-    for (const it of (p.items || [])) visitarItem(it, quando);
+    for (const it of (p.items || [])) walk(it, 1);
   }
 
-  const lista = Object.values(regs)
-    .map(r => ({ ...r, grupos: [...r.grupos].slice(0, 2) }))
+  _cwAutoMapear(sab, beb);
+
+  const finalizar = obj => Object.values(obj)
+    .map(r => ({ ...r, tamanhos: r.tamanhos ? [...r.tamanhos] : [], formas: r.formas ? [...r.formas] : [] }))
     .sort((a, b) => b.vendas - a.vendas);
-  _cwAutoMapear(lista);
-  return lista;
+
+  return { sabores: finalizar(sab), bebidas: finalizar(beb) };
 }
 
-// Auto-match: resolve sozinho o que dá pra resolver por nome, e persiste
-// (o parser de débito vai ler o mesmo mapa). Nunca sobrescreve mapeamento
-// feito/ajustado manualmente (auto:false).
-function _cwAutoMapear(lista) {
+// Title Case simples pra exibir a chave normalizada
+function _cwTitulo(chave) {
+  return chave.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Auto-match: resolve por nome o que der, sem tocar em mapeamento manual.
+function _cwAutoMapear(sab, beb) {
   let mudou = false;
-  for (const r of lista) {
-    const atual = _cwMapa[r.chave];
-    if (atual && atual.auto === false) continue;
-
-    let novo = null;
-    const nome = _cwNorm(r.nome);
-
-    if (r.origem === 'item') {
-      // Item-container (pizza avulsa, combo, promo): quem debita são as
-      // opções dentro dele — sabor da pequena vem como opção, base grande
-      // é derivada da contagem de meias (2 meias = 1 grande).
-      if (/combo|promo/.test(nome) || /pizza\s+(grande|pequena|salgada|doce)/.test(nome)) {
-        novo = { tipo: 'container' };
-      }
-    } else if (/^1\/2\s+/.test(nome)) {
-      const opc = _cwMatchOpcao(r.nome);
-      if (opc) novo = { tipo: 'meia', opcaoId: opc.id };
-    } else if (/\|\s*pizza\s+grande/.test(nome)) {
-      // Opção que representa uma pizza GRANDE inteira de um sabor só
-      // (formato das promos: "Calabresa | Pizza Grande") = base + 2× opção
-      const opc = _cwMatchOpcao(r.nome);
-      if (opc) novo = { tipo: 'pizza_grande', opcaoId: opc.id };
-    } else if (/\|\s*pizza\s+(doce|pequena)/.test(nome)) {
-      // Opção que representa uma pizza pequena inteira (ex: "Brigadeiro | Pizza Doce")
-      const opc = _cwMatchOpcao(r.nome);
-      if (opc) novo = { tipo: 'pizza_pequena', opcaoId: opc.id };
+  for (const k in sab) {
+    if (_cwMapa.sabores[k]?.auto === false) continue;
+    const opc = opcoes.find(o => _cwSaborKey(o.nome) === k);
+    if (opc) {
+      if (_cwMapa.sabores[k]?.opcaoId !== opc.id) { _cwMapa.sabores[k] = { opcaoId: opc.id, auto: true }; mudou = true; }
+    } else if (_cwMapa.sabores[k]?.auto) {
+      delete _cwMapa.sabores[k]; mudou = true; // opção sumiu → volta a pendente
     }
-
-    // Revenda (bebidas etc): primeiro tenta um Produto de "Outros" com o
-    // mesmo nome (caminho preferido — débito via ficha técnica); só cai
-    // no insumo direto se não houver produto cadastrado.
-    if (!novo) {
-      const prod = produtos.find(p => p.active !== false && _cwNorm(p.name) === nome);
-      if (prod) novo = { tipo: 'produto', produtoId: prod.id };
-    }
-    if (!novo) {
-      const ins = items.find(i => i.active !== false && !i.isProd && _cwNorm(i.name) === nome);
-      if (ins) novo = { tipo: 'insumo', insumoId: ins.id };
-    }
-
+  }
+  for (const k in beb) {
+    if (_cwMapa.bebidas[k]?.auto === false) continue;
+    const prod = produtos.find(p => p.active !== false && _cwNorm(p.name) === k);
+    const ins  = items.find(i => i.active !== false && !i.isProd && _cwNorm(i.name) === k);
+    const novo = prod ? { tipo: 'produto', id: prod.id } : ins ? { tipo: 'insumo', id: ins.id } : null;
+    const cur  = _cwMapa.bebidas[k];
     if (novo) {
-      const igual = atual && atual.tipo === novo.tipo
-        && atual.opcaoId === novo.opcaoId
-        && atual.produtoId === novo.produtoId
-        && atual.insumoId === novo.insumoId;
-      if (!igual) {
-        _cwMapa[r.chave] = { ...novo, nomeCW: r.nome, auto: true };
-        mudou = true;
-      }
-    }
+      if (!cur || cur.tipo !== novo.tipo || cur.id !== novo.id) { _cwMapa.bebidas[k] = { ...novo, auto: true }; mudou = true; }
+    } else if (cur?.auto) { delete _cwMapa.bebidas[k]; mudou = true; }
   }
   if (mudou) saveCwMapa();
 }
 
+// ── Render ─────────────────────────────────────────────────────
 async function renderCadCw() {
   const el = document.getElementById('cadCwGrid');
   if (!el) return;
-
-  if (!_cwDescobertos) {
+  if (!_cwDados) {
     el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:.9rem">
-      ${lc('refresh-cw',18,'currentColor')} Varrendo os pedidos do Cardápio Web...
-    </div>`;
-    try {
-      _cwDescobertos = await _cwDescobrirItens(60);
-    } catch (e) {
-      el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);font-size:.9rem">
-        Não consegui ler os pedidos sincronizados: ${e.message}
-      </div>`;
+      ${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
+    try { _cwDados = await _cwDescobrir(90); }
+    catch (e) {
+      el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);font-size:.9rem">Não consegui ler os pedidos: ${e.message}</div>`;
       return;
     }
   }
@@ -1938,193 +1955,198 @@ async function renderCadCw() {
 
 function _cwRenderLista() {
   const el = document.getElementById('cadCwGrid');
-  if (!el || !_cwDescobertos) return;
+  if (!el || !_cwDados) return;
 
-  const busca   = _cwNorm(document.getElementById('srchCw')?.value || '');
-  const soPend  = document.getElementById('filCwPend')?.checked || false;
+  const busca  = _cwNorm(document.getElementById('srchCw')?.value || '');
+  const soPend = document.getElementById('filCwPend')?.checked || false;
 
-  const pendentes = _cwDescobertos.filter(r => !_cwMapa[r.chave]).length;
+  const sabPend = _cwDados.sabores.filter(r => !_cwMapa.sabores[r.chave]).length;
+  const bebPend = _cwDados.bebidas.filter(r => !_cwMapa.bebidas[r.chave]).length;
 
-  const linhas = _cwDescobertos.filter(r => {
-    if (busca && !r.chave.includes(busca)) return false;
-    if (soPend && _cwMapa[r.chave]) return false;
+  const filtra = (lista, mapa) => lista.filter(r => {
+    if (busca && !r.chave.includes(busca) && !_cwNorm(r.nome).includes(busca)) return false;
+    if (soPend && mapa[r.chave]) return false;
     return true;
   });
 
   el.innerHTML = `
-    <div class="ft-section-head" style="margin-bottom:14px">
-      <div>
-        <span class="ft-section-title">Itens vendidos nos últimos 60 dias</span>
-        <span class="ft-section-count">${_cwDescobertos.length} itens · ${pendentes > 0
-          ? `<span style="color:var(--warning-fg,#D97706);font-weight:700">${pendentes} sem mapeamento</span>`
-          : `<span style="color:var(--green);font-weight:700">tudo mapeado ✓</span>`}</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+      <div style="font-size:.82rem;color:var(--muted)">
+        Interpretado de <b>90 dias</b> de pedidos · ${sabPend + bebPend === 0
+          ? '<span style="color:var(--green);font-weight:700">tudo mapeado ✓</span>'
+          : `<span style="color:var(--warning-fg,#D97706);font-weight:700">${sabPend + bebPend} pendente(s)</span>`}
       </div>
       <div style="display:flex;gap:12px;align-items:center">
         <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer">
           <input type="checkbox" id="filCwPend" onchange="_cwRenderLista()" ${soPend ? 'checked' : ''}> só pendentes
         </label>
-        <input class="inp" id="srchCw" placeholder="Buscar item..." value="${busca}" oninput="_cwRenderLista()" style="width:220px">
-        <button class="btn btn-outline btn-sm" onclick="_cwDescobertos=null;renderCadCw()">${lc('refresh-cw',13,'currentColor')} Atualizar</button>
+        <input class="inp" id="srchCw" placeholder="Buscar..." value="${busca}" oninput="_cwRenderLista()" style="width:200px">
+        <button class="btn btn-outline btn-sm" onclick="_cwDados=null;renderCadCw()">${lc('refresh-cw',13,'currentColor')} Reinterpretar</button>
       </div>
     </div>
-    ${linhas.length === 0 ? `<div class="ft-empty-list">Nenhum item encontrado</div>` : ''}
-    ${linhas.map(r => _cwRenderLinha(r)).join('')}
+
+    <div class="ft-section">
+      <div class="ft-section-head">
+        <div><span class="ft-section-title">Sabores</span><span class="ft-section-count">${_cwDados.sabores.length} distintos${sabPend ? ` · ${sabPend} a mapear` : ''}</span></div>
+      </div>
+      ${filtra(_cwDados.sabores, _cwMapa.sabores).map(r => _cwLinhaSabor(r)).join('') || '<div class="ft-empty-list">Nenhum sabor</div>'}
+    </div>
+
+    <div class="ft-section">
+      <div class="ft-section-head">
+        <div><span class="ft-section-title">Bebidas e outros</span><span class="ft-section-count">${_cwDados.bebidas.length} distintos${bebPend ? ` · ${bebPend} a mapear` : ''}</span></div>
+      </div>
+      ${filtra(_cwDados.bebidas, _cwMapa.bebidas).map(r => _cwLinhaBebida(r)).join('') || '<div class="ft-empty-list">Nenhuma bebida</div>'}
+    </div>
   `;
-  // Restaura o foco da busca após re-render
   if (busca && document.activeElement?.id !== 'srchCw') {
     const s = document.getElementById('srchCw');
     if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   }
 }
 
-function _cwRenderLinha(r) {
-  const m = _cwMapa[r.chave];
-  const editando = _cwEditChave === r.chave;
+function _cwTamBadges(tamanhos) {
+  return (tamanhos || []).map(t =>
+    `<span style="font-size:.68rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:1px 7px;border-radius:var(--r6);margin-left:6px">${t === 'grande' ? 'Grande' : 'Pequena'}</span>`
+  ).join('');
+}
 
-  let badge, destino = '';
+function _cwLinhaSabor(r) {
+  const m = _cwMapa.sabores[r.chave];
+  const editando = _cwEditKind === 'sabor' && _cwEditKey === r.chave;
+  let destino = '', badge;
   if (!m) {
-    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:4px 11px;border-radius:var(--r6)">não mapeado</span>`;
-  } else if (m.tipo === 'container') {
-    badge = `<span style="font-size:.76rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:4px 11px;border-radius:var(--r6)">container</span>`;
-  } else if (m.tipo === 'ignorar') {
-    badge = `<span style="font-size:.76rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:4px 11px;border-radius:var(--r6)">ignorado</span>`;
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:4px 11px;border-radius:var(--r6)">a mapear</span>`;
   } else {
-    const alvoNome = m.tipo === 'insumo' ? items.find(i => i.id === m.insumoId)?.name
-      : m.tipo === 'produto' ? produtos.find(p => p.id === m.produtoId)?.name
-      : opcoes.find(o => o.id === m.opcaoId)?.nome;
-    const rotulo = { meia: 'meia', pizza_pequena: 'pequena + opção', pizza_grande: 'grande + 2× opção', produto: 'produto', insumo: 'insumo' }[m.tipo] || m.tipo;
-    destino = alvoNome ? `<span style="font-size:.8rem;color:var(--muted)">→ ${alvoNome}</span>` : '';
-    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--green-light);color:var(--green);padding:4px 11px;border-radius:var(--r6)">${rotulo}${m.auto ? ' · auto' : ''}</span>`;
+    const opc = opcoes.find(o => o.id === m.opcaoId);
+    const temFt = opc?.fichaTecnica?.ingredientes?.length > 0;
+    destino = opc ? `<span style="font-size:.8rem;color:var(--muted)">→ ${opc.nome}</span>` : '';
+    badge = temFt
+      ? `<span style="font-size:.76rem;font-weight:700;background:var(--green-light);color:var(--green);padding:4px 11px;border-radius:var(--r6)">mapeado${m.auto ? ' · auto' : ''}</span>`
+      : `<span style="font-size:.76rem;font-weight:700;background:var(--orange-light);color:var(--orange-dark);padding:4px 11px;border-radius:var(--r6)" title="Opção sem ficha técnica — o custo não será calculado">sem ficha</span>`;
   }
+  return `
+    <div class="ft-list-row" style="cursor:default;${editando ? 'border-color:var(--purple)' : ''}">
+      <div class="ft-list-main">
+        <div class="ft-list-name" style="font-size:.92rem">${r.nome}${_cwTamBadges(r.tamanhos)}</div>
+        <div class="ft-list-sub">${r.vendas} venda(s)${r.formas.length > 1 ? ` · ${r.formas.length} formas de nome no CW` : ''}</div>
+        ${editando ? _cwFormSabor(r) : ''}
+      </div>
+      ${destino}${badge}
+      <button class="btn btn-outline btn-xs" onclick="_cwEditar('sabor','${r.chave.replace(/'/g,"\\'")}')">${editando ? 'Fechar' : (m ? 'Editar' : 'Mapear')}</button>
+    </div>`;
+}
 
-  const contexto = (r.grupos && r.grupos.length && r.origem === 'opcao')
-    ? ` · em: ${r.grupos.join(' / ')}` : '';
-
+function _cwLinhaBebida(r) {
+  const m = _cwMapa.bebidas[r.chave];
+  const editando = _cwEditKind === 'bebida' && _cwEditKey === r.chave;
+  let destino = '', badge;
+  if (!m) {
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:4px 11px;border-radius:var(--r6)">a mapear</span>`;
+  } else {
+    const alvo = m.tipo === 'produto' ? produtos.find(p => p.id === m.id)?.name : items.find(i => i.id === m.id)?.name;
+    destino = alvo ? `<span style="font-size:.8rem;color:var(--muted)">→ ${alvo}</span>` : '';
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--green-light);color:var(--green);padding:4px 11px;border-radius:var(--r6)">${m.tipo}${m.auto ? ' · auto' : ''}</span>`;
+  }
   return `
     <div class="ft-list-row" style="cursor:default;${editando ? 'border-color:var(--purple)' : ''}">
       <div class="ft-list-main">
         <div class="ft-list-name" style="font-size:.92rem">${r.nome}</div>
-        <div class="ft-list-sub">${r.vendas} venda(s)${r.ultimoPreco > 0 ? ' · R$ ' + fmt(r.ultimoPreco) : ''}${r.ultimaVenda ? ' · última ' + r.ultimaVenda.split('-').reverse().join('/') : ''}${contexto}</div>
-        ${editando ? _cwRenderFormMapa(r) : ''}
+        <div class="ft-list-sub">${r.vendas} venda(s)${r.ultimoPreco > 0 ? ' · R$ ' + fmt(r.ultimoPreco) : ''}</div>
+        ${editando ? _cwFormBebida(r) : ''}
       </div>
-      ${destino}
-      ${badge}
-      <button class="btn btn-outline btn-xs" onclick="_cwToggleEditar('${r.chave}')">${editando ? 'Fechar' : (m ? 'Editar' : 'Mapear')}</button>
+      ${destino}${badge}
+      <button class="btn btn-outline btn-xs" onclick="_cwEditar('bebida','${r.chave.replace(/'/g,"\\'")}')">${editando ? 'Fechar' : (m ? 'Editar' : 'Mapear')}</button>
     </div>`;
 }
 
-function _cwToggleEditar(chave) {
-  _cwEditChave = _cwEditChave === chave ? null : chave;
+function _cwEditar(kind, chave) {
+  if (_cwEditKind === kind && _cwEditKey === chave) { _cwEditKind = _cwEditKey = null; }
+  else { _cwEditKind = kind; _cwEditKey = chave; _cwAlvoSel = null; }
   _cwRenderLista();
-  if (_cwEditChave) setTimeout(() => document.getElementById('cwMapaTipo')?.focus(), 40);
+  if (_cwEditKey) setTimeout(() => document.getElementById('cwAlvo')?.focus(), 40);
 }
 
-function _cwRenderFormMapa(r) {
-  const m = _cwMapa[r.chave];
-  const tipoAtual = m?.tipo || '';
+function _cwFormSabor(r) {
+  const m = _cwMapa.sabores[r.chave];
+  const opc = m ? opcoes.find(o => o.id === m.opcaoId) : null;
   return `
     <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:flex-start" onclick="event.stopPropagation()">
-      <select class="inp" id="cwMapaTipo" style="min-width:230px" onchange="_cwMapaTipoMudou('${r.chave}')">
-        <option value="">O que é este item?</option>
-        ${Object.entries(_CW_TIPOS).map(([t, cfg]) =>
-          `<option value="${t}"${t === tipoAtual ? ' selected' : ''}>${cfg.label}</option>`).join('')}
-      </select>
-      <div class="ft-ac-wrap" id="cwMapaAlvoWrap" style="flex:1;min-width:240px;display:none">
-        <input type="text" class="inp" id="cwMapaAlvo" placeholder="Buscar destino..."
-          oninput="_cwSearchAlvo('${r.chave}')" onfocus="_cwSearchAlvo('${r.chave}')"
-          onblur="setTimeout(()=>{const d=document.getElementById('cwMapaDrop');if(d)d.style.display='none'},150)">
-        <div class="ft-ac-list" id="cwMapaDrop" style="display:none"></div>
+      <div class="ft-ac-wrap" style="flex:1;min-width:260px">
+        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Opção (cobertura)..." value="${opc ? opc.nome.replace(/"/g,'&quot;') : ''}"
+          oninput="_cwSearchAlvo('sabor')" onfocus="_cwSearchAlvo('sabor')"
+          onblur="setTimeout(()=>{const d=document.getElementById('cwDrop');if(d)d.style.display='none'},150)">
+        <div class="ft-ac-list" id="cwDrop" style="display:none"></div>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="_cwSalvarMapa('${r.chave}')">Salvar</button>
-      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemoverMapa('${r.chave}')">Remover mapeamento</button>` : ''}
+      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('sabor','${r.chave.replace(/'/g,"\\'")}')">Salvar</button>
+      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('sabor','${r.chave.replace(/'/g,"\\'")}')">Remover</button>` : ''}
+      <div style="font-size:.72rem;color:var(--muted);flex-basis:100%;margin-top:2px">Não achou a Opção? Crie em <b>Fichas Técnicas</b> primeiro.</div>
     </div>`;
 }
 
-let _cwAlvoSel = null; // { tipo:'opcao'|'insumo', id }
-
-function _cwMapaTipoMudou(chave) {
-  const tipo = document.getElementById('cwMapaTipo')?.value;
-  const wrap = document.getElementById('cwMapaAlvoWrap');
-  const precisaAlvo = tipo && _CW_TIPOS[tipo]?.alvo;
-  if (wrap) wrap.style.display = precisaAlvo ? '' : 'none';
-  _cwAlvoSel = null;
-  // Pré-preenche com o mapeamento atual, se compatível
-  const m = _cwMapa[chave];
-  const inp = document.getElementById('cwMapaAlvo');
-  if (inp) {
-    if (m && m.tipo === tipo) {
-      const nome = tipo === 'insumo' ? items.find(i => i.id === m.insumoId)?.name
-        : tipo === 'produto' ? produtos.find(p => p.id === m.produtoId)?.name
-        : opcoes.find(o => o.id === m.opcaoId)?.nome;
-      const id = tipo === 'insumo' ? m.insumoId : tipo === 'produto' ? m.produtoId : m.opcaoId;
-      if (nome) { inp.value = nome; _cwAlvoSel = { tipo: _CW_TIPOS[tipo].alvo, id }; }
-    } else {
-      inp.value = '';
-      // Sugestão automática por nome
-      if (precisaAlvo === 'opcao') {
-        const opc = _cwMatchOpcao(chave);
-        if (opc) { inp.value = opc.nome; _cwAlvoSel = { tipo: 'opcao', id: opc.id }; }
-      } else if (precisaAlvo === 'produto') {
-        const prod = produtos.find(p => _cwNorm(p.name) === _cwNorm(chave));
-        if (prod) { inp.value = prod.name; _cwAlvoSel = { tipo: 'produto', id: prod.id }; }
-      }
-    }
-  }
+function _cwFormBebida(r) {
+  const m = _cwMapa.bebidas[r.chave];
+  const alvo = m ? (m.tipo === 'produto' ? produtos.find(p => p.id === m.id)?.name : items.find(i => i.id === m.id)?.name) : '';
+  return `
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:flex-start" onclick="event.stopPropagation()">
+      <div class="ft-ac-wrap" style="flex:1;min-width:260px">
+        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Produto (Outros) ou insumo..." value="${alvo ? alvo.replace(/"/g,'&quot;') : ''}"
+          oninput="_cwSearchAlvo('bebida')" onfocus="_cwSearchAlvo('bebida')"
+          onblur="setTimeout(()=>{const d=document.getElementById('cwDrop');if(d)d.style.display='none'},150)">
+        <div class="ft-ac-list" id="cwDrop" style="display:none"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('bebida','${r.chave.replace(/'/g,"\\'")}')">Salvar</button>
+      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('bebida','${r.chave.replace(/'/g,"\\'")}')">Remover</button>` : ''}
+    </div>`;
 }
 
-function _cwSearchAlvo(chave) {
-  const tipo = document.getElementById('cwMapaTipo')?.value;
-  const alvo = _CW_TIPOS[tipo]?.alvo;
-  const drop = document.getElementById('cwMapaDrop');
-  const q    = _cwNorm(document.getElementById('cwMapaAlvo')?.value || '');
-  if (!drop || !alvo) return;
-  const pool = alvo === 'opcao'
-    ? opcoes.map(o => ({ id: o.id, nome: o.nome, sub: o.categoria }))
-    : alvo === 'produto'
-    ? produtos.filter(p => p.active !== false).map(p => ({ id: p.id, nome: p.name, sub: p.cat || 'Outros' }))
-    : items.filter(i => i.active !== false).map(i => ({ id: i.id, nome: i.name, sub: i.cat }));
+function _cwSearchAlvo(kind) {
+  const drop = document.getElementById('cwDrop');
+  const q = _cwNorm(document.getElementById('cwAlvo')?.value || '');
+  if (!drop) return;
+  let pool;
+  if (kind === 'sabor') {
+    pool = opcoes.map(o => ({ tipo: 'opcao', id: o.id, nome: o.nome, sub: o.categoria }));
+  } else {
+    pool = [
+      ...produtos.filter(p => p.active !== false).map(p => ({ tipo: 'produto', id: p.id, nome: p.name, sub: 'produto' })),
+      ...items.filter(i => i.active !== false && !i.isProd).map(i => ({ tipo: 'insumo', id: i.id, nome: i.name, sub: i.cat || 'insumo' })),
+    ];
+  }
   const matches = pool.filter(p => !q || _cwNorm(p.nome).includes(q)).slice(0, 8);
   drop.innerHTML = matches.length
-    ? matches.map(p => `
-      <div class="ft-ac-item" onmousedown="event.preventDefault();_cwPickAlvo('${alvo}',${p.id},this.textContent.trim())">
-        <span>${p.nome}</span><span class="ft-ac-cat">${p.sub || ''}</span>
-      </div>`).join('')
+    ? matches.map(p => `<div class="ft-ac-item" onmousedown="event.preventDefault();_cwPickAlvo('${p.tipo}',${p.id},this.querySelector('span').textContent)">
+        <span>${p.nome}</span><span class="ft-ac-cat">${p.sub || ''}</span></div>`).join('')
     : `<div class="ft-ac-item" style="cursor:default;color:var(--muted)">Nada encontrado</div>`;
   drop.style.display = 'block';
 }
 
 function _cwPickAlvo(tipo, id, nome) {
   _cwAlvoSel = { tipo, id };
-  const inp = document.getElementById('cwMapaAlvo');
-  if (inp) inp.value = nome.replace(/\s{2,}.*$/, '');
-  const drop = document.getElementById('cwMapaDrop');
+  const inp = document.getElementById('cwAlvo');
+  if (inp) inp.value = nome;
+  const drop = document.getElementById('cwDrop');
   if (drop) drop.style.display = 'none';
 }
 
-function _cwSalvarMapa(chave) {
-  const tipo = document.getElementById('cwMapaTipo')?.value;
-  if (!tipo) { toast('Escolha o que é este item', 'err'); return; }
-  const precisaAlvo = _CW_TIPOS[tipo]?.alvo;
-  if (precisaAlvo && !_cwAlvoSel) { toast('Escolha o destino do débito', 'err'); return; }
-
-  const reg = _cwDescobertos?.find(r => r.chave === chave);
-  const novo = { tipo, nomeCW: reg?.nome || chave, auto: false };
-  if (precisaAlvo === 'opcao')   novo.opcaoId   = _cwAlvoSel.id;
-  if (precisaAlvo === 'produto') novo.produtoId = _cwAlvoSel.id;
-  if (precisaAlvo === 'insumo')  novo.insumoId  = _cwAlvoSel.id;
-
-  _cwMapa[chave] = novo;
+function _cwSalvar(kind, chave) {
+  if (!_cwAlvoSel) { toast('Escolha o destino', 'err'); return; }
+  if (kind === 'sabor') {
+    _cwMapa.sabores[chave] = { opcaoId: _cwAlvoSel.id, auto: false };
+  } else {
+    _cwMapa.bebidas[chave] = { tipo: _cwAlvoSel.tipo, id: _cwAlvoSel.id, auto: false };
+  }
   saveCwMapa();
-  _cwEditChave = null;
-  _cwAlvoSel = null;
+  _cwEditKind = _cwEditKey = null; _cwAlvoSel = null;
   toast(`${lc("check-circle",14,"var(--green)")} Mapeamento salvo!`);
   _cwRenderLista();
 }
 
-function _cwRemoverMapa(chave) {
-  delete _cwMapa[chave];
+function _cwRemover(kind, chave) {
+  if (kind === 'sabor') delete _cwMapa.sabores[chave];
+  else delete _cwMapa.bebidas[chave];
   saveCwMapa();
-  _cwEditChave = null;
+  _cwEditKind = _cwEditKey = null;
   _cwRenderLista();
 }
 
