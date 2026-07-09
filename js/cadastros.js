@@ -1396,30 +1396,36 @@ function deleteSup() {
 
 const PROD_CATS = ['Pizza Pequena', 'Pizza Grande', 'Bebida', 'Outro'];
 
+// Aba "Outros" — bebidas, sobremesas e demais produtos vendáveis.
+// Mesmo padrão de Fichas Técnicas: lista cheia → editor em tela cheia.
+// A ficha de uma bebida de revenda é trivial (1 UN do insumo), mas passa
+// pela mesma lógica de débito/custo de todo produto.
 function renderCadProdutos() {
-  const el = document.getElementById('cadProdutosGrid');
+  const lv = document.getElementById('outrosListView');
+  const dv = document.getElementById('outrosDetailView');
+  if (lv) lv.style.display = '';
+  if (dv) dv.style.display = 'none';
+  const el = document.getElementById('listaOutros');
   if (!el) return;
+  const cnt = document.getElementById('cntOutros');
+  if (cnt) cnt.textContent = `(${produtos.length})`;
 
-  const byCat = {};
-  produtos.forEach(p => {
-    if (!byCat[p.cat]) byCat[p.cat] = [];
-    byCat[p.cat].push(p);
-  });
-
-  el.innerHTML = Object.entries(byCat).map(([cat, prods]) => `
-    <div style="margin-bottom:20px">
-      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--border)">${cat}</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${prods.map(p => `
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r8)">
-            <div style="flex:1">
-              <div style="font-size:var(--text-sm);font-weight:700">${p.name}</div>
-              <div style="font-size:var(--text-xs);color:var(--muted)">Preço de venda: R$ ${fmt(p.price)} · ${p.active ? 'Ativo' : 'Inativo'}</div>
-            </div>
-            <button class="btn btn-outline btn-sm" onclick="openProdModal(${p.id})">Editar</button>
-          </div>`).join('')}
+  if (!produtos.length) {
+    el.innerHTML = `<div class="ft-empty-list">Nenhum produto — cadastre aqui bebidas, sobremesas e outros itens vendáveis</div>`;
+    return;
+  }
+  el.innerHTML = produtos.map(p => {
+    const nIng  = p.fichaTecnica?.ingredientes?.length || 0;
+    const custo = _calcCustoFicha(p.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('outro',${p.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${p.name}</div>
+        <div class="ft-list-sub">${nIng > 0 ? nIng + ' insumo(s) na ficha' : 'Sem ficha técnica — débito não configurado'}</div>
       </div>
-    </div>`).join('') || `<div class="empty"><div class="empty-icon">${lc("tag",13,"currentColor")}</div>Nenhum produto cadastrado</div>`;
+      <div class="ft-list-cost">${nIng > 0 ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
+    </div>`;
+  }).join('');
 }
 
 let _editProdId = null;
@@ -1603,8 +1609,13 @@ function _renderListaOpcoes() {
 
 function _selecionarFicha(tipo, id) {
   _fichaSel = { tipo, id };
-  document.getElementById('fichaListView').style.display = 'none';
-  document.getElementById('fichaDetailView').style.display = '';
+  if (tipo === 'outro') {
+    document.getElementById('outrosListView').style.display = 'none';
+    document.getElementById('outrosDetailView').style.display = '';
+  } else {
+    document.getElementById('fichaListView').style.display = 'none';
+    document.getElementById('fichaDetailView').style.display = '';
+  }
   _renderFichaDetail();
 }
 
@@ -1613,32 +1624,43 @@ function _novaFicha(tipo) {
 }
 
 function _voltarListaFichas() {
-  renderCadFichas();
+  const eraOutro = _fichaSel?.tipo === 'outro';
+  _fichaSel = null;
+  if (eraOutro) renderCadProdutos();
+  else renderCadFichas();
 }
 
 function _irParaFicha(tipo, id) {
   setCadTab('produtos');
-  setProdTab('fichas');
+  setProdTab(tipo === 'outro' ? 'outros' : 'fichas');
   _selecionarFicha(tipo, id);
 }
 
 function _renderFichaDetail() {
-  const el = document.getElementById('fichaDetailView');
+  const isOutro   = _fichaSel?.tipo === 'outro';
+  const el = document.getElementById(isOutro ? 'outrosDetailView' : 'fichaDetailView');
   if (!el || !_fichaSel) return;
 
   const isProduto = _fichaSel.tipo === 'produto';
   const registro  = _fichaSel.id
-    ? (isProduto ? produtosPizza.find(p => p.id === _fichaSel.id) : opcoes.find(o => o.id === _fichaSel.id))
+    ? (isProduto ? produtosPizza.find(p => p.id === _fichaSel.id)
+      : isOutro  ? produtos.find(p => p.id === _fichaSel.id)
+      : opcoes.find(o => o.id === _fichaSel.id))
     : null;
+  const nomeAtual = (isOutro ? registro?.name : registro?.nome) || '';
+
+  const rotulo = isProduto ? 'Produto (base — massa, molho, embalagem)'
+    : isOutro ? 'Produto (bebidas, sobremesas e outros — débito via ficha técnica)'
+    : 'Opção (cobertura — a "1/2 porção" do sabor)';
 
   el.innerHTML = `
     <button class="ft-editor-back" onclick="_voltarListaFichas()">${lc('arrow-left',16,'currentColor')} Voltar para a lista</button>
     <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">
-      ${isProduto ? 'Produto (base — massa, molho, embalagem)' : 'Opção (cobertura — a "1/2 porção" do sabor)'}
+      ${rotulo}
     </div>
     <div class="ft-editor-head">
-      <input class="inp" id="xNome" placeholder="Nome" value="${registro?.nome ? registro.nome.replace(/"/g,'&quot;') : ''}" style="flex:2;min-width:260px">
-      ${isProduto ? '' : `
+      <input class="inp" id="xNome" placeholder="Nome" value="${nomeAtual.replace(/"/g,'&quot;')}" style="flex:2;min-width:260px">
+      ${(isProduto || isOutro) ? '' : `
       <select class="inp" id="xCategoria" style="flex:1;min-width:140px" title="Só pra organizar a lista — não afeta cálculo nem débito">
         <option value="salgada"${registro?.categoria!=='doce'?' selected':''}>Salgada</option>
         <option value="doce"${registro?.categoria==='doce'?' selected':''}>Doce</option>
@@ -1676,6 +1698,16 @@ function _salvarFicha() {
       _fichaSel.id = novo.id;
     }
     saveProdPizza();
+  } else if (_fichaSel.tipo === 'outro') {
+    if (_fichaSel.id) {
+      const idx = produtos.findIndex(p => p.id === _fichaSel.id);
+      if (idx >= 0) produtos[idx] = { ...produtos[idx], name: nome, fichaTecnica };
+    } else {
+      const novo = { id: nextPid++, name: nome, cat: 'Outros', price: 0, active: true, fichaTecnica };
+      produtos.push(novo);
+      _fichaSel.id = novo.id;
+    }
+    saveP();
   } else {
     const categoria = document.getElementById('xCategoria')?.value || 'salgada';
     if (_fichaSel.id) {
@@ -1694,18 +1726,21 @@ function _salvarFicha() {
 
 function _excluirFicha() {
   if (!_fichaSel?.id) return;
-  const isProduto = _fichaSel.tipo === 'produto';
-  const nome = isProduto
-    ? produtosPizza.find(p => p.id === _fichaSel.id)?.nome
+  const tipo = _fichaSel.tipo;
+  const nome = tipo === 'produto' ? produtosPizza.find(p => p.id === _fichaSel.id)?.nome
+    : tipo === 'outro' ? produtos.find(p => p.id === _fichaSel.id)?.name
     : opcoes.find(o => o.id === _fichaSel.id)?.nome;
   vtpConfirm({
     title: `Excluir "${nome}"`,
     message: 'Esta ação não pode ser desfeita.',
     confirmLabel: 'Excluir',
     onConfirm: () => {
-      if (isProduto) {
+      if (tipo === 'produto') {
         produtosPizza = produtosPizza.filter(p => p.id !== _fichaSel.id);
         saveProdPizza();
+      } else if (tipo === 'outro') {
+        produtos = produtos.filter(p => p.id !== _fichaSel.id);
+        saveP();
       } else {
         opcoes = opcoes.filter(o => o.id !== _fichaSel.id);
         saveOpcoes();
@@ -1740,12 +1775,13 @@ let _cwDescobertos = null;  // cache da sessão: [{chave, nome, origem, vendas, 
 let _cwEditChave   = null;  // linha com o form de mapeamento aberto
 
 const _CW_TIPOS = {
-  meia:          { label: 'Meia porção (Opção)',                    alvo: 'opcao'  },
-  pizza_pequena: { label: 'Pizza pequena inteira (base + 1× Opção)', alvo: 'opcao'  },
-  pizza_grande:  { label: 'Pizza grande inteira (base + 2× Opção)',  alvo: 'opcao'  },
-  insumo:        { label: 'Insumo direto (revenda)',                alvo: 'insumo' },
-  container:     { label: 'Container (combo/grupo)',                alvo: null     },
-  ignorar:       { label: 'Ignorar (não debita)',                   alvo: null     },
+  meia:          { label: 'Meia porção (Opção)',                    alvo: 'opcao'   },
+  pizza_pequena: { label: 'Pizza pequena inteira (base + 1× Opção)', alvo: 'opcao'   },
+  pizza_grande:  { label: 'Pizza grande inteira (base + 2× Opção)',  alvo: 'opcao'   },
+  produto:       { label: 'Produto de "Outros" (bebida, sobremesa)', alvo: 'produto' },
+  insumo:        { label: 'Insumo direto (sem produto cadastrado)',  alvo: 'insumo'  },
+  container:     { label: 'Container (combo/grupo)',                alvo: null      },
+  ignorar:       { label: 'Ignorar (não debita)',                   alvo: null      },
 };
 
 function _cwNorm(s) {
@@ -1854,14 +1890,23 @@ function _cwAutoMapear(lista) {
       if (opc) novo = { tipo: 'pizza_pequena', opcaoId: opc.id };
     }
 
-    // Revenda (bebidas etc): nome bate exato com um insumo cadastrado
+    // Revenda (bebidas etc): primeiro tenta um Produto de "Outros" com o
+    // mesmo nome (caminho preferido — débito via ficha técnica); só cai
+    // no insumo direto se não houver produto cadastrado.
+    if (!novo) {
+      const prod = produtos.find(p => p.active !== false && _cwNorm(p.name) === nome);
+      if (prod) novo = { tipo: 'produto', produtoId: prod.id };
+    }
     if (!novo) {
       const ins = items.find(i => i.active !== false && !i.isProd && _cwNorm(i.name) === nome);
       if (ins) novo = { tipo: 'insumo', insumoId: ins.id };
     }
 
     if (novo) {
-      const igual = atual && atual.tipo === novo.tipo && atual.opcaoId === novo.opcaoId;
+      const igual = atual && atual.tipo === novo.tipo
+        && atual.opcaoId === novo.opcaoId
+        && atual.produtoId === novo.produtoId
+        && atual.insumoId === novo.insumoId;
       if (!igual) {
         _cwMapa[r.chave] = { ...novo, nomeCW: r.nome, auto: true };
         mudou = true;
@@ -1944,10 +1989,10 @@ function _cwRenderLinha(r) {
   } else if (m.tipo === 'ignorar') {
     badge = `<span style="font-size:.76rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:4px 11px;border-radius:var(--r6)">ignorado</span>`;
   } else {
-    const alvoNome = m.tipo === 'insumo'
-      ? items.find(i => i.id === m.insumoId)?.name
+    const alvoNome = m.tipo === 'insumo' ? items.find(i => i.id === m.insumoId)?.name
+      : m.tipo === 'produto' ? produtos.find(p => p.id === m.produtoId)?.name
       : opcoes.find(o => o.id === m.opcaoId)?.nome;
-    const rotulo = { meia: 'meia', pizza_pequena: 'pequena + opção', pizza_grande: 'grande + 2× opção', insumo: 'insumo' }[m.tipo] || m.tipo;
+    const rotulo = { meia: 'meia', pizza_pequena: 'pequena + opção', pizza_grande: 'grande + 2× opção', produto: 'produto', insumo: 'insumo' }[m.tipo] || m.tipo;
     destino = alvoNome ? `<span style="font-size:.8rem;color:var(--muted)">→ ${alvoNome}</span>` : '';
     badge = `<span style="font-size:.76rem;font-weight:700;background:var(--green-light);color:var(--green);padding:4px 11px;border-radius:var(--r6)">${rotulo}${m.auto ? ' · auto' : ''}</span>`;
   }
@@ -2008,16 +2053,20 @@ function _cwMapaTipoMudou(chave) {
   const inp = document.getElementById('cwMapaAlvo');
   if (inp) {
     if (m && m.tipo === tipo) {
-      const nome = tipo === 'insumo'
-        ? items.find(i => i.id === m.insumoId)?.name
+      const nome = tipo === 'insumo' ? items.find(i => i.id === m.insumoId)?.name
+        : tipo === 'produto' ? produtos.find(p => p.id === m.produtoId)?.name
         : opcoes.find(o => o.id === m.opcaoId)?.nome;
-      if (nome) { inp.value = nome; _cwAlvoSel = { tipo: _CW_TIPOS[tipo].alvo, id: tipo === 'insumo' ? m.insumoId : m.opcaoId }; }
+      const id = tipo === 'insumo' ? m.insumoId : tipo === 'produto' ? m.produtoId : m.opcaoId;
+      if (nome) { inp.value = nome; _cwAlvoSel = { tipo: _CW_TIPOS[tipo].alvo, id }; }
     } else {
       inp.value = '';
       // Sugestão automática por nome
       if (precisaAlvo === 'opcao') {
         const opc = _cwMatchOpcao(chave);
         if (opc) { inp.value = opc.nome; _cwAlvoSel = { tipo: 'opcao', id: opc.id }; }
+      } else if (precisaAlvo === 'produto') {
+        const prod = produtos.find(p => _cwNorm(p.name) === _cwNorm(chave));
+        if (prod) { inp.value = prod.name; _cwAlvoSel = { tipo: 'produto', id: prod.id }; }
       }
     }
   }
@@ -2031,6 +2080,8 @@ function _cwSearchAlvo(chave) {
   if (!drop || !alvo) return;
   const pool = alvo === 'opcao'
     ? opcoes.map(o => ({ id: o.id, nome: o.nome, sub: o.categoria }))
+    : alvo === 'produto'
+    ? produtos.filter(p => p.active !== false).map(p => ({ id: p.id, nome: p.name, sub: p.cat || 'Outros' }))
     : items.filter(i => i.active !== false).map(i => ({ id: i.id, nome: i.name, sub: i.cat }));
   const matches = pool.filter(p => !q || _cwNorm(p.nome).includes(q)).slice(0, 8);
   drop.innerHTML = matches.length
@@ -2058,8 +2109,9 @@ function _cwSalvarMapa(chave) {
 
   const reg = _cwDescobertos?.find(r => r.chave === chave);
   const novo = { tipo, nomeCW: reg?.nome || chave, auto: false };
-  if (precisaAlvo === 'opcao')  novo.opcaoId  = _cwAlvoSel.id;
-  if (precisaAlvo === 'insumo') novo.insumoId = _cwAlvoSel.id;
+  if (precisaAlvo === 'opcao')   novo.opcaoId   = _cwAlvoSel.id;
+  if (precisaAlvo === 'produto') novo.produtoId = _cwAlvoSel.id;
+  if (precisaAlvo === 'insumo')  novo.insumoId  = _cwAlvoSel.id;
 
   _cwMapa[chave] = novo;
   saveCwMapa();

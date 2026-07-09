@@ -8,8 +8,8 @@
   <meta http-equiv="Expires" content="0">
   <title>VTP360 — Vai Ter Pizza!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/tokens.css?v=101">
-  <link rel="stylesheet" href="css/style.css?v=101">
+  <link rel="stylesheet" href="css/tokens.css?v=102">
+  <link rel="stylesheet" href="css/style.css?v=102">
 </head>
 <body>
 
@@ -393,7 +393,7 @@
               <div style="font-size:.7rem;color:var(--muted)">Catálogo descoberto do Cardápio Web · fichas técnicas de custo · mapeamento de débito</div>
             </div>
             <div style="display:flex;gap:8px">
-              <button id="btnOutroProduto" class="btn btn-primary btn-sm" onclick="openProdModal()">+ Outro Produto</button>
+              <button id="btnOutroProduto" class="btn btn-primary btn-sm" onclick="_novaFicha('outro')">+ Outro Produto</button>
             </div>
           </div>
           <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
@@ -424,7 +424,17 @@
             </div>
             <div id="fichaDetailView" style="display:none"></div>
           </div>
-          <div id="cadProdutosGrid" style="display:none"></div>
+          <div id="cadProdutosGrid" style="display:none">
+            <div id="outrosListView">
+              <div class="ft-section">
+                <div class="ft-section-head">
+                  <div><span class="ft-section-title">Outros produtos</span><span class="ft-section-count" id="cntOutros"></span></div>
+                </div>
+                <div id="listaOutros"></div>
+              </div>
+            </div>
+            <div id="outrosDetailView" style="display:none"></div>
+          </div>
         </div>
       </div>
 
@@ -1372,9 +1382,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/db.js?v=101"></script>
+<script src="js/db.js?v=102"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=101"></script>
+<script src="js/init.js?v=102"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">
