@@ -1808,6 +1808,56 @@ function _cwSaborKey(nome) {
     .trim();
 }
 
+// ── Similaridade (matching por aproximação de nome) ────────────
+// Sabores foram renomeados no CW ao longo do tempo (ex: "Frango com
+// Requeijão" ≈ "Frango Catupiry" ≈ "Frango Cremoso"). Match exato não
+// resolve — então casamos por semelhança de tokens + tolerância a
+// grafia, com um pequeno dicionário de sinônimos culinários.
+const _CW_SINONIMOS = { catupiry: 'catupiry', cremoso: 'catupiry', requeijao: 'catupiry', creme: 'catupiry' };
+const _CW_STOP = new Set(['de','e','com','ao','a','o','da','do','na','no','ou','em','1','2','meia','inteira','pizza','sabor','antartica','antarctica']);
+function _cwCanonTok(t) { return _CW_SINONIMOS[t] || t; }
+function _cwTokens(s) {
+  return _cwSaborKey(s).replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter(t => t && !_CW_STOP.has(t)).map(_cwCanonTok);
+}
+function _cwLev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+function _cwSim(a, b) {
+  const A = _cwTokens(a), B = _cwTokens(b);
+  if (!A.length || !B.length) return 0;
+  const sA = new Set(A), sB = new Set(B);
+  let inter = 0; for (const t of sA) if (sB.has(t)) inter++;
+  const jaccard = inter / (sA.size + sB.size - inter);
+  let score = jaccard;
+  // Contenção DIRECIONAL: só dá bônus quando a query (A) está inteira no
+  // candidato (B) — ou seja, o candidato é mais específico e contém tudo
+  // que a query pediu ("Milho" ⊆ "Milho Verde"). O contrário ("COCA-COLA
+  // 1L" contido em "Coca-Cola Zero 1l") NÃO ganha bônus: o candidato está
+  // faltando um token que a query tem ("zero"), então é menos correto.
+  let queryContida = A.length > 0; for (const t of sA) if (!sB.has(t)) { queryContida = false; break; }
+  if (queryContida && [...sA].some(t => t.length >= 3)) score = Math.max(score, Math.min(0.92, jaccard + 0.35));
+  // Tolerância a grafia (nível de caractere)
+  const c1 = _cwSaborKey(a).replace(/[^a-z0-9]/g, ''), c2 = _cwSaborKey(b).replace(/[^a-z0-9]/g, '');
+  if (c1 && c2) score = Math.max(score, (1 - _cwLev(c1, c2) / Math.max(c1.length, c2.length)) * 0.9);
+  return score;
+}
+// Top-N candidatos de uma lista {nome} para um nome do CW
+function _cwRank(nome, pool, campoNome, n = 3, minScore = 0.34) {
+  return pool.map(x => ({ x, s: _cwSim(nome, x[campoNome]) }))
+    .filter(r => r.s >= minScore).sort((a, b) => b.s - a.s).slice(0, n);
+}
+
 // ── Regras de estrutura ────────────────────────────────────────
 const _RE_SLOT     = /pizza\s+(grande|pequena).*pizza\s+(salgada|doce)/i; // grupo = trilho de sabores
 const _RE_SIZE_OPT = /^pizza\s+(grande|pequena)\b/i;                       // opção = seletor de tamanho (layout B)
@@ -1912,25 +1962,50 @@ function _cwTitulo(chave) {
   return chave.replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// Auto-match: resolve por nome o que der, sem tocar em mapeamento manual.
+// Auto-match por SIMILARIDADE. Só aplica automaticamente quando há um
+// vencedor claro (alta semelhança e bem à frente do 2º) — nomes ambíguos
+// (ex: "Frango com Requeijão" entre Catupiry/Cremoso) ficam pendentes com
+// as sugestões clicáveis no formulário, pra você confirmar.
+const _CW_AUTO_STRONG = 0.93; // match quase-exato: auto sozinho, sem exigir gap
+const _CW_AUTO_MIN    = 0.82; // confiança mínima (com gap) pra auto-mapear
+const _CW_AUTO_GAP    = 0.12; // distância mínima do 2º candidato
+
+// Vencedor claro: quase-exato OU (bom o bastante E bem à frente do 2º)
+function _cwVencedorClaro(cands) {
+  if (!cands[0]) return false;
+  if (cands[0].s >= _CW_AUTO_STRONG) return true;
+  return cands[0].s >= _CW_AUTO_MIN && (!cands[1] || cands[0].s - cands[1].s >= _CW_AUTO_GAP);
+}
+
+function _cwPoolBebidas() {
+  return [
+    ...produtos.filter(p => p.active !== false).map(p => ({ tipo: 'produto', id: p.id, nome: p.name })),
+    ...items.filter(i => i.active !== false && !i.isProd).map(i => ({ tipo: 'insumo', id: i.id, nome: i.name })),
+  ];
+}
+
 function _cwAutoMapear(sab, beb) {
   let mudou = false;
+  const poolBeb = _cwPoolBebidas();
+
   for (const k in sab) {
     if (_cwMapa.sabores[k]?.auto === false) continue;
-    const opc = opcoes.find(o => _cwSaborKey(o.nome) === k);
-    if (opc) {
-      if (_cwMapa.sabores[k]?.opcaoId !== opc.id) { _cwMapa.sabores[k] = { opcaoId: opc.id, auto: true }; mudou = true; }
-    } else if (_cwMapa.sabores[k]?.auto) {
-      delete _cwMapa.sabores[k]; mudou = true; // opção sumiu → volta a pendente
-    }
+    const cands = _cwRank(sab[k].nome, opcoes, 'nome', 2);
+    const claro = _cwVencedorClaro(cands);
+    if (claro) {
+      if (_cwMapa.sabores[k]?.opcaoId !== cands[0].x.id) { _cwMapa.sabores[k] = { opcaoId: cands[0].x.id, auto: true }; mudou = true; }
+    } else if (_cwMapa.sabores[k]?.auto) { delete _cwMapa.sabores[k]; mudou = true; }
   }
+
   for (const k in beb) {
     if (_cwMapa.bebidas[k]?.auto === false) continue;
-    const prod = produtos.find(p => p.active !== false && _cwNorm(p.name) === k);
-    const ins  = items.find(i => i.active !== false && !i.isProd && _cwNorm(i.name) === k);
-    const novo = prod ? { tipo: 'produto', id: prod.id } : ins ? { tipo: 'insumo', id: ins.id } : null;
-    const cur  = _cwMapa.bebidas[k];
-    if (novo) {
+    const cands = _cwRank(beb[k].nome, poolBeb, 'nome', 2);
+    // produto ganha de insumo em empate de score
+    if (cands[1] && Math.abs(cands[0].s - cands[1].s) < 0.001 && cands[1].x.tipo === 'produto') cands.reverse();
+    const claro = _cwVencedorClaro(cands);
+    const cur = _cwMapa.bebidas[k];
+    if (claro) {
+      const novo = { tipo: cands[0].x.tipo, id: cands[0].x.id };
       if (!cur || cur.tipo !== novo.tipo || cur.id !== novo.id) { _cwMapa.bebidas[k] = { ...novo, auto: true }; mudou = true; }
     } else if (cur?.auto) { delete _cwMapa.bebidas[k]; mudou = true; }
   }
@@ -2062,24 +2137,73 @@ function _cwLinhaBebida(r) {
 
 function _cwEditar(kind, chave) {
   if (_cwEditKind === kind && _cwEditKey === chave) { _cwEditKind = _cwEditKey = null; }
-  else { _cwEditKind = kind; _cwEditKey = chave; _cwAlvoSel = null; }
+  else {
+    _cwEditKind = kind; _cwEditKey = chave; _cwAlvoSel = null;
+    // Pré-seleciona a melhor sugestão por similaridade (se não houver mapa)
+    const lista = kind === 'sabor' ? _cwDados?.sabores : _cwDados?.bebidas;
+    const r = lista?.find(x => x.chave === chave);
+    const jaMapeado = kind === 'sabor' ? _cwMapa.sabores[chave] : _cwMapa.bebidas[chave];
+    if (r && !jaMapeado) {
+      const cand = _cwSugestoes(kind, r.nome)[0];
+      if (cand) _cwAlvoSel = { tipo: cand.tipo, id: cand.id };
+    }
+  }
   _cwRenderLista();
   if (_cwEditKey) setTimeout(() => document.getElementById('cwAlvo')?.focus(), 40);
+}
+
+// Top candidatos (com tipo/id/nome/score) para exibir como chips
+function _cwSugestoes(kind, nome) {
+  if (kind === 'sabor') {
+    return _cwRank(nome, opcoes, 'nome', 3).map(c => ({ tipo: 'opcao', id: c.x.id, nome: c.x.nome, s: c.s }));
+  }
+  return _cwRank(nome, _cwPoolBebidas(), 'nome', 3).map(c => ({ tipo: c.x.tipo, id: c.x.id, nome: c.x.nome, s: c.s }));
+}
+
+function _cwChipsHtml(kind, r) {
+  const sug = _cwSugestoes(kind, r.nome);
+  if (!sug.length) return '';
+  const sel = _cwAlvoSel;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;flex-basis:100%;align-items:center">
+    <span style="font-size:.7rem;color:var(--muted)">Sugestões:</span>
+    ${sug.map(c => {
+      const ativo = sel && sel.tipo === c.tipo && sel.id === c.id;
+      return `<button class="chip" onclick="event.stopPropagation();_cwPickChip('${c.tipo}',${c.id},this.dataset.n)" data-n="${c.nome.replace(/"/g,'&quot;')}"
+        style="cursor:pointer;font-size:.74rem;padding:3px 10px;border:1.5px solid ${ativo ? 'var(--purple)' : 'var(--border)'};background:${ativo ? 'var(--purple-xlight)' : 'var(--surface)'};color:${ativo ? 'var(--purple)' : 'var(--text)'};border-radius:var(--radius-pill,999px);font-weight:600">
+        ${c.nome} <span style="opacity:.6;font-weight:400">${Math.round(c.s * 100)}%</span></button>`;
+    }).join('')}
+  </div>`;
+}
+
+function _cwPickChip(tipo, id, nome) {
+  _cwPickAlvo(tipo, id, nome);
+  _cwRenderLista(); // re-render pra destacar o chip ativo
+}
+
+// Nome do alvo atualmente escolhido (_cwAlvoSel) pra preencher o input
+function _cwAlvoNome() {
+  if (!_cwAlvoSel) return '';
+  if (_cwAlvoSel.tipo === 'opcao')   return opcoes.find(o => o.id === _cwAlvoSel.id)?.nome || '';
+  if (_cwAlvoSel.tipo === 'produto') return produtos.find(p => p.id === _cwAlvoSel.id)?.name || '';
+  return items.find(i => i.id === _cwAlvoSel.id)?.name || '';
 }
 
 function _cwFormSabor(r) {
   const m = _cwMapa.sabores[r.chave];
   const opc = m ? opcoes.find(o => o.id === m.opcaoId) : null;
+  const val = _cwAlvoSel ? _cwAlvoNome() : (opc ? opc.nome : '');
+  const ch = r.chave.replace(/'/g, "\\'");
   return `
     <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:flex-start" onclick="event.stopPropagation()">
       <div class="ft-ac-wrap" style="flex:1;min-width:260px">
-        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Opção (cobertura)..." value="${opc ? opc.nome.replace(/"/g,'&quot;') : ''}"
+        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Opção (cobertura)..." value="${val.replace(/"/g,'&quot;')}"
           oninput="_cwSearchAlvo('sabor')" onfocus="_cwSearchAlvo('sabor')"
           onblur="setTimeout(()=>{const d=document.getElementById('cwDrop');if(d)d.style.display='none'},150)">
         <div class="ft-ac-list" id="cwDrop" style="display:none"></div>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('sabor','${r.chave.replace(/'/g,"\\'")}')">Salvar</button>
-      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('sabor','${r.chave.replace(/'/g,"\\'")}')">Remover</button>` : ''}
+      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('sabor','${ch}')">Salvar</button>
+      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('sabor','${ch}')">Remover</button>` : ''}
+      ${_cwChipsHtml('sabor', r)}
       <div style="font-size:.72rem;color:var(--muted);flex-basis:100%;margin-top:2px">Não achou a Opção? Crie em <b>Fichas Técnicas</b> primeiro.</div>
     </div>`;
 }
@@ -2087,16 +2211,19 @@ function _cwFormSabor(r) {
 function _cwFormBebida(r) {
   const m = _cwMapa.bebidas[r.chave];
   const alvo = m ? (m.tipo === 'produto' ? produtos.find(p => p.id === m.id)?.name : items.find(i => i.id === m.id)?.name) : '';
+  const val = _cwAlvoSel ? _cwAlvoNome() : (alvo || '');
+  const ch = r.chave.replace(/'/g, "\\'");
   return `
     <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:flex-start" onclick="event.stopPropagation()">
       <div class="ft-ac-wrap" style="flex:1;min-width:260px">
-        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Produto (Outros) ou insumo..." value="${alvo ? alvo.replace(/"/g,'&quot;') : ''}"
+        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Produto (Outros) ou insumo..." value="${val.replace(/"/g,'&quot;')}"
           oninput="_cwSearchAlvo('bebida')" onfocus="_cwSearchAlvo('bebida')"
           onblur="setTimeout(()=>{const d=document.getElementById('cwDrop');if(d)d.style.display='none'},150)">
         <div class="ft-ac-list" id="cwDrop" style="display:none"></div>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('bebida','${r.chave.replace(/'/g,"\\'")}')">Salvar</button>
-      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('bebida','${r.chave.replace(/'/g,"\\'")}')">Remover</button>` : ''}
+      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('bebida','${ch}')">Salvar</button>
+      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('bebida','${ch}')">Remover</button>` : ''}
+      ${_cwChipsHtml('bebida', r)}
     </div>`;
 }
 
