@@ -36,7 +36,7 @@ function setCadTab(tab) {
   if (tab === 'fornecedores')  renderFornecedores();
   if (tab === 'servicos')      renderPrestadores();
   if (tab === 'preparo')       renderPreparoGrid();
-  if (tab === 'produtos')      { renderCadSabores(); setProdTab('sabores'); }
+  if (tab === 'produtos')      setProdTab('cw');
   if (tab === 'terceirizados') renderTerceirizados();
   if (tab === 'funcionarios')  renderFuncionarios();
 }
@@ -1478,27 +1478,24 @@ function deleteProd() {
 // ══════════════════════════════════════════════════════════════
 
 function setProdTab(tab) {
-  ['sabores','fichas','outros'].forEach(t => {
+  ['cw','fichas','outros'].forEach(t => {
     const btn = document.getElementById('prod-tab-' + t);
     if (!btn) return;
     const isActive = t === tab;
     btn.style.color             = isActive ? 'var(--purple)' : 'var(--muted)';
     btn.style.borderBottomColor = isActive ? 'var(--purple)' : 'transparent';
   });
-  const sabGrid    = document.getElementById('cadSaboresGrid');
+  const cwGrid     = document.getElementById('cadCwGrid');
   const fichasGrid = document.getElementById('cadFichasGrid');
   const prodGrid   = document.getElementById('cadProdutosGrid');
-  if (sabGrid)    sabGrid.style.display    = tab === 'sabores' ? '' : 'none';
-  if (fichasGrid) fichasGrid.style.display = tab === 'fichas'  ? '' : 'none';
-  if (prodGrid)   prodGrid.style.display   = tab === 'outros'  ? '' : 'none';
-  // Botões do cabeçalho (Novo Sabor / Outro Produto) só fazem sentido fora de Fichas
-  const btnSabor = document.getElementById('btnNovoSabor');
+  if (cwGrid)     cwGrid.style.display     = tab === 'cw'     ? '' : 'none';
+  if (fichasGrid) fichasGrid.style.display = tab === 'fichas' ? '' : 'none';
+  if (prodGrid)   prodGrid.style.display   = tab === 'outros' ? '' : 'none';
   const btnOutro = document.getElementById('btnOutroProduto');
-  if (btnSabor) btnSabor.style.display = tab === 'sabores' ? '' : 'none';
-  if (btnOutro) btnOutro.style.display = tab === 'outros'  ? '' : 'none';
-  if      (tab === 'sabores') renderCadSabores();
-  else if (tab === 'fichas')  renderCadFichas();
-  else                        renderCadProdutos();
+  if (btnOutro) btnOutro.style.display = tab === 'outros' ? '' : 'none';
+  if      (tab === 'cw')     renderCadCw();
+  else if (tab === 'fichas') renderCadFichas();
+  else                       renderCadProdutos();
 }
 
 function renderCadSabores() {
@@ -1565,14 +1562,14 @@ function _renderListaProdutosPizza() {
   if (!el) return;
   document.getElementById('cntProdutosPizza').textContent = `(${produtosPizza.length})`;
   el.innerHTML = produtosPizza.map(p => {
-    const hasFt = p.fichaTecnica?.ingredientes?.length > 0;
+    const nIng  = p.fichaTecnica?.ingredientes?.length || 0;
     const custo = _calcCustoFicha(p.fichaTecnica);
     return `<div class="ft-list-row" onclick="_selecionarFicha('produto',${p.id})">
       <div class="ft-list-main">
         <div class="ft-list-name">${p.nome}</div>
-        <div class="ft-list-sub">${p.tamanho==='grande'?'Grande':'Pequena'} · ${p.categoria==='doce'?'Doce':'Salgada'}</div>
+        <div class="ft-list-sub">${nIng > 0 ? nIng + ' insumo(s) na ficha' : 'Base do produto — massa, embalagem'}</div>
       </div>
-      <div class="ft-list-cost">${hasFt ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      <div class="ft-list-cost">${nIng > 0 ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
       ${lc('chevron-right',20,'var(--muted)')}
     </div>`;
   }).join('');
@@ -1641,15 +1638,11 @@ function _renderFichaDetail() {
     </div>
     <div class="ft-editor-head">
       <input class="inp" id="xNome" placeholder="Nome" value="${registro?.nome ? registro.nome.replace(/"/g,'&quot;') : ''}" style="flex:2;min-width:260px">
-      ${isProduto ? `
-        <select class="inp" id="xTamanho" style="flex:1;min-width:140px">
-          <option value="pequena"${registro?.tamanho==='pequena'?' selected':''}>Pequena</option>
-          <option value="grande"${registro?.tamanho==='grande'?' selected':''}>Grande</option>
-        </select>` : ''}
-      <select class="inp" id="xCategoria" style="flex:1;min-width:140px">
+      ${isProduto ? '' : `
+      <select class="inp" id="xCategoria" style="flex:1;min-width:140px" title="Só pra organizar a lista — não afeta cálculo nem débito">
         <option value="salgada"${registro?.categoria!=='doce'?' selected':''}>Salgada</option>
         <option value="doce"${registro?.categoria==='doce'?' selected':''}>Doce</option>
-      </select>
+      </select>`}
     </div>
     <div class="ft-summary-row">
       <div><span class="ft-summary-val" id="xftCustoDisplay"></span><div class="ft-summary-label" id="xftCustoSub"></div></div>
@@ -1671,21 +1664,20 @@ function _salvarFicha() {
   if (!_fichaSel) return;
   const nome = document.getElementById('xNome').value.trim();
   if (!nome) { toast('Informe o nome', 'err'); return; }
-  const categoria    = document.getElementById('xCategoria').value;
   const fichaTecnica = { ingredientes: _ftRows.filter(r => r.item_id) };
 
   if (_fichaSel.tipo === 'produto') {
-    const tamanho = document.getElementById('xTamanho').value;
     if (_fichaSel.id) {
       const idx = produtosPizza.findIndex(p => p.id === _fichaSel.id);
-      if (idx >= 0) produtosPizza[idx] = { ...produtosPizza[idx], nome, tamanho, categoria, fichaTecnica };
+      if (idx >= 0) produtosPizza[idx] = { ...produtosPizza[idx], nome, fichaTecnica };
     } else {
-      const novo = { id: nextProdPizzaId++, nome, tamanho, categoria, fichaTecnica, active: true };
+      const novo = { id: nextProdPizzaId++, nome, fichaTecnica, active: true };
       produtosPizza.push(novo);
       _fichaSel.id = novo.id;
     }
     saveProdPizza();
   } else {
+    const categoria = document.getElementById('xCategoria')?.value || 'salgada';
     if (_fichaSel.id) {
       const idx = opcoes.findIndex(o => o.id === _fichaSel.id);
       if (idx >= 0) opcoes[idx] = { ...opcoes[idx], nome, categoria, fichaTecnica };
@@ -1695,7 +1687,6 @@ function _salvarFicha() {
       _fichaSel.id = nova.id;
     }
     saveOpcoes();
-    renderCadSabores(); // atualiza badges "ficha ok" nos sabores vinculados
   }
   toast(`${lc("check-circle",14,"var(--green)")} Ficha técnica salva!`);
   _voltarListaFichas();
@@ -1718,12 +1709,371 @@ function _excluirFicha() {
       } else {
         opcoes = opcoes.filter(o => o.id !== _fichaSel.id);
         saveOpcoes();
-        renderCadSabores();
       }
       toast(`${lc("trash-2",14,"currentColor")} "${nome}" excluído.`);
       _voltarListaFichas();
     }
   });
+}
+
+// ══════════════════════════════════════════════════════════════
+// PRODUTOS (CARDÁPIO WEB) — descoberta automática + mapeamento
+//
+// O catálogo NÃO é cadastrado à mão: é descoberto varrendo os pedidos
+// reais já sincronizados em cw_pedidos. Cada nome distinto (item ou
+// opção) vira uma linha com contagem de vendas e estado de mapeamento.
+// O mapa (vtp_cw_mapa, kv_store) é o contrato que o parser de débito
+// vai consumir: nome normalizado → o que debitar.
+//
+// Tipos de mapeamento:
+//   meia          → 1× Opção (a "1/2 porção"); a base grande é derivada:
+//                   cada 2 meias num item = 1× base Pizza Grande
+//   pizza_pequena → 1× base Pizza Pequena + 1× Opção
+//   insumo        → débito direto de N un do insumo (revenda: refri etc)
+//   container     → não debita nada (combo/grupo — as opções é que debitam)
+//   ignorar       → explicitamente sem débito
+// ══════════════════════════════════════════════════════════════
+
+let _cwMapa        = db._get('vtp_cw_mapa', {});
+const saveCwMapa   = () => db._set('vtp_cw_mapa', _cwMapa);
+let _cwDescobertos = null;  // cache da sessão: [{chave, nome, origem, vendas, ultimoPreco, ultimaVenda}]
+let _cwEditChave   = null;  // linha com o form de mapeamento aberto
+
+const _CW_TIPOS = {
+  meia:          { label: 'Meia porção (Opção)',                    alvo: 'opcao'  },
+  pizza_pequena: { label: 'Pizza pequena inteira (base + 1× Opção)', alvo: 'opcao'  },
+  pizza_grande:  { label: 'Pizza grande inteira (base + 2× Opção)',  alvo: 'opcao'  },
+  insumo:        { label: 'Insumo direto (revenda)',                alvo: 'insumo' },
+  container:     { label: 'Container (combo/grupo)',                alvo: null     },
+  ignorar:       { label: 'Ignorar (não debita)',                   alvo: null     },
+};
+
+function _cwNorm(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Casa um nome CW com uma Opção cadastrada, tirando os enfeites que
+// aparecem nos nomes ("1/2 ", " | Pizza Doce"...) — dos DOIS lados,
+// porque o catálogo de Opções também pode ter sido cadastrado com o
+// prefixo "1/2" no nome.
+function _cwLimparNome(s) {
+  return _cwNorm(s).replace(/^1\/2\s+/, '').replace(/\s*\|.*$/, '');
+}
+function _cwMatchOpcao(nomeCW) {
+  const alvo = _cwLimparNome(nomeCW);
+  return opcoes.find(o => _cwLimparNome(o.nome) === alvo) || null;
+}
+
+async function _cwDescobrirItens(dias = 60) {
+  const sb = _cwGetSbClient();
+  const inicio = new Date(Date.now() - dias * 864e5).toISOString();
+  const { data, error } = await sb
+    .from('cw_pedidos')
+    .select('items, cw_created_at')
+    .gte('cw_created_at', inicio)
+    .limit(5000);
+  if (error) throw new Error(error.message);
+
+  const regs = {}; // chave → registro agregado
+  const add = (nome, origem, qtd, preco, quando, contexto) => {
+    const chave = _cwNorm(nome);
+    if (!chave) return;
+    if (!regs[chave]) regs[chave] = { chave, nome, origem, vendas: 0, ultimoPreco: 0, ultimaVenda: '', grupos: new Set() };
+    const r = regs[chave];
+    r.vendas += qtd || 1;
+    if (preco > 0) r.ultimoPreco = preco;
+    if (quando > r.ultimaVenda) r.ultimaVenda = quando;
+    if (contexto) r.grupos.add(contexto);
+  };
+
+  const visitarItem = (it, quando) => {
+    if (!it || it.status === 'canceled') return;
+    const qtd = it.quantity || 1;
+    add(it.name, 'item', qtd, it.unit_price || 0, quando, null);
+
+    // Sabores embutidos no nome do item (formato marketplace):
+    // "1/2 Frango Cremoso + 1/2 Calabresa | Pizza Grande"
+    const antesPipe = (it.name || '').split('|')[0];
+    if (antesPipe.includes('+')) {
+      antesPipe.split('+').map(p => p.trim()).forEach(parte => {
+        if (/^1\/2\s+/i.test(parte)) add(parte, 'opcao', qtd, 0, quando, it.name);
+      });
+    }
+
+    for (const op of (it.options || [])) {
+      // Contexto = grupo da opção (ou o item pai) — ajuda a decidir o
+      // mapeamento de nomes ambíguos ("Calabresa" pode ser sabor de
+      // pequena num grupo e pizza grande inteira numa promo)
+      add(op.name, 'opcao', (op.quantity || 1) * qtd, op.unit_price || 0, quando, op.option_group_name || it.name);
+    }
+    for (const sub of (it.items || [])) visitarItem(sub, quando);
+  };
+
+  for (const p of (data || [])) {
+    const quando = (p.cw_created_at || '').slice(0, 10);
+    for (const it of (p.items || [])) visitarItem(it, quando);
+  }
+
+  const lista = Object.values(regs)
+    .map(r => ({ ...r, grupos: [...r.grupos].slice(0, 2) }))
+    .sort((a, b) => b.vendas - a.vendas);
+  _cwAutoMapear(lista);
+  return lista;
+}
+
+// Auto-match: resolve sozinho o que dá pra resolver por nome, e persiste
+// (o parser de débito vai ler o mesmo mapa). Nunca sobrescreve mapeamento
+// feito/ajustado manualmente (auto:false).
+function _cwAutoMapear(lista) {
+  let mudou = false;
+  for (const r of lista) {
+    const atual = _cwMapa[r.chave];
+    if (atual && atual.auto === false) continue;
+
+    let novo = null;
+    const nome = _cwNorm(r.nome);
+
+    if (r.origem === 'item') {
+      // Item-container (pizza avulsa, combo, promo): quem debita são as
+      // opções dentro dele — sabor da pequena vem como opção, base grande
+      // é derivada da contagem de meias (2 meias = 1 grande).
+      if (/combo|promo/.test(nome) || /pizza\s+(grande|pequena|salgada|doce)/.test(nome)) {
+        novo = { tipo: 'container' };
+      }
+    } else if (/^1\/2\s+/.test(nome)) {
+      const opc = _cwMatchOpcao(r.nome);
+      if (opc) novo = { tipo: 'meia', opcaoId: opc.id };
+    } else if (/\|\s*pizza\s+grande/.test(nome)) {
+      // Opção que representa uma pizza GRANDE inteira de um sabor só
+      // (formato das promos: "Calabresa | Pizza Grande") = base + 2× opção
+      const opc = _cwMatchOpcao(r.nome);
+      if (opc) novo = { tipo: 'pizza_grande', opcaoId: opc.id };
+    } else if (/\|\s*pizza\s+(doce|pequena)/.test(nome)) {
+      // Opção que representa uma pizza pequena inteira (ex: "Brigadeiro | Pizza Doce")
+      const opc = _cwMatchOpcao(r.nome);
+      if (opc) novo = { tipo: 'pizza_pequena', opcaoId: opc.id };
+    }
+
+    // Revenda (bebidas etc): nome bate exato com um insumo cadastrado
+    if (!novo) {
+      const ins = items.find(i => i.active !== false && !i.isProd && _cwNorm(i.name) === nome);
+      if (ins) novo = { tipo: 'insumo', insumoId: ins.id };
+    }
+
+    if (novo) {
+      const igual = atual && atual.tipo === novo.tipo && atual.opcaoId === novo.opcaoId;
+      if (!igual) {
+        _cwMapa[r.chave] = { ...novo, nomeCW: r.nome, auto: true };
+        mudou = true;
+      }
+    }
+  }
+  if (mudou) saveCwMapa();
+}
+
+async function renderCadCw() {
+  const el = document.getElementById('cadCwGrid');
+  if (!el) return;
+
+  if (!_cwDescobertos) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:.9rem">
+      ${lc('refresh-cw',18,'currentColor')} Varrendo os pedidos do Cardápio Web...
+    </div>`;
+    try {
+      _cwDescobertos = await _cwDescobrirItens(60);
+    } catch (e) {
+      el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);font-size:.9rem">
+        Não consegui ler os pedidos sincronizados: ${e.message}
+      </div>`;
+      return;
+    }
+  }
+  _cwRenderLista();
+}
+
+function _cwRenderLista() {
+  const el = document.getElementById('cadCwGrid');
+  if (!el || !_cwDescobertos) return;
+
+  const busca   = _cwNorm(document.getElementById('srchCw')?.value || '');
+  const soPend  = document.getElementById('filCwPend')?.checked || false;
+
+  const pendentes = _cwDescobertos.filter(r => !_cwMapa[r.chave]).length;
+
+  const linhas = _cwDescobertos.filter(r => {
+    if (busca && !r.chave.includes(busca)) return false;
+    if (soPend && _cwMapa[r.chave]) return false;
+    return true;
+  });
+
+  el.innerHTML = `
+    <div class="ft-section-head" style="margin-bottom:14px">
+      <div>
+        <span class="ft-section-title">Itens vendidos nos últimos 60 dias</span>
+        <span class="ft-section-count">${_cwDescobertos.length} itens · ${pendentes > 0
+          ? `<span style="color:var(--warning-fg,#D97706);font-weight:700">${pendentes} sem mapeamento</span>`
+          : `<span style="color:var(--green);font-weight:700">tudo mapeado ✓</span>`}</span>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="filCwPend" onchange="_cwRenderLista()" ${soPend ? 'checked' : ''}> só pendentes
+        </label>
+        <input class="inp" id="srchCw" placeholder="Buscar item..." value="${busca}" oninput="_cwRenderLista()" style="width:220px">
+        <button class="btn btn-outline btn-sm" onclick="_cwDescobertos=null;renderCadCw()">${lc('refresh-cw',13,'currentColor')} Atualizar</button>
+      </div>
+    </div>
+    ${linhas.length === 0 ? `<div class="ft-empty-list">Nenhum item encontrado</div>` : ''}
+    ${linhas.map(r => _cwRenderLinha(r)).join('')}
+  `;
+  // Restaura o foco da busca após re-render
+  if (busca && document.activeElement?.id !== 'srchCw') {
+    const s = document.getElementById('srchCw');
+    if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  }
+}
+
+function _cwRenderLinha(r) {
+  const m = _cwMapa[r.chave];
+  const editando = _cwEditChave === r.chave;
+
+  let badge, destino = '';
+  if (!m) {
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:4px 11px;border-radius:var(--r6)">não mapeado</span>`;
+  } else if (m.tipo === 'container') {
+    badge = `<span style="font-size:.76rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:4px 11px;border-radius:var(--r6)">container</span>`;
+  } else if (m.tipo === 'ignorar') {
+    badge = `<span style="font-size:.76rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:4px 11px;border-radius:var(--r6)">ignorado</span>`;
+  } else {
+    const alvoNome = m.tipo === 'insumo'
+      ? items.find(i => i.id === m.insumoId)?.name
+      : opcoes.find(o => o.id === m.opcaoId)?.nome;
+    const rotulo = { meia: 'meia', pizza_pequena: 'pequena + opção', pizza_grande: 'grande + 2× opção', insumo: 'insumo' }[m.tipo] || m.tipo;
+    destino = alvoNome ? `<span style="font-size:.8rem;color:var(--muted)">→ ${alvoNome}</span>` : '';
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--green-light);color:var(--green);padding:4px 11px;border-radius:var(--r6)">${rotulo}${m.auto ? ' · auto' : ''}</span>`;
+  }
+
+  const contexto = (r.grupos && r.grupos.length && r.origem === 'opcao')
+    ? ` · em: ${r.grupos.join(' / ')}` : '';
+
+  return `
+    <div class="ft-list-row" style="cursor:default;${editando ? 'border-color:var(--purple)' : ''}">
+      <div class="ft-list-main">
+        <div class="ft-list-name" style="font-size:.92rem">${r.nome}</div>
+        <div class="ft-list-sub">${r.vendas} venda(s)${r.ultimoPreco > 0 ? ' · R$ ' + fmt(r.ultimoPreco) : ''}${r.ultimaVenda ? ' · última ' + r.ultimaVenda.split('-').reverse().join('/') : ''}${contexto}</div>
+        ${editando ? _cwRenderFormMapa(r) : ''}
+      </div>
+      ${destino}
+      ${badge}
+      <button class="btn btn-outline btn-xs" onclick="_cwToggleEditar('${r.chave}')">${editando ? 'Fechar' : (m ? 'Editar' : 'Mapear')}</button>
+    </div>`;
+}
+
+function _cwToggleEditar(chave) {
+  _cwEditChave = _cwEditChave === chave ? null : chave;
+  _cwRenderLista();
+  if (_cwEditChave) setTimeout(() => document.getElementById('cwMapaTipo')?.focus(), 40);
+}
+
+function _cwRenderFormMapa(r) {
+  const m = _cwMapa[r.chave];
+  const tipoAtual = m?.tipo || '';
+  return `
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:flex-start" onclick="event.stopPropagation()">
+      <select class="inp" id="cwMapaTipo" style="min-width:230px" onchange="_cwMapaTipoMudou('${r.chave}')">
+        <option value="">O que é este item?</option>
+        ${Object.entries(_CW_TIPOS).map(([t, cfg]) =>
+          `<option value="${t}"${t === tipoAtual ? ' selected' : ''}>${cfg.label}</option>`).join('')}
+      </select>
+      <div class="ft-ac-wrap" id="cwMapaAlvoWrap" style="flex:1;min-width:240px;display:none">
+        <input type="text" class="inp" id="cwMapaAlvo" placeholder="Buscar destino..."
+          oninput="_cwSearchAlvo('${r.chave}')" onfocus="_cwSearchAlvo('${r.chave}')"
+          onblur="setTimeout(()=>{const d=document.getElementById('cwMapaDrop');if(d)d.style.display='none'},150)">
+        <div class="ft-ac-list" id="cwMapaDrop" style="display:none"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="_cwSalvarMapa('${r.chave}')">Salvar</button>
+      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemoverMapa('${r.chave}')">Remover mapeamento</button>` : ''}
+    </div>`;
+}
+
+let _cwAlvoSel = null; // { tipo:'opcao'|'insumo', id }
+
+function _cwMapaTipoMudou(chave) {
+  const tipo = document.getElementById('cwMapaTipo')?.value;
+  const wrap = document.getElementById('cwMapaAlvoWrap');
+  const precisaAlvo = tipo && _CW_TIPOS[tipo]?.alvo;
+  if (wrap) wrap.style.display = precisaAlvo ? '' : 'none';
+  _cwAlvoSel = null;
+  // Pré-preenche com o mapeamento atual, se compatível
+  const m = _cwMapa[chave];
+  const inp = document.getElementById('cwMapaAlvo');
+  if (inp) {
+    if (m && m.tipo === tipo) {
+      const nome = tipo === 'insumo'
+        ? items.find(i => i.id === m.insumoId)?.name
+        : opcoes.find(o => o.id === m.opcaoId)?.nome;
+      if (nome) { inp.value = nome; _cwAlvoSel = { tipo: _CW_TIPOS[tipo].alvo, id: tipo === 'insumo' ? m.insumoId : m.opcaoId }; }
+    } else {
+      inp.value = '';
+      // Sugestão automática por nome
+      if (precisaAlvo === 'opcao') {
+        const opc = _cwMatchOpcao(chave);
+        if (opc) { inp.value = opc.nome; _cwAlvoSel = { tipo: 'opcao', id: opc.id }; }
+      }
+    }
+  }
+}
+
+function _cwSearchAlvo(chave) {
+  const tipo = document.getElementById('cwMapaTipo')?.value;
+  const alvo = _CW_TIPOS[tipo]?.alvo;
+  const drop = document.getElementById('cwMapaDrop');
+  const q    = _cwNorm(document.getElementById('cwMapaAlvo')?.value || '');
+  if (!drop || !alvo) return;
+  const pool = alvo === 'opcao'
+    ? opcoes.map(o => ({ id: o.id, nome: o.nome, sub: o.categoria }))
+    : items.filter(i => i.active !== false).map(i => ({ id: i.id, nome: i.name, sub: i.cat }));
+  const matches = pool.filter(p => !q || _cwNorm(p.nome).includes(q)).slice(0, 8);
+  drop.innerHTML = matches.length
+    ? matches.map(p => `
+      <div class="ft-ac-item" onmousedown="event.preventDefault();_cwPickAlvo('${alvo}',${p.id},this.textContent.trim())">
+        <span>${p.nome}</span><span class="ft-ac-cat">${p.sub || ''}</span>
+      </div>`).join('')
+    : `<div class="ft-ac-item" style="cursor:default;color:var(--muted)">Nada encontrado</div>`;
+  drop.style.display = 'block';
+}
+
+function _cwPickAlvo(tipo, id, nome) {
+  _cwAlvoSel = { tipo, id };
+  const inp = document.getElementById('cwMapaAlvo');
+  if (inp) inp.value = nome.replace(/\s{2,}.*$/, '');
+  const drop = document.getElementById('cwMapaDrop');
+  if (drop) drop.style.display = 'none';
+}
+
+function _cwSalvarMapa(chave) {
+  const tipo = document.getElementById('cwMapaTipo')?.value;
+  if (!tipo) { toast('Escolha o que é este item', 'err'); return; }
+  const precisaAlvo = _CW_TIPOS[tipo]?.alvo;
+  if (precisaAlvo && !_cwAlvoSel) { toast('Escolha o destino do débito', 'err'); return; }
+
+  const reg = _cwDescobertos?.find(r => r.chave === chave);
+  const novo = { tipo, nomeCW: reg?.nome || chave, auto: false };
+  if (precisaAlvo === 'opcao')  novo.opcaoId  = _cwAlvoSel.id;
+  if (precisaAlvo === 'insumo') novo.insumoId = _cwAlvoSel.id;
+
+  _cwMapa[chave] = novo;
+  saveCwMapa();
+  _cwEditChave = null;
+  _cwAlvoSel = null;
+  toast(`${lc("check-circle",14,"var(--green)")} Mapeamento salvo!`);
+  _cwRenderLista();
+}
+
+function _cwRemoverMapa(chave) {
+  delete _cwMapa[chave];
+  saveCwMapa();
+  _cwEditChave = null;
+  _cwRenderLista();
 }
 
 // renderCadProdutos already handles cadProdutosGrid correctly

@@ -8,8 +8,8 @@
   <meta http-equiv="Expires" content="0">
   <title>VTP360 — Vai Ter Pizza!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/tokens.css?v=100">
-  <link rel="stylesheet" href="css/style.css?v=100">
+  <link rel="stylesheet" href="css/tokens.css?v=101">
+  <link rel="stylesheet" href="css/style.css?v=101">
 </head>
 <body>
 
@@ -389,20 +389,19 @@
         <div id="cad-produtos" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
             <div>
-              <div style="font-size:.8rem;font-weight:700">Sabores e Produtos</div>
-              <div style="font-size:.7rem;color:var(--muted)">Sabores de pizza com preço · usados no desperdício de produto</div>
+              <div style="font-size:.8rem;font-weight:700">Produtos e Fichas Técnicas</div>
+              <div style="font-size:.7rem;color:var(--muted)">Catálogo descoberto do Cardápio Web · fichas técnicas de custo · mapeamento de débito</div>
             </div>
             <div style="display:flex;gap:8px">
-              <button id="btnNovoSabor" class="btn btn-outline btn-sm" onclick="openSaborModal()">+ Novo Sabor</button>
               <button id="btnOutroProduto" class="btn btn-primary btn-sm" onclick="openProdModal()">+ Outro Produto</button>
             </div>
           </div>
           <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
-            <button id="prod-tab-sabores" onclick="setProdTab('sabores')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--purple);border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Sabores</button>
+            <button id="prod-tab-cw" onclick="setProdTab('cw')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--purple);border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Produtos (Cardápio Web)</button>
             <button id="prod-tab-fichas" onclick="setProdTab('fichas')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Fichas Técnicas</button>
             <button id="prod-tab-outros" onclick="setProdTab('outros')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Outros</button>
           </div>
-          <div id="cadSaboresGrid"></div>
+          <div id="cadCwGrid"></div>
           <div id="cadFichasGrid" style="display:none">
             <div id="fichaListView">
               <div class="ft-section">
@@ -1373,9 +1372,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/db.js?v=100"></script>
+<script src="js/db.js?v=101"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=100"></script>
+<script src="js/init.js?v=101"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">

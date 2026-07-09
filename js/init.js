@@ -21,7 +21,7 @@
     'vtp_emp_terceir','vtp_emp_cargos','vtp_emp_tipos_desp','vtp_emp_cat_insumo',
     'vtp_emp_ausencias','vtp_rh_escalas','vtp_rh_presencas','vtp_rh_horasextras',
     'vtp_rh_materiais','vtp_rh_periodos','vtp_rh_config','vtp_rh_diaristas',
-    'vtp_rh_avaliacoes','vtp_sabores','vtp_produtos','vtp_produtos_pizza','vtp_opcoes','vtp_perms','vtp_config',
+    'vtp_rh_avaliacoes','vtp_sabores','vtp_produtos','vtp_produtos_pizza','vtp_opcoes','vtp_cw_mapa','vtp_perms','vtp_config',
     'vtp_movimentacoes','vtp_hist_contagens','vtp_contagensInv',
     'vtp_manut_itens','vtp_manut_cats_cfg','vtp_manut_grupos',
     'vtp_inv_locs','vtp_inv_cats','vtp_ck_turnos','vtp_tipos_lista',
@@ -66,7 +66,7 @@
     'js/atendimento.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=100');
+    await loadScript(src + '?v=101');
   }
 
   // First run: push all initialized data to Supabase
