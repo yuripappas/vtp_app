@@ -30,30 +30,37 @@ function setVendasTab(tab) {
     const b = document.getElementById('vd-tab-' + t);
     if (b) { b.style.color = t === tab ? 'var(--purple)' : 'var(--muted)'; b.style.borderBottomColor = t === tab ? 'var(--purple)' : 'transparent'; }
   });
-  if (tab === 'cmv') renderVendasCMV();
+  _vdRerender();
+}
+
+// Re-renderiza a aba atual (usado pelos filtros compartilhados)
+function _vdRerender() {
+  if (_vdTab === 'cmv')                 renderVendasCMV();
+  else if (_vdTab === 'porcionamento')  renderVendasPorcionamento();
   else {
     document.getElementById('vendasTabContent').innerHTML =
       `<div style="padding:60px 20px;text-align:center;color:var(--muted)">
         ${lc('bar-chart-2', 26, 'var(--muted)')}
-        <div style="margin-top:12px;font-weight:700;font-size:1rem">${tab === 'produtos' ? 'Produtos / Curva ABC' : 'Porcionamento'}</div>
+        <div style="margin-top:12px;font-weight:700;font-size:1rem">Produtos / Curva ABC</div>
         <div style="font-size:.84rem;margin-top:4px">Próximo passo do módulo — o motor já está pronto pra isso.</div>
       </div>`;
   }
 }
 
 // ── Filtros comuns ─────────────────────────────────────────────
-function _vdFiltros() {
+// meta=true inclui o campo de meta de CMV (só faz sentido no filho CMV)
+function _vdFiltros(meta) {
   const canais = ['ifood', '99food', 'site', 'outro'];
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
-    ${[30,60,90].map(d => `<button class="btn btn-${d===_vdPeriodo?'primary':'outline'} btn-xs" onclick="_vdPeriodo=${d};renderVendasCMV()">${d} dias</button>`).join('')}
-    <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasCMV()">
+    ${[30,60,90].map(d => `<button class="btn btn-${d===_vdPeriodo?'primary':'outline'} btn-xs" onclick="_vdPeriodo=${d};_vdRerender()">${d} dias</button>`).join('')}
+    <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;_vdRerender()">
       <option value="">Todos os canais</option>
       ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
     </select>
-    <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)">Meta de CMV
+    ${meta ? `<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)">Meta de CMV
       <input type="number" class="inp" value="${_vdMetaCMV}" min="0" max="100" onchange="_vdMetaCMV=parseFloat(this.value)||30;renderVendasCMV()" style="width:62px;text-align:right;font-size:.8rem;padding:6px 8px">%
-    </div>
-    <button class="btn btn-outline btn-xs" onclick="_vLinhas=null;renderVendasCMV()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+    </div>` : '<div style="margin-left:auto"></div>'}
+    <button class="btn btn-outline btn-xs" onclick="_vLinhas=null;_vdRerender()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
   </div>`;
 }
 
@@ -66,11 +73,11 @@ const _VD_CAT_ICON = {
 async function renderVendasCMV() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  el.innerHTML = _vdFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
+  el.innerHTML = _vdFiltros(true) + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
 
   let linhas;
   try { linhas = await vendasCarregar(_vdPeriodo); }
-  catch (e) { el.innerHTML = _vdFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
+  catch (e) { el.innerHTML = _vdFiltros(true) + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
   const cat  = vendasPorCategoria(linhas);
@@ -111,7 +118,7 @@ async function renderVendasCMV() {
     </div>`;
   };
 
-  el.innerHTML = _vdFiltros() + `
+  el.innerHTML = _vdFiltros(true) + `
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${_vdPeriodo} dias</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Receita', 'R$ ' + fmt(tot.receita))}
@@ -152,4 +159,81 @@ function _vdDrillCategoria(dados) {
       <div style="text-align:right;font-weight:600">R$ ${fmt(x.custoTot)}</div>
     </div>`).join('')}
   </div>`;
+}
+
+// ── Filho PORCIONAMENTO ────────────────────────────────────────
+// Meias porções por opção/tamanho/dia — insumo direto pra Previsão.
+const _VD_DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+async function renderVendasPorcionamento() {
+  const el = document.getElementById('vendasTabContent');
+  if (!el) return;
+  el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
+
+  let linhas;
+  try { linhas = await vendasCarregar(_vdPeriodo); }
+  catch (e) { el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+  if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
+
+  const ag  = vendasAgregarMeias(linhas);
+  const dow = vendasMeiasPorDiaSemana(linhas);
+
+  const totMeias = ag.porTamanho.grande + ag.porTamanho.pequena;
+  const nDias = Math.max(1, _vdPeriodo);
+  const pctG = totMeias > 0 ? ag.porTamanho.grande / totMeias * 100 : 0;
+
+  const kpi = (lbl, val, sub) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
+    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
+    <div style="font-size:1.5rem;font-weight:800">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
+
+  // Ranking de opções por total de meias (curva de porcionamento)
+  const ops = Object.entries(ag.porOpcao).sort((a, b) => b[1].total - a[1].total);
+  const maxMeias = ops.length ? ops[0][1].total : 1;
+  const linhaOp = ([k, v]) => {
+    const opc = vendasOpcaoDeSabor(k);
+    const nome = opc ? opc.nome : _cwTitulo(k);
+    const porDia = v.total / nDias;
+    return `<div style="display:grid;grid-template-columns:1.6fr 90px 90px 90px 1fr;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border);font-size:.84rem">
+      <div style="font-weight:600">${nome}</div>
+      <div style="text-align:right"><span style="font-weight:700">${v.grande}</span> <span style="font-size:.66rem;color:var(--muted)">G</span></div>
+      <div style="text-align:right"><span style="font-weight:700">${v.pequena}</span> <span style="font-size:.66rem;color:var(--muted)">P</span></div>
+      <div style="text-align:right;font-weight:800;color:var(--purple)">${v.total}</div>
+      <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="width:${(v.total/maxMeias*100).toFixed(0)}%;height:100%;background:var(--brand-purple,#6B21D4)"></div></div><span style="font-size:.72rem;color:var(--muted);white-space:nowrap">${fmt(porDia)}/dia</span></div>
+    </div>`;
+  };
+
+  // Meias por dia da semana (média por dia observado)
+  const maxDow = Math.max(1, ...dow.map(d => d.total));
+  const cardDow = (i) => {
+    const d = dow[i];
+    const media = d.dias ? d.total / d.dias : 0;
+    return `<div style="text-align:center">
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">${_VD_DOW[i]}</div>
+      <div style="height:90px;display:flex;align-items:flex-end;justify-content:center"><div style="width:60%;background:var(--brand-purple,#6B21D4);border-radius:4px 4px 0 0;height:${(d.total/maxDow*100).toFixed(0)}%;min-height:2px" title="${d.total} meias"></div></div>
+      <div style="font-size:.8rem;font-weight:700;margin-top:4px">${fmt(media)}</div>
+      <div style="font-size:.64rem;color:var(--muted)">meias/dia</div>
+    </div>`;
+  };
+
+  el.innerHTML = _vdFiltros(false) + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Meias porções vendidas em <b>${_vdPeriodo} dias</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} — insumo direto pra Previsão dimensionar o dia.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px">
+      ${kpi('Total de meias', totMeias, `${fmt(totMeias/nDias)} por dia`)}
+      ${kpi('Meias grande', ag.porTamanho.grande, `${fmt(pctG)}% do total`)}
+      ${kpi('Meias pequena', ag.porTamanho.pequena, `${fmt(100-pctG)}% do total`)}
+      ${kpi('Sabores distintos', ops.length)}
+    </div>
+
+    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por dia da semana</div>
+    <div class="card" style="padding:16px;margin-bottom:24px">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end">${[0,1,2,3,4,5,6].map(cardDow).join('')}</div>
+    </div>
+
+    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Porcionamento por sabor <span style="font-weight:400;text-transform:none">— meia porção da grande (½) e da pequena inteira</span></div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="display:grid;grid-template-columns:1.6fr 90px 90px 90px 1fr;gap:12px;padding:9px 14px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
+        <div>Sabor</div><div style="text-align:right">Grande</div><div style="text-align:right">Pequena</div><div style="text-align:right">Total</div><div>Média/dia</div>
+      </div>
+      ${ops.map(linhaOp).join('') || '<div class="ft-empty-list" style="padding:14px">Sem dados no período</div>'}
+    </div>`;
 }

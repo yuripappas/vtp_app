@@ -214,6 +214,25 @@ function vendasAgregarMeias(linhas) {
   return { porTamanho, porOpcao, porCategoria };
 }
 
+// Meias por dia da semana (0=Dom … 6=Sáb) — insumo pra Previsão dimensionar
+// o porcionamento por dia. Também devolve nº de dias distintos observados
+// por dia-da-semana, pra calcular a média por dia.
+function vendasMeiasPorDiaSemana(linhas) {
+  const dow = Array.from({ length: 7 }, () => ({ grande: 0, pequena: 0, total: 0, datas: new Set() }));
+  for (const l of linhas) {
+    const d = new Date(l.ts);
+    const wd = d.getDay();
+    const dia = (l.ts || '').slice(0, 10);
+    for (const pz of l.pizzas) {
+      const n = Object.values(pz.meias).reduce((a, b) => a + b, 0);
+      dow[wd][pz.tamanho] += n;
+      dow[wd].total += n;
+      if (dia) dow[wd].datas.add(dia);
+    }
+  }
+  return dow.map(x => ({ grande: x.grande, pequena: x.pequena, total: x.total, dias: x.datas.size }));
+}
+
 // Vendas + receita por categoria (para a aba Categorias)
 function vendasPorCategoria(linhas) {
   const cat = {};
