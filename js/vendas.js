@@ -151,8 +151,13 @@ async function vendasCarregar(dias = 90, forcar = false) {
 
 // ── Resolução de custo (saborKey → Opção; bebida → Produto/insumo) ──
 
-// Reusa a similaridade do cadastros; devolve a Opção mais provável.
+// Devolve a Opção mais provável para um sabor. Prioridade: override manual
+// (vtp_cw_mapa.sabores), senão a melhor por similaridade (_cwRank ≥ 0.6).
 function vendasOpcaoDeSabor(saborKey) {
+  if (typeof _cwMapa === 'object' && _cwMapa?.sabores?.[saborKey]) {
+    const o = opcoes.find(x => x.id === _cwMapa.sabores[saborKey].opcaoId);
+    if (o) return o;
+  }
   if (typeof _cwRank !== 'function') return null;
   const c = _cwRank(saborKey, opcoes, 'nome', 1)[0];
   return c && c.s >= 0.6 ? c.x : null;
@@ -212,12 +217,44 @@ function vendasAgregarMeias(linhas) {
 // Vendas + receita por categoria (para a aba Categorias)
 function vendasPorCategoria(linhas) {
   const cat = {};
-  for (const c of VENDAS_CATEGORIAS) cat[c] = { vendas: 0, receita: 0, custo: 0 };
+  for (const c of VENDAS_CATEGORIAS) cat[c] = { vendas: 0, receita: 0, custo: 0, meiasG: 0, meiasP: 0 };
   for (const l of linhas) {
-    const c = cat[l.categoria] || (cat[l.categoria] = { vendas: 0, receita: 0, custo: 0 });
+    const c = cat[l.categoria] || (cat[l.categoria] = { vendas: 0, receita: 0, custo: 0, meiasG: 0, meiasP: 0 });
     c.vendas += l.qtd;
     c.receita += l.receita;
     c.custo  += vendasCustoLinha(l);
+    for (const pz of l.pizzas) {
+      const n = Object.values(pz.meias).reduce((a, b) => a + b, 0);
+      if (pz.tamanho === 'grande') c.meiasG += n; else c.meiasP += n;
+    }
   }
   return cat;
+}
+
+// Produtos (sabores/bebidas) que aparecem em cada categoria, com nº de vendas
+function vendasProdutosPorCategoria(linhas) {
+  const cat = {};
+  const g = c => cat[c] || (cat[c] = { sabores: {}, bebidas: {} });
+  for (const l of linhas) {
+    const c = g(l.categoria);
+    for (const pz of l.pizzas) for (const [k, m] of Object.entries(pz.meias)) c.sabores[k] = (c.sabores[k] || 0) + m;
+    for (const b of l.bebidas) c.bebidas[_cwNorm(b.nome)] = (c.bebidas[_cwNorm(b.nome)] || 0) + (b.qtd || 1);
+  }
+  return cat;
+}
+
+// Sabores e bebidas vendidos que NÃO resolvem numa ficha (pendências)
+function vendasPendencias(linhas) {
+  const sab = {}, beb = {};
+  for (const l of linhas) {
+    for (const pz of l.pizzas) for (const [k, m] of Object.entries(pz.meias)) sab[k] = (sab[k] || 0) + m;
+    for (const b of l.bebidas) beb[_cwNorm(b.nome)] = (beb[_cwNorm(b.nome)] || 0) + (b.qtd || 1);
+  }
+  const sabPend = Object.entries(sab).filter(([k]) => !vendasOpcaoDeSabor(k))
+    .map(([k, n]) => ({ nome: k, vendas: n })).sort((a, b) => b.vendas - a.vendas);
+  const bebPend = Object.entries(beb).filter(([n]) => {
+    const c = _cwRank(n, _cwPoolBebidas(), 'nome', 1)[0];
+    return !(c && c.s >= 0.6);
+  }).map(([n, q]) => ({ nome: n, vendas: q })).sort((a, b) => b.vendas - a.vendas);
+  return { sabPend, bebPend };
 }

@@ -36,7 +36,7 @@ function setCadTab(tab) {
   if (tab === 'fornecedores')  renderFornecedores();
   if (tab === 'servicos')      renderPrestadores();
   if (tab === 'preparo')       renderPreparoGrid();
-  if (tab === 'produtos')      setProdTab('cw');
+  if (tab === 'produtos')      setProdTab('categorias');
   if (tab === 'terceirizados') renderTerceirizados();
   if (tab === 'funcionarios')  renderFuncionarios();
 }
@@ -1483,25 +1483,136 @@ function deleteProd() {
 // SABORES DE PIZZA
 // ══════════════════════════════════════════════════════════════
 
+let _prodTabAtual = 'categorias';
 function setProdTab(tab) {
-  ['cw','fichas','outros'].forEach(t => {
+  _prodTabAtual = tab;
+  ['categorias','produtos','fichas'].forEach(t => {
     const btn = document.getElementById('prod-tab-' + t);
     if (!btn) return;
     const isActive = t === tab;
     btn.style.color             = isActive ? 'var(--purple)' : 'var(--muted)';
     btn.style.borderBottomColor = isActive ? 'var(--purple)' : 'transparent';
   });
-  const cwGrid     = document.getElementById('cadCwGrid');
+  const catGrid    = document.getElementById('cadCategoriasGrid');
+  const browseGrid = document.getElementById('cadProdutosBrowse');
   const fichasGrid = document.getElementById('cadFichasGrid');
-  const prodGrid   = document.getElementById('cadProdutosGrid');
-  if (cwGrid)     cwGrid.style.display     = tab === 'cw'     ? '' : 'none';
-  if (fichasGrid) fichasGrid.style.display = tab === 'fichas' ? '' : 'none';
-  if (prodGrid)   prodGrid.style.display   = tab === 'outros' ? '' : 'none';
-  const btnOutro = document.getElementById('btnOutroProduto');
-  if (btnOutro) btnOutro.style.display = tab === 'outros' ? '' : 'none';
-  if      (tab === 'cw')     renderCadCw();
-  else if (tab === 'fichas') renderCadFichas();
-  else                       renderCadProdutos();
+  if (catGrid)    catGrid.style.display    = tab === 'categorias' ? '' : 'none';
+  if (browseGrid) browseGrid.style.display = tab === 'produtos'   ? '' : 'none';
+  if (fichasGrid) fichasGrid.style.display = tab === 'fichas'     ? '' : 'none';
+  if      (tab === 'categorias') renderCadCategorias();
+  else if (tab === 'produtos')   renderCadProdutosBrowse();
+  else                           renderCadFichas();
+}
+
+// ══════════════════════════════════════════════════════════════
+// ABA CATEGORIAS — análise de vendas interpretada dos pedidos
+// (espelha o catálogo do CW; consome o motor js/vendas.js)
+// ══════════════════════════════════════════════════════════════
+
+let _catPeriodo = 90;
+
+const _CAT_ICON = {
+  'Promo do Dia': 'tag', 'Vai Ter Combo': 'layers', 'Monte seu Sabor': 'pizza',
+  'Pizza Salgada': 'pizza', 'Pizza Doce': 'pizza', 'Bebidas': 'coffee',
+};
+
+async function renderCadCategorias() {
+  const el = document.getElementById('cadCategoriasGrid');
+  if (!el) return;
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:.9rem">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
+  let linhas;
+  try { linhas = await vendasCarregar(_catPeriodo); }
+  catch (e) { el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);font-size:.9rem">Não consegui ler os pedidos: ${e.message}</div>`; return; }
+
+  const cat   = vendasPorCategoria(linhas);
+  const pend  = vendasPendencias(linhas);
+  const tot   = { vendas: 0, receita: 0, custo: 0 };
+  for (const c of VENDAS_CATEGORIAS) { tot.vendas += cat[c].vendas; tot.receita += cat[c].receita; tot.custo += cat[c].custo; }
+
+  const cmv = (r, c) => r > 0 ? (c / r * 100) : 0;
+  const card = (nome) => {
+    const d = cat[nome]; if (!d || !d.vendas) return '';
+    const pc = cmv(d.receita, d.custo);
+    return `<div class="card" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        ${lc(_CAT_ICON[nome] || 'pizza', 18, 'var(--purple)')}
+        <span style="font-size:.95rem;font-weight:700">${nome}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 14px">
+        <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Vendas</div><div style="font-size:1.15rem;font-weight:700">${d.vendas}</div></div>
+        <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Receita</div><div style="font-size:1.15rem;font-weight:700">R$ ${fmt(d.receita)}</div></div>
+        <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">CMV</div><div style="font-size:1.15rem;font-weight:700;color:${pc>35?'var(--red)':pc>0?'var(--green)':'var(--muted)'}">${d.custo>0?fmt(pc)+'%':'—'}</div></div>
+        <div><div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Meias G / P</div><div style="font-size:1.15rem;font-weight:700">${d.meiasG} / ${d.meiasP}</div></div>
+      </div>
+    </div>`;
+  };
+
+  const bannerPend = (pend.sabPend.length || pend.bebPend.length)
+    ? `<div class="card" style="padding:14px 16px;margin-bottom:16px;border-color:var(--warning-fg,#D97706);background:var(--warning-bg,#FEF3C7)">
+        <div style="font-size:.84rem;font-weight:700;color:var(--warning-fg,#B45309);margin-bottom:4px">${lc('alert-triangle',14,'currentColor')} ${pend.sabPend.length + pend.bebPend.length} item(ns) sem ficha reconhecida</div>
+        <div style="font-size:.78rem;color:var(--warning-fg,#92400E)">
+          ${pend.sabPend.slice(0,6).map(s=>`${_cwTitulo(s.nome)} (${s.vendas})`).join(' · ')}${pend.sabPend.length>6?' …':''}
+          ${pend.bebPend.length?' · '+pend.bebPend.slice(0,4).map(b=>b.nome+' ('+b.vendas+')').join(' · '):''}
+        </div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:6px">Cadastre a Opção/Produto correspondente em <b>Fichas Técnicas</b> — o custo entra automático.</div>
+      </div>` : '';
+
+  const cmvGeral = cmv(tot.receita, tot.custo);
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+      <div style="font-size:.84rem;color:var(--muted)">Interpretado de <b>${_catPeriodo} dias</b> · ${tot.vendas} vendas · receita R$ ${fmt(tot.receita)} · CMV ${tot.custo>0?fmt(cmvGeral)+'%':'—'}</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${[30,60,90].map(d=>`<button class="btn btn-${d===_catPeriodo?'primary':'outline'} btn-xs" onclick="_catPeriodo=${d};renderCadCategorias()">${d}d</button>`).join('')}
+        <button class="btn btn-outline btn-xs" onclick="_vLinhas=null;renderCadCategorias()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+      </div>
+    </div>
+    ${bannerPend}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+      ${VENDAS_CATEGORIAS.map(card).join('')}
+    </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ABA PRODUTOS — o que é vendido em cada categoria (breakdown)
+// ══════════════════════════════════════════════════════════════
+
+async function renderCadProdutosBrowse() {
+  const el = document.getElementById('cadProdutosBrowse');
+  if (!el) return;
+  el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:.9rem">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
+  let linhas;
+  try { linhas = await vendasCarregar(_catPeriodo); }
+  catch (e) { el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+
+  const porCat = vendasProdutosPorCategoria(linhas);
+  const secao = (nome) => {
+    const d = porCat[nome];
+    if (!d) return '';
+    const sabores = Object.entries(d.sabores).sort((a,b)=>b[1]-a[1]);
+    const bebidas = Object.entries(d.bebidas).sort((a,b)=>b[1]-a[1]);
+    const itens = [...sabores.map(([k,n])=>({tipo:'sabor',k,n})), ...bebidas.map(([k,n])=>({tipo:'bebida',k,n}))];
+    if (!itens.length) return '';
+    return `<div class="ft-section">
+      <div class="ft-section-head"><div><span class="ft-section-title">${nome}</span><span class="ft-section-count">${itens.length} itens</span></div></div>
+      ${itens.map(x => {
+        let alvo, temFicha;
+        if (x.tipo === 'sabor') { alvo = vendasOpcaoDeSabor(x.k); temFicha = alvo?.fichaTecnica?.ingredientes?.length > 0; }
+        else { const c = _cwRank(x.k, _cwPoolBebidas(), 'nome', 1)[0]; alvo = (c&&c.s>=0.6)?c.x:null; temFicha = !!alvo; }
+        const badge = !alvo
+          ? `<span class="ft-list-empty" style="background:var(--yellow-light);color:var(--warning-fg,#B45309)">sem ficha</span>`
+          : temFicha ? `<span style="font-size:.74rem;font-weight:600;color:var(--green)">ficha ok</span>`
+          : `<span class="ft-list-empty" style="background:var(--orange-light);color:var(--orange-dark)">ficha vazia</span>`;
+        return `<div class="ft-list-row" style="cursor:default">
+          <div class="ft-list-main">
+            <div class="ft-list-name" style="font-size:.9rem">${_cwTitulo(x.k)} <span style="font-size:.66rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:1px 6px;border-radius:var(--r6);margin-left:4px">${x.tipo}</span></div>
+            <div class="ft-list-sub">${x.n} meia(s)/un vendida(s)${alvo?' · → '+(alvo.nome||alvo.name):''}</div>
+          </div>
+          ${badge}
+        </div>`;
+      }).join('')}
+    </div>`;
+  };
+  el.innerHTML = VENDAS_CATEGORIAS.map(secao).join('') || '<div class="ft-empty-list">Sem dados no período</div>';
 }
 
 function renderCadSabores() {
@@ -1566,19 +1677,33 @@ function renderCadFichas() {
 function _renderListaProdutosPizza() {
   const el = document.getElementById('listaProdutosPizza');
   if (!el) return;
-  document.getElementById('cntProdutosPizza').textContent = `(${produtosPizza.length})`;
-  el.innerHTML = produtosPizza.map(p => {
+  // Produtos = bases de pizza + bebidas/outros (todos são produtos vendáveis)
+  const linhaBase = p => {
     const nIng  = p.fichaTecnica?.ingredientes?.length || 0;
     const custo = _calcCustoFicha(p.fichaTecnica);
     return `<div class="ft-list-row" onclick="_selecionarFicha('produto',${p.id})">
       <div class="ft-list-main">
-        <div class="ft-list-name">${p.nome}</div>
+        <div class="ft-list-name">${p.nome} <span style="font-size:.68rem;font-weight:600;background:var(--purple-xlight);color:var(--purple);padding:1px 7px;border-radius:var(--r6);margin-left:6px">base</span></div>
         <div class="ft-list-sub">${nIng > 0 ? nIng + ' insumo(s) na ficha' : 'Base do produto — massa, embalagem'}</div>
       </div>
       <div class="ft-list-cost">${nIng > 0 ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
       ${lc('chevron-right',20,'var(--muted)')}
     </div>`;
-  }).join('');
+  };
+  const linhaOutro = p => {
+    const nIng  = p.fichaTecnica?.ingredientes?.length || 0;
+    const custo = _calcCustoFicha(p.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('outro',${p.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${p.name} <span style="font-size:.68rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:1px 7px;border-radius:var(--r6);margin-left:6px">bebida/outro</span></div>
+        <div class="ft-list-sub">${nIng > 0 ? nIng + ' insumo(s) na ficha' : 'Sem ficha técnica'}</div>
+      </div>
+      <div class="ft-list-cost">${nIng > 0 ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
+    </div>`;
+  };
+  document.getElementById('cntProdutosPizza').textContent = `(${produtosPizza.length + produtos.length})`;
+  el.innerHTML = produtosPizza.map(linhaBase).join('') + produtos.map(linhaOutro).join('');
 }
 
 function _renderListaOpcoes() {
@@ -1609,13 +1734,9 @@ function _renderListaOpcoes() {
 
 function _selecionarFicha(tipo, id) {
   _fichaSel = { tipo, id };
-  if (tipo === 'outro') {
-    document.getElementById('outrosListView').style.display = 'none';
-    document.getElementById('outrosDetailView').style.display = '';
-  } else {
-    document.getElementById('fichaListView').style.display = 'none';
-    document.getElementById('fichaDetailView').style.display = '';
-  }
+  // Bebidas ('outro') e demais fichas agora vivem todas na aba Fichas Técnicas
+  document.getElementById('fichaListView').style.display = 'none';
+  document.getElementById('fichaDetailView').style.display = '';
   _renderFichaDetail();
 }
 
@@ -1624,21 +1745,19 @@ function _novaFicha(tipo) {
 }
 
 function _voltarListaFichas() {
-  const eraOutro = _fichaSel?.tipo === 'outro';
   _fichaSel = null;
-  if (eraOutro) renderCadProdutos();
-  else renderCadFichas();
+  renderCadFichas();
 }
 
 function _irParaFicha(tipo, id) {
   setCadTab('produtos');
-  setProdTab(tipo === 'outro' ? 'outros' : 'fichas');
+  setProdTab('fichas');
   _selecionarFicha(tipo, id);
 }
 
 function _renderFichaDetail() {
   const isOutro   = _fichaSel?.tipo === 'outro';
-  const el = document.getElementById(isOutro ? 'outrosDetailView' : 'fichaDetailView');
+  const el = document.getElementById('fichaDetailView');
   if (!el || !_fichaSel) return;
 
   const isProduto = _fichaSel.tipo === 'produto';

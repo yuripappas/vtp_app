@@ -390,24 +390,25 @@
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
             <div>
               <div style="font-size:.8rem;font-weight:700">Produtos e Fichas Técnicas</div>
-              <div style="font-size:.7rem;color:var(--muted)">Catálogo descoberto do Cardápio Web · fichas técnicas de custo · mapeamento de débito</div>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button id="btnOutroProduto" class="btn btn-primary btn-sm" onclick="_novaFicha('outro')">+ Outro Produto</button>
+              <div style="font-size:.7rem;color:var(--muted)">Interpretado dos pedidos do Cardápio Web · categorias, produtos e custos</div>
             </div>
           </div>
           <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
-            <button id="prod-tab-cw" onclick="setProdTab('cw')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--purple);border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Produtos (Cardápio Web)</button>
+            <button id="prod-tab-categorias" onclick="setProdTab('categorias')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--purple);border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Categorias</button>
+            <button id="prod-tab-produtos" onclick="setProdTab('produtos')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Produtos</button>
             <button id="prod-tab-fichas" onclick="setProdTab('fichas')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Fichas Técnicas</button>
-            <button id="prod-tab-outros" onclick="setProdTab('outros')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Outros</button>
           </div>
-          <div id="cadCwGrid"></div>
+          <div id="cadCategoriasGrid"></div>
+          <div id="cadProdutosBrowse" style="display:none"></div>
           <div id="cadFichasGrid" style="display:none">
             <div id="fichaListView">
               <div class="ft-section">
                 <div class="ft-section-head">
-                  <div><span class="ft-section-title">Produtos (base)</span><span class="ft-section-count" id="cntProdutosPizza"></span></div>
-                  <button class="btn btn-outline btn-sm" onclick="_novaFicha('produto')">+ Novo Produto</button>
+                  <div><span class="ft-section-title">Produtos</span><span class="ft-section-count" id="cntProdutosPizza"></span></div>
+                  <div style="display:flex;gap:10px;align-items:center">
+                    <button class="btn btn-outline btn-sm" onclick="_novaFicha('produto')">+ Base (pizza)</button>
+                    <button class="btn btn-outline btn-sm" onclick="_novaFicha('outro')">+ Bebida / outro</button>
+                  </div>
                 </div>
                 <div id="listaProdutosPizza"></div>
               </div>
@@ -423,17 +424,6 @@
               </div>
             </div>
             <div id="fichaDetailView" style="display:none"></div>
-          </div>
-          <div id="cadProdutosGrid" style="display:none">
-            <div id="outrosListView">
-              <div class="ft-section">
-                <div class="ft-section-head">
-                  <div><span class="ft-section-title">Outros produtos</span><span class="ft-section-count" id="cntOutros"></span></div>
-                </div>
-                <div id="listaOutros"></div>
-              </div>
-            </div>
-            <div id="outrosDetailView" style="display:none"></div>
           </div>
         </div>
       </div>
