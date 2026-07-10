@@ -17,7 +17,7 @@ function renderVendas() {
   if (!el) return;
   el.innerHTML = `
     <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px">
-      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['porcionamento','Porcionamento']].map(([id,lbl]) =>
+      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['insumos','Insumos']].map(([id,lbl]) =>
         `<button id="vd-tab-${id}" onclick="setVendasTab('${id}')" style="padding:9px 20px;font-size:.82rem;font-weight:600;color:${id===_vdTab?'var(--purple)':'var(--muted)'};border:none;border-bottom:3px solid ${id===_vdTab?'var(--purple)':'transparent'};margin-bottom:-2px;background:none;cursor:pointer;font-family:inherit">${lbl}</button>`).join('')}
     </div>
     <div id="vendasTabContent"></div>`;
@@ -26,7 +26,7 @@ function renderVendas() {
 
 function setVendasTab(tab) {
   _vdTab = tab;
-  ['cmv','produtos','porcionamento'].forEach(t => {
+  ['cmv','produtos','insumos'].forEach(t => {
     const b = document.getElementById('vd-tab-' + t);
     if (b) { b.style.color = t === tab ? 'var(--purple)' : 'var(--muted)'; b.style.borderBottomColor = t === tab ? 'var(--purple)' : 'transparent'; }
   });
@@ -35,8 +35,8 @@ function setVendasTab(tab) {
 
 // Re-renderiza a aba atual (usado pelos filtros compartilhados)
 function _vdRerender() {
-  if (_vdTab === 'cmv')                 renderVendasCMV();
-  else if (_vdTab === 'porcionamento')  renderVendasPorcionamento();
+  if (_vdTab === 'cmv')          renderVendasCMV();
+  else if (_vdTab === 'insumos') renderVendasInsumos();
   else {
     document.getElementById('vendasTabContent').innerHTML =
       `<div style="padding:60px 20px;text-align:center;color:var(--muted)">
@@ -161,79 +161,149 @@ function _vdDrillCategoria(dados) {
   </div>`;
 }
 
-// ── Filho PORCIONAMENTO ────────────────────────────────────────
-// Meias porções por opção/tamanho/dia — insumo direto pra Previsão.
-const _VD_DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-async function renderVendasPorcionamento() {
+// ══════════════════════════════════════════════════════════════
+// Filho INSUMOS — quanto de cada insumo saiu por período
+// Expande a ficha técnica de cada pizza vendida. Só entram insumos
+// que estão em alguma ficha. % é por CUSTO (unidades diferentes não
+// somam em quantidade).
+// ══════════════════════════════════════════════════════════════
+
+let _inPreset = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
+let _inDe     = '';     // yyyy-mm-dd (custom)
+let _inAte    = '';
+let _inBusca  = '';
+let _inChart  = null;   // instância Chart.js
+
+const _IN_PRESETS = [['hoje','Hoje'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['90','90 dias'],['custom','Personalizado']];
+
+// Resolve o preset atual em { inicioISO, fimISO, label }
+function _inRange() {
+  const now = new Date();
+  const fimISO = now.toISOString();
+  if (_inPreset === 'custom' && _inDe) {
+    const ini = new Date(_inDe + 'T00:00:00');
+    const fim = _inAte ? new Date(_inAte + 'T23:59:59') : now;
+    return { inicioISO: ini.toISOString(), fimISO: fim.toISOString(), label: `${_inDe} a ${_inAte || 'hoje'}`, dias: Math.max(1, Math.round((fim - ini) / 864e5)) };
+  }
+  if (_inPreset === 'hoje') {
+    const ini = new Date(now); ini.setHours(0, 0, 0, 0);
+    return { inicioISO: ini.toISOString(), fimISO, label: 'hoje', dias: 1 };
+  }
+  const d = parseInt(_inPreset) || 15;
+  return { inicioISO: new Date(now - d * 864e5).toISOString(), fimISO, label: `${d} dias`, dias: d };
+}
+
+function _inFiltros() {
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+    ${_IN_PRESETS.map(([id,lbl]) => `<button class="btn btn-${id===_inPreset?'primary':'outline'} btn-xs" onclick="_inPreset='${id}';renderVendasInsumos()">${lbl}</button>`).join('')}
+    ${_inPreset === 'custom' ? `
+      <input type="date" class="inp" value="${_inDe}" onchange="_inDe=this.value;renderVendasInsumos()" style="font-size:.78rem;padding:5px 8px">
+      <span style="color:var(--muted);font-size:.8rem">até</span>
+      <input type="date" class="inp" value="${_inAte}" onchange="_inAte=this.value;renderVendasInsumos()" style="font-size:.78rem;padding:5px 8px">` : ''}
+    <div style="position:relative;margin-left:auto">
+      <input class="inp" id="inBusca" placeholder="Buscar insumo..." value="${_inBusca.replace(/"/g,'&quot;')}" oninput="_inBusca=this.value;_inRenderTabela()" style="width:220px;font-size:.8rem;padding:6px 10px 6px 30px">
+      <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none">${lc('search',14,'currentColor')}</span>
+    </div>
+    <button class="btn btn-outline btn-xs" onclick="_inReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+  </div>`;
+}
+
+let _inDados = null; // { insumos, custoTotal } do período atual
+
+function _inReload() {
+  const r = _inRange();
+  delete _vCache[r.inicioISO + '|' + r.fimISO];
+  renderVendasInsumos();
+}
+
+async function renderVendasInsumos() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
+  const r = _inRange();
+  el.innerHTML = _inFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Somando os insumos vendidos...</div>`;
 
   let linhas;
-  try { linhas = await vendasCarregar(_vdPeriodo); }
-  catch (e) { el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+  try { linhas = await vendasCarregarPeriodo(r.inicioISO, r.fimISO); }
+  catch (e) { el.innerHTML = _inFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
-  const ag  = vendasAgregarMeias(linhas);
-  const dow = vendasMeiasPorDiaSemana(linhas);
-
-  const totMeias = ag.porTamanho.grande + ag.porTamanho.pequena;
-  const nDias = Math.max(1, _vdPeriodo);
-  const pctG = totMeias > 0 ? ag.porTamanho.grande / totMeias * 100 : 0;
+  _inDados = vendasInsumosConsumidos(linhas);
+  const { insumos, custoTotal } = _inDados;
 
   const kpi = (lbl, val, sub) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
     <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
     <div style="font-size:1.5rem;font-weight:800">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
 
-  // Ranking de opções por total de meias (curva de porcionamento)
-  const ops = Object.entries(ag.porOpcao).sort((a, b) => b[1].total - a[1].total);
-  const maxMeias = ops.length ? ops[0][1].total : 1;
-  const linhaOp = ([k, v]) => {
-    const opc = vendasOpcaoDeSabor(k);
-    const nome = opc ? opc.nome : _cwTitulo(k);
-    const porDia = v.total / nDias;
-    return `<div style="display:grid;grid-template-columns:1.6fr 90px 90px 90px 1fr;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border);font-size:.84rem">
-      <div style="font-weight:600">${nome}</div>
-      <div style="text-align:right"><span style="font-weight:700">${v.grande}</span> <span style="font-size:.66rem;color:var(--muted)">G</span></div>
-      <div style="text-align:right"><span style="font-weight:700">${v.pequena}</span> <span style="font-size:.66rem;color:var(--muted)">P</span></div>
-      <div style="text-align:right;font-weight:800;color:var(--purple)">${v.total}</div>
-      <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="width:${(v.total/maxMeias*100).toFixed(0)}%;height:100%;background:var(--brand-purple,#6B21D4)"></div></div><span style="font-size:.72rem;color:var(--muted);white-space:nowrap">${fmt(porDia)}/dia</span></div>
-    </div>`;
-  };
-
-  // Meias por dia da semana (média por dia observado)
-  const maxDow = Math.max(1, ...dow.map(d => d.total));
-  const cardDow = (i) => {
-    const d = dow[i];
-    const media = d.dias ? d.total / d.dias : 0;
-    return `<div style="text-align:center">
-      <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">${_VD_DOW[i]}</div>
-      <div style="height:90px;display:flex;align-items:flex-end;justify-content:center"><div style="width:60%;background:var(--brand-purple,#6B21D4);border-radius:4px 4px 0 0;height:${(d.total/maxDow*100).toFixed(0)}%;min-height:2px" title="${d.total} meias"></div></div>
-      <div style="font-size:.8rem;font-weight:700;margin-top:4px">${fmt(media)}</div>
-      <div style="font-size:.64rem;color:var(--muted)">meias/dia</div>
-    </div>`;
-  };
-
-  el.innerHTML = _vdFiltros(false) + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Meias porções vendidas em <b>${_vdPeriodo} dias</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} — insumo direto pra Previsão dimensionar o dia.</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:22px">
-      ${kpi('Total de meias', totMeias, `${fmt(totMeias/nDias)} por dia`)}
-      ${kpi('Meias grande', ag.porTamanho.grande, `${fmt(pctG)}% do total`)}
-      ${kpi('Meias pequena', ag.porTamanho.pequena, `${fmt(100-pctG)}% do total`)}
-      ${kpi('Sabores distintos', ops.length)}
+  const top = insumos[0];
+  el.innerHTML = _inFiltros() + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Insumos consumidos nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} — expandido da ficha técnica.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px">
+      ${kpi('Insumos distintos', insumos.length)}
+      ${kpi('Custo total', 'R$ ' + fmt(custoTotal), 'valor dos insumos no período')}
+      ${kpi('Maior consumo', top ? top.nome : '—', top ? fmt(top.pct) + '% do custo' : '')}
     </div>
+    ${insumos.length ? `
+    <div class="card" style="padding:16px;margin-bottom:20px">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Top insumos por custo (R$) — grande vs pequena</div>
+      <div style="height:${Math.max(180, Math.min(12, insumos.length) * 34)}px"><canvas id="inChart"></canvas></div>
+    </div>` : ''}
+    <div id="inTabelaWrap"></div>`;
 
-    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por dia da semana</div>
-    <div class="card" style="padding:16px;margin-bottom:24px">
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:10px;align-items:end">${[0,1,2,3,4,5,6].map(cardDow).join('')}</div>
+  _inRenderChart();
+  _inRenderTabela();
+}
+
+function _inRenderChart() {
+  if (typeof Chart === 'undefined') return;
+  const cv = document.getElementById('inChart');
+  if (!cv || !_inDados) return;
+  if (_inChart) { _inChart.destroy(); _inChart = null; }
+  const top = _inDados.insumos.slice(0, 12);
+  const css = getComputedStyle(document.body);
+  const cG = css.getPropertyValue('--chart-1').trim() || '#6B21D4';
+  const cP = css.getPropertyValue('--chart-3').trim() || '#D97706';
+  const txt = css.getPropertyValue('--muted').trim() || '#888';
+  _inChart = new Chart(cv, {
+    type: 'bar',
+    data: {
+      labels: top.map(x => x.nome),
+      datasets: [
+        { label: 'Grande', data: top.map(x => +(x.grande * x.custoUn).toFixed(2)), backgroundColor: cG, borderRadius: 3 },
+        { label: 'Pequena', data: top.map(x => +(x.pequena * x.custoUn).toFixed(2)), backgroundColor: cP, borderRadius: 3 },
+      ],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, ticks: { color: txt, callback: v => 'R$ ' + v }, grid: { color: 'rgba(0,0,0,.06)' } },
+        y: { stacked: true, ticks: { color: txt, font: { size: 11 } }, grid: { display: false } },
+      },
+      plugins: {
+        legend: { labels: { color: txt, boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: R$ ${fmt(c.raw)}` } },
+      },
+    },
+  });
+}
+
+function _inRenderTabela() {
+  const wrap = document.getElementById('inTabelaWrap');
+  if (!wrap || !_inDados) return;
+  const q = _cwNorm(_inBusca);
+  const lista = _inDados.insumos.filter(x => !q || _cwNorm(x.nome).includes(q));
+  if (!lista.length) { wrap.innerHTML = `<div class="ft-empty-list">${_inDados.insumos.length ? 'Nenhum insumo com esse nome' : 'Nenhum insumo — cadastre fichas técnicas com insumos primeiro'}</div>`; return; }
+  const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
+  wrap.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
+    <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1.1fr 80px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
+      <div>Insumo</div><div style="text-align:right">Pizza Grande</div><div style="text-align:right">Pizza Pequena</div><div style="text-align:right">Total</div><div style="text-align:right">% custo</div>
     </div>
-
-    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Porcionamento por sabor <span style="font-weight:400;text-transform:none">— meia porção da grande (½) e da pequena inteira</span></div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="display:grid;grid-template-columns:1.6fr 90px 90px 90px 1fr;gap:12px;padding:9px 14px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
-        <div>Sabor</div><div style="text-align:right">Grande</div><div style="text-align:right">Pequena</div><div style="text-align:right">Total</div><div>Média/dia</div>
-      </div>
-      ${ops.map(linhaOp).join('') || '<div class="ft-empty-list" style="padding:14px">Sem dados no período</div>'}
-    </div>`;
+    ${lista.map(x => `<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1.1fr 80px;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
+      <div><span style="font-weight:600">${x.nome}</span> <span style="font-size:.66rem;color:var(--muted)">${x.unidade}</span></div>
+      <div style="text-align:right;color:var(--muted)">${nf(x.grande)}</div>
+      <div style="text-align:right;color:var(--muted)">${nf(x.pequena)}</div>
+      <div style="text-align:right;font-weight:700">${nf(x.total)} <span style="font-size:.66rem;color:var(--muted)">${x.unidade}</span></div>
+      <div style="text-align:right;font-weight:700;color:var(--purple)">${fmt(x.pct)}%</div>
+    </div>`).join('')}
+  </div>`;
 }

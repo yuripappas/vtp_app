@@ -119,25 +119,24 @@ function _vInterpretarPedido(p) {
 
 // ── Carga + cache ──────────────────────────────────────────────
 
-let _vLinhas = null;   // cache da sessão
+let _vLinhas = null;   // cache do CMV (janela por dias)
 let _vPeriodoDias = 90;
+const _vCache = {};    // cache por chave de período (Insumos usa range custom)
 
-async function vendasCarregar(dias = 90, forcar = false) {
-  if (_vLinhas && !forcar && dias === _vPeriodoDias) return _vLinhas;
-  _vPeriodoDias = dias;
+// Busca + interpreta pedidos entre [inicioISO, fimISO]. Pagina (PostgREST
+// corta em 1000/request). Não cacheia — quem cacheia é o chamador.
+async function _vFetchPeriodo(inicioISO, fimISO) {
   const sb = _cwGetSbClient();
-  const inicio = new Date(Date.now() - dias * 864e5).toISOString();
-
-  // PostgREST devolve no máximo 1000 linhas por request — pagina com range()
   const PAGE = 1000;
   const linhas = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await sb
-      .from('cw_pedidos')
+    let q = sb.from('cw_pedidos')
       .select('id, items, sales_channel, total, cw_created_at, status')
-      .gte('cw_created_at', inicio)
+      .gte('cw_created_at', inicioISO)
       .order('cw_created_at', { ascending: false })
       .range(from, from + PAGE - 1);
+    if (fimISO) q = q.lte('cw_created_at', fimISO);
+    const { data, error } = await q;
     if (error) throw new Error(error.message);
     for (const p of (data || [])) {
       if (p.status === 'canceling' || p.status === 'canceled') continue;
@@ -145,8 +144,23 @@ async function vendasCarregar(dias = 90, forcar = false) {
     }
     if (!data || data.length < PAGE) break;
   }
-  _vLinhas = linhas;
   return linhas;
+}
+
+async function vendasCarregar(dias = 90, forcar = false) {
+  if (_vLinhas && !forcar && dias === _vPeriodoDias) return _vLinhas;
+  _vPeriodoDias = dias;
+  const inicio = new Date(Date.now() - dias * 864e5).toISOString();
+  _vLinhas = await _vFetchPeriodo(inicio, null);
+  return _vLinhas;
+}
+
+// Carga por período explícito (usada pela aba Insumos). Cacheia por chave.
+async function vendasCarregarPeriodo(inicioISO, fimISO, forcar = false) {
+  const chave = inicioISO + '|' + (fimISO || '');
+  if (_vCache[chave] && !forcar) return _vCache[chave];
+  _vCache[chave] = await _vFetchPeriodo(inicioISO, fimISO);
+  return _vCache[chave];
 }
 
 // ── Resolução de custo (saborKey → Opção; bebida → Produto/insumo) ──
@@ -231,6 +245,43 @@ function vendasMeiasPorDiaSemana(linhas) {
     }
   }
   return dow.map(x => ({ grande: x.grande, pequena: x.pequena, total: x.total, dias: x.datas.size }));
+}
+
+// ── Consumo de INSUMOS (aba Insumos) ───────────────────────────
+// Expande a ficha técnica de cada pizza vendida (base + opções) em
+// quantidades de insumo, na unidade nativa de cada um. A quantidade da
+// ficha (peso_g no modo produto/opção) já está na unidade do insumo.
+function _vExpandeFicha(ficha, mult, tamanho, acc) {
+  for (const ing of (ficha?.ingredientes || [])) {
+    const ins = items.find(i => i.id === ing.item_id);
+    if (!ins) continue;
+    if (!acc[ins.id]) acc[ins.id] = { id: ins.id, nome: ins.name, unidade: ins.unit, cat: ins.cat, custoUn: ins.cost || 0, grande: 0, pequena: 0 };
+    acc[ins.id][tamanho] += (ing.peso_g || 0) * mult;
+  }
+}
+
+// Consumo de insumos das PIZZAS vendidas (base + coberturas), separado por
+// tamanho. Só entram insumos que aparecem em alguma ficha técnica.
+function vendasInsumosConsumidos(linhas) {
+  const acc = {};
+  for (const l of linhas) {
+    for (const pz of l.pizzas) {
+      const base = produtosPizza.find(p => new RegExp(pz.tamanho, 'i').test(p.nome));
+      if (base) _vExpandeFicha(base.fichaTecnica, 1, pz.tamanho, acc);
+      for (const [k, meias] of Object.entries(pz.meias)) {
+        const opc = vendasOpcaoDeSabor(k);
+        if (opc) _vExpandeFicha(opc.fichaTecnica, meias, pz.tamanho, acc);
+      }
+    }
+  }
+  const arr = Object.values(acc).map(x => {
+    const total = x.grande + x.pequena;
+    return { ...x, total, custo: total * x.custoUn };
+  });
+  const custoTotal = arr.reduce((s, x) => s + x.custo, 0);
+  arr.forEach(x => x.pct = custoTotal > 0 ? x.custo / custoTotal * 100 : 0);
+  arr.sort((a, b) => b.custo - a.custo);
+  return { insumos: arr, custoTotal };
 }
 
 // Vendas + receita por categoria (para a aba Categorias)
