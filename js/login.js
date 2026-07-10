@@ -15,6 +15,7 @@ const MODULE_PERMISSIONS = {
   preproducao:   ['gerente', 'supervisor', 'comprador'],
   desperdicio:   ['gerente', 'supervisor'],
   compras:       ['gerente', 'supervisor', 'comprador'],
+  vendas:        ['gerente', 'supervisor'],
   previsao:      ['gerente', 'supervisor', 'comprador'],
   cadastros:     ['gerente', 'supervisor'],
   configuracoes: ['gerente'],

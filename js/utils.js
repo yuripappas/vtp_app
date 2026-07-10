@@ -300,6 +300,7 @@ const modInfo = {
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
   compras:        { title: 'Compras',               sub: 'Carrinho · Cotação · Aprovação · OC · Recebimento' },
+  vendas:         { title: 'Vendas',                sub: 'CMV · Curva ABC · Porcionamento — interpretado dos pedidos' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
   previsao:       { title: 'Previsão de Demanda',   sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },
@@ -392,6 +393,7 @@ function goModule(mod) {
   else if (mod === 'estoque')    { _cpSection='estoque'; renderComprasModule(); }
   else if (mod === 'preproducao') renderPreproducao();
   else if (mod === 'compras')    renderComprasModule();
+  else if (mod === 'vendas')     renderVendas();
   else if (mod === 'cadastros')  renderCadastros();
   else if (mod === 'desperdicio')   renderDesperdicio();
   else if (mod === 'previsao')      renderPrevisao();

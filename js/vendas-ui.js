@@ -1,0 +1,155 @@
+/**
+ * VTP Compras — Vai Ter Pizza!
+ * vendas-ui.js — UI do módulo Vendas. Consome o motor js/vendas.js.
+ *
+ * Sub-abas: CMV (pronto) · Produtos/Curva ABC · Porcionamento (próximos).
+ * Nenhuma lógica de interpretação aqui — tudo vem do motor.
+ */
+
+let _vdTab     = 'cmv';
+let _vdPeriodo = 90;
+let _vdCanal   = '';   // '' = todos
+let _vdMetaCMV = 30;   // % meta de CMV
+let _vdCatOpen = null; // categoria expandida no drill-down
+
+function renderVendas() {
+  const el = document.getElementById('vendasContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px">
+      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['porcionamento','Porcionamento']].map(([id,lbl]) =>
+        `<button id="vd-tab-${id}" onclick="setVendasTab('${id}')" style="padding:9px 20px;font-size:.82rem;font-weight:600;color:${id===_vdTab?'var(--purple)':'var(--muted)'};border:none;border-bottom:3px solid ${id===_vdTab?'var(--purple)':'transparent'};margin-bottom:-2px;background:none;cursor:pointer;font-family:inherit">${lbl}</button>`).join('')}
+    </div>
+    <div id="vendasTabContent"></div>`;
+  setVendasTab(_vdTab);
+}
+
+function setVendasTab(tab) {
+  _vdTab = tab;
+  ['cmv','produtos','porcionamento'].forEach(t => {
+    const b = document.getElementById('vd-tab-' + t);
+    if (b) { b.style.color = t === tab ? 'var(--purple)' : 'var(--muted)'; b.style.borderBottomColor = t === tab ? 'var(--purple)' : 'transparent'; }
+  });
+  if (tab === 'cmv') renderVendasCMV();
+  else {
+    document.getElementById('vendasTabContent').innerHTML =
+      `<div style="padding:60px 20px;text-align:center;color:var(--muted)">
+        ${lc('bar-chart-2', 26, 'var(--muted)')}
+        <div style="margin-top:12px;font-weight:700;font-size:1rem">${tab === 'produtos' ? 'Produtos / Curva ABC' : 'Porcionamento'}</div>
+        <div style="font-size:.84rem;margin-top:4px">Próximo passo do módulo — o motor já está pronto pra isso.</div>
+      </div>`;
+  }
+}
+
+// ── Filtros comuns ─────────────────────────────────────────────
+function _vdFiltros() {
+  const canais = ['ifood', '99food', 'site', 'outro'];
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
+    ${[30,60,90].map(d => `<button class="btn btn-${d===_vdPeriodo?'primary':'outline'} btn-xs" onclick="_vdPeriodo=${d};renderVendasCMV()">${d} dias</button>`).join('')}
+    <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasCMV()">
+      <option value="">Todos os canais</option>
+      ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
+    </select>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)">Meta de CMV
+      <input type="number" class="inp" value="${_vdMetaCMV}" min="0" max="100" onchange="_vdMetaCMV=parseFloat(this.value)||30;renderVendasCMV()" style="width:62px;text-align:right;font-size:.8rem;padding:6px 8px">%
+    </div>
+    <button class="btn btn-outline btn-xs" onclick="_vLinhas=null;renderVendasCMV()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+  </div>`;
+}
+
+const _VD_CAT_ICON = {
+  'Promo do Dia':'tag', 'Vai Ter Combo':'layers', 'Monte seu Sabor':'pizza',
+  'Pizza Salgada':'pizza', 'Pizza Doce':'pizza', 'Bebidas':'coffee',
+};
+
+// ── Filho CMV ──────────────────────────────────────────────────
+async function renderVendasCMV() {
+  const el = document.getElementById('vendasTabContent');
+  if (!el) return;
+  el.innerHTML = _vdFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
+
+  let linhas;
+  try { linhas = await vendasCarregar(_vdPeriodo); }
+  catch (e) { el.innerHTML = _vdFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
+  if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
+
+  const cat  = vendasPorCategoria(linhas);
+  const prod = vendasProdutosPorCategoria(linhas);
+  const pend = vendasPendencias(linhas);
+
+  const tot = { vendas: 0, receita: 0, custo: 0 };
+  for (const c of VENDAS_CATEGORIAS) { tot.vendas += cat[c].vendas; tot.receita += cat[c].receita; tot.custo += cat[c].custo; }
+  const cmvGeral = tot.receita > 0 ? tot.custo / tot.receita * 100 : 0;
+  const margem   = tot.receita - tot.custo;
+  const corMeta  = pc => pc <= 0 ? 'var(--muted)' : pc > _vdMetaCMV ? 'var(--red)' : 'var(--green)';
+
+  const kpi = (lbl, val, cor) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
+    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
+    <div style="font-size:1.5rem;font-weight:800;${cor ? 'color:' + cor : ''}">${val}</div></div>`;
+
+  const nPend = pend.sabPend.length + pend.bebPend.length;
+  const banner = nPend ? `<div class="card" style="padding:12px 16px;margin-bottom:16px;border-color:var(--warning-fg,#D97706);background:var(--warning-bg,#FEF3C7)">
+      <div style="font-size:.84rem;font-weight:700;color:var(--warning-fg,#B45309)">${lc('alert-triangle',14,'currentColor')} CMV parcial — ${nPend} item(ns) vendidos sem ficha técnica</div>
+      <div style="font-size:.76rem;color:var(--warning-fg,#92400E);margin-top:3px">${[...pend.sabPend,...pend.bebPend].slice(0,6).map(s=>_cwTitulo(s.nome)+' ('+s.vendas+')').join(' · ')}${nPend>6?' …':''}</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:5px">Cadastre a ficha em <b>Configurações → Produtos</b> para o custo entrar no cálculo.</div>
+    </div>` : '';
+
+  const linhaCat = (nome) => {
+    const d = cat[nome]; if (!d || !d.vendas) return '';
+    const pc = d.receita > 0 ? d.custo / d.receita * 100 : 0;
+    const aberta = _vdCatOpen === nome;
+    return `<div class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
+      <div onclick="_vdCatOpen='${aberta ? '' : nome}';renderVendasCMV()" style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:13px 16px;cursor:pointer">
+        <span style="color:var(--muted);display:inline-flex;transform:rotate(${aberta?90:0}deg);transition:transform .15s">${lc('chevron-right',16,'currentColor')}</span>
+        <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:.9rem">${lc(_VD_CAT_ICON[nome]||'pizza',16,'var(--purple)')} ${nome}</div>
+        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">RECEITA</div><div style="font-weight:700">R$ ${fmt(d.receita)}</div></div>
+        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">CUSTO</div><div style="font-weight:700">R$ ${fmt(d.custo)}</div></div>
+        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">CMV</div><div style="font-weight:800;color:${corMeta(pc)}">${d.custo>0?fmt(pc)+'%':'—'}</div></div>
+        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">MARGEM</div><div style="font-weight:700">R$ ${fmt(d.receita-d.custo)}</div></div>
+      </div>
+      ${aberta ? _vdDrillCategoria(prod[nome]) : ''}
+    </div>`;
+  };
+
+  el.innerHTML = _vdFiltros() + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${_vdPeriodo} dias</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+      ${kpi('Receita', 'R$ ' + fmt(tot.receita))}
+      ${kpi('Custo (CMV)', 'R$ ' + fmt(tot.custo))}
+      ${kpi('CMV', tot.custo>0?fmt(cmvGeral)+'%':'—', corMeta(cmvGeral))}
+      ${kpi('Margem', 'R$ ' + fmt(margem))}
+    </div>
+    ${banner}
+    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por categoria <span style="font-weight:400;text-transform:none">— clique para ver o detalhe</span></div>
+    ${VENDAS_CATEGORIAS.map(linhaCat).join('')}`;
+}
+
+// Drill-down: opções/bebidas vendidas na categoria, com custo de ficha
+function _vdDrillCategoria(dados) {
+  if (!dados) return '';
+  const itens = [];
+  for (const [k, meias] of Object.entries(dados.sabores || {})) {
+    const opc = vendasOpcaoDeSabor(k);
+    const custoUn = vendasCustoOpcao(k);
+    itens.push({ nome: opc ? opc.nome : _cwTitulo(k), qtd: meias, unid: 'meias', custoUn, custoTot: custoUn * meias, temFicha: opc?.fichaTecnica?.ingredientes?.length > 0 });
+  }
+  for (const [k, q] of Object.entries(dados.bebidas || {})) {
+    const c = _cwRank(k, _cwPoolBebidas(), 'nome', 1)[0];
+    const alvo = (c && c.s >= 0.6) ? c.x : null;
+    const item = alvo ? (alvo.tipo === 'produto' ? produtos.find(p => p.id === alvo.id) : items.find(i => i.id === alvo.id)) : null;
+    const custoUn = item?.fichaTecnica ? _calcCustoFicha(item.fichaTecnica) : (item?.cost || 0);
+    itens.push({ nome: item ? (item.name || item.nome) : _cwTitulo(k), qtd: q, unid: 'un', custoUn, custoTot: custoUn * q, temFicha: !!item });
+  }
+  itens.sort((a, b) => b.custoTot - a.custoTot);
+  if (!itens.length) return '';
+  return `<div style="border-top:1px solid var(--border);background:var(--surface2)">
+    ${itens.map(x => `<div style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:8px 16px;font-size:.82rem">
+      <span></span>
+      <div>${x.nome} ${x.temFicha?'':`<span style="font-size:.66rem;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:1px 6px;border-radius:var(--r6);margin-left:4px">sem ficha</span>`}</div>
+      <div style="text-align:right;color:var(--muted)">${x.qtd} ${x.unid}</div>
+      <div style="text-align:right;color:var(--muted)">R$ ${fmt(x.custoUn)}</div>
+      <div></div>
+      <div style="text-align:right;font-weight:600">R$ ${fmt(x.custoTot)}</div>
+    </div>`).join('')}
+  </div>`;
+}

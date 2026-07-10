@@ -8,8 +8,8 @@
   <meta http-equiv="Expires" content="0">
   <title>VTP360 — Vai Ter Pizza!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/tokens.css?v=105">
-  <link rel="stylesheet" href="css/style.css?v=105">
+  <link rel="stylesheet" href="css/tokens.css?v=106">
+  <link rel="stylesheet" href="css/style.css?v=106">
 </head>
 <body>
 
@@ -88,6 +88,11 @@
         <button class="sb-item" id="nav-operacao" onclick="_handleNavOperacao()">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span>
           <span class="sb-label">Operação</span>
+        </button>
+
+        <button class="sb-item" id="nav-vendas" onclick="goModule('vendas')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+          <span class="sb-label">Vendas</span>
         </button>
 
         <button class="sb-item" id="nav-rh" onclick="goModule('rh')">
@@ -390,17 +395,10 @@
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
             <div>
               <div style="font-size:.8rem;font-weight:700">Produtos e Fichas Técnicas</div>
-              <div style="font-size:.7rem;color:var(--muted)">Interpretado dos pedidos do Cardápio Web · categorias, produtos e custos</div>
+              <div style="font-size:.7rem;color:var(--muted)">Bases de pizza, sabores (opções) e bebidas — com ficha técnica de custo puxando os insumos</div>
             </div>
           </div>
-          <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
-            <button id="prod-tab-categorias" onclick="setProdTab('categorias')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--purple);border:none;border-bottom:3px solid var(--purple);margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Categorias</button>
-            <button id="prod-tab-produtos" onclick="setProdTab('produtos')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Produtos</button>
-            <button id="prod-tab-fichas" onclick="setProdTab('fichas')" style="padding:8px 18px;font-size:.78rem;font-weight:600;color:var(--muted);border:none;border-bottom:3px solid transparent;margin-bottom:-2px;background:none;cursor:pointer;font-family:Inter,sans-serif">Fichas Técnicas</button>
-          </div>
-          <div id="cadCategoriasGrid"></div>
-          <div id="cadProdutosBrowse" style="display:none"></div>
-          <div id="cadFichasGrid" style="display:none">
+          <div id="cadFichasGrid">
             <div id="fichaListView">
               <div class="ft-section">
                 <div class="ft-section-head">
@@ -449,6 +447,11 @@
           <!-- Conteúdo renderizado por JS -->
           <div class="settings-content" id="cfgSectionContent"></div>
         </div>
+      </div>
+
+      <!-- VENDAS -->
+      <div class="page" id="page-vendas" style="padding:0">
+        <div id="vendasContent" style="padding:24px"></div>
       </div>
 
       <!-- RELATÓRIOS -->
@@ -1372,9 +1375,9 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="js/icons.js"></script>
-<script src="js/db.js?v=105"></script>
+<script src="js/db.js?v=106"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=105"></script>
+<script src="js/init.js?v=106"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">

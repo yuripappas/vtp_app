@@ -1746,7 +1746,7 @@ function _renderCfgCadInline(subTab) {
 
   if (subTab === 'insumos')       renderCadInsumos();
   else if (subTab === 'preparo')  renderPreparoGrid();
-  else if (subTab === 'produtos') { renderCadSabores(); setProdTab('sabores'); }
+  else if (subTab === 'produtos') renderCadFichas();
 }
 
 function _cfgRenderInvList(container) {
