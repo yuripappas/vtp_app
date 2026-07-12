@@ -284,6 +284,55 @@ function vendasInsumosConsumidos(linhas) {
   return { insumos: arr, custoTotal };
 }
 
+// ── Curva ABC de sabores (aba Produtos) ────────────────────────
+// metrica: 'qtd' (meias vendidas) ou 'receita' (rateada). Na receita, o
+// valor da linha é distribuído entre as meias da linha (combo/meio a meio
+// dividem proporcionalmente) — aproximação honesta, sinalizada na UI.
+function vendasABCsabores(linhas, metrica = 'qtd') {
+  // Agrupa pela Opção resolvida (assim "milho" e "milho verde", que a
+  // similaridade manda pra mesma Opção, viram uma linha só). Sem Opção,
+  // agrupa pela própria chave do sabor.
+  const acc = {}; // grupo → { nome, valor, grande, pequena }
+  for (const l of linhas) {
+    const totMeias = l.pizzas.reduce((s, pz) => s + Object.values(pz.meias).reduce((a, b) => a + b, 0), 0);
+    for (const pz of l.pizzas) {
+      for (const [k, meias] of Object.entries(pz.meias)) {
+        const opc = vendasOpcaoDeSabor(k);
+        const g   = opc ? 'opc' + opc.id : 'k:' + k;
+        if (!acc[g]) acc[g] = { nome: opc ? opc.nome : _cwTitulo(k), valor: 0, grande: 0, pequena: 0 };
+        acc[g].valor += metrica === 'receita'
+          ? (totMeias > 0 ? l.receita * (meias / totMeias) : 0)
+          : meias;
+        acc[g][pz.tamanho] += meias;
+      }
+    }
+  }
+  const arr = Object.values(acc).sort((a, b) => b.valor - a.valor);
+  const total = arr.reduce((s, x) => s + x.valor, 0);
+  let cum = 0;
+  arr.forEach(x => {
+    cum += x.valor;
+    x.pct = total > 0 ? x.valor / total * 100 : 0;
+    x.cumPct = total > 0 ? cum / total * 100 : 0;
+    x.classe = x.cumPct <= 80 ? 'A' : x.cumPct <= 95 ? 'B' : 'C';
+  });
+  return { itens: arr, total };
+}
+
+// Comportamento de compra: vendas por hora do dia, dia da semana e canal.
+function vendasComportamento(linhas) {
+  const porHora = Array(24).fill(0);
+  const porDia = Array(7).fill(0);
+  const porCanal = {};
+  for (const l of linhas) {
+    const d = new Date(l.ts);
+    porHora[d.getHours()] += l.qtd;
+    porDia[d.getDay()] += l.qtd;
+    porCanal[l.canal] = (porCanal[l.canal] || 0) + l.qtd;
+  }
+  return { porHora, porDia, porCanal };
+}
+
 // Vendas + receita por categoria (para a aba Categorias)
 function vendasPorCategoria(linhas) {
   const cat = {};
