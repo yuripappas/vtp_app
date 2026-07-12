@@ -319,6 +319,20 @@ function vendasABCsabores(linhas, metrica = 'qtd') {
   return { itens: arr, total };
 }
 
+// Receita + custo por canal (aba Canais). A comissão é aplicada na UI
+// (cadastro editável), pra ver a margem líquida por canal.
+function vendasPorCanal(linhas) {
+  const acc = {};
+  for (const l of linhas) {
+    const c = l.canal || 'outro';
+    if (!acc[c]) acc[c] = { canal: c, vendas: 0, receita: 0, custo: 0 };
+    acc[c].vendas += l.qtd;
+    acc[c].receita += l.receita;
+    acc[c].custo  += vendasCustoLinha(l);
+  }
+  return acc;
+}
+
 // Comportamento de compra: vendas por hora do dia, dia da semana e canal.
 function vendasComportamento(linhas) {
   const porHora = Array(24).fill(0);

@@ -17,7 +17,7 @@ function renderVendas() {
   if (!el) return;
   el.innerHTML = `
     <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px">
-      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['insumos','Insumos']].map(([id,lbl]) =>
+      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['insumos','Insumos'],['canais','Canais']].map(([id,lbl]) =>
         `<button id="vd-tab-${id}" onclick="setVendasTab('${id}')" style="padding:9px 20px;font-size:.82rem;font-weight:600;color:${id===_vdTab?'var(--purple)':'var(--muted)'};border:none;border-bottom:3px solid ${id===_vdTab?'var(--purple)':'transparent'};margin-bottom:-2px;background:none;cursor:pointer;font-family:inherit">${lbl}</button>`).join('')}
     </div>
     <div id="vendasTabContent"></div>`;
@@ -26,7 +26,7 @@ function renderVendas() {
 
 function setVendasTab(tab) {
   _vdTab = tab;
-  ['cmv','produtos','insumos'].forEach(t => {
+  ['cmv','produtos','insumos','canais'].forEach(t => {
     const b = document.getElementById('vd-tab-' + t);
     if (b) { b.style.color = t === tab ? 'var(--purple)' : 'var(--muted)'; b.style.borderBottomColor = t === tab ? 'var(--purple)' : 'transparent'; }
   });
@@ -37,6 +37,7 @@ function setVendasTab(tab) {
 function _vdRerender() {
   if (_vdTab === 'cmv')          renderVendasCMV();
   else if (_vdTab === 'insumos') renderVendasInsumos();
+  else if (_vdTab === 'canais')  renderVendasCanais();
   else                           renderVendasProdutos();
 }
 
@@ -438,4 +439,105 @@ function _prRenderCharts(abc, comp) {
       },
     });
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Filho CANAIS — margem líquida por canal (comissão descontada)
+// A comissão % é cadastro editável aqui mesmo (persistido).
+// ══════════════════════════════════════════════════════════════
+
+let _cnChart = null;
+function _cnComissoes() {
+  return db._get('vtp_canais_comissao', { ifood: 23, '99food': 20, site: 0, outro: 0 });
+}
+function _cnSetComissao(canal, pct) {
+  const c = _cnComissoes();
+  c[canal] = parseFloat(pct) || 0;
+  db._set('vtp_canais_comissao', c);
+  renderVendasCanais();
+}
+
+async function renderVendasCanais() {
+  const el = document.getElementById('vendasTabContent');
+  if (!el) return;
+  el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
+
+  let linhas;
+  try { linhas = await vendasCarregar(_vdPeriodo); }
+  catch (e) { el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+
+  const porCanal = vendasPorCanal(linhas);
+  const com = _cnComissoes();
+  const canais = Object.values(porCanal).sort((a, b) => b.receita - a.receita).map(c => {
+    const pct = com[c.canal] ?? 0;
+    const comissao = c.receita * pct / 100;
+    const margem = c.receita - c.custo - comissao;
+    return { ...c, pct, comissao, margem, margemPct: c.receita > 0 ? margem / c.receita * 100 : 0 };
+  });
+
+  const tot = canais.reduce((a, c) => ({ receita: a.receita + c.receita, custo: a.custo + c.custo, comissao: a.comissao + c.comissao, margem: a.margem + c.margem }), { receita: 0, custo: 0, comissao: 0, margem: 0 });
+
+  const kpi = (lbl, v, sub, cor) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
+    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
+    <div style="font-size:1.4rem;font-weight:800;${cor?'color:'+cor:''}">${v}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
+
+  el.innerHTML = _vdFiltros(false) + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Rentabilidade por canal em <b>${_vdPeriodo} dias</b> — receita real do canal menos custo (ficha) e comissão. Ajuste a comissão de cada canal abaixo.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
+      ${kpi('Receita bruta', 'R$ ' + fmt(tot.receita))}
+      ${kpi('Comissão total', 'R$ ' + fmt(tot.comissao), tot.receita>0?fmt(tot.comissao/tot.receita*100)+'% da receita':'')}
+      ${kpi('Margem líquida', 'R$ ' + fmt(tot.margem), '', tot.margem<0?'var(--red)':'var(--green)')}
+    </div>
+
+    <div class="card" style="padding:16px;margin-bottom:20px">
+      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Composição da receita por canal (R$)</div>
+      <div style="height:${Math.max(160, canais.length*48)}px"><canvas id="cnChart"></canvas></div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1fr 90px 1fr 1fr 90px;gap:10px;padding:10px 16px;background:var(--surface2);font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">
+        <div>Canal</div><div style="text-align:right">Vendas</div><div style="text-align:right">Receita</div><div style="text-align:right">Custo</div><div style="text-align:center">Comissão %</div><div style="text-align:right">Comissão R$</div><div style="text-align:right">Margem líq.</div><div style="text-align:right">Margem %</div>
+      </div>
+      ${canais.map(c => `<div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1fr 90px 1fr 1fr 90px;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
+        <div style="font-weight:700">${c.canal}</div>
+        <div style="text-align:right;color:var(--muted)">${c.vendas}</div>
+        <div style="text-align:right;font-weight:600">R$ ${fmt(c.receita)}</div>
+        <div style="text-align:right;color:var(--muted)">R$ ${fmt(c.custo)}</div>
+        <div style="text-align:center"><input type="number" class="inp" value="${c.pct}" min="0" max="100" step="0.5" onchange="_cnSetComissao('${c.canal}',this.value)" style="width:66px;text-align:right;font-size:.8rem;padding:4px 6px"></div>
+        <div style="text-align:right;color:var(--orange-dark)">R$ ${fmt(c.comissao)}</div>
+        <div style="text-align:right;font-weight:800;color:${c.margem<0?'var(--red)':'var(--green)'}">R$ ${fmt(c.margem)}</div>
+        <div style="text-align:right;font-weight:700;color:${c.margemPct<0?'var(--red)':'var(--text)'}">${fmt(c.margemPct)}%</div>
+      </div>`).join('') || '<div class="ft-empty-list" style="padding:14px">Sem vendas no período</div>'}
+    </div>`;
+
+  _cnRenderChart(canais);
+}
+
+function _cnRenderChart(canais) {
+  if (typeof Chart === 'undefined') return;
+  const cv = document.getElementById('cnChart');
+  if (!cv) return;
+  if (_cnChart) { _cnChart.destroy(); _cnChart = null; }
+  const css = getComputedStyle(document.body);
+  const txt = css.getPropertyValue('--muted').trim() || '#888';
+  const cCusto = '#B4B2A9', cCom = css.getPropertyValue('--chart-3').trim() || '#D97706', cMarg = css.getPropertyValue('--chart-4').trim() || '#16A34A';
+  _cnChart = new Chart(cv, {
+    type: 'bar',
+    data: {
+      labels: canais.map(c => c.canal),
+      datasets: [
+        { label: 'Custo', data: canais.map(c => +c.custo.toFixed(2)), backgroundColor: cCusto, borderRadius: 3 },
+        { label: 'Comissão', data: canais.map(c => +c.comissao.toFixed(2)), backgroundColor: cCom, borderRadius: 3 },
+        { label: 'Margem', data: canais.map(c => +Math.max(0, c.margem).toFixed(2)), backgroundColor: cMarg, borderRadius: 3 },
+      ],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, ticks: { color: txt, callback: v => 'R$ ' + v }, grid: { color: 'rgba(0,0,0,.06)' } },
+        y: { stacked: true, ticks: { color: txt }, grid: { display: false } },
+      },
+      plugins: { legend: { labels: { color: txt, boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: c => `${c.dataset.label}: R$ ${fmt(c.raw)}` } } },
+    },
+  });
 }
