@@ -17,7 +17,7 @@ function renderVendas() {
   if (!el) return;
   el.innerHTML = `
     <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px">
-      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['insumos','Insumos'],['canais','Canais']].map(([id,lbl]) =>
+      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['insumos','Insumos'],['canais','Canais'],['precos','Precificação']].map(([id,lbl]) =>
         `<button id="vd-tab-${id}" onclick="setVendasTab('${id}')" style="padding:9px 20px;font-size:.82rem;font-weight:600;color:${id===_vdTab?'var(--purple)':'var(--muted)'};border:none;border-bottom:3px solid ${id===_vdTab?'var(--purple)':'transparent'};margin-bottom:-2px;background:none;cursor:pointer;font-family:inherit">${lbl}</button>`).join('')}
     </div>
     <div id="vendasTabContent"></div>`;
@@ -26,7 +26,7 @@ function renderVendas() {
 
 function setVendasTab(tab) {
   _vdTab = tab;
-  ['cmv','produtos','insumos','canais'].forEach(t => {
+  ['cmv','produtos','insumos','canais','precos'].forEach(t => {
     const b = document.getElementById('vd-tab-' + t);
     if (b) { b.style.color = t === tab ? 'var(--purple)' : 'var(--muted)'; b.style.borderBottomColor = t === tab ? 'var(--purple)' : 'transparent'; }
   });
@@ -38,6 +38,7 @@ function _vdRerender() {
   if (_vdTab === 'cmv')          renderVendasCMV();
   else if (_vdTab === 'insumos') renderVendasInsumos();
   else if (_vdTab === 'canais')  renderVendasCanais();
+  else if (_vdTab === 'precos')  renderVendasPrecos();
   else                           renderVendasProdutos();
 }
 
@@ -541,3 +542,117 @@ function _cnRenderChart(canais) {
     },
   });
 }
+
+// ══════════════════════════════════════════════════════════════
+// Filho PRECIFICAÇÃO — simulador de preço ideal
+// Monta um produto (base + sabores), calcula o custo pela ficha, e
+// sugere o preço pra bater a meta de CMV. Mostra a margem líquida por
+// canal (comissão descontada) e simula "e se" com preço manual.
+// ══════════════════════════════════════════════════════════════
+
+let _pcTamanho = 'grande';
+let _pcTipo    = 'inteira';   // 'inteira' | 'meio'
+let _pcOpc1    = null;
+let _pcOpc2    = null;
+let _pcMeta    = 30;          // % meta de CMV
+let _pcCanal   = 'ifood';
+let _pcPreco   = null;        // preço manual (null = usa o ideal)
+
+function _pcCusto() {
+  const base = produtosPizza.find(p => new RegExp(_pcTamanho, 'i').test(p.nome));
+  let c = base ? _calcCustoFicha(base.fichaTecnica) : 0;
+  const o1 = opcoes.find(o => o.id === _pcOpc1);
+  const o2 = opcoes.find(o => o.id === _pcOpc2);
+  if (_pcTipo === 'inteira') {
+    if (o1) c += _calcCustoFicha(o1.fichaTecnica) * (_pcTamanho === 'grande' ? 2 : 1);
+  } else {
+    if (o1) c += _calcCustoFicha(o1.fichaTecnica);
+    if (o2) c += _calcCustoFicha(o2.fichaTecnica);
+  }
+  return c;
+}
+
+function _pcSaborSelect(id, sel, ph) {
+  const cat = _pcTamanho === 'grande' ? '' : '';
+  return `<select class="inp" id="${id}" onchange="${id==='pcOpc1'?'_pcOpc1':'_pcOpc2'}=parseInt(this.value)||null;renderVendasPrecos()" style="width:100%;font-size:.86rem;padding:8px 10px">
+    <option value="">${ph}</option>
+    ${opcoes.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(o => `<option value="${o.id}"${o.id===sel?' selected':''}>${o.nome}${o.fichaTecnica?.ingredientes?.length?'':' (sem ficha)'}</option>`).join('')}
+  </select>`;
+}
+
+function renderVendasPrecos() {
+  const el = document.getElementById('vendasTabContent');
+  if (!el) return;
+
+  const custo = _pcCusto();
+  const precoIdeal = _pcMeta > 0 ? custo / (_pcMeta / 100) : 0;
+  const preco = _pcPreco != null ? _pcPreco : precoIdeal;
+  const com = _cnComissoes()[_pcCanal] || 0;
+  const cmvPct = preco > 0 ? custo / preco * 100 : 0;
+  const comissao = preco * com / 100;
+  const margem = preco - custo - comissao;
+  const margemPct = preco > 0 ? margem / preco * 100 : 0;
+
+  const seg = (opts, val, fn) => `<div style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
+    ${opts.map(([id,lbl]) => `<button onclick="${fn}('${id}')" style="padding:7px 16px;font-size:.82rem;font-weight:600;border:none;cursor:pointer;background:${id===val?'var(--purple)':'transparent'};color:${id===val?'#fff':'var(--muted)'}">${lbl}</button>`).join('')}
+  </div>`;
+
+  const box = (lbl, val, cor, sub) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
+    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
+    <div style="font-size:1.5rem;font-weight:800;${cor?'color:'+cor:''}">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
+
+  const semFicha = custo === 0;
+
+  el.innerHTML = `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px">Simule o preço ideal de um produto pela ficha técnica e veja a margem líquida por canal.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+
+      <div class="card" style="padding:18px">
+        <div style="font-size:.74rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:14px">1. Monte o produto</div>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Tamanho</div>${seg([['grande','Grande'],['pequena','Pequena']], _pcTamanho, '_pcSetTam')}</div>
+          ${_pcTamanho==='grande' ? `<div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Tipo</div>${seg([['inteira','Inteira (1 sabor)'],['meio','Meio a meio']], _pcTipo, '_pcSetTipo')}</div>` : ''}
+          <div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">${_pcTipo==='meio'&&_pcTamanho==='grande'?'Sabor 1':'Sabor'}</div>${_pcSaborSelect('pcOpc1', _pcOpc1, 'Escolha o sabor...')}</div>
+          ${_pcTipo==='meio'&&_pcTamanho==='grande' ? `<div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Sabor 2</div>${_pcSaborSelect('pcOpc2', _pcOpc2, 'Escolha o sabor...')}</div>` : ''}
+        </div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:.82rem;color:var(--muted)">Custo pela ficha técnica</span>
+          <span style="font-size:1.3rem;font-weight:800;color:${semFicha?'var(--muted)':'var(--text)'}">R$ ${fmt(custo)}</span>
+        </div>
+        ${semFicha ? `<div style="font-size:.72rem;color:var(--warning-fg,#B45309);margin-top:6px">${lc('alert-triangle',12,'currentColor')} Ficha vazia — preencha em Configurações → Produtos pra o custo aparecer.</div>` : ''}
+      </div>
+
+      <div class="card" style="padding:18px">
+        <div style="font-size:.74rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:14px">2. Simulação</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+          <div style="flex:1;min-width:120px"><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Meta de CMV</div>
+            <div style="display:flex;align-items:center;gap:6px"><input type="number" class="inp" value="${_pcMeta}" min="1" max="90" onchange="_pcMeta=parseFloat(this.value)||30;_pcPreco=null;renderVendasPrecos()" style="width:80px;text-align:right;font-size:.9rem;padding:7px 8px">%</div></div>
+          <div style="flex:1;min-width:120px"><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Canal</div>
+            <select class="inp" onchange="_pcCanal=this.value;renderVendasPrecos()" style="width:100%;font-size:.86rem;padding:8px 10px">
+              ${Object.keys(_cnComissoes()).map(c=>`<option value="${c}"${c===_pcCanal?' selected':''}>${c} (${_cnComissoes()[c]}%)</option>`).join('')}
+            </select></div>
+        </div>
+
+        <div style="background:var(--purple-xlight);border-radius:var(--r10,8px);padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+          <div><div style="font-size:.72rem;color:var(--purple);text-transform:uppercase;letter-spacing:.4px;font-weight:700">Preço ideal p/ CMV ${_pcMeta}%</div>
+            <div style="font-size:1.7rem;font-weight:800;color:var(--purple)">R$ ${fmt(precoIdeal)}</div></div>
+          <button class="btn btn-outline btn-sm" onclick="_pcPreco=null;renderVendasPrecos()">usar ideal</button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <span style="font-size:.82rem;color:var(--muted)">Simular preço:</span>
+          <div style="display:flex;align-items:center;gap:4px">R$ <input type="number" class="inp" value="${(_pcPreco!=null?_pcPreco:precoIdeal).toFixed(2)}" step="0.5" onchange="_pcPreco=parseFloat(this.value);renderVendasPrecos()" style="width:100px;text-align:right;font-size:.95rem;font-weight:700;padding:7px 8px"></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${box('CMV neste preço', preco>0?fmt(cmvPct)+'%':'—', cmvPct>_pcMeta?'var(--red)':'var(--green)')}
+          ${box('Comissão '+_pcCanal, 'R$ '+fmt(comissao), null, com+'% da venda')}
+          ${box('Margem líquida', 'R$ '+fmt(margem), margem<0?'var(--red)':'var(--green)', 'após custo e comissão')}
+          ${box('Margem %', preco>0?fmt(margemPct)+'%':'—', margemPct<0?'var(--red)':'var(--green)')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function _pcSetTam(t)  { _pcTamanho = t; if (t === 'pequena') _pcTipo = 'inteira'; _pcPreco = null; renderVendasPrecos(); }
+function _pcSetTipo(t) { _pcTipo = t; _pcPreco = null; renderVendasPrecos(); }

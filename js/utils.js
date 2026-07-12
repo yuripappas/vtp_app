@@ -300,7 +300,7 @@ const modInfo = {
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
   compras:        { title: 'Compras',               sub: 'Carrinho · Cotação · Aprovação · OC · Recebimento' },
-  vendas:         { title: 'Vendas',                sub: 'CMV · Produtos · Insumos · Canais — interpretado dos pedidos' },
+  vendas:         { title: 'Vendas',                sub: 'CMV · Produtos · Insumos · Canais · Precificação — interpretado dos pedidos' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
   previsao:       { title: 'Previsão de Demanda',   sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },
