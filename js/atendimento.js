@@ -2685,61 +2685,87 @@ async function _atdRespostasPadraoRender() {
 
   const lista = data || [];
 
-  // Guarda mapa global para o modal acessar por id sem serializar no HTML
-  window._atdRespostasMap = Object.fromEntries(lista.map(r => [r.id, r]));
+  // Array global indexado — onclick passa índice numérico, sem serialização no HTML
+  window._atdRR = lista;
 
-  el.innerHTML = `
-    <div style="background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--radius-lg);overflow:hidden">
+  function _rrBotoesAcao(r, idx) {
+    const btnEditar  = document.createElement('button');
+    btnEditar.className = 'btn btn-ghost';
+    btnEditar.style.cssText = 'padding:4px 6px';
+    btnEditar.title = 'Editar';
+    btnEditar.innerHTML = lc('edit-2', 14, 'var(--fg-muted)');
+    btnEditar.onclick = () => _atdRespostaAbrirModal(idx);
 
-      <!-- cabeçalho -->
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
-        <div>
-          <div style="font-size:var(--text-sm);font-weight:700;color:var(--text)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} rápida${lista.length !== 1 ? 's' : ''}</div>
-          <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/atalho</code> no campo de mensagem</div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="_atdRespostaAbrirModal(null)">
-          ${lc('plus', 14, '#fff')} Nova resposta
-        </button>
-      </div>
+    const btnToggle = document.createElement('button');
+    btnToggle.className = 'btn btn-ghost';
+    btnToggle.style.cssText = 'padding:4px 6px';
+    btnToggle.title = r.ativo ? 'Desativar' : 'Ativar';
+    btnToggle.innerHTML = lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)');
+    btnToggle.onclick = () => _atdRespostaToggleAtivo(r.id, !r.ativo);
 
-    ${lista.length === 0 ? `
+    const btnExcluir = document.createElement('button');
+    btnExcluir.className = 'btn btn-ghost';
+    btnExcluir.style.cssText = 'padding:4px 6px';
+    btnExcluir.title = 'Excluir';
+    btnExcluir.innerHTML = lc('trash-2', 14, 'var(--danger)');
+    btnExcluir.onclick = () => _atdRespostaExcluir(r.id);
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;gap:2px;flex-shrink:0';
+    wrap.append(btnEditar, btnToggle, btnExcluir);
+    return wrap;
+  }
+
+  el.innerHTML = '';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--radius-lg);overflow:hidden';
+
+  // Cabeçalho
+  const header = document.createElement('div');
+  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)';
+  header.innerHTML = `
+    <div>
+      <div style="font-size:var(--text-sm);font-weight:700;color:var(--text)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} rápida${lista.length !== 1 ? 's' : ''}</div>
+      <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/atalho</code> no campo de mensagem</div>
+    </div>`;
+  const btnNova = document.createElement('button');
+  btnNova.className = 'btn btn-primary btn-sm';
+  btnNova.innerHTML = lc('plus', 14, '#fff') + ' Nova resposta';
+  btnNova.onclick = () => _atdRespostaAbrirModal(null);
+  header.appendChild(btnNova);
+  card.appendChild(header);
+
+  if (lista.length === 0) {
+    card.innerHTML += `
       <div style="text-align:center;padding:48px 20px;color:var(--fg-subtle)">
         ${lc('zap', 36, 'var(--border)')}
         <div style="margin-top:12px;font-size:var(--text-sm);font-weight:600;color:var(--fg-muted)">Nenhuma resposta criada ainda</div>
-        <div style="font-size:var(--text-xs);margin-top:4px;color:var(--fg-subtle)">Ex: <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/horario</code> → "Funcionamos de terça a dom, das 18h às 23h30!"</div>
-        <button class="btn btn-primary btn-sm" style="margin-top:16px" onclick="_atdRespostaAbrirModal(null)">
-          ${lc('plus', 13, '#fff')} Criar primeira resposta
-        </button>
-      </div>` : `
-      <div>
-        ${lista.map(r => `
-          <div style="display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border);${r.ativo ? '' : 'opacity:.45;'}">
-            <div>
-              <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">/${r.atalho}</code>
-              ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:3px;text-transform:uppercase;letter-spacing:.4px">${r.canal_tipo}</div>` : ''}
-            </div>
-            <div style="min-width:0">
-              <div style="font-weight:600;font-size:var(--text-sm);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? `<span style="font-size:10px;color:var(--fg-subtle);font-weight:400;margin-left:6px">inativo</span>` : ''}</div>
-              <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
-            </div>
-            <div style="display:flex;gap:2px;flex-shrink:0">
-              <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" data-rr='${JSON.stringify(r).replace(/'/g, "&#39;")}' onclick="_atdRespostaAbrirModal(this)">
-                ${lc('edit-2', 14, 'var(--fg-muted)')}
-              </button>
-              <button class="btn btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="_atdRespostaToggleAtivo('${r.id}', ${!r.ativo})">
-                ${lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)')}
-              </button>
-              <button class="btn btn-ghost" style="padding:4px 6px" title="Excluir" onclick="_atdRespostaExcluir('${r.id}')">
-                ${lc('trash-2', 14, 'var(--danger)')}
-              </button>
-            </div>
-          </div>`).join('')}
-      </div>`}
-    </div>`;
+      </div>`;
+  } else {
+    const body = document.createElement('div');
+    lista.forEach((r, idx) => {
+      const row = document.createElement('div');
+      row.style.cssText = `display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border);${r.ativo ? '' : 'opacity:.45'}`;
+      row.innerHTML = `
+        <div>
+          <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">/${r.atalho}</code>
+          ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:3px;text-transform:uppercase;letter-spacing:.4px">${r.canal_tipo}</div>` : ''}
+        </div>
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:var(--text-sm);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? '<span style="font-size:10px;color:var(--fg-subtle);font-weight:400;margin-left:6px">inativo</span>' : ''}</div>
+          <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
+        </div>`;
+      row.appendChild(_rrBotoesAcao(r, idx));
+      body.appendChild(row);
+    });
+    card.appendChild(body);
+  }
+
+  el.appendChild(card);
 }
 
-function _atdRespostaAbrirModal(btnOuNull) {
-  const r = btnOuNull ? JSON.parse(btnOuNull.dataset?.rr || 'null') : null;
+function _atdRespostaAbrirModal(idxOuNull) {
+  const r = (idxOuNull !== null && idxOuNull !== undefined) ? (window._atdRR?.[idxOuNull] ?? null) : null;
 
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
