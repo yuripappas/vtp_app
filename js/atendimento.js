@@ -129,6 +129,9 @@ function renderOmnichannel() {
       .atd-presenca-avatar img, .atd-presenca-avatar-ini { width:24px;height:24px;border-radius:50%;font-size:10px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;object-fit:cover; }
       .atd-presenca-avatar .atd-online-dot { position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;background:var(--green);border-radius:50%;border:1.5px solid var(--bg-subtle); }
       .atd-presenca-avatar.eu .atd-presenca-avatar-ini { outline:2px solid var(--purple);outline-offset:1px; }
+      .atd-presenca-avatar .atd-tooltip { position:absolute;bottom:32px;left:50%;transform:translateX(-50%);background:#222;color:#fff;font-size:10px;font-weight:600;white-space:nowrap;padding:3px 7px;border-radius:4px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:999; }
+      .atd-presenca-avatar .atd-tooltip::after { content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:4px solid transparent;border-top-color:#222; }
+      .atd-presenca-avatar:hover .atd-tooltip { opacity:1; }
       /* Badge aguardando atendimento (cliente esperando) */
       .atd-badge-aguard { display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:var(--warning-fg);background:var(--warning-bg);padding:1px 6px;border-radius:999px;white-space:nowrap;flex-shrink:0; }
       @keyframes atd-pulse-aguard { 0%,100%{opacity:1}50%{opacity:.5} }
@@ -343,9 +346,10 @@ function _atdRenderPresencaFooter() {
     for (let i = 0; i < (p.nome || '').length; i++) hash = (p.nome.charCodeAt(i) + ((hash << 5) - hash));
     const hue = Math.abs(hash) % 360;
     const bg = isEu ? 'var(--purple)' : `hsl(${hue},55%,45%)`;
-    return `<div class="atd-presenca-avatar${isEu ? ' eu' : ''}" title="${p.nome}${isEu ? ' (você)' : ''}">
+    return `<div class="atd-presenca-avatar${isEu ? ' eu' : ''}">
       <div class="atd-presenca-avatar-ini" style="background:${bg}">${ini}</div>
       <div class="atd-online-dot"></div>
+      <div class="atd-tooltip">${p.nome}${isEu ? ' (você)' : ''}</div>
     </div>`;
   }).join('');
 
