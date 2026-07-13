@@ -2685,6 +2685,9 @@ async function _atdRespostasPadraoRender() {
 
   const lista = data || [];
 
+  // Guarda mapa global para o modal acessar por id sem serializar no HTML
+  window._atdRespostasMap = Object.fromEntries(lista.map(r => [r.id, r]));
+
   el.innerHTML = `
     <div style="background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--radius-lg);overflow:hidden">
 
@@ -2720,7 +2723,7 @@ async function _atdRespostasPadraoRender() {
               <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
             </div>
             <div style="display:flex;gap:2px;flex-shrink:0">
-              <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="_atdRespostaAbrirModal(${JSON.stringify(JSON.stringify(r))})">
+              <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="_atdRespostaAbrirModal('${r.id}')">
                 ${lc('edit-2', 14, 'var(--fg-muted)')}
               </button>
               <button class="btn btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="_atdRespostaToggleAtivo('${r.id}', ${!r.ativo})">
@@ -2735,8 +2738,8 @@ async function _atdRespostasPadraoRender() {
     </div>`;
 }
 
-function _atdRespostaAbrirModal(jsonStr) {
-  const r = jsonStr ? JSON.parse(jsonStr) : null;
+function _atdRespostaAbrirModal(idOuNull) {
+  const r = idOuNull ? (window._atdRespostasMap?.[idOuNull] ?? null) : null;
 
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
