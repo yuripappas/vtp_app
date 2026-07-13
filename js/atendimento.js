@@ -2675,6 +2675,35 @@ async function _atdIAChamarPreview(secId) {
   }
 }
 
+function _atdRRFazerBotoes(r, idx) {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:2px;flex-shrink:0';
+
+  const btnE = document.createElement('button');
+  btnE.className = 'btn btn-ghost';
+  btnE.style.padding = '4px 6px';
+  btnE.title = 'Editar';
+  btnE.innerHTML = lc('edit-2', 14, 'var(--fg-muted)');
+  btnE.addEventListener('click', () => _atdRespostaAbrirModal(idx));
+
+  const btnT = document.createElement('button');
+  btnT.className = 'btn btn-ghost';
+  btnT.style.padding = '4px 6px';
+  btnT.title = r.ativo ? 'Desativar' : 'Ativar';
+  btnT.innerHTML = lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)');
+  btnT.addEventListener('click', () => _atdRespostaToggleAtivo(r.id, !r.ativo));
+
+  const btnX = document.createElement('button');
+  btnX.className = 'btn btn-ghost';
+  btnX.style.padding = '4px 6px';
+  btnX.title = 'Excluir';
+  btnX.innerHTML = lc('trash-2', 14, 'var(--danger)');
+  btnX.addEventListener('click', () => _atdRespostaExcluir(r.id));
+
+  wrap.append(btnE, btnT, btnX);
+  return wrap;
+}
+
 async function _atdRespostasPadraoRender() {
   const el = document.getElementById('atdRespostasConteudo');
   el.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm);padding:16px 0">Carregando...</div>`;
@@ -2685,36 +2714,8 @@ async function _atdRespostasPadraoRender() {
 
   const lista = data || [];
 
-  // Array global indexado — onclick passa índice numérico, sem serialização no HTML
+  // Array global indexado — botões acessam por índice via _atdRRFazerBotoes
   window._atdRR = lista;
-
-  function _rrBotoesAcao(r, idx) {
-    const btnEditar  = document.createElement('button');
-    btnEditar.className = 'btn btn-ghost';
-    btnEditar.style.cssText = 'padding:4px 6px';
-    btnEditar.title = 'Editar';
-    btnEditar.innerHTML = lc('edit-2', 14, 'var(--fg-muted)');
-    btnEditar.onclick = () => _atdRespostaAbrirModal(idx);
-
-    const btnToggle = document.createElement('button');
-    btnToggle.className = 'btn btn-ghost';
-    btnToggle.style.cssText = 'padding:4px 6px';
-    btnToggle.title = r.ativo ? 'Desativar' : 'Ativar';
-    btnToggle.innerHTML = lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)');
-    btnToggle.onclick = () => _atdRespostaToggleAtivo(r.id, !r.ativo);
-
-    const btnExcluir = document.createElement('button');
-    btnExcluir.className = 'btn btn-ghost';
-    btnExcluir.style.cssText = 'padding:4px 6px';
-    btnExcluir.title = 'Excluir';
-    btnExcluir.innerHTML = lc('trash-2', 14, 'var(--danger)');
-    btnExcluir.onclick = () => _atdRespostaExcluir(r.id);
-
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;gap:2px;flex-shrink:0';
-    wrap.append(btnEditar, btnToggle, btnExcluir);
-    return wrap;
-  }
 
   el.innerHTML = '';
   const card = document.createElement('div');
@@ -2755,7 +2756,7 @@ async function _atdRespostasPadraoRender() {
           <div style="font-weight:600;font-size:var(--text-sm);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? '<span style="font-size:10px;color:var(--fg-subtle);font-weight:400;margin-left:6px">inativo</span>' : ''}</div>
           <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
         </div>`;
-      row.appendChild(_rrBotoesAcao(r, idx));
+      row.appendChild(_atdRRFazerBotoes(r, idx));
       body.appendChild(row);
     });
     card.appendChild(body);
