@@ -78,10 +78,8 @@ const _OPERACAO_SUBMENU_ITEMS = [
   { id: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção' },
   { id: 'desperdicio', icon: 'trash-2',      label: 'Desperdício'  },
   { id: 'previsao',    icon: 'trending-up',  label: 'Previsão'     },
-  { id: 'checklist',   icon: 'check-square', label: 'Checklist'    },
   { id: 'manutencao',  icon: 'wrench',       label: 'Manutenção'   },
   { id: 'inventario',  icon: 'layers',       label: 'Inventário'   },
-  { id: 'etiquetagem', icon: 'tag',          label: 'Etiquetagem'  },
 ];
 
 // Submenu items de Vendas
@@ -106,6 +104,7 @@ function _handleNavVendas() {
 const _CFG_SUBMENU_ITEMS = [
   { id: 'empresa',      icon: 'building-2', label: 'Empresa'        },
   { id: 'usuarios',     icon: 'shield',     label: 'Usuários'       },
+  { id: 'insumos',      icon: 'package',    label: 'Insumos'        },
   { id: 'preparo',      icon: 'chef-hat',   label: 'Preparados'     },
   { id: 'produtos',     icon: 'pizza',      label: 'Produtos'       },
   { id: 'servicos',     icon: 'wrench',     label: 'Serviços'       },
@@ -209,9 +208,7 @@ function _initSidebarHover() {
 // Submenu items de Compras
 const _COMPRAS_SUBMENU_ITEMS = [
   { id: 'listas',       icon: 'clipboard-list', label: 'Lista de Compras' },
-  { id: 'insumos',      icon: 'package',        label: 'Insumos'          },
   { id: 'fornecedores', icon: 'truck',          label: 'Fornecedores'     },
-  { id: 'estoque',      icon: 'box',            label: 'Estoque'          },
 ];
 
 function _handleNavCompras() {
@@ -312,12 +309,12 @@ function _handleNavConfiguracoes() {
 
 const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
-  operacao:       { title: 'Operação',              sub: 'Estoque · Produção · Checklist · Inventário e mais' },
+  operacao:       { title: 'Operação',              sub: 'Pré-produção · Desperdício · Previsão · Manutenção · Inventário' },
   omnichannel:    { title: 'Omnichannel',           sub: 'Central de atendimento e canais de venda' },
   estoque:        { title: 'Estoque',               sub: 'Contagem e movimentações' },
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
-  compras:        { title: 'Compras',               sub: 'Carrinho · Cotação · Aprovação · OC · Recebimento' },
+  compras:        { title: 'Compras',               sub: 'Lista · Cotação · Aprovação · OC · Recebimento · Fornecedores' },
   vendas:         { title: 'Vendas',                sub: 'CMV · Produtos · Insumos · Canais · Precificação — interpretado dos pedidos' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
   previsao:       { title: 'Previsão de Demanda',   sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
@@ -382,7 +379,7 @@ function goModule(mod) {
   // Fecha sub-panel desktop sempre que navegar
   if (_subPanelGroupId) _closeSubPanel();
 
-  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
+  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
 
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
   // Submódulos de Operação destacam o item "Operação" no sidebar
@@ -408,7 +405,16 @@ function goModule(mod) {
   if (mod === 'operacao')        renderOperacao();
   else if (mod === 'omnichannel') renderOmnichannel();
   else if (mod === 'dashboard')  renderDashboard();
-  else if (mod === 'estoque')    { _cpSection='estoque'; renderComprasModule(); }
+  else if (mod === 'estoque')    {
+    // Estoque agora é módulo próprio na sidebar, mas a implementação real
+    // (contagens, categorias, divergências) vive dentro de page-compras
+    // (_renderCpEstoque, ~1100 linhas) — reaproveita o mesmo container em
+    // vez de duplicar. page-estoque (a página vazia genérica) fica sem uso.
+    document.getElementById('page-estoque')?.classList.remove('active');
+    document.getElementById('page-compras')?.classList.add('active');
+    _cpSection = 'estoque';
+    renderComprasLayout();
+  }
   else if (mod === 'preproducao') renderPreproducao();
   else if (mod === 'compras')    renderComprasModule();
   else if (mod === 'vendas')     renderVendas();

@@ -66,6 +66,11 @@ function _dispensarBannerConflito() {
 // ══════════════════════════════════════════════════════════════
 function renderComprasModule() {
   _cpListaAberta = null;
+  // Estoque e Insumos viraram destinos próprios (sidebar/Configurações) — não
+  // são mais seções válidas de Compras, então uma entrada "crua" no módulo
+  // (ex: goModule('compras') vindo do dashboard ou de js/estoque.js) não deve
+  // herdar esse estado remanescente.
+  if (_cpSection === 'estoque' || _cpSection === 'insumos') _cpSection = 'listas';
   renderComprasLayout();
 }
 
@@ -73,9 +78,8 @@ function renderComprasLayout(section) {
   if (section) _cpSection = section;
 
   // Renderiza seção full-width (sem nav lateral — navegação é via sidebar)
-  if (_cpSection === 'insumos') {
-    _renderCpInsumos();
-  } else if (_cpSection === 'fornecedores') {
+  // Insumos saiu daqui — agora é filho de Configurações (ver _CFG_SUBMENU_ITEMS)
+  if (_cpSection === 'fornecedores') {
     _renderCpFornecedores();
   } else if (_cpSection === 'estoque') {
     if (typeof _renderCpEstoque === 'function') _renderCpEstoque();
@@ -5937,31 +5941,6 @@ async function _postToGAS(url, data) {
 // Alias para compatibilidade
 function _renderEtapa4Recebimento() { _renderRecebimento?.() || _renderEtapa4?.(); }
 
-
-// ── Insumos dentro do módulo Compras ─────────────────────────
-function _renderCpInsumos() {
-  const el = document.getElementById('cpSectionContent');
-  if (!el) return;
-  el.innerHTML = `
-    <div style="padding:20px 24px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-        <div>
-          <div style="font-size:var(--text-base);font-weight:800">${lc('package', 16, 'var(--purple)')} Insumos</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Matérias-primas e ingredientes usados na produção</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input class="inp" style="max-width:200px;padding:7px 12px" id="srchCadInsumos" placeholder=" Buscar..." oninput="renderCadInsumos()">
-          <select class="inp" style="max-width:160px;padding:7px 10px" id="catCadFil" onchange="renderCadInsumos()"><option value="">Todas categorias</option></select>
-          <button class="btn btn-outline btn-sm" onclick="abrirImportCadInsumos()" style="display:flex;align-items:center;gap:5px">
-            ${lc('upload', 13, 'currentColor')} Importar
-          </button>
-          <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Novo Insumo</button>
-        </div>
-      </div>
-      <div id="cadInsumosGrid"></div>
-    </div>`;
-  renderCadInsumos();
-}
 
 // ── Fornecedores dentro do módulo Compras ────────────────────
 function _renderCpFornecedores() {
