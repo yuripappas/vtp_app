@@ -1546,7 +1546,7 @@ async function _atdRenderPainel(conversa) {
     <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
       <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">Pedido vinculado</div>
       <div style="font-size:var(--text-sm);color:var(--text);font-weight:700">#${pedido.display_id ?? '—'}</div>
-      <div style="font-size:var(--text-xs);color:var(--fg-muted)">${({'CONCLUDED':'Concluído','CANCELLED':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','released':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega'}[pedido.status] || pedido.status || '')}</div>
+      <div style="font-size:var(--text-xs);color:var(--fg-muted)">${({'CONCLUDED':'Concluído','CLOSED':'Concluído','CANCELLED':'Cancelado','CANCELED':'Cancelado','CANCELLED_BY_RESTAURANT':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega','PENDING':'Pendente'}[(pedido.status||'').toUpperCase()] || pedido.status || '')}</div>
       ${pedido.total ? `<div style="font-size:var(--text-sm);color:var(--text);font-weight:700;margin-top:2px">R$ ${Number(pedido.total).toFixed(2)}</div>` : ''}
       ${pedido.delivery_address ? `
         <button class="btn btn-ghost" style="margin-top:8px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(pedido.delivery_address).replace(/"/g, '&quot;')})">
@@ -1630,7 +1630,7 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
           <span style="font-size:var(--text-sm);color:var(--text);font-weight:700">#${p0.display_id ?? '—'}</span>
           <span style="font-size:var(--text-xs);color:var(--fg-subtle)">${dataP0}</span>
         </div>
-        <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">${({'CONCLUDED':'Concluído','CANCELLED':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','released':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega'}[p0.status] || p0.status || '')} ${p0.total ? `· R$ ${Number(p0.total).toFixed(2)}` : ''}</div>
+        <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">${({'CONCLUDED':'Concluído','CLOSED':'Concluído','CANCELLED':'Cancelado','CANCELED':'Cancelado','CANCELLED_BY_RESTAURANT':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega','PENDING':'Pendente'}[(p0.status||'').toUpperCase()] || p0.status || '')} ${p0.total ? `· R$ ${Number(p0.total).toFixed(2)}` : ''}</div>
         ${p0.delivery_address ? `
           <button class="btn btn-ghost" style="margin-top:6px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(p0.delivery_address).replace(/"/g, '&quot;')})">
             ${lc('map-pin', 12, 'var(--purple)')} Ver endereço de entrega
@@ -1646,9 +1646,11 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
   const linhas = pedidos.slice(0, 10).map((p, idx) => {
     const data = p.cw_created_at ? new Date(p.cw_created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '—';
     const valor = p.total ? `R$ ${Number(p.total).toFixed(2)}` : '—';
-    const _cwStatusPt = { 'CONCLUDED':'Concluído','CANCELLED':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','released':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega','CANCELLED_BY_RESTAURANT':'Cancelado' };
-    const statusCor = { 'CONCLUDED': 'var(--green)', 'CANCELLED': 'var(--danger)', 'PLACED': 'var(--warning-fg)', 'CONFIRMED': 'var(--purple)', 'RELEASED': 'var(--purple)', 'released': 'var(--purple)', 'DISPATCHED': 'var(--warning-fg)', 'READY': 'var(--green)', 'DELIVERING': 'var(--warning-fg)' }[p.status] || 'var(--fg-subtle)';
-    const statusPt = _cwStatusPt[p.status] || p.status || '—';
+    const _cwStatusUp = (p.status || '').toUpperCase();
+    const _cwStatusPt = { 'CONCLUDED':'Concluído','CLOSED':'Concluído','CANCELLED':'Cancelado','CANCELED':'Cancelado','CANCELLED_BY_RESTAURANT':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega','PENDING':'Pendente','PROCESSING':'Processando' };
+    const _cwStatusCores = { 'CONCLUDED':'var(--green)','CLOSED':'var(--green)','CANCELLED':'var(--danger)','CANCELED':'var(--danger)','CANCELLED_BY_RESTAURANT':'var(--danger)','PLACED':'var(--warning-fg)','CONFIRMED':'var(--purple)','RELEASED':'var(--purple)','DISPATCHED':'var(--warning-fg)','READY':'var(--green)','DELIVERING':'var(--warning-fg)' };
+    const statusCor = _cwStatusCores[_cwStatusUp] || 'var(--fg-subtle)';
+    const statusPt = _cwStatusPt[_cwStatusUp] || p.status || '—';
 
     // Detalhe expandível dos itens
     let detalhesHtml = '';
