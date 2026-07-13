@@ -1428,6 +1428,7 @@ async function _atdRenderPainel(conversa) {
       </div>
     </div>
     ${pedidoVinculadoHtml}
+    <div id="atdPedidoVinculadoAuto" style="display:none;padding:12px 14px;border-bottom:1px solid var(--border)"></div>
     <div id="atdHistoricoCliente" style="padding:12px 14px">
       <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
         ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
@@ -1438,7 +1439,7 @@ async function _atdRenderPainel(conversa) {
 
   // Carrega histórico do cliente assincronamente
   if (c.telefone) {
-    _atdCarregarHistoricoCliente(c.telefone);
+    _atdCarregarHistoricoCliente(c.telefone, !pedido);
   } else {
     document.getElementById('atdHistoricoCliente').innerHTML = `
       <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
@@ -1449,16 +1450,15 @@ async function _atdRenderPainel(conversa) {
   }
 }
 
-async function _atdCarregarHistoricoCliente(telefone) {
+async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
   const sb = _atdGetSbClient();
-  // Normaliza: remove DDI 55 e não-dígitos para comparar
   const digitos = String(telefone).replace(/\D/g, '');
   const semDdi = digitos.startsWith('55') ? digitos.slice(2) : digitos;
   const comDdi = digitos.startsWith('55') ? digitos : `55${digitos}`;
 
   const { data: pedidos } = await sb
     .from('cw_pedidos')
-    .select('id, display_id, status, total, items, cw_created_at, customer_name')
+    .select('id, display_id, status, total, items, cw_created_at, customer_name, delivery_address, order_type, sales_channel')
     .or(`customer_phone.eq.${semDdi},customer_phone.eq.${comDdi}`)
     .order('cw_created_at', { ascending: false })
     .limit(20);
@@ -1475,27 +1475,84 @@ async function _atdCarregarHistoricoCliente(telefone) {
     return;
   }
 
-  const total = pedidos.reduce((s, p) => s + (Number(p.total) || 0), 0);
-  const ticketMedio = total / pedidos.length;
+  // Auto-link: se a conversa não tem pedido vinculado manualmente, mostra o pedido mais recente
+  if (autoLinkPedido && pedidos.length > 0) {
+    const p0 = pedidos[0];
+    const elVinculado = document.getElementById('atdPedidoVinculadoAuto');
+    if (elVinculado) {
+      const dataP0 = p0.cw_created_at ? new Date(p0.cw_created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+      elVinculado.innerHTML = `
+        <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">
+          ${lc('package', 11, 'currentColor')} Pedido mais recente
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:var(--text-sm);color:var(--text);font-weight:700">#${p0.display_id ?? '—'}</span>
+          <span style="font-size:var(--text-xs);color:var(--fg-subtle)">${dataP0}</span>
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">${p0.status ?? ''} ${p0.total ? `· R$ ${Number(p0.total).toFixed(2)}` : ''}</div>
+        ${p0.delivery_address ? `
+          <button class="btn btn-ghost" style="margin-top:6px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(p0.delivery_address).replace(/"/g, '&quot;')})">
+            ${lc('map-pin', 12, 'var(--purple)')} Ver endereço de entrega
+          </button>` : ''}
+      `;
+      elVinculado.style.display = '';
+    }
+  }
 
-  const linhas = pedidos.slice(0, 8).map(p => {
+  const totalGasto = pedidos.reduce((s, p) => s + (Number(p.total) || 0), 0);
+  const ticketMedio = totalGasto / pedidos.length;
+
+  const linhas = pedidos.slice(0, 10).map((p, idx) => {
     const data = p.cw_created_at ? new Date(p.cw_created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) : '—';
     const valor = p.total ? `R$ ${Number(p.total).toFixed(2)}` : '—';
-    const statusCor = { 'CONCLUDED': 'var(--green)', 'CANCELLED': 'var(--danger)', 'PLACED': 'var(--warning-fg)' }[p.status] || 'var(--fg-subtle)';
-    const itensResumo = Array.isArray(p.items) && p.items.length > 0
-      ? p.items.slice(0, 2).map(i => i.name || i.item?.name || '').filter(Boolean).join(', ') + (p.items.length > 2 ? ` +${p.items.length - 2}` : '')
-      : '';
+    const statusCor = { 'CONCLUDED': 'var(--green)', 'CANCELLED': 'var(--danger)', 'PLACED': 'var(--warning-fg)', 'CONFIRMED': 'var(--purple)' }[p.status] || 'var(--fg-subtle)';
+
+    // Detalhe expandível dos itens
+    let detalhesHtml = '';
+    if (Array.isArray(p.items) && p.items.length > 0) {
+      const linhasItens = p.items.map(i => {
+        const nome = i.name || i.item?.name || i.description || '—';
+        const qtd = i.quantity || 1;
+        const preco = i.unitPrice != null ? `R$ ${Number(i.unitPrice).toFixed(2)}` : (i.totalPrice != null ? `R$ ${Number(i.totalPrice / qtd).toFixed(2)}` : '');
+        const obs = i.observations || i.notes || '';
+        return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border-subtle)">
+          <div style="flex:1;min-width:0">
+            <span style="font-size:10px;color:var(--text)">${qtd}× ${nome}</span>
+            ${obs ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">${obs}</div>` : ''}
+          </div>
+          ${preco ? `<span style="font-size:10px;color:var(--fg-muted);white-space:nowrap">${preco}</span>` : ''}
+        </div>`;
+      }).join('');
+      const endHtml = p.delivery_address ? (() => {
+        const a = typeof p.delivery_address === 'string' ? JSON.parse(p.delivery_address) : p.delivery_address;
+        const linha = [a.street_name, a.street_number, a.neighborhood, a.city].filter(Boolean).join(', ');
+        return linha ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:6px;padding-top:6px;border-top:1px solid var(--border-subtle)">${lc('map-pin',10,'currentColor')} ${linha}</div>` : '';
+      })() : '';
+      const canalLabel = { 'WHATSAPP': 'WhatsApp', 'IFOOD': 'iFood', 'SITE': 'Site', 'INSTAGRAM': 'Instagram' }[p.sales_channel] || p.sales_channel || '';
+      detalhesHtml = `
+        <div id="atdPedDetalhe_${idx}" style="display:none;margin-top:6px;padding:8px;background:var(--bg-subtle);border-radius:var(--r6)">
+          ${canalLabel ? `<div style="font-size:9px;color:var(--fg-subtle);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${canalLabel} · ${p.order_type || ''}</div>` : ''}
+          ${linhasItens}
+          ${endHtml}
+        </div>`;
+    }
+
+    const temDetalhe = detalhesHtml !== '';
     return `
       <div style="padding:8px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">#${p.display_id || p.id?.slice(0,6)}</span>
-          <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">${valor}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;${temDetalhe ? 'cursor:pointer' : ''}"
+          ${temDetalhe ? `onclick="const d=document.getElementById('atdPedDetalhe_${idx}');d.style.display=d.style.display==='none'?'block':'none'"` : ''}>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">#${p.display_id || p.id?.slice(0,6)}</span>
+            <span style="font-size:10px;color:${statusCor};font-weight:600">${p.status || '—'}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">${valor}</span>
+            <span style="font-size:10px;color:var(--fg-subtle)">${data}</span>
+            ${temDetalhe ? lc('chevron-down', 11, 'var(--fg-subtle)') : ''}
+          </div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1px">
-          <span style="font-size:10px;color:${statusCor};font-weight:600">${p.status || '—'}</span>
-          <span style="font-size:10px;color:var(--fg-subtle)">${data}</span>
-        </div>
-        ${itensResumo ? `<div style="font-size:10px;color:var(--fg-subtle);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${itensResumo}</div>` : ''}
+        ${detalhesHtml}
       </div>`;
   }).join('');
 
@@ -1513,12 +1570,12 @@ async function _atdCarregarHistoricoCliente(telefone) {
         <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Ticket médio</div>
       </div>
       <div style="background:var(--bg-subtle);border-radius:var(--r8);padding:8px 4px">
-        <div style="font-size:13px;font-weight:800;color:var(--text)">R$${total.toFixed(0)}</div>
+        <div style="font-size:13px;font-weight:800;color:var(--text)">R$${totalGasto.toFixed(0)}</div>
         <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Total gasto</div>
       </div>
     </div>
     <div>${linhas}</div>
-    ${pedidos.length > 8 ? `<div style="font-size:10px;color:var(--fg-subtle);text-align:center;padding-top:6px">+${pedidos.length - 8} pedidos anteriores</div>` : ''}
+    ${pedidos.length > 10 ? `<div style="font-size:10px;color:var(--fg-subtle);text-align:center;padding-top:6px">+${pedidos.length - 10} pedidos anteriores</div>` : ''}
   `;
 }
 
