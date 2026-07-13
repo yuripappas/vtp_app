@@ -1590,11 +1590,17 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
   const digitos = String(telefone).replace(/\D/g, '');
   const semDdi = digitos.startsWith('55') ? digitos.slice(2) : digitos;
   const comDdi = digitos.startsWith('55') ? digitos : `55${digitos}`;
+  // Variantes com 9 do celular brasileiro (inserido após o DDD de 2 dígitos)
+  const semDdiCom9 = semDdi.length >= 10 ? semDdi.slice(0,2) + '9' + semDdi.slice(2) : semDdi;
+  const comDdiCom9 = `55${semDdiCom9}`;
+
+  const variantes = [...new Set([semDdi, comDdi, semDdiCom9, comDdiCom9])];
+  const filtro = variantes.map(v => `customer_phone.eq.${v}`).join(',');
 
   const { data: pedidos } = await sb
     .from('cw_pedidos')
     .select('id, display_id, status, total, items, cw_created_at, customer_name, delivery_address, order_type, sales_channel')
-    .or(`customer_phone.eq.${semDdi},customer_phone.eq.${comDdi}`)
+    .or(filtro)
     .order('cw_created_at', { ascending: false })
     .limit(20);
 
@@ -1648,27 +1654,25 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
       const linhasItens = p.items.map(i => {
         const nome = i.name || i.item?.name || i.description || '—';
         const qtd = i.quantity || 1;
-        const preco = i.unitPrice != null ? `R$ ${Number(i.unitPrice).toFixed(2)}` : (i.totalPrice != null ? `R$ ${Number(i.totalPrice / qtd).toFixed(2)}` : '');
-        const obs = i.observations || i.notes || '';
+        const preco = i.unit_price != null ? `R$ ${Number(i.unit_price).toFixed(2)}` : (i.unitPrice != null ? `R$ ${Number(i.unitPrice).toFixed(2)}` : (i.total_price != null ? `R$ ${Number(i.total_price).toFixed(2)}` : ''));
+        const obs = i.observation || i.observations || i.notes || '';
 
-        // Sabores e opcionais (CardápioWeb retorna optionGroups ou options)
-        const grupos = i.optionGroups || i.options || i.additionalGroups || [];
+        // CardápioWeb: options[] flat, cada opção tem option_group_name — agrupa por grupo
         let saboresHtml = '';
-        if (Array.isArray(grupos) && grupos.length > 0) {
-          saboresHtml = grupos.map(g => {
-            const itensGrupo = g.options || g.items || g.additionals || [];
-            if (!Array.isArray(itensGrupo) || !itensGrupo.length) return '';
-            const nomes = itensGrupo.map(o => o.name || o.description || '').filter(Boolean).join(', ');
-            return nomes ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">↳ ${nomes}</div>` : '';
+        if (Array.isArray(i.options) && i.options.length > 0) {
+          const gruposMap = {};
+          i.options.forEach(o => {
+            const g = o.option_group_name || 'Opcionais';
+            if (!gruposMap[g]) gruposMap[g] = [];
+            gruposMap[g].push(o);
+          });
+          saboresHtml = Object.entries(gruposMap).map(([grupo, opts]) => {
+            const itens = opts.map(o => {
+              const preco = o.unit_price > 0 ? ` <span style="color:var(--fg-muted)">+R$${Number(o.unit_price).toFixed(2)}</span>` : '';
+              return `<span>${o.name}${preco}</span>`;
+            }).join('<span style="color:var(--border)"> · </span>');
+            return `<div style="font-size:9px;color:var(--fg-subtle);margin-top:2px"><span style="font-weight:600">${grupo}:</span> ${itens}</div>`;
           }).join('');
-        }
-        // Fallback: campo pizza com metades
-        if (!saboresHtml && i.pizza) {
-          const metades = [i.pizza.flavor1, i.pizza.flavor2, i.pizza.flavor3].filter(Boolean);
-          if (metades.length) saboresHtml = `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">↳ ${metades.join(' / ')}</div>`;
-        }
-        if (!saboresHtml && i.flavor) {
-          saboresHtml = `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">↳ ${i.flavor}</div>`;
         }
 
         return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border-subtle)">
