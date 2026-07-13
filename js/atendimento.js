@@ -1691,10 +1691,11 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
         const linha = [a.street_name, a.street_number, a.neighborhood, a.city].filter(Boolean).join(', ');
         return linha ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:6px;padding-top:6px;border-top:1px solid var(--border-subtle)">${lc('map-pin',10,'currentColor')} ${linha}</div>` : '';
       })() : '';
-      const canalLabel = { 'WHATSAPP': 'WhatsApp', 'IFOOD': 'iFood', 'SITE': 'Site', 'INSTAGRAM': 'Instagram' }[p.sales_channel] || p.sales_channel || '';
+      const canalLabel = { 'WHATSAPP': 'WhatsApp', 'IFOOD': 'iFood', 'SITE': 'Site', 'INSTAGRAM': 'Instagram', 'RAPPI': 'Rappi', 'UBER_EATS': 'Uber Eats' }[p.sales_channel] || p.sales_channel || '';
+      const orderTypePt = { 'DELIVERY': 'Entrega', 'TAKEOUT': 'Retirada', 'INDOOR': 'Mesa', 'TABLE': 'Mesa', 'DINE_IN': 'Mesa', 'SCHEDULED': 'Agendado', 'CATALOG': 'Catálogo' }[p.order_type] || p.order_type || '';
       detalhesHtml = `
         <div id="atdPedDetalhe_${idx}" style="display:none;margin-top:6px;padding:8px;background:var(--bg-subtle);border-radius:var(--r6)">
-          ${canalLabel ? `<div style="font-size:9px;color:var(--fg-subtle);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${canalLabel} · ${p.order_type || ''}</div>` : ''}
+          ${canalLabel ? `<div style="font-size:9px;color:var(--fg-subtle);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${canalLabel}${orderTypePt ? ` · ${orderTypePt}` : ''}</div>` : ''}
           ${linhasItens}
           ${endHtml}
         </div>`;
