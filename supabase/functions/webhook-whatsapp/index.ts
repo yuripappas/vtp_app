@@ -108,9 +108,27 @@ async function salvarBase64(
   }
 }
 
+async function buscarFotoWhatsApp(evoUrl: string, evoKey: string, instance: string, remoteJid: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${evoUrl}/chat/fetchProfilePictureUrl/${instance}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: evoKey },
+      body: JSON.stringify({ number: remoteJid }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.profilePictureUrl ?? json?.picture ?? null;
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const EVO_URL      = Deno.env.get('EVOLUTION_API_URL') ?? '';
+  const EVO_KEY      = Deno.env.get('EVOLUTION_API_KEY') ?? '';
+  const EVO_INSTANCE = Deno.env.get('EVOLUTION_INSTANCE_NAME') ?? 'vtp-main';
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
   const payload: EvoPayload = await req.json();
@@ -150,10 +168,18 @@ Deno.serve(async (req) => {
       { telefone, nome: payload.data.pushName || null, canal_origem: 'whatsapp' },
       { onConflict: 'telefone', ignoreDuplicates: false }
     )
-    .select('id')
+    .select('id, avatar_url')
     .single();
   if (contatoErr || !contato) {
     return new Response(JSON.stringify({ error: 'falha ao salvar contato', detalhe: contatoErr }), { status: 500 });
+  }
+
+  // 1b. Busca foto de perfil do WhatsApp se ainda não tiver
+  if (!contato.avatar_url && EVO_URL && EVO_KEY) {
+    const foto = await buscarFotoWhatsApp(EVO_URL, EVO_KEY, EVO_INSTANCE, payload.data.key.remoteJid);
+    if (foto) {
+      await sb.from('atd_contatos').update({ avatar_url: foto }).eq('id', contato.id);
+    }
   }
 
   // 2. Busca canal whatsapp
