@@ -2,7 +2,10 @@
  * VTP Compras — Vai Ter Pizza!
  * vendas-ui.js — UI do módulo Vendas. Consome o motor js/vendas.js.
  *
- * Sub-abas: CMV · Produtos/Curva ABC · Insumos. Todas prontas.
+ * Filhos: CMV · Produtos/Curva ABC · Insumos · Canais · Precificação.
+ * Navegação entre filhos é pelo sub-panel do sidebar (padrão da
+ * plataforma, igual Compras/Operação) — não por abas dentro da página.
+ * Ver _handleNavVendas() / _VENDAS_SUBMENU_ITEMS em js/utils.js.
  * Nenhuma lógica de interpretação aqui — tudo vem do motor (vendas.js).
  */
 
@@ -15,25 +18,17 @@ let _vdCatOpen = null; // categoria expandida no drill-down
 function renderVendas() {
   const el = document.getElementById('vendasContent');
   if (!el) return;
+  const item = (typeof _VENDAS_SUBMENU_ITEMS !== 'undefined' && _VENDAS_SUBMENU_ITEMS.find(i => i.id === _vdTab)) || { icon: 'bar-chart-2', label: 'Vendas' };
   el.innerHTML = `
-    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px">
-      ${[['cmv','CMV'],['produtos','Produtos (Curva ABC)'],['insumos','Insumos'],['canais','Canais'],['precos','Precificação']].map(([id,lbl]) =>
-        `<button id="vd-tab-${id}" onclick="setVendasTab('${id}')" style="padding:9px 20px;font-size:.82rem;font-weight:600;color:${id===_vdTab?'var(--purple)':'var(--muted)'};border:none;border-bottom:3px solid ${id===_vdTab?'var(--purple)':'transparent'};margin-bottom:-2px;background:none;cursor:pointer;font-family:inherit">${lbl}</button>`).join('')}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px">
+      ${lc(item.icon, 18, 'var(--purple)')}
+      <span style="font-size:1.05rem;font-weight:700">${item.label}</span>
     </div>
     <div id="vendasTabContent"></div>`;
-  setVendasTab(_vdTab);
-}
-
-function setVendasTab(tab) {
-  _vdTab = tab;
-  ['cmv','produtos','insumos','canais','precos'].forEach(t => {
-    const b = document.getElementById('vd-tab-' + t);
-    if (b) { b.style.color = t === tab ? 'var(--purple)' : 'var(--muted)'; b.style.borderBottomColor = t === tab ? 'var(--purple)' : 'transparent'; }
-  });
   _vdRerender();
 }
 
-// Re-renderiza a aba atual (usado pelos filtros compartilhados)
+// Re-renderiza o filho atual (usado pelos filtros compartilhados)
 function _vdRerender() {
   if (_vdTab === 'cmv')          renderVendasCMV();
   else if (_vdTab === 'insumos') renderVendasInsumos();
@@ -573,7 +568,6 @@ function _pcCusto() {
 }
 
 function _pcSaborSelect(id, sel, ph) {
-  const cat = _pcTamanho === 'grande' ? '' : '';
   return `<select class="inp" id="${id}" onchange="${id==='pcOpc1'?'_pcOpc1':'_pcOpc2'}=parseInt(this.value)||null;renderVendasPrecos()" style="width:100%;font-size:.86rem;padding:8px 10px">
     <option value="">${ph}</option>
     ${opcoes.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(o => `<option value="${o.id}"${o.id===sel?' selected':''}>${o.nome}${o.fichaTecnica?.ingredientes?.length?'':' (sem ficha)'}</option>`).join('')}

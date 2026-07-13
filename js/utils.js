@@ -84,6 +84,24 @@ const _OPERACAO_SUBMENU_ITEMS = [
   { id: 'etiquetagem', icon: 'tag',          label: 'Etiquetagem'  },
 ];
 
+// Submenu items de Vendas
+const _VENDAS_SUBMENU_ITEMS = [
+  { id: 'cmv',           icon: 'dollar-sign', label: 'CMV'                     },
+  { id: 'produtos',      icon: 'bar-chart-2', label: 'Produtos (Curva ABC)'    },
+  { id: 'insumos',       icon: 'package',     label: 'Insumos'                 },
+  { id: 'canais',        icon: 'link',        label: 'Canais'                  },
+  { id: 'precos',        icon: 'tag',         label: 'Precificação'            },
+];
+
+function _handleNavVendas() {
+  const action = (id) => `_vdTab='${id}'; goModule('vendas');`;
+  if (window.innerWidth <= 480) {
+    _openMobileSubmenu(_VENDAS_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })), 'Vendas');
+  } else {
+    _openSubPanel(_VENDAS_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })), 'Vendas', 'vendas');
+  }
+}
+
 // Submenu items de Configurações
 const _CFG_SUBMENU_ITEMS = [
   { id: 'empresa',      icon: 'building-2', label: 'Empresa'        },
