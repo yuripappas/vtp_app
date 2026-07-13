@@ -2723,7 +2723,7 @@ async function _atdRespostasPadraoRender() {
               <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
             </div>
             <div style="display:flex;gap:2px;flex-shrink:0">
-              <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="_atdRespostaAbrirModal('${r.id}')">
+              <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" data-rr='${JSON.stringify(r).replace(/'/g, "&#39;")}' onclick="_atdRespostaAbrirModal(this)">
                 ${lc('edit-2', 14, 'var(--fg-muted)')}
               </button>
               <button class="btn btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="_atdRespostaToggleAtivo('${r.id}', ${!r.ativo})">
@@ -2738,8 +2738,8 @@ async function _atdRespostasPadraoRender() {
     </div>`;
 }
 
-function _atdRespostaAbrirModal(idOuNull) {
-  const r = idOuNull ? (window._atdRespostasMap?.[idOuNull] ?? null) : null;
+function _atdRespostaAbrirModal(btnOuNull) {
+  const r = btnOuNull ? JSON.parse(btnOuNull.dataset?.rr || 'null') : null;
 
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
