@@ -28,6 +28,7 @@ const _atdState = {
   filtroAtivo: 'chat',       // 'chat' | 'avaliacoes'
   buscaRapidaTermo: '',
   perfisCache: {},           // { [id]: nome } — nomes dos atendentes p/ label interno
+  atendentesOnline: [],      // [{ id, nome, last_seen }] — presença em tempo real
   filtrosAvancados: {        // filtros persistentes da busca avançada
     canais: [],              // [] = todos | ['whatsapp'] | ['instagram'] | ambos
     de: '',
@@ -122,6 +123,16 @@ function renderOmnichannel() {
       .atd-alerta-3 { border-left:3px solid var(--red) !important; background:#fecaca !important; animation:atd-pulse-red .6s infinite, atd-shake 1.2s infinite; }
       /* F1: bot ativo — ícone ⚡ na lista */
       .atd-bot-badge { display:inline-flex;align-items:center;gap:2px;font-size:9px;font-weight:700;color:var(--green);background:#dcfce7;padding:1px 5px;border-radius:999px;flex-shrink:0; }
+      /* Rodapé de presença — atendentes online */
+      .atd-presenca-footer { flex-shrink:0;height:38px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;align-items:center;gap:6px;padding:0 10px;overflow:hidden; }
+      .atd-presenca-avatar { position:relative;width:24px;height:24px;flex-shrink:0; }
+      .atd-presenca-avatar img, .atd-presenca-avatar-ini { width:24px;height:24px;border-radius:50%;font-size:10px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;object-fit:cover; }
+      .atd-presenca-avatar .atd-online-dot { position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;background:var(--green);border-radius:50%;border:1.5px solid var(--bg-subtle); }
+      .atd-presenca-avatar.eu .atd-presenca-avatar-ini { outline:2px solid var(--purple);outline-offset:1px; }
+      /* Badge aguardando atendimento (cliente esperando) */
+      .atd-badge-aguard { display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:var(--warning-fg);background:var(--warning-bg);padding:1px 6px;border-radius:999px;white-space:nowrap;flex-shrink:0; }
+      @keyframes atd-pulse-aguard { 0%,100%{opacity:1}50%{opacity:.5} }
+      .atd-badge-aguard.atrasado { color:var(--danger);background:var(--danger-bg);animation:atd-pulse-aguard 1.2s infinite; }
       @media (max-width:900px) { .atd-panel { display:none !important; } }
       @media (max-width:640px) {
         .atd-layout { flex-direction:column; height:auto; min-height:calc(100vh - 64px); }
@@ -233,6 +244,7 @@ function _atdRenderInbox() {
         </div>
 
         <div id="atdListaConversas" style="flex:1;overflow-y:auto"></div>
+        <div id="atdPresencaFooter" class="atd-presenca-footer"></div>
       </div>
 
       <!-- COLUNA B — conversa ativa -->
@@ -254,16 +266,91 @@ function _atdRenderInbox() {
   _atdCarregarRespostasRapidas();
   _atdCarregarTodasTags();
   _atdIniciarTimerAlerta();
+  _atdCarregarPerfis();
+  _atdIniciarPresenca();
 }
 
-// Atualiza o nível visual do alerta F2 a cada 60s (nível muda com o tempo)
+// Atualiza timers e alertas a cada 30s
 let _atdAlertaTimerId = null;
 function _atdIniciarTimerAlerta() {
   if (_atdAlertaTimerId) clearInterval(_atdAlertaTimerId);
   _atdAlertaTimerId = setInterval(() => {
-    const temAlerta = _atdState.conversas.some(c => c.precisa_humano);
-    if (temAlerta) _atdRenderLista();
-  }, 60000);
+    const temTimer = _atdState.conversas.some(c =>
+      c.precisa_humano ||
+      (c.ultima_msg_cliente_em && c.ultima_msg_cliente_em > (c.ultima_msg_atendente_em || ''))
+    );
+    if (temTimer) _atdRenderLista();
+  }, 30000);
+}
+
+// ── Presença: carrega perfis e atualiza last_seen ──────────────────────────
+
+async function _atdCarregarPerfis() {
+  const sb = _atdGetSbClient();
+  const { data } = await sb.from('profiles').select('id, nome, role').in('role', ['gerente', 'atendente', 'supervisor']);
+  if (data) {
+    data.forEach(p => { _atdState.perfisCache[p.id] = p.nome || p.id; });
+  }
+}
+
+let _atdHeartbeatId = null;
+async function _atdIniciarPresenca() {
+  const sb = _atdGetSbClient();
+  const user = getCurrentUser();
+  if (!user?.id) return;
+
+  const _heartbeat = async () => {
+    await sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id);
+    _atdCarregarAtendentesOnline();
+  };
+  _heartbeat();
+  if (_atdHeartbeatId) clearInterval(_atdHeartbeatId);
+  _atdHeartbeatId = setInterval(_heartbeat, 30000);
+}
+
+async function _atdCarregarAtendentesOnline() {
+  const sb = _atdGetSbClient();
+  const limiar = new Date(Date.now() - 90000).toISOString();
+  const { data } = await sb.from('profiles')
+    .select('id, nome, role')
+    .in('role', ['gerente', 'atendente', 'supervisor'])
+    .gte('last_seen', limiar)
+    .order('nome');
+  _atdState.atendentesOnline = data || [];
+  _atdRenderPresencaFooter();
+}
+
+function _atdRenderPresencaFooter() {
+  const el = document.getElementById('atdPresencaFooter');
+  if (!el) return;
+  const user = getCurrentUser();
+  const online = _atdState.atendentesOnline;
+  if (!online.length) { el.innerHTML = ''; return; }
+
+  const visíveis = online.slice(0, 6);
+  const extra = online.length - visíveis.length;
+
+  const avatares = visíveis.map(p => {
+    const isEu = p.id === user?.id;
+    const ini = (p.nome || '?').charAt(0).toUpperCase();
+    // Cor derivada do nome (hash simples → tom de cor)
+    let hash = 0;
+    for (let i = 0; i < (p.nome || '').length; i++) hash = (p.nome.charCodeAt(i) + ((hash << 5) - hash));
+    const hue = Math.abs(hash) % 360;
+    const bg = isEu ? 'var(--purple)' : `hsl(${hue},55%,45%)`;
+    return `<div class="atd-presenca-avatar${isEu ? ' eu' : ''}" title="${p.nome}${isEu ? ' (você)' : ''}">
+      <div class="atd-presenca-avatar-ini" style="background:${bg}">${ini}</div>
+      <div class="atd-online-dot"></div>
+    </div>`;
+  }).join('');
+
+  const extraHtml = extra > 0
+    ? `<span style="font-size:9px;color:var(--fg-subtle);font-weight:700">+${extra}</span>`
+    : '';
+
+  el.innerHTML = `
+    <span style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-right:2px">Online</span>
+    ${avatares}${extraHtml}`;
 }
 
 async function _atdCarregarRespostasRapidas() {
@@ -727,12 +814,26 @@ function _atdRenderLista() {
     const st = STATUS_CONV[c.status] || STATUS_CONV.aberta;
     const statusBadge = `<span style="font-size:9px;font-weight:700;color:${st.cor};background:${st.bg};padding:1px 6px;border-radius:999px;white-space:nowrap;flex-shrink:0">${st.label}</span>`;
 
-    // Timer de espera (só em conversas ativas)
+    // Badge "Aguardando" — só aparece quando cliente enviou a última mensagem (item 3)
+    let aguardandoBadge = '';
+    let aguardandoAlertaClass = '';
+    if (!isConcluida && !c.precisa_humano) {
+      const clienteTs = c.ultima_msg_cliente_em ? new Date(c.ultima_msg_cliente_em).getTime() : 0;
+      const atendenteTs = c.ultima_msg_atendente_em ? new Date(c.ultima_msg_atendente_em).getTime() : 0;
+      const clienteEsperando = clienteTs > 0 && clienteTs > atendenteTs;
+      if (clienteEsperando) {
+        const diffMin = Math.floor((agora - clienteTs) / 60000);
+        const atrasado = diffMin >= 2;
+        const label = diffMin < 1 ? 'Aguardando' : diffMin < 60 ? `${diffMin}min` : `${Math.floor(diffMin/60)}h${diffMin%60?String(diffMin%60).padStart(2,'0')+'m':''}`;
+        aguardandoBadge = `<span class="atd-badge-aguard${atrasado ? ' atrasado' : ''}">${lc('clock', 9, 'currentColor')} ${label}</span>`;
+        if (atrasado) aguardandoAlertaClass = 'atd-alerta-1';
+      }
+    }
+
+    // Timer de espera (só em conversas ativas, quando atendente aguarda cliente)
     let timerHtml = '';
-    if (!isConcluida) {
-      const refTs = c.status === 'aguardando_cliente'
-        ? c.ultima_msg_atendente_em
-        : c.ultima_msg_cliente_em;
+    if (!isConcluida && c.status === 'aguardando_cliente') {
+      const refTs = c.ultima_msg_atendente_em;
       if (refTs) {
         const diffMin = Math.floor((agora - new Date(refTs).getTime()) / 60000);
         if (diffMin >= 1) {
@@ -764,9 +865,14 @@ function _atdRenderLista() {
       if (!texto && ultiMsg.story_reply) return '↩ Respondeu ao story';
       return texto;
     })();
-    const previewPrefix = previewOrigem === 'atendente'
-      ? `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--fg-subtle)"><polyline points="20 6 9 17 4 12"/></svg>`
-      : '';
+    // Item 2: mostra quem respondeu (nome do atendente que enviou a última mensagem)
+    let previewPrefix = '';
+    if (previewOrigem === 'atendente') {
+      const atendenteId = ultiMsg.atendente_id;
+      const nomeAtendente = atendenteId ? (_atdState.perfisCache[atendenteId] || '') : '';
+      const labelAtendente = nomeAtendente ? nomeAtendente.split(' ')[0] : 'Você';
+      previewPrefix = `<span style="font-size:9px;font-weight:700;color:var(--purple);flex-shrink:0;white-space:nowrap">${labelAtendente}:</span>`;
+    }
 
     // Data/hora relativa
     const ts = c.atualizado_em ? new Date(c.atualizado_em) : null;
@@ -806,7 +912,7 @@ function _atdRenderLista() {
     }
 
     return `
-      <div class="conv-item ${ativa ? 'active' : ''} ${selecionada ? 'conv-selected' : ''} ${alertaClass}" data-canal="${c.canal_tipo || ''}"
+      <div class="conv-item ${ativa ? 'active' : ''} ${selecionada ? 'conv-selected' : ''} ${alertaClass || aguardandoAlertaClass}" data-canal="${c.canal_tipo || ''}"
         onclick="_atdState.selecionadas.size>0?_atdToggleSelecionar('${c.id}',!_atdState.selecionadas.has('${c.id}')):_atdAbrirConversa('${c.id}')"
         onmouseenter="_atdConvHoverIn(this)" onmouseleave="_atdConvHoverOut(this)">
         <!-- Avatar com checkbox hover (F3) -->
@@ -831,10 +937,10 @@ function _atdRenderLista() {
           <div style="font-size:var(--text-xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:3px;margin-bottom:4px">
             ${previewPrefix}${previewTexto || '<em style="opacity:.6">Sem mensagens</em>'}
           </div>
-          <!-- Linha 3: Status + timer + pedido + influencer + bot + alerta -->
+          <!-- Linha 3: Status + aguardando + timer + pedido + influencer + bot + alerta -->
           <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
             ${statusBadge}
-            ${alertaTimerHtml || timerHtml}
+            ${alertaTimerHtml || aguardandoBadge || timerHtml}
             ${pedidoHtml}
             ${influencerBadge}
             ${botBadge}
@@ -1515,10 +1621,32 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
         const qtd = i.quantity || 1;
         const preco = i.unitPrice != null ? `R$ ${Number(i.unitPrice).toFixed(2)}` : (i.totalPrice != null ? `R$ ${Number(i.totalPrice / qtd).toFixed(2)}` : '');
         const obs = i.observations || i.notes || '';
+
+        // Sabores e opcionais (CardápioWeb retorna optionGroups ou options)
+        const grupos = i.optionGroups || i.options || i.additionalGroups || [];
+        let saboresHtml = '';
+        if (Array.isArray(grupos) && grupos.length > 0) {
+          saboresHtml = grupos.map(g => {
+            const itensGrupo = g.options || g.items || g.additionals || [];
+            if (!Array.isArray(itensGrupo) || !itensGrupo.length) return '';
+            const nomes = itensGrupo.map(o => o.name || o.description || '').filter(Boolean).join(', ');
+            return nomes ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">↳ ${nomes}</div>` : '';
+          }).join('');
+        }
+        // Fallback: campo pizza com metades
+        if (!saboresHtml && i.pizza) {
+          const metades = [i.pizza.flavor1, i.pizza.flavor2, i.pizza.flavor3].filter(Boolean);
+          if (metades.length) saboresHtml = `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">↳ ${metades.join(' / ')}</div>`;
+        }
+        if (!saboresHtml && i.flavor) {
+          saboresHtml = `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">↳ ${i.flavor}</div>`;
+        }
+
         return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border-subtle)">
           <div style="flex:1;min-width:0">
             <span style="font-size:10px;color:var(--text)">${qtd}× ${nome}</span>
-            ${obs ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px">${obs}</div>` : ''}
+            ${saboresHtml}
+            ${obs ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px;font-style:italic">${obs}</div>` : ''}
           </div>
           ${preco ? `<span style="font-size:10px;color:var(--fg-muted);white-space:nowrap">${preco}</span>` : ''}
         </div>`;
