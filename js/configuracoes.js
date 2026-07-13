@@ -1806,14 +1806,16 @@ function abrirCadastroNaConfig(tab) {
 
 // Todos os IDs de permissão (folhas da árvore) — mantido para compatibilidade
 const _CFG_ALL_PERMS = [
-  'Ver Dashboard','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-  'Pré-produção','Desperdício','Compras','Aprovação de compras','Fornecedores','Relatórios',
-  'Checklist Meu','Checklist','Manutenção','RH','Performance','Gerenciar usuários','Configurações',
+  'Ver Dashboard','Omnichannel','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
+  'Pré-produção','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
+  'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','Alertas',
+  'Gerenciar usuários','Configurações',
 ];
 
-// Árvore hierárquica de permissões
+// Árvore hierárquica de permissões — espelha os módulos existentes no sidebar
 const _CFG_PERMS_TREE = [
   { id:'Ver Dashboard',      label:'Dashboard',           icon:'layout-dashboard' },
+  { id:'Omnichannel',        label:'Omnichannel',         icon:'message-circle'  },
   { id:'_estoque',           label:'Estoque',             icon:'package',
     sub:[
       { id:'Estoque',                    label:'Visualizar e editar'        },
@@ -1823,6 +1825,7 @@ const _CFG_PERMS_TREE = [
     ]},
   { id:'Pré-produção',       label:'Pré-produção',        icon:'chef-hat'        },
   { id:'Desperdício',        label:'Desperdício',         icon:'trash-2'         },
+  { id:'Previsão',           label:'Previsão de Demanda', icon:'trending-up'     },
   { id:'_compras',           label:'Compras',             icon:'shopping-cart',
     sub:[
       { id:'Compras',               label:'Criar e gerenciar listas' },
@@ -1837,8 +1840,11 @@ const _CFG_PERMS_TREE = [
     ]},
   { id:'Etiquetagem',        label:'Etiquetagem',         icon:'tag'             },
   { id:'Manutenção',         label:'Manutenção',          icon:'wrench'          },
+  { id:'Inventário',         label:'Inventário',          icon:'layers'          },
   { id:'RH',                 label:'RH',                  icon:'users'           },
   { id:'Performance',        label:'Performance',         icon:'trending-up'     },
+  { id:'Vendas',             label:'Vendas',              icon:'dollar-sign'     },
+  { id:'Alertas',            label:'Alertas',             icon:'bell'            },
   { id:'Gerenciar usuários', label:'Gerenciar usuários',  icon:'user-cog'        },
   { id:'Configurações',      label:'Configurações',       icon:'settings'        },
 ];

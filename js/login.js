@@ -30,6 +30,36 @@ const MODULE_PERMISSIONS = {
   etiquetagem:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
 };
 
+// Módulo → label de permissão granular (árvore de Perfis de Acesso em Configurações → Usuários).
+// Usado para que a edição de perfil/permissões individuais controle de fato a visibilidade
+// de TODOS os módulos (antes só Etiquetagem era ligada a essa árvore). Módulo sem entrada
+// aqui (ex.: 'operacao', que é só o agrupador visual) cai no fallback por role acima.
+const MOD_PERM_LABEL = {
+  dashboard:     'Ver Dashboard',
+  omnichannel:   'Omnichannel',
+  estoque:       'Estoque',
+  preproducao:   'Pré-produção',
+  desperdicio:   'Desperdício',
+  compras:       'Compras',
+  vendas:        'Vendas',
+  previsao:      'Previsão',
+  configuracoes: 'Configurações',
+  relatorios:    'Relatórios',
+  checklist:     ['Checklist Meu', 'Checklist'],
+  manutencao:    'Manutenção',
+  inventario:    'Inventário',
+  alertas:       'Alertas',
+  rh:            'RH',
+  etiquetagem:   'Etiquetagem',
+};
+
+// Retorna true/false se o módulo tem label mapeado, ou null se não mapeado (sem opinião)
+function _hasModPerm(perms, mod) {
+  const label = MOD_PERM_LABEL[mod];
+  if (!label) return null;
+  return Array.isArray(label) ? label.some(l => perms.includes(l)) : perms.includes(label);
+}
+
 // ══════════════════════════════════════════════════════════════
 // SESSÃO
 // ══════════════════════════════════════════════════════════════
@@ -172,32 +202,32 @@ function shakeForm() {
 // ══════════════════════════════════════════════════════════════
 
 function applyPermissions(user) {
-  const role = user.role;
-  const hasCustomPerms = Array.isArray(user.perms);
-  const userPerms = hasCustomPerms ? user.perms : (typeof getUserPerms === 'function' ? getUserPerms(user) : []);
+  const role  = user.role;
+  const perms = typeof getUserPerms === 'function' ? getUserPerms(user) : [];
 
-  // Submódulos agrupados em Operação — não têm nav próprio no sidebar
-  const _OPERACAO_MODS = ['estoque','preproducao','desperdicio','previsao','checklist','manutencao','inventario','etiquetagem'];
+  // Submódulos que só existem dentro do flyout de Operação — sem nav próprio no sidebar
+  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
 
-  // nav-operacao: visível se o usuário tem acesso a pelo menos 1 submódulo
-  const operacaoRoles = new Set(_OPERACAO_MODS.flatMap(m => MODULE_PERMISSIONS[m] || []));
+  // nav-operacao: visível se o usuário tem acesso a pelo menos 1 submódulo real
+  const hasOperacaoAccess = _OPERACAO_MODS.some(m => {
+    const viaPerms = _hasModPerm(perms, m);
+    return viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS[m] || []).includes(role);
+  });
   const navOp = document.getElementById('nav-operacao');
-  if (navOp) navOp.style.display = operacaoRoles.has(role) ? '' : 'none';
+  if (navOp) navOp.style.display = hasOperacaoAccess ? '' : 'none';
 
   Object.entries(MODULE_PERMISSIONS).forEach(([mod, roles]) => {
-    if (_OPERACAO_MODS.includes(mod)) return; // controlado via nav-operacao
+    if (mod === 'operacao' || _OPERACAO_MODS.includes(mod)) return; // controlado via nav-operacao
     const navEl = document.getElementById(`nav-${mod}`);
     if (!navEl) return;
-    if (mod === 'etiquetagem' && hasCustomPerms) {
-      navEl.style.display = userPerms.includes('Etiquetagem') ? '' : 'none';
-      return;
-    }
-    navEl.style.display = roles.includes(role) ? '' : 'none';
+    const viaPerms = _hasModPerm(perms, mod);
+    navEl.style.display = (viaPerms !== null ? viaPerms : roles.includes(role)) ? '' : 'none';
   });
   // Botão de configurações no rodapé (id diferente)
   const cfgBottom = document.getElementById('nav-configuracoes-bottom');
   if (cfgBottom) {
-    cfgBottom.style.display = (MODULE_PERMISSIONS.configuracoes||[]).includes(role) ? '' : 'none';
+    const viaPerms = _hasModPerm(perms, 'configuracoes');
+    cfgBottom.style.display = (viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS.configuracoes||[]).includes(role)) ? '' : 'none';
   }
   _updateSections();
   if (typeof atualizarBadgeAlertas === 'function') atualizarBadgeAlertas();
@@ -223,6 +253,9 @@ function _updateSections() {
 function canAccess(mod) {
   const user = getCurrentUser();
   if (!user) return false;
+  const perms    = typeof getUserPerms === 'function' ? getUserPerms(user) : [];
+  const viaPerms = _hasModPerm(perms, mod);
+  if (viaPerms !== null) return viaPerms;
   return (MODULE_PERMISSIONS[mod] || []).includes(user.role);
 }
 

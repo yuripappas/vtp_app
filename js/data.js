@@ -414,13 +414,14 @@ let PERMS = {
   gerente: {
     label: 'Gestor', icon: 'crown', color: '#6B21D4', bg: '#EDE9FE', mutavel: false,
     perms: [
-      'Ver Dashboard',
+      'Ver Dashboard','Omnichannel',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-      'Pré-produção','Desperdício',
+      'Pré-produção','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
-      'Manutenção','RH','Performance',
+      'Manutenção','Inventário','RH','Performance',
+      'Vendas','Alertas',
       'Gerenciar usuários','Configurações',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
@@ -428,31 +429,33 @@ let PERMS = {
   supervisor: {
     label: 'Supervisor', icon: 'key', color: '#D97706', bg: '#FEF3C7', mutavel: true,
     perms: [
-      'Ver Dashboard',
+      'Ver Dashboard','Omnichannel',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-      'Pré-produção','Desperdício',
+      'Pré-produção','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
-      'Manutenção','RH','Performance',
+      'Manutenção','Inventário','RH','Performance',
+      'Vendas','Alertas',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
   },
   comprador: {
     label: 'Comprador', icon: 'shopping-cart', color: '#16A34A', bg: '#DCFCE7', mutavel: true,
     perms: [
-      'Ver Dashboard',
+      'Ver Dashboard','Omnichannel',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-      'Pré-produção',
+      'Pré-produção','Previsão',
       'Compras',
       'Fornecedores',
       'Checklist Meu','Checklist',
+      'Inventário','Alertas',
       'Etiquetagem','Etiquetagem: Produção',
     ]
   },
   funcionario: {
     label: 'Funcionário', icon: 'user', color: '#3B82F6', bg: '#EFF6FF', mutavel: true,
-    perms: ['Checklist Meu','Etiquetagem']
+    perms: ['Ver Dashboard','Omnichannel','Checklist Meu','Etiquetagem']
   },
 };
 (function() {
