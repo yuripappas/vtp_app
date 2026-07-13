@@ -286,10 +286,11 @@ function _atdIniciarTimerAlerta() {
 // ── Presença: carrega perfis e atualiza last_seen ──────────────────────────
 
 async function _atdCarregarPerfis() {
+  // Carrega nomes dos usuários VTP do kv_store para o cache
   const sb = _atdGetSbClient();
-  const { data } = await sb.from('profiles').select('id, nome, role').in('role', ['gerente', 'atendente', 'supervisor']);
-  if (data) {
-    data.forEach(p => { _atdState.perfisCache[p.id] = p.nome || p.id; });
+  const { data } = await sb.from('kv_store').select('value').eq('key', 'vtp_users').single();
+  if (data?.value && Array.isArray(data.value)) {
+    data.value.forEach(u => { if (u.id) _atdState.perfisCache[u.id] = u.name || u.nome || u.id; });
   }
 }
 
@@ -300,7 +301,12 @@ async function _atdIniciarPresenca() {
   if (!user?.id) return;
 
   const _heartbeat = async () => {
-    await sb.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id);
+    await sb.from('atd_presenca').upsert({
+      user_id: String(user.id),
+      nome: user.name || user.nome || 'Atendente',
+      role: user.role || 'atendente',
+      last_seen: new Date().toISOString()
+    }, { onConflict: 'user_id' });
     _atdCarregarAtendentesOnline();
   };
   _heartbeat();
@@ -311,12 +317,11 @@ async function _atdIniciarPresenca() {
 async function _atdCarregarAtendentesOnline() {
   const sb = _atdGetSbClient();
   const limiar = new Date(Date.now() - 90000).toISOString();
-  const { data } = await sb.from('profiles')
-    .select('id, nome, role')
-    .in('role', ['gerente', 'atendente', 'supervisor'])
+  const { data } = await sb.from('atd_presenca')
+    .select('user_id, nome, role')
     .gte('last_seen', limiar)
     .order('nome');
-  _atdState.atendentesOnline = data || [];
+  _atdState.atendentesOnline = (data || []).map(p => ({ id: p.user_id, nome: p.nome, role: p.role }));
   _atdRenderPresencaFooter();
 }
 

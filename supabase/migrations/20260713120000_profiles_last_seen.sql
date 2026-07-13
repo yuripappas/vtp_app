@@ -1,12 +1,12 @@
--- Adiciona last_seen para presença em tempo real no módulo Omnichannel
-ALTER TABLE profiles
-  ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ;
+-- Tabela de presença dos atendentes no módulo Omnichannel
+-- Usa o sistema de usuários VTP (vtp_users), não Supabase Auth
 
--- Índice para queries de "online nos últimos 90s"
-CREATE INDEX IF NOT EXISTS idx_profiles_last_seen ON profiles (last_seen DESC);
+CREATE TABLE IF NOT EXISTS atd_presenca (
+  user_id   TEXT PRIMARY KEY,   -- id do usuário VTP
+  nome      TEXT NOT NULL,
+  role      TEXT NOT NULL,
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
--- RLS: atendentes podem atualizar seu próprio last_seen
-CREATE POLICY "Atendente atualiza proprio last_seen"
-  ON profiles FOR UPDATE
-  USING (auth.uid() = id)
-  WITH CHECK (auth.uid() = id);
+-- Sem RLS — dados de presença são públicos para todos os atendentes
+ALTER TABLE atd_presenca DISABLE ROW LEVEL SECURITY;
