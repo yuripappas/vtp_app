@@ -2687,9 +2687,13 @@ async function _atdRespostasPadraoRender() {
   const lista = data || [];
 
   window._atdRR = lista;
+  // Funções globais chamadas diretamente pelo onclick — sem closure, sem event delegation
+  window._atdRREdt = (idx) => _atdRespostaAbrirModal(idx);
+  window._atdRRTog = (idx) => { const r = window._atdRR[idx]; if (r) _atdRespostaToggleAtivo(r.id, !r.ativo); };
+  window._atdRRDel = (idx) => { const r = window._atdRR[idx]; if (r) _atdRespostaExcluir(r.id); };
 
   const linhasHtml = lista.map((r, idx) => `
-    <div data-idx="${idx}" style="display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border);${r.ativo ? '' : 'opacity:.45'}">
+    <div style="display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border);${r.ativo ? '' : 'opacity:.45'}">
       <div>
         <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">/${r.atalho}</code>
         ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:3px;text-transform:uppercase;letter-spacing:.4px">${r.canal_tipo}</div>` : ''}
@@ -2699,9 +2703,9 @@ async function _atdRespostasPadraoRender() {
         <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
       </div>
       <div style="display:flex;gap:2px;flex-shrink:0">
-        <button class="btn btn-ghost" style="padding:4px 6px" data-action="edit" title="Editar">${lc('edit-2', 14, 'var(--fg-muted)')}</button>
-        <button class="btn btn-ghost" style="padding:4px 6px" data-action="toggle" title="${r.ativo ? 'Desativar' : 'Ativar'}">${lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)')}</button>
-        <button class="btn btn-ghost" style="padding:4px 6px" data-action="delete" title="Excluir">${lc('trash-2', 14, 'var(--danger)')}</button>
+        <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="window._atdRREdt(${idx})">${lc('edit-2', 14, 'var(--fg-muted)')}</button>
+        <button class="btn btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="window._atdRRTog(${idx})">${lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)')}</button>
+        <button class="btn btn-ghost" style="padding:4px 6px" title="Excluir" onclick="window._atdRRDel(${idx})">${lc('trash-2', 14, 'var(--danger)')}</button>
       </div>
     </div>`).join('');
 
@@ -2712,37 +2716,17 @@ async function _atdRespostasPadraoRender() {
           <div style="font-size:var(--text-sm);font-weight:700;color:var(--text)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} rápida${lista.length !== 1 ? 's' : ''}</div>
           <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/atalho</code> no campo de mensagem</div>
         </div>
-        <button class="btn btn-primary btn-sm" id="atdRRBtnNova">${lc('plus', 14, '#fff')} Nova resposta</button>
+        <button class="btn btn-primary btn-sm" onclick="window._atdRespostaAbrirModal(null)">${lc('plus', 14, '#fff')} Nova resposta</button>
       </div>
       ${lista.length === 0 ? `
         <div style="text-align:center;padding:48px 20px;color:var(--fg-subtle)">
           ${lc('zap', 36, 'var(--border)')}
           <div style="margin-top:12px;font-size:var(--text-sm);font-weight:600;color:var(--fg-muted)">Nenhuma resposta criada ainda</div>
-        </div>` : `<div id="atdRRLista">${linhasHtml}</div>`}
+        </div>` : `<div>${linhasHtml}</div>`}
     </div>`;
-
-  // Event delegation — um listener no container cobre todos os botões
-  document.getElementById('atdRRBtnNova').addEventListener('click', () => _atdRespostaAbrirModal(null));
-
-  const listaEl = document.getElementById('atdRRLista');
-  if (listaEl) {
-    listaEl.addEventListener('click', e => {
-      const btn = e.target.closest('[data-action]');
-      if (!btn) return;
-      const row = btn.closest('[data-idx]');
-      if (!row) return;
-      const idx = parseInt(row.dataset.idx, 10);
-      const r = window._atdRR[idx];
-      if (!r) return;
-      const action = btn.dataset.action;
-      if (action === 'edit')   _atdRespostaAbrirModal(idx);
-      if (action === 'toggle') _atdRespostaToggleAtivo(r.id, !r.ativo);
-      if (action === 'delete') _atdRespostaExcluir(r.id);
-    });
-  }
 }
 
-function _atdRespostaAbrirModal(idx) {
+window._atdRespostaAbrirModal = function _atdRespostaAbrirModal(idx) {
   const r = (idx !== null && idx !== undefined) ? (window._atdRR?.[idx] ?? null) : null;
 
   const overlay = document.createElement('div');
