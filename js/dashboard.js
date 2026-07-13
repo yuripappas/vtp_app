@@ -8,7 +8,8 @@ function renderDashboard() {
   const now  = new Date();
   const h    = now.getHours();
   const cfg  = db._get('vtp_config', {});
-  const nome = cfg.responsavel || 'Gestor';
+  const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  const nome = user?.name || cfg.responsavel || 'Gestor';
 
   const lojaAberta = h >= 17 && h <= 23;
   const dotCor     = lojaAberta ? 'var(--success-fg)' : 'var(--danger-fg)';
