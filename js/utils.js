@@ -341,7 +341,7 @@ function _vtpPushRoute(mod) {
   const hashMod = mod === 'usuarios' ? 'configuracoes' : mod;
   // Sub-páginas conhecidas
   let sub = null;
-  if (hashMod === 'omnichannel') sub = window._atdPaginaAtiva || 'inbox';
+  if (hashMod === 'omnichannel') sub = (window._atdGetPaginaAtiva?.() || 'inbox');
   const hash = sub ? `${hashMod}/${sub}` : hashMod;
   history.pushState({ mod: hashMod, sub }, '', '#' + hash);
 }

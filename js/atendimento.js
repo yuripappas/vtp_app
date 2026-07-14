@@ -47,6 +47,7 @@ const _atdState = {
 
 // Página ativa do módulo omnichannel (controlada pelo submenu lateral)
 let _atdPaginaAtiva = 'inbox';
+window._atdGetPaginaAtiva = () => _atdPaginaAtiva;
 
 function renderOmnichannel() {
   // Injeta os estilos uma única vez
