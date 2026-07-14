@@ -1,0 +1,10 @@
+{
+  "name": "vtp-print-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bridge local Node -> CUPS -> Zebra ZD220 (fase de validação da etiquetagem)",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  }
+}

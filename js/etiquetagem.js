@@ -716,6 +716,7 @@ function _etqImprimir() {
   const sif     = document.getElementById('etqSif')?.value      || null;
 
   const hashes = [];
+  const novasEtiquetas = [];
   for (let i = 0; i < qty; i++) {
     const qr = _etqQRHash();
     hashes.push(qr);
@@ -744,6 +745,7 @@ function _etqImprimir() {
       created_at:     now.toISOString(),
     };
     _etiquetas.push(etq);
+    novasEtiquetas.push(etq);
   }
 
   _saveEtiquetas();
@@ -753,8 +755,16 @@ function _etqImprimir() {
   _etqWizardState._medida    = medida;
   _etqWizardState._unidade   = unidade;
 
-  // Abre janela de impressão 60×60mm
+  // Abre janela de impressão 60×60mm (browser)
   _etqAbrirJanelaPrint(s, hashes, now, dtVal, medida, unidade);
+
+  // Tenta também mandar via bridge local (Zebra ZD220 real, se o agent estiver rodando).
+  // Fire-and-forget: nunca bloqueia a UI nem falha visivelmente quando não há bridge
+  // (caso normal em produção, sem Mac/impressora conectados).
+  _etqEnviarParaBridge(novasEtiquetas, _etqConfigEmpresa())
+    .then(ok => {
+      if (ok) toast(`${lc('printer',14,'#fff')} Etiqueta${novasEtiquetas.length>1?'s':''} enviada${novasEtiquetas.length>1?'s':''} para a Zebra ZD220`, 'ok');
+    });
 
   _etqWizardStep = 6;
   _etqRenderWizard(document.getElementById('etqTabContent'));
@@ -908,6 +918,75 @@ function _etqAbrirJanelaPrint(s, hashes, dtManip, dtVal, medida, unidade) {
   <\/script>
   </body></html>`);
   win.document.close();
+}
+
+// ── Impressão real via bridge local (Zebra ZD220 + ZPL) ───────
+// Fase de validação: um serviço Node rodando na mesma máquina
+// (ver print-agent/) recebe o ZPL e manda pra impressora via CUPS.
+// Em produção (deploy https, sem bridge rodando) isso falha em
+// silêncio e o fluxo de impressão pelo navegador continua igual.
+
+const ETQ_BRIDGE_URL = 'http://localhost:9123';
+
+function _etqGerarZPL(etq, cfg) {
+  const esc = s => String(s ?? '').replace(/\^/g, '').replace(/~/g, '');
+
+  const produto = esc((etq.item_nome || '').toUpperCase());
+  const metodo  = esc(etq.metodo_status
+    ? `${etq.metodo_nome.toUpperCase()} · ${etq.metodo_status.toUpperCase()}`
+    : (etq.metodo_nome || '').toUpperCase());
+  const peso    = etq.medida && etq.unidade ? esc(`${etq.medida} ${etq.unidade}`) : '';
+  const resp    = esc((etq.responsavel_nome || '').toUpperCase());
+  const empresa = esc((cfg.nome || 'VAI TER PIZZA!').toUpperCase());
+  const cnpj    = esc(cfg.cnpj || '');
+  const end     = esc(cfg.endereco || '');
+  const dtManip = esc(_etqFmtDT(etq.dt_manipulacao));
+  const dtVal   = esc(_etqFmtDT(etq.dt_validade));
+  const hash    = esc(etq.qr_hash);
+
+  // Etiqueta 60×60mm a 203dpi → 480×480 dots (^PW/^LL). QR nativo via ^BQN.
+  return [
+    '^XA',
+    '^PW480',
+    '^LL480',
+    '^CI28',
+    `^FO20,20^A0N,36,36^FD${produto}^FS`,
+    `^FO20,65^A0N,22,22^FD${metodo}^FS`,
+    peso ? `^FO380,65^A0N,22,22^FD${peso}^FS` : '',
+    '^FO20,90^GB440,2,2^FS',
+    '^FO20,105^A0N,22,22^FDMANIPULAÇÃO:^FS',
+    `^FO260,105^A0N,22,22^FD${dtManip}^FS`,
+    '^FO20,135^A0N,22,22^FDVALIDADE:^FS',
+    `^FO260,135^A0N,22,22^FD${dtVal}^FS`,
+    '^FO20,175^GB440,2,2^FS',
+    `^FO20,190^A0N,20,20^FDRESP.: ${resp}^FS`,
+    `^FO20,215^A0N,20,20^FD${empresa}^FS`,
+    cnpj ? `^FO20,238^A0N,18,18^FDCNPJ: ${cnpj}^FS` : '',
+    end  ? `^FO20,260^A0N,16,16^FD${end}^FS` : '',
+    `^FO320,185^BQN,2,5^FDQA,${hash}^FS`,
+    `^FO20,310^A0N,22,22^FD${hash}^FS`,
+    '^XZ',
+  ].filter(Boolean).join('\n');
+}
+
+async function _etqEnviarParaBridge(etqList, cfg) {
+  if (!etqList || etqList.length === 0) return false;
+  try {
+    const zpl = etqList.map(e => _etqGerarZPL(e, cfg)).join('\n');
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 1500);
+    const res = await fetch(`${ETQ_BRIDGE_URL}/print`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zpl }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(to);
+    return res.ok;
+  } catch (_) {
+    // Bridge não está rodando (caso normal fora da validação) — falha em silêncio.
+    return false;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
