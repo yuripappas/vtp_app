@@ -2734,10 +2734,12 @@ window._atdRespostaAbrirModal = function _atdRespostaAbrirModal(idx) {
   overlay.id = 'atdModalResposta';
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
+  const _escRR = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', _escRR); } };
+  document.addEventListener('keydown', _escRR);
+
   overlay.innerHTML = `
-    <div class="modal" style="max-width:480px;width:90%">
-      <div class="mbox">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div class="mbox" style="width:520px;padding:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
           <div style="font-weight:700;font-size:var(--text-base)">${lc('zap', 16, 'var(--purple)')} ${r ? 'Editar resposta' : 'Nova resposta rápida'}</div>
           <button class="btn btn-ghost" onclick="document.getElementById('atdModalResposta').remove()">${lc('x', 16, 'var(--fg-muted)')}</button>
         </div>
@@ -2770,7 +2772,6 @@ window._atdRespostaAbrirModal = function _atdRespostaAbrirModal(idx) {
             ${lc('save', 14, '#fff')} Salvar
           </button>
         </div>
-      </div>
     </div>`;
 
   document.body.appendChild(overlay);
