@@ -347,7 +347,7 @@ function _vtpPushRoute(mod) {
 }
 
 function _vtpApplySub(mod, sub) {
-  if (mod === 'omnichannel' && sub) window._atdPaginaAtiva = sub;
+  if (mod === 'omnichannel' && sub) window._atdSetPaginaAtiva?.(sub);
 }
 
 // Botão Voltar / Avançar do navegador
