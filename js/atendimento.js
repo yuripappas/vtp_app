@@ -2705,7 +2705,7 @@ async function _atdRespostasPadraoRender() {
       <div style="display:flex;gap:2px;flex-shrink:0">
         <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="window._atdRREdt(${idx})">${lc('edit-2', 14, 'var(--fg-muted)')}</button>
         <button class="btn btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="window._atdRRTog(${idx})">${lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)')}</button>
-        <button class="btn btn-ghost" style="padding:4px 6px" title="Excluir" onclick="window._atdRRDel(${idx})">${lc('trash-2', 14, 'var(--danger)')}</button>
+        <button class="btn btn-red btn-sm" style="padding:4px 8px" title="Excluir" onclick="window._atdRRDel(${idx})">${lc('trash-2', 14, '#fff')}</button>
       </div>
     </div>`).join('');
 
