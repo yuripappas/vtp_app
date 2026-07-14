@@ -4,6 +4,8 @@
  */
 
 let _cfgSection         = 'empresa';
+window._vtpGetTab_configuracoes = () => _cfgSection;
+window._vtpSetTab_configuracoes = (v) => { _cfgSection = v; };
 let _cfgGrupoTab        = 'compras';
 let _cfgEditCtx         = null;
 let _cfgMostrarInativos = false;

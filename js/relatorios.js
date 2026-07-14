@@ -9,6 +9,8 @@
 
 if (!window._relPer) window._relPer = { tipo: '30d', de: '', ate: '' };
 if (!window._relTab) window._relTab = 'visao';
+window._vtpGetTab_relatorios = () => window._relTab;
+window._vtpSetTab_relatorios = (v) => { window._relTab = v; };
 
 // ══════════════════════════════════════════════════════════════
 // HELPERS DE PERÍODO

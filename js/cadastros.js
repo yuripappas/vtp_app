@@ -26,7 +26,12 @@ const PREST_CONFIANCA = {
 // NAVEGAÇÃO DAS ABAS DE CADASTRO
 // ══════════════════════════════════════════════════════════════
 
+let _cadTab = 'insumos';
+window._vtpGetTab_cadastros = () => _cadTab;
+window._vtpSetTab_cadastros = (v) => { _cadTab = v; };
+
 function setCadTab(tab) {
+  _cadTab = tab;
   ['insumos', 'fornecedores', 'servicos', 'preparo', 'produtos', 'terceirizados', 'funcionarios'].forEach(t => {
     const panel = document.getElementById(`cad-${t}`);
     if (panel) panel.style.display = t === tab ? 'block' : 'none';

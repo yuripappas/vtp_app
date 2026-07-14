@@ -5,6 +5,8 @@
  */
 
 let _estTab          = 'contagem';   // 'contagem' | 'historico' | 'movcw'
+window._vtpGetTab_estoque = () => _estTab;
+window._vtpSetTab_estoque = (v) => { _estTab = v; };
 let _movCWFiltro     = { de: '', ate: '', status: 'todos' }; // filtros da aba movimentações
 let _contagem        = {};           // { itemId: qtyFisico }
 let _contagemAtiva   = false;

@@ -3,6 +3,8 @@
 // ══════════════════════════════════════════════════════════════
 
 let _rhTab          = 'escala';
+window._vtpGetTab_rh = () => _rhTab;
+window._vtpSetTab_rh = (v) => { _rhTab = v; };
 let _rhSemana       = '';
 let _rhFuncPopupTab = 'periodos';
 let _rhIndPer       = '30';

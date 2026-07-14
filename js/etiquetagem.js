@@ -101,6 +101,8 @@ function _etqCatDisplay(item) {
 
 // Estado do módulo
 let _etqTab    = 'imprimir';
+window._vtpGetTab_etiquetagem = () => _etqTab;
+window._vtpSetTab_etiquetagem = (v) => { _etqTab = v; };
 let _etqCadTab = 'metodos';
 let _etqWizardStep = 1;
 let _etqWizardState = {};

@@ -12,6 +12,8 @@ const _getCkSessoes    = () => db._get('vtp_ck_sessoes', []);
 const _saveCkSessoes   = s  => db._set('vtp_ck_sessoes', s);
 
 let _ckTab = 'meu'; // 'meu' | 'equipe' | 'templates'
+window._vtpGetTab_checklist = () => _ckTab;
+window._vtpSetTab_checklist = (v) => { _ckTab = v; };
 
 // ══════════════════════════════════════════════════════════════
 // TEMPLATES PADRÃO

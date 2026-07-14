@@ -49,6 +49,8 @@ const _atdState = {
 let _atdPaginaAtiva = 'inbox';
 window._atdGetPaginaAtiva = () => _atdPaginaAtiva;
 window._atdSetPaginaAtiva = (v) => { _atdPaginaAtiva = v; };
+window._vtpGetTab_omnichannel = () => _atdPaginaAtiva;
+window._vtpSetTab_omnichannel = (v) => { _atdPaginaAtiva = v; };
 
 function renderOmnichannel() {
   // Injeta os estilos uma única vez

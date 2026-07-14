@@ -6,6 +6,8 @@
 let _listaAtual      = null;
 let _comprasTab      = 'lista';   // legado — mantido para compat interna
 let _cpSection       = 'listas';  // 'listas' | 'historico' | 'insumos' | 'fornecedores'
+window._vtpGetTab_compras = () => _cpSection;
+window._vtpSetTab_compras = (v) => { _cpSection = v; };
 let _cpListaAberta   = null;      // lista aberta no detalhe (flow)
 
 // Retorna listas abertas (≠ concluida) que contêm o mesmo itemId, excluindo a lista atual

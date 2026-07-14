@@ -337,17 +337,16 @@ const modInfo = {
 let _vtpNavFromPop = false; // flag para evitar loop no popstate
 
 function _vtpPushRoute(mod) {
-  // Normaliza: 'usuarios' exibe dentro de configuracoes
   const hashMod = mod === 'usuarios' ? 'configuracoes' : mod;
-  // Sub-páginas conhecidas
-  let sub = null;
-  if (hashMod === 'omnichannel') sub = (window._atdGetPaginaAtiva?.() || 'inbox');
+  const getTab = window[`_vtpGetTab_${hashMod}`];
+  const sub = getTab ? getTab() : null;
   const hash = sub ? `${hashMod}/${sub}` : hashMod;
   history.pushState({ mod: hashMod, sub }, '', '#' + hash);
 }
 
 function _vtpApplySub(mod, sub) {
-  if (mod === 'omnichannel' && sub) window._atdSetPaginaAtiva?.(sub);
+  const setTab = window[`_vtpSetTab_${mod}`];
+  if (setTab && sub) setTab(sub);
 }
 
 // Botão Voltar / Avançar do navegador
