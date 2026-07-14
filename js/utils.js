@@ -339,24 +339,41 @@ let _vtpNavFromPop = false; // flag para evitar loop no popstate
 function _vtpPushRoute(mod) {
   // Normaliza: 'usuarios' exibe dentro de configuracoes
   const hashMod = mod === 'usuarios' ? 'configuracoes' : mod;
-  history.pushState({ mod: hashMod }, '', '#' + hashMod);
+  // Sub-páginas conhecidas
+  let sub = null;
+  if (hashMod === 'omnichannel') sub = window._atdPaginaAtiva || 'inbox';
+  const hash = sub ? `${hashMod}/${sub}` : hashMod;
+  history.pushState({ mod: hashMod, sub }, '', '#' + hash);
+}
+
+function _vtpApplySub(mod, sub) {
+  if (mod === 'omnichannel' && sub) window._atdPaginaAtiva = sub;
 }
 
 // Botão Voltar / Avançar do navegador
 window.addEventListener('popstate', e => {
-  const mod = e.state?.mod || location.hash.replace('#', '') || 'dashboard';
-  if (modInfo[mod]) { _vtpNavFromPop = true; goModule(mod); _vtpNavFromPop = false; }
+  const parts = (location.hash.replace('#', '') || '').split('/');
+  const mod = e.state?.mod || parts[0] || 'dashboard';
+  const sub = e.state?.sub || parts[1] || null;
+  if (modInfo[mod]) {
+    _vtpNavFromPop = true;
+    _vtpApplySub(mod, sub);
+    goModule(mod);
+    _vtpNavFromPop = false;
+  }
 });
 
 // Chamado pelo initAuth para restaurar a rota salva no hash
 function _vtpRestoreRoute() {
-  const hash = location.hash.replace('#', '').trim();
-  const mod  = hash && modInfo[hash] ? hash : 'dashboard';
+  const parts = location.hash.replace('#', '').trim().split('/');
+  const mod   = parts[0] && modInfo[parts[0]] ? parts[0] : 'dashboard';
+  const sub   = parts[1] || null;
   // Verifica permissão antes de restaurar
   if (mod !== 'dashboard' && typeof canAccess === 'function' && !canAccess(mod)) {
     goModule('dashboard');
     return;
   }
+  _vtpApplySub(mod, sub);
   goModule(mod);
 }
 
