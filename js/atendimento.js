@@ -2774,6 +2774,7 @@ window._atdRespostaAbrirModal = function _atdRespostaAbrirModal(idx) {
     </div>`;
 
   document.body.appendChild(overlay);
+  overlay.style.display = 'flex';
   document.getElementById('rrAtalho').focus();
 }
 
