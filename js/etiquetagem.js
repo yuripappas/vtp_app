@@ -941,16 +941,14 @@ function _etqGerarZPL(etq, cfg) {
   const resp    = esc((etq.responsavel_nome || '').toUpperCase());
   const empresa = esc((cfg.nome || 'VAI TER PIZZA!').toUpperCase());
   const cnpj    = esc(cfg.cnpj || '');
-  // Mesma lógica do preview em tela (_etqPreviewHtml): CEP + endereço na mesma linha.
-  const cepEnd  = cfg.cep ? esc(`CEP: ${cfg.cep}${cfg.endereco ? ' ' + cfg.endereco : ''}`) : esc(cfg.endereco || '');
   const dtManip = esc(_etqFmtDT(etq.dt_manipulacao));
   const dtVal   = esc(_etqFmtDT(etq.dt_validade));
   const hash    = esc(etq.qr_hash);
 
   // Etiqueta 60×60mm a 203dpi → 480×480 dots (^PW/^LL). QR nativo via ^BQN.
-  // Bloco de rodapé (RESP/empresa/CNPJ/CEP+endereço/hash) começa mais perto do
-  // fim da etiqueta e o QR fica alinhado com ele — igual ao preview em tela,
-  // que usa align-items:flex-end. Evita o vão em branco embaixo.
+  // Bloco de rodapé (RESP/empresa/CNPJ/hash) começa mais perto do fim da
+  // etiqueta e o QR fica alinhado com ele. Endereço não entra de propósito —
+  // CNPJ já é suficiente e o campo colidia com a coluna do QR.
   return [
     '^XA',
     '^PW480',
@@ -968,9 +966,6 @@ function _etqGerarZPL(etq, cfg) {
     `^FO20,195^A0N,22,22^FDRESP.: ${resp}^FS`,
     `^FO20,222^A0N,22,22^FD${empresa}^FS`,
     cnpj ? `^FO20,249^A0N,20,20^FDCNPJ: ${cnpj}^FS` : '',
-    // ^FB limita a largura a 290 dots (quebra em até 2 linhas) pra não invadir
-    // a coluna do QR, que começa em x=300.
-    cepEnd ? `^FO20,274^A0N,18,18^FB290,2,6,L,0^FD${cepEnd}^FS` : '',
     `^FO300,195^BQN,2,7^FDQA,${hash}^FS`,
     // Segunda divisória perto do fim da etiqueta + hash em destaque —
     // usa o espaço que antes ficava em branco, igual um rodapé de recibo.
