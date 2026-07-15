@@ -941,12 +941,16 @@ function _etqGerarZPL(etq, cfg) {
   const resp    = esc((etq.responsavel_nome || '').toUpperCase());
   const empresa = esc((cfg.nome || 'VAI TER PIZZA!').toUpperCase());
   const cnpj    = esc(cfg.cnpj || '');
-  const end     = esc(cfg.endereco || '');
+  // Mesma lógica do preview em tela (_etqPreviewHtml): CEP + endereço na mesma linha.
+  const cepEnd  = cfg.cep ? esc(`CEP: ${cfg.cep}${cfg.endereco ? ' ' + cfg.endereco : ''}`) : esc(cfg.endereco || '');
   const dtManip = esc(_etqFmtDT(etq.dt_manipulacao));
   const dtVal   = esc(_etqFmtDT(etq.dt_validade));
   const hash    = esc(etq.qr_hash);
 
   // Etiqueta 60×60mm a 203dpi → 480×480 dots (^PW/^LL). QR nativo via ^BQN.
+  // Bloco de rodapé (RESP/empresa/CNPJ/CEP+endereço/hash) começa mais perto do
+  // fim da etiqueta e o QR fica alinhado com ele — igual ao preview em tela,
+  // que usa align-items:flex-end. Evita o vão em branco embaixo.
   return [
     '^XA',
     '^PW480',
@@ -961,14 +965,14 @@ function _etqGerarZPL(etq, cfg) {
     '^FO20,135^A0N,22,22^FDVALIDADE:^FS',
     `^FO260,135^A0N,22,22^FD${dtVal}^FS`,
     '^FO20,175^GB440,2,2^FS',
-    `^FO20,190^A0N,20,20^FDRESP.: ${resp}^FS`,
-    `^FO20,215^A0N,20,20^FD${empresa}^FS`,
-    cnpj ? `^FO20,238^A0N,18,18^FDCNPJ: ${cnpj}^FS` : '',
-    // ^FB limita a largura do endereço a 290 dots (com quebra em até 2 linhas)
-    // pra não invadir a coluna do QR Code, que começa em x=320.
-    end  ? `^FO20,260^A0N,16,16^FB290,2,0,L,0^FD${end}^FS` : '',
-    `^FO320,185^BQN,2,5^FDQA,${hash}^FS`,
-    `^FO20,310^A0N,22,22^FD${hash}^FS`,
+    `^FO20,195^A0N,20,20^FDRESP.: ${resp}^FS`,
+    `^FO20,220^A0N,20,20^FD${empresa}^FS`,
+    cnpj ? `^FO20,243^A0N,18,18^FDCNPJ: ${cnpj}^FS` : '',
+    // ^FB limita a largura a 290 dots (quebra em até 2 linhas) pra não invadir
+    // a coluna do QR, que começa em x=320.
+    cepEnd ? `^FO20,265^A0N,16,16^FB290,2,0,L,0^FD${cepEnd}^FS` : '',
+    `^FO320,195^BQN,2,6^FDQA,${hash}^FS`,
+    `^FO20,345^A0N,22,22^FD${hash}^FS`,
     '^XZ',
   ].filter(Boolean).join('\n');
 }
