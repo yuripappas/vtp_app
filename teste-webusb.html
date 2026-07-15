@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teste WebUSB / OTG — VTP</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Inter, sans-serif;
+    background: #F4F3FF;
+    margin: 0;
+    padding: 24px 16px;
+    color: #1E1B2E;
+  }
+  .card {
+    max-width: 480px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  h1 { font-size: 1.15rem; margin: 0 0 6px; }
+  .sub { font-size: .82rem; color: #6B7280; margin-bottom: 20px; line-height: 1.5; }
+  ol { font-size: .84rem; line-height: 1.7; padding-left: 20px; margin: 0 0 20px; }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: .95rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 10px;
+    background: #6D28D9;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #resultado {
+    margin-top: 18px;
+    padding: 14px;
+    border-radius: 10px;
+    font-size: .85rem;
+    line-height: 1.6;
+    display: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ok    { background: #D1FAE5; color: #065F46; display: block !important; }
+  .erro  { background: #FEE2E2; color: #991B1B; display: block !important; }
+  .aviso { background: #FEF3C7; color: #92400E; display: block !important; }
+  code { background: #F3F4F6; padding: 1px 5px; border-radius: 4px; font-size: .82rem; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔌 Teste de USB/OTG</h1>
+    <div class="sub">
+      Verifica se este tablet/celular consegue enxergar dispositivos USB conectados
+      via adaptador OTG — o requisito pra ligar a Zebra ZD220 direto nele, sem
+      precisar de um computador no meio.
+    </div>
+
+    <ol>
+      <li>Conecte um adaptador OTG (USB-C ou micro-USB → USB-A) no tablet.</li>
+      <li>Plugue nele um pendrive comum <strong>ou</strong> a própria Zebra ZD220 ligada e conectada por USB.</li>
+      <li>Toque no botão abaixo.</li>
+      <li>Deve aparecer uma lista de dispositivos USB do próprio navegador — selecione o que aparecer.</li>
+    </ol>
+
+    <button id="btnTestar" onclick="testarUSB()">Testar dispositivo USB</button>
+
+    <div id="resultado"></div>
+  </div>
+
+<script>
+function mostrar(texto, tipo) {
+  const el = document.getElementById('resultado');
+  el.textContent = texto;
+  el.className = tipo;
+}
+
+async function testarUSB() {
+  const btn = document.getElementById('btnTestar');
+
+  if (!('usb' in navigator)) {
+    mostrar(
+      '❌ Este navegador não suporta WebUSB.\n\n' +
+      'No Android, use o Chrome (ou Edge/Samsung Internet) — não funciona no ' +
+      'Firefox nem em navegadores baseados em iOS/Safari.',
+      'erro'
+    );
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Aguardando seleção...';
+
+  try {
+    // filters vazio = lista qualquer dispositivo USB conectado
+    const device = await navigator.usb.requestDevice({ filters: [] });
+    mostrar(
+      '✅ OTG funciona! Dispositivo detectado:\n\n' +
+      'Nome: ' + (device.productName || '(sem nome)') + '\n' +
+      'Fabricante: ' + (device.manufacturerName || '(desconhecido)') + '\n' +
+      'Vendor ID: 0x' + device.vendorId.toString(16) + '\n' +
+      'Product ID: 0x' + device.productId.toString(16) + '\n\n' +
+      'Esse tablet consegue falar USB direto — dá pra usar com a Zebra ZD220 sem bridge.',
+      'ok'
+    );
+  } catch (e) {
+    if (e.name === 'NotFoundError') {
+      mostrar(
+        '⚠️ Nenhum dispositivo apareceu na lista.\n\n' +
+        'Isso geralmente indica que o OTG não está ativo neste aparelho — ' +
+        'o navegador não conseguiu enxergar nada conectado na porta USB. ' +
+        'Confirme que o adaptador e o cabo estão bons, e tente de novo.',
+        'aviso'
+      );
+    } else {
+      mostrar('❌ Erro: ' + e.message, 'erro');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Testar dispositivo USB';
+  }
+}
+</script>
+</body>
+</html>
