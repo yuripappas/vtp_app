@@ -921,12 +921,14 @@ function _etqAbrirJanelaPrint(s, hashes, dtManip, dtVal, medida, unidade) {
 }
 
 // ── Impressão real via bridge local (Zebra ZD220 + ZPL) ───────
-// Fase de validação: um serviço Node rodando na mesma máquina
-// (ver print-agent/) recebe o ZPL e manda pra impressora via CUPS.
-// Em produção (deploy https, sem bridge rodando) isso falha em
-// silêncio e o fluxo de impressão pelo navegador continua igual.
+// Um serviço Node rodando na mesma máquina (ver print-agent/) recebe
+// o ZPL e manda pra impressora via CUPS. Roda em HTTPS (certificado
+// autoassinado) pra funcionar tanto local quanto a partir do site em
+// produção. Quando o bridge não está rodando (caso normal em
+// dispositivos sem Mac/impressora conectados) isso falha em silêncio
+// e o fluxo de impressão pelo navegador continua igual.
 
-const ETQ_BRIDGE_URL = 'http://localhost:9123';
+const ETQ_BRIDGE_URL = 'https://localhost:9123';
 
 function _etqGerarZPL(etq, cfg) {
   const esc = s => String(s ?? '').replace(/\^/g, '').replace(/~/g, '');
