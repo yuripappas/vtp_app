@@ -1,41 +1,28 @@
 /**
- * VTP — Print Agent (fase de validação)
+ * VTP — Print Agent
  *
- * Servidor HTTPS local, sem dependências externas, que recebe ZPL do
- * app VTP (local em http://localhost:5500 OU o site em produção,
- * https://app.vaiterpizza.com) e manda pra uma Zebra ZD220 conectada
- * via USB, usando a fila "raw" do CUPS (já vem no macOS).
- *
- * Roda em HTTPS (certificado autoassinado, gerado sozinho no primeiro
- * uso) porque um site https não pode chamar um endereço http — e
- * porque o Chrome exige handshake de "Private Network Access" para
- * páginas públicas acessarem localhost, que também tratamos aqui.
+ * Escuta a fila de impressão (tabela etiq_print_jobs no Supabase, via
+ * Realtime) e manda cada ZPL pra uma Zebra ZD220 conectada via USB, usando
+ * a fila "raw" do CUPS (já vem no macOS). Roda na máquina fisicamente
+ * ligada à impressora — qualquer navegador em qualquer lugar grava o job
+ * direto no Supabase; não depende de rede local nem de localhost.
  *
  * Uso:
  *   PRINTER_NAME="NomeDaFila" node agent.js
  *
- * Ver README.md para como criar a fila raw no macOS, descobrir o nome,
- * e o passo único de aceitar o certificado no navegador.
+ * Ver README.md para como criar a fila raw no macOS e descobrir o nome.
  */
 
-const https = require('https');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile, execFileSync } = require('child_process');
+const { execFile } = require('child_process');
+const { createClient } = require('@supabase/supabase-js');
 
-const PORT = parseInt(process.env.PORT || '9123', 10);
 const PRINTER_NAME = process.env.PRINTER_NAME || '';
-const CERT_DIR = path.join(__dirname, 'certs');
-const KEY_PATH = path.join(CERT_DIR, 'localhost-key.pem');
-const CERT_PATH = path.join(CERT_DIR, 'localhost-cert.pem');
-
-const ALLOWED_ORIGINS = new Set([
-  'http://localhost:5500',
-  'http://127.0.0.1:5500',
-  'https://app.vaiterpizza.com',
-  ...(process.env.EXTRA_ORIGIN ? process.env.EXTRA_ORIGIN.split(',').map(s => s.trim()) : []),
-]);
+// Mesmas credenciais públicas (anon key) usadas pelo frontend em js/config.js.
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wdfecydgdzwwxxrncdqx.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkZmVjeWRnZHp3d3h4cm5jZHF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk1ODAwOTUsImV4cCI6MjA5NTE1NjA5NX0.sVVljppHf0g7zU-kCuvGxxw67wqAFlVVGRpqjgUBaEA';
 
 if (!PRINTER_NAME) {
   console.error('[print-agent] Defina PRINTER_NAME com o nome da fila CUPS. Ex: PRINTER_NAME="Zebra_ZD220" node agent.js');
@@ -43,40 +30,7 @@ if (!PRINTER_NAME) {
   process.exit(1);
 }
 
-// ── Certificado autoassinado (gerado uma vez, reaproveitado depois) ──
-
-function garantirCertificado() {
-  if (fs.existsSync(KEY_PATH) && fs.existsSync(CERT_PATH)) return;
-  fs.mkdirSync(CERT_DIR, { recursive: true });
-  console.log('[print-agent] Gerando certificado autoassinado para localhost...');
-  try {
-    execFileSync('openssl', [
-      'req', '-x509', '-newkey', 'rsa:2048',
-      '-keyout', KEY_PATH, '-out', CERT_PATH,
-      '-days', '825', '-nodes',
-      '-subj', '/CN=localhost',
-      '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1',
-    ], { stdio: 'ignore' });
-  } catch (e) {
-    console.error('[print-agent] Não consegui gerar o certificado com openssl:', e.message);
-    console.error('[print-agent] Confirme que o `openssl` está instalado e tente de novo.');
-    process.exit(1);
-  }
-}
-
-function setCors(req, res) {
-  const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  // Chrome exige isso quando uma origem pública (ex: app.vaiterpizza.com)
-  // tenta acessar um endereço local (localhost) — sem isso o preflight falha.
-  if (req.headers['access-control-request-private-network'] === 'true') {
-    res.setHeader('Access-Control-Allow-Private-Network', 'true');
-  }
-}
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function imprimirZPL(zpl, cb) {
   const tmpFile = path.join(os.tmpdir(), `vtp_etq_${Date.now()}.zpl`);
@@ -90,58 +44,69 @@ function imprimirZPL(zpl, cb) {
   });
 }
 
-garantirCertificado();
+async function processarJob(job) {
+  // Reivindica o job atomicamente — só segue se ESTE agente conseguiu
+  // mudar o status de 'pendente' pra 'imprimindo' (evita imprimir em
+  // duplicidade se, por engano, dois agentes estiverem rodando juntos).
+  const { data, error: claimErr } = await sb
+    .from('etiq_print_jobs')
+    .update({ status: 'imprimindo' })
+    .eq('id', job.id)
+    .eq('status', 'pendente')
+    .select();
 
-const server = https.createServer({
-  key: fs.readFileSync(KEY_PATH),
-  cert: fs.readFileSync(CERT_PATH),
-}, (req, res) => {
-  setCors(req, res);
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    return res.end();
-  }
-
-  if (req.method === 'GET' && req.url === '/status') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ ok: true, printer: PRINTER_NAME }));
-  }
-
-  if (req.method === 'POST' && req.url === '/print') {
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
-      let payload;
-      try {
-        payload = JSON.parse(body);
-      } catch (e) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ ok: false, error: 'JSON inválido' }));
-      }
-      if (!payload.zpl) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ ok: false, error: 'Campo "zpl" ausente' }));
-      }
-      imprimirZPL(payload.zpl, (err) => {
-        if (err) {
-          console.error('[print-agent] Erro ao imprimir:', err.message);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ ok: false, error: err.message }));
-        }
-        console.log('[print-agent] Etiqueta(s) enviada(s) para', PRINTER_NAME);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      });
-    });
+  if (claimErr) {
+    console.error('[print-agent] Erro ao reivindicar job', job.id, claimErr.message);
     return;
   }
+  if (!data || data.length === 0) {
+    return; // outro agente já pegou esse job
+  }
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ ok: false, error: 'Rota não encontrada' }));
-});
+  imprimirZPL(job.zpl, async (err) => {
+    if (err) {
+      console.error('[print-agent] Erro ao imprimir job', job.id, err.message);
+      await sb.from('etiq_print_jobs')
+        .update({ status: 'erro', erro_msg: err.message })
+        .eq('id', job.id);
+      return;
+    }
+    console.log('[print-agent] Job', job.id, 'impresso em', PRINTER_NAME);
+    await sb.from('etiq_print_jobs')
+      .update({ status: 'impresso', printed_at: new Date().toISOString() })
+      .eq('id', job.id);
+  });
+}
 
-server.listen(PORT, () => {
-  console.log(`[print-agent] Rodando em https://localhost:${PORT} — imprimindo na fila "${PRINTER_NAME}"`);
-  console.log(`[print-agent] Na primeira vez, abra https://localhost:${PORT}/status direto no navegador e aceite o aviso de certificado.`);
-});
+async function processarPendentes() {
+  const { data, error } = await sb
+    .from('etiq_print_jobs')
+    .select('*')
+    .eq('status', 'pendente')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[print-agent] Erro ao buscar jobs pendentes:', error.message);
+    return;
+  }
+  for (const job of (data || [])) {
+    await processarJob(job);
+  }
+}
+
+function assinarRealtime() {
+  sb.channel('etiq-print-agent')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'etiq_print_jobs' }, payload => {
+      processarJob(payload.new);
+    })
+    .subscribe();
+}
+
+async function main() {
+  console.log(`[print-agent] Iniciando — imprimindo na fila "${PRINTER_NAME}"`);
+  await processarPendentes(); // catch-up: jobs criados enquanto o agente estava offline
+  assinarRealtime();
+  console.log('[print-agent] Aguardando novos jobs...');
+}
+
+main();

@@ -758,12 +758,14 @@ function _etqImprimir() {
   // Abre janela de impressão 60×60mm (browser)
   _etqAbrirJanelaPrint(s, hashes, now, dtVal, medida, unidade);
 
-  // Tenta também mandar via bridge local (Zebra ZD220 real, se o agent estiver rodando).
-  // Fire-and-forget: nunca bloqueia a UI nem falha visivelmente quando não há bridge
-  // (caso normal em produção, sem Mac/impressora conectados).
-  _etqEnviarParaBridge(novasEtiquetas, _etqConfigEmpresa())
+  // Manda pra fila de impressão (Supabase) — o print-agent, rodando onde a
+  // Zebra estiver conectada, escuta via Realtime e imprime. Funciona de
+  // qualquer dispositivo/lugar, não só da máquina com a impressora.
+  // Fire-and-forget: nunca bloqueia a UI nem falha visivelmente se a fila
+  // estiver indisponível (o registro da etiqueta já foi salvo de qualquer forma).
+  _etqEnfileirarImpressao(novasEtiquetas, _etqConfigEmpresa())
     .then(ok => {
-      if (ok) toast(`${lc('printer',14,'#fff')} Etiqueta${novasEtiquetas.length>1?'s':''} enviada${novasEtiquetas.length>1?'s':''} para a Zebra ZD220`, 'ok');
+      if (ok) toast(`${lc('printer',14,'#fff')} Etiqueta${novasEtiquetas.length>1?'s':''} enviada${novasEtiquetas.length>1?'s':''} para impressão`, 'ok');
     });
 
   _etqWizardStep = 6;
@@ -920,15 +922,18 @@ function _etqAbrirJanelaPrint(s, hashes, dtManip, dtVal, medida, unidade) {
   win.document.close();
 }
 
-// ── Impressão real via bridge local (Zebra ZD220 + ZPL) ───────
-// Um serviço Node rodando na mesma máquina (ver print-agent/) recebe
-// o ZPL e manda pra impressora via CUPS. Roda em HTTPS (certificado
-// autoassinado) pra funcionar tanto local quanto a partir do site em
-// produção. Quando o bridge não está rodando (caso normal em
-// dispositivos sem Mac/impressora conectados) isso falha em silêncio
-// e o fluxo de impressão pelo navegador continua igual.
+// ── Impressão real via fila (Supabase Realtime + Zebra ZD220) ─
+// Qualquer navegador grava o ZPL na tabela etiq_print_jobs. O print-agent
+// (ver print-agent/), rodando na máquina fisicamente ligada à Zebra, escuta
+// via Realtime e imprime — funciona de qualquer lugar, não só da máquina
+// com a impressora. Se a fila estiver indisponível, falha em silêncio e o
+// fluxo de impressão pelo navegador (janela de impressão) continua igual.
 
-const ETQ_BRIDGE_URL = 'https://localhost:9123';
+let _etqSbClient = null;
+function _etqGetSbClient() {
+  if (!_etqSbClient) _etqSbClient = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
+  return _etqSbClient;
+}
 
 function _etqGerarZPL(etq, cfg) {
   const esc = s => String(s ?? '').replace(/\^/g, '').replace(/~/g, '');
@@ -975,22 +980,15 @@ function _etqGerarZPL(etq, cfg) {
   ].filter(Boolean).join('\n');
 }
 
-async function _etqEnviarParaBridge(etqList, cfg) {
+async function _etqEnfileirarImpressao(etqList, cfg) {
   if (!etqList || etqList.length === 0) return false;
   try {
-    const zpl = etqList.map(e => _etqGerarZPL(e, cfg)).join('\n');
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 1500);
-    const res = await fetch(`${ETQ_BRIDGE_URL}/print`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zpl }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(to);
-    return res.ok;
-  } catch (_) {
-    // Bridge não está rodando (caso normal fora da validação) — falha em silêncio.
+    const jobs = etqList.map(e => ({ zpl: _etqGerarZPL(e, cfg) }));
+    const { error } = await _etqGetSbClient().from('etiq_print_jobs').insert(jobs);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn('[VTP Etiquetagem] Falha ao enfileirar impressão:', e?.message);
     return false;
   }
 }

@@ -10,4 +10,3 @@ node_modules/
 .env.local
 .vercel
 supabase/.temp/
-print-agent/certs/
