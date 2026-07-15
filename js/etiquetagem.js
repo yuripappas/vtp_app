@@ -964,7 +964,9 @@ function _etqGerarZPL(etq, cfg) {
     `^FO20,190^A0N,20,20^FDRESP.: ${resp}^FS`,
     `^FO20,215^A0N,20,20^FD${empresa}^FS`,
     cnpj ? `^FO20,238^A0N,18,18^FDCNPJ: ${cnpj}^FS` : '',
-    end  ? `^FO20,260^A0N,16,16^FD${end}^FS` : '',
+    // ^FB limita a largura do endereço a 290 dots (com quebra em até 2 linhas)
+    // pra não invadir a coluna do QR Code, que começa em x=320.
+    end  ? `^FO20,260^A0N,16,16^FB290,2,0,L,0^FD${end}^FS` : '',
     `^FO320,185^BQN,2,5^FDQA,${hash}^FS`,
     `^FO20,310^A0N,22,22^FD${hash}^FS`,
     '^XZ',
