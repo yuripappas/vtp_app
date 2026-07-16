@@ -336,6 +336,121 @@ const modInfo = {
 
 let _vtpNavFromPop = false; // flag para evitar loop no popstate
 
+// ══════════════════════════════════════════════════════════════
+// REALTIME — Fase 2: subscription única em kv_store
+// ══════════════════════════════════════════════════════════════
+
+// Chave → módulos que a usam (para saber quem re-renderizar)
+const _VTP_KEY_MODS = {
+  'vtp_items':          ['estoque','compras','cadastros','dashboard','inventario'],
+  'vtp_listas':         ['compras','dashboard'],
+  'vtp_suppliers':      ['compras','cadastros'],
+  'vtp_funcionarios':   ['rh','dashboard','configuracoes'],
+  'vtp_rh_escalas':     ['rh'],
+  'vtp_rh_presencas':   ['rh'],
+  'vtp_rh_horasextras': ['rh'],
+  'vtp_rh_materiais':   ['rh'],
+  'vtp_rh_periodos':    ['rh'],
+  'vtp_rh_config':      ['rh'],
+  'vtp_rh_diaristas':   ['rh'],
+  'vtp_rh_avaliacoes':  ['rh'],
+  'vtp_movimentacoes':  ['estoque'],
+  'vtp_hist_contagens': ['estoque'],
+  'vtp_ck_templates':   ['checklist'],
+  'vtp_ck_sessoes':     ['checklist'],
+  'vtp_manut_itens':    ['manutencao'],
+  'vtp_manut_equip':    ['manutencao'],
+  'vtp_manut_log':      ['manutencao'],
+  'vtp_contagens_inv':  ['inventario'],
+  'vtp_inv_baixas':     ['inventario'],
+  'vtp_desperdicios':   ['desperdicio','dashboard'],
+  'vtp_config':         ['configuracoes','dashboard'],
+  'vtp_etiq_metodos':   ['etiquetagem'],
+  'vtp_etiq_validades': ['etiquetagem'],
+  'vtp_etiquetas':      ['etiquetagem'],
+  'vtp_sabores':        ['cadastros'],
+  'vtp_produtos':       ['cadastros'],
+  'vtp_prestadores':    ['cadastros','manutencao'],
+  'vtp_terceirizados':  ['cadastros'],
+  'vtp_emp_cargos':     ['configuracoes','rh'],
+  'vtp_emp_tipos_desp': ['configuracoes','desperdicio'],
+  'vtp_emp_cat_insumo': ['configuracoes','cadastros'],
+  'vtp_auditlog':       ['auditoria'],
+};
+
+// Re-renders o módulo ativo sem mudar de tela
+function _vtpCallRender(mod) {
+  switch (mod) {
+    case 'dashboard':     typeof renderDashboard    === 'function' && renderDashboard();    break;
+    case 'compras':       typeof renderComprasModule === 'function' && renderComprasModule(); break;
+    case 'estoque':       typeof renderComprasLayout === 'function' && renderComprasLayout(); break;
+    case 'checklist':     typeof renderChecklist    === 'function' && renderChecklist();    break;
+    case 'manutencao':    typeof renderManutencao   === 'function' && renderManutencao();   break;
+    case 'rh':            typeof renderRh           === 'function' && renderRh();           break;
+    case 'inventario':    typeof renderInventario   === 'function' && renderInventario();   break;
+    case 'etiquetagem':   typeof renderEtiquetagem  === 'function' && renderEtiquetagem();  break;
+    case 'cadastros':     typeof renderCadastros    === 'function' && renderCadastros();    break;
+    case 'configuracoes': typeof renderConfiguracoes === 'function' && renderConfiguracoes(); break;
+    case 'desperdicio':   typeof renderDesperdicio  === 'function' && renderDesperdicio();  break;
+    case 'auditoria':     typeof renderAuditoria    === 'function' && renderAuditoria();    break;
+    // omnichannel tem seu próprio realtime — não re-renderiza aqui
+  }
+}
+
+// Fase 3: conjunto de writes próprios (para não reagir ao eco do Realtime)
+window._vtpOwnWrites = new Set();
+
+// Debounce por módulo para agrupar atualizações rápidas
+const _vtpRtDebounce = {};
+
+// Chamado por db.js quando kv_store recebe UPDATE de outro usuário
+window._vtpOnRealtimeUpdate = function(key) {
+  if (window._vtpOwnWrites.has(key)) return; // eco do próprio write — ignora
+
+  const currentMod = location.hash.replace('#', '').split('/')[0] || 'dashboard';
+  const affected = _VTP_KEY_MODS[key] || [];
+  if (!affected.includes(currentMod)) return;
+
+  // Fase 3: modal aberto → avisa em vez de re-renderizar (protege formulário em edição)
+  if (document.querySelector('.overlay')) {
+    if (typeof toast === 'function') toast('Dados alterados por outro usuário — salve com atenção', 'warn');
+    return;
+  }
+
+  clearTimeout(_vtpRtDebounce[currentMod]);
+  _vtpRtDebounce[currentMod] = setTimeout(() => _vtpCallRender(currentMod), 400);
+};
+
+// Fase 1: re-fetch do Supabase ao navegar (garante dados frescos)
+async function _vtpRefreshMod(mod) {
+  const sb = window._vtpSb;
+  if (!sb) return;
+  const keysSet = new Set();
+  for (const [k, mods] of Object.entries(_VTP_KEY_MODS)) {
+    if (mods.includes(mod)) keysSet.add(k);
+  }
+  const keys = [...keysSet];
+  if (!keys.length) return;
+  try {
+    const { data } = await sb.from('kv_store').select('key, value').in('key', keys);
+    if (!data?.length) return;
+    let changed = false;
+    for (const row of data) {
+      const newStr = JSON.stringify(row.value);
+      if (localStorage.getItem(row.key) !== newStr) {
+        localStorage.setItem(row.key, newStr);
+        window._vtpSetGlobal?.(row.key, row.value);
+        changed = true;
+      }
+    }
+    // Re-renderiza só se ainda estiver no mesmo módulo e sem modal aberto
+    const nowMod = location.hash.replace('#', '').split('/')[0] || 'dashboard';
+    if (changed && nowMod === mod && !document.querySelector('.overlay')) {
+      _vtpCallRender(mod);
+    }
+  } catch (_) { /* offline — silencioso */ }
+}
+
 function _vtpPushRoute(mod) {
   const hashMod = mod === 'usuarios' ? 'configuracoes' : mod;
   const getTab = window[`_vtpGetTab_${hashMod}`];
@@ -459,6 +574,9 @@ function goModule(mod) {
   else if (mod === 'rh')           renderRh();
   else if (mod === 'auditoria')    renderAuditoria();
   else if (mod === 'etiquetagem')  renderEtiquetagem();
+
+  // Fase 1: re-fetch em background — atualiza se dados mudaram desde o último acesso
+  if (mod !== 'omnichannel') _vtpRefreshMod(mod);
 }
 
 function calcScore(price, delivery, payTerm, minP, maxP, minD, maxD) {

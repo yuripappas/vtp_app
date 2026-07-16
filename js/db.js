@@ -39,6 +39,8 @@ const db = (() => {
     clearTimeout(_debouncers[key]);
     _debouncers[key] = setTimeout(async () => {
       try {
+        // Marca como escrita própria para suprimir echo do Realtime
+        if (window._vtpOwnWrites) { window._vtpOwnWrites.add(key); setTimeout(() => window._vtpOwnWrites.delete(key), 4000); }
         await _sbClient.from('kv_store').upsert({ key, value }, { onConflict: 'key' });
       } catch (e) {
         console.warn('[db] push error:', e?.message);
@@ -46,8 +48,23 @@ const db = (() => {
     }, 400);
   }
 
+  function subscribeRealtime() {
+    if (!_sbClient) return;
+    _sbClient.channel('vtp-kv-live')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kv_store' }, payload => {
+        const key = payload.new?.key;
+        const value = payload.new?.value;
+        if (!key || value === undefined) return;
+        localStorage.setItem(key, JSON.stringify(value));
+        window._vtpSetGlobal?.(key, value);
+        window._vtpOnRealtimeUpdate?.(key);
+      })
+      .subscribe();
+  }
+
   async function syncFromSupabase(client) {
     _sbClient = client;
+    window._vtpSb = client;
     try {
       const { data, error } = await client.from('kv_store').select('key, value');
       if (error) { console.warn('[db] sync error:', error.message); return false; }
@@ -219,6 +236,6 @@ const db = (() => {
 
   // ── Interface pública ─────────────────────────────────────────
 
-  return { _get, _set, _remove, get, set, healthCheck, usage, exportAll, syncFromSupabase };
+  return { _get, _set, _remove, get, set, healthCheck, usage, exportAll, syncFromSupabase, subscribeRealtime };
 
 })();

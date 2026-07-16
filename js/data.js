@@ -683,3 +683,61 @@ const STATUS_ETAPA = {
   recebimento:           { label: 'Em recebimento',        color: 'var(--yellow)',       bg: 'var(--yellow-light)'  },
   concluida:             { label: 'Concluída',             color: 'var(--green)',        bg: 'var(--green-light)'   },
 };
+
+// ══════════════════════════════════════════════════════════════
+// REALTIME — mapeia chave kv_store → variável global
+// Chamado por db.js quando chega um UPDATE via Supabase Realtime.
+// Funciona para vars de data.js e também de outros módulos (checklist,
+// manutencao, inventario, desperdicio) — todas são let globais no
+// mesmo escopo de página (classic scripts compartilham o escopo).
+// ══════════════════════════════════════════════════════════════
+window._vtpSetGlobal = function(key, val) {
+  /* eslint-disable no-global-assign */
+  switch (key) {
+    // data.js
+    case 'vtp_items':          items = val;              break;
+    case 'vtp_suppliers':      suppliers = val;          break;
+    case 'vtp_users':          users = val;              break;
+    case 'vtp_ordens':         ordens = val;             break;
+    case 'vtp_listas':         listas = val;             break;
+    case 'vtp_cycle_history':  cycleHistory = val;       break;
+    case 'vtp_price_history':  priceHistory = val;       break;
+    case 'vtp_forn_memoria':   fornMemoria = val;        break;
+    case 'vtp_carrinho':       _carrinho = val;          break;
+    case 'vtp_prestadores':    prestadores = val;        break;
+    case 'vtp_terceirizados':  terceirizados = val;      break;
+    case 'vtp_emp_terceir':    TERCEIR_FUNCOES = val;   break;
+    case 'vtp_funcionarios':   funcionarios = val;       break;
+    case 'vtp_emp_cargos':     FUNC_CARGOS = val;       break;
+    case 'vtp_emp_tipos_desp': TIPOS_DESPERDICIO = val; break;
+    case 'vtp_emp_cat_insumo': CATEGORIAS_INSUMO = val; break;
+    case 'vtp_emp_ausencias':  TIPOS_AUSENCIA = val;    break;
+    case 'vtp_rh_escalas':     rhEscalas = val;         break;
+    case 'vtp_rh_presencas':   rhPresencas = val;       break;
+    case 'vtp_rh_horasextras': rhHorasExtras = val;     break;
+    case 'vtp_rh_materiais':   rhMateriais = val;       break;
+    case 'vtp_rh_periodos':    rhPeriodos = val;        break;
+    case 'vtp_rh_config':      rhConfig = val;          break;
+    case 'vtp_rh_diaristas':   rhDiaristas = val;       break;
+    case 'vtp_rh_avaliacoes':  rhAvaliacoes = val;      break;
+    case 'vtp_sabores':        sabores = val;           break;
+    case 'vtp_produtos':       produtos = val;          break;
+    case 'vtp_produtos_pizza': produtosPizza = val;     break;
+    case 'vtp_opcoes':         opcoes = val;            break;
+    case 'vtp_inv_locs':       inventarioLocs = val;    break;
+    case 'vtp_inv_cats':       inventarioCats = val;    break;
+    case 'vtp_manut_cats_cfg': manutCats = val;         break;
+    case 'vtp_manut_grupos':   manutGrupos = val;       break;
+    case 'vtp_ck_turnos':      checklistTurnos = val;   break;
+    case 'vtp_auditlog':       auditLog = val;          break;
+    // manutencao.js
+    case 'vtp_manut_itens':    if (typeof manutItens   !== 'undefined') manutItens   = val; break;
+    case 'vtp_manut_equip':    if (typeof manutEquip   !== 'undefined') manutEquip   = val; break;
+    case 'vtp_manut_log':      if (typeof manutLog     !== 'undefined') manutLog     = val; break;
+    // inventario.js
+    case 'vtp_contagens_inv':  if (typeof contagensInv !== 'undefined') contagensInv = val; break;
+    case 'vtp_inv_baixas':     if (typeof _invBaixas   !== 'undefined') _invBaixas   = val; break;
+    // desperdicio.js
+    case 'vtp_desperdicios':   if (typeof desperdicios !== 'undefined') desperdicios = val; break;
+  }
+};

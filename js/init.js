@@ -33,6 +33,7 @@
   try {
     setLoadMsg('Conectando ao servidor...');
     const _sb = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
+    window._vtpSb = _sb;
     const rowCount = await db.syncFromSupabase(_sb);
 
     if (rowCount === 0) {
@@ -66,7 +67,7 @@
     'js/atendimento.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=139');
+    await loadScript(src + '?v=140');
   }
 
   // First run: push all initialized data to Supabase
@@ -98,6 +99,9 @@
   ['despDe', 'relDe'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = _30d; });
   ['despAte', 'relAte'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = _hoje; });
   if (typeof renderCatTags === 'function') renderCatTags([]);
+
+  // Realtime — assina kv_store após todos os scripts carregados
+  if (window._vtpSb) db.subscribeRealtime();
 
   // Hide loading overlay and start auth
   const ov = document.getElementById('vtpLoadOverlay');
