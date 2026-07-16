@@ -2138,15 +2138,23 @@ function _atdAssinarRealtime() {
         }
       }
 
-      // Se a conversa está aberta, recarrega o chat
+      // Se a conversa está aberta, recarrega o chat preservando o rascunho
       if (convId === _atdState.conversaAtivaId) {
-        _atdAbrirConversa(_atdState.conversaAtivaId);
+        const rascunho = document.getElementById('atdCampoTexto')?.value || '';
+        _atdAbrirConversa(_atdState.conversaAtivaId).then(() => {
+          if (rascunho) {
+            const campo = document.getElementById('atdCampoTexto');
+            if (campo) { campo.value = rascunho; campo.focus(); }
+          }
+        });
       }
 
       // Recarrega lista + verifica se é uma nova conversa do mesmo contato que está aberto
       _atdCarregarConversas().then(() => {
-        // Se a msg veio de uma conversa diferente mas o contato é o mesmo que está aberto,
-        // abre automaticamente a nova conversa
+        // Só troca automaticamente se o atendente não está no meio de uma digitação
+        const rascunho = document.getElementById('atdCampoTexto')?.value?.trim();
+        if (rascunho) return;
+
         if (convId && convId !== _atdState.conversaAtivaId) {
           const convAtiva = _atdState.conversas.find(c => c.id === _atdState.conversaAtivaId);
           const convNova  = _atdState.conversas.find(c => c.id === convId);
