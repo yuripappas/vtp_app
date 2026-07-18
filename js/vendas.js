@@ -164,7 +164,27 @@ function _vInterpretarPedido(p) {
   const canal = typeof _cwMapCanal === 'function' ? _cwMapCanal(p.sales_channel) : p.sales_channel;
   for (const it of (p.items || [])) {
     if (it.status === 'canceled') continue;
-    const { pizzas, bebidas } = _vInterpretarItem(it);
+
+    // Alguns combos vêm com os sub-itens ANINHADOS dentro do próprio item
+    // (it.items — cada um já com options completas), em vez de tudo solto em
+    // it.options. Sem isso, o container ("Combo Duo") não tinha ficha pra
+    // extrair e ficava sem pizza/bebida nenhuma (linha descartada por inteiro)
+    // — o combo inteiro sumia do CMV. Processa cada sub-item com o motor
+    // normal e junta tudo numa linha só, categorizada pelo container (que
+    // carrega o nome "Combo X" e o preço total real da venda).
+    let pizzas, bebidas;
+    if (it.items && it.items.length) {
+      pizzas = []; bebidas = [];
+      for (const sub of it.items) {
+        if (sub.status === 'canceled') continue;
+        const r = _vInterpretarItem(sub);
+        pizzas.push(...r.pizzas);
+        bebidas.push(...r.bebidas);
+      }
+    } else {
+      ({ pizzas, bebidas } = _vInterpretarItem(it));
+    }
+
     if (!pizzas.length && !bebidas.length) continue;
     linhas.push({
       pedidoId:  p.id,
