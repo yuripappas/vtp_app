@@ -114,11 +114,18 @@ function _vInterpretarItem(it) {
     }
   }
 
-  // Item avulso de revenda (bebida) — sem opções e não é pizza/combo
-  if (!opts.length && !sizeOpt
+  // Item avulso — sem opções e sem marcação estrutural de pizza/combo no
+  // nome. Raro, mas existe pizza de sabor único sem "|" nem opção nenhuma
+  // (ex.: "Pizza Nutella", preço 0, aninhada em outro item) — antes de
+  // assumir bebida de revenda, tenta casar o nome com um sabor cadastrado.
+  if (!pizzas.length && !opts.length && !sizeOpt
       && !/combo|promo|pizza\s+(grande|pequena)/i.test(it.name || '')
       && !/\|\s*pizza/i.test(it.name || '')) {
-    bebidas.push({ nome: it.name, qtd: it.quantity || 1 });
+    if (_vSaborCadastrado(it.name)) {
+      pizzas = [{ tamanho: _vTam(it.name || ''), meias: { [_cwSaborKey(it.name)]: 2 } }];
+    } else {
+      bebidas.push({ nome: it.name, qtd: it.quantity || 1 });
+    }
   }
 
   return { pizzas, bebidas };
@@ -131,10 +138,22 @@ function _vCategoria(it) {
   if (/promo/.test(n)) return 'Promo do Dia';
   const temSlot = (it.options || []).some(o => _RE_SLOT.test(o.option_group_name || ''));
   if (temSlot || _RE_SLOT.test(it.name)) return 'Monte seu Sabor';
-  const ehDoce = /doce/.test(n);
-  if (/\|\s*pizza/.test(n) || (it.options || []).some(o => _RE_SIZE_OPT.test(o.name || '')))
-    return ehDoce ? 'Pizza Doce' : 'Pizza Salgada';
-  return 'Bebidas';
+  // Pizza de sabor único pode vir com o tamanho só na opção de tamanho
+  // (layout B, sizeOpt) OU com "Sabor | Pizza Tamanho" embutido na própria
+  // opção (mesmo padrão que _vInterpretarItem já reconhece como sabor) —
+  // sem checar a opção, esses itens caíam por padrão em "Bebidas".
+  const optPizza = (it.options || []).find(o => _RE_SIZE_OPT.test(o.name || '') || /\|\s*pizza/i.test(o.name || ''));
+  if (!(/\|\s*pizza/.test(n) || optPizza)) {
+    // Sem nenhuma marcação estrutural (raro: item sem opções nem "|" no
+    // nome) — último recurso: o próprio nome bate com um sabor cadastrado?
+    if (!(it.options || []).length) {
+      const opc = typeof vendasOpcaoDeSabor === 'function' ? vendasOpcaoDeSabor(_cwSaborKey(it.name)) : null;
+      if (opc) return opc.categoria === 'doce' ? 'Pizza Doce' : 'Pizza Salgada';
+    }
+    return 'Bebidas';
+  }
+  const ehDoce = /doce/.test(n) || /doce/i.test(optPizza?.option_group_name || '') || /doce/i.test(optPizza?.name || '');
+  return ehDoce ? 'Pizza Doce' : 'Pizza Salgada';
 }
 
 const VENDAS_CATEGORIAS = ['Promo do Dia', 'Vai Ter Combo', 'Monte seu Sabor', 'Pizza Salgada', 'Pizza Doce', 'Bebidas'];
