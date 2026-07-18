@@ -15,10 +15,11 @@ let _vdCanal   = '';   // '' = todos
 let _vdMetaCMV = 30;   // % meta de CMV
 let _vdCatOpen = null; // categoria expandida no drill-down
 
-// Intervalo personalizado — só usado pelo CMV (pra conferir período exato
-// contra o relatório do Cardápio Web), não mexe no filtro rápido (30/60/90
-// dias) compartilhado com os outros filhos de Vendas.
-let _vdCmvCustomOn = false;
+// Intervalo do CMV — mesmo padrão de período do Dashboard (Hoje/7/30/60 +
+// Personalizado com popover De/Até), só usado aqui, não mexe no filtro
+// rápido (30/60/90 dias) compartilhado com os outros filhos de Vendas.
+let _vdCmvRangeDias    = 30;   // 0 (hoje) | 7 | 30 | 60 | 'custom'
+let _vdCmvCustomAberto = false;
 let _vdCmvDe  = '';
 let _vdCmvAte = '';
 
@@ -66,27 +67,86 @@ const _VD_CAT_ICON = {
   'Pizza Salgada':'pizza', 'Pizza Doce':'pizza', 'Bebidas':'coffee',
 };
 
-// Resolve o intervalo personalizado do CMV, se ligado — null se deve usar o
-// filtro rápido (_vdPeriodo) normal.
-function _vdCmvRange() {
-  if (!_vdCmvCustomOn || !_vdCmvDe) return null;
-  const ini = new Date(_vdCmvDe + 'T00:00:00');
-  const fim = _vdCmvAte ? new Date(_vdCmvAte + 'T23:59:59') : new Date();
-  return { inicioISO: ini.toISOString(), fimISO: fim.toISOString(), label: `${_vdCmvDe} a ${_vdCmvAte || 'hoje'}` };
+// Resolve o intervalo do CMV — mesma lógica de _perfGetRange() (dashboard.js):
+// dias>0 = hoje-N até agora; 0 = só hoje (meia-noite até agora); 'custom' =
+// intervalo exato escolhido.
+function _vdCmvGetRange() {
+  if (_vdCmvRangeDias === 'custom' && _vdCmvDe && _vdCmvAte) {
+    const inicio = new Date(_vdCmvDe + 'T00:00:00');
+    const fim    = new Date(_vdCmvAte + 'T23:59:59');
+    return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
+      label: `${_vdCmvDe.split('-').reverse().join('/')} – ${_vdCmvAte.split('-').reverse().join('/')}` };
+  }
+  const fim = new Date();
+  const inicio = _vdCmvRangeDias > 0
+    ? new Date(new Date(fim.getTime() - _vdCmvRangeDias * 86400000).setHours(0,0,0,0))
+    : new Date(new Date().setHours(0,0,0,0));
+  return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
+    label: _vdCmvRangeDias === 0 ? 'hoje' : `${_vdCmvRangeDias} dias` };
 }
 
-// Filtros do CMV — igual ao _vdFiltros compartilhado, mais o intervalo
-// personalizado (só existe aqui, não afeta Produtos/Canais/Precificação).
+function _vdCmvSetRange(dias) {
+  _vdCmvRangeDias = dias;
+  _vdCmvCustomAberto = false;
+  renderVendasCMV();
+}
+
+function _vdCmvToggleCustom() {
+  _vdCmvCustomAberto = !_vdCmvCustomAberto;
+  renderVendasCMV();
+}
+
+function _vdCmvAplicarCustom() {
+  const i = document.getElementById('cmvCustomDe')?.value;
+  const f = document.getElementById('cmvCustomAte')?.value;
+  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
+  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
+  _vdCmvDe = i; _vdCmvAte = f;
+  _vdCmvRangeDias = 'custom';
+  _vdCmvCustomAberto = false;
+  renderVendasCMV();
+}
+
+// Recarrega o período atual do CMV (limpa só o cache daquele intervalo)
+function _vdCmvReload() {
+  const r = _vdCmvGetRange();
+  delete _vCache[r.inicioISO + '|' + r.fimISO];
+  renderVendasCMV();
+}
+
+// Filtros do CMV — mesmo design de período do Dashboard (Hoje/7/30/60 dias +
+// Personalizado com popover De/Até/Aplicar), só existe aqui, não afeta
+// Produtos/Canais/Precificação (que seguem no _vdFiltros compartilhado).
 function _vdFiltrosCmv() {
   const canais = ['ifood', '99food', 'site', 'outro'];
-  const custom = _vdCmvCustomOn;
-  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
-    ${[30,60,90].map(d => `<button class="btn btn-${!custom && d===_vdPeriodo?'primary':'outline'} btn-xs" onclick="_vdCmvCustomOn=false;_vdPeriodo=${d};renderVendasCMV()">${d} dias</button>`).join('')}
-    <button class="btn btn-${custom?'primary':'outline'} btn-xs" onclick="_vdCmvCustomOn=true;renderVendasCMV()">${lc('calendar',12,'currentColor')} Período exato</button>
-    ${custom ? `
-      <input type="date" class="inp" value="${_vdCmvDe}" onchange="_vdCmvDe=this.value;renderVendasCMV()" style="font-size:.8rem;padding:6px 8px">
-      <span style="color:var(--muted);font-size:.8rem">até</span>
-      <input type="date" class="inp" value="${_vdCmvAte}" onchange="_vdCmvAte=this.value;renderVendasCMV()" style="font-size:.8rem;padding:6px 8px">` : ''}
+  const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
+  const isCustom = _vdCmvRangeDias === 'custom';
+  const customLabel = isCustom
+    ? `${_vdCmvDe.split('-').reverse().join('/')} – ${_vdCmvAte.split('-').reverse().join('/')}`
+    : 'Personalizado';
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
+      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
+        ${RANGES.map(([d,l]) => `
+          <button onclick="_vdCmvSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${!isCustom&&_vdCmvRangeDias===d?'700':'500'};background:${!isCustom&&_vdCmvRangeDias===d?'var(--bg)':'transparent'};color:${!isCustom&&_vdCmvRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${!isCustom&&_vdCmvRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
+        `).join('')}
+        <button onclick="_vdCmvToggleCustom()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
+          ${lc('calendar',11,'currentColor')} ${customLabel}
+        </button>
+      </div>
+      ${_vdCmvCustomAberto ? `
+        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
+            <input type="date" id="cmvCustomDe" value="${_vdCmvDe}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
+            <input type="date" id="cmvCustomAte" value="${_vdCmvAte}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <button class="btn btn-primary btn-xs" onclick="_vdCmvAplicarCustom()">Aplicar</button>
+        </div>` : ''}
+    </div>
     <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasCMV()">
       <option value="">Todos os canais</option>
       ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
@@ -94,15 +154,8 @@ function _vdFiltrosCmv() {
     <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)">Meta de CMV
       <input type="number" class="inp" value="${_vdMetaCMV}" min="0" max="100" onchange="_vdMetaCMV=parseFloat(this.value)||30;renderVendasCMV()" style="width:62px;text-align:right;font-size:.8rem;padding:6px 8px">%
     </div>
-    <button class="btn btn-outline btn-xs" onclick="${custom ? '_vdCmvReload()' : '_vLinhas=null;renderVendasCMV()'}">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+    <button class="btn btn-outline btn-xs" onclick="_vdCmvReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
   </div>`;
-}
-
-// Recarrega o período personalizado (limpa só o cache daquele intervalo)
-function _vdCmvReload() {
-  const r = _vdCmvRange();
-  if (r) delete _vCache[r.inicioISO + '|' + r.fimISO];
-  renderVendasCMV();
 }
 
 // ── Filho CMV ──────────────────────────────────────────────────
@@ -111,9 +164,9 @@ async function renderVendasCMV() {
   if (!el) return;
   el.innerHTML = _vdFiltrosCmv() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
 
-  const range = _vdCmvRange();
+  const range = _vdCmvGetRange();
   let linhas;
-  try { linhas = range ? await vendasCarregarPeriodo(range.inicioISO, range.fimISO) : await vendasCarregar(_vdPeriodo); }
+  try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
   catch (e) { el.innerHTML = _vdFiltrosCmv() + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
@@ -156,7 +209,7 @@ async function renderVendasCMV() {
   };
 
   el.innerHTML = _vdFiltrosCmv() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${range ? range.label : _vdPeriodo + ' dias'}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${range.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Receita', 'R$ ' + fmt(tot.receita))}
       ${kpi('Custo (CMV)', 'R$ ' + fmt(tot.custo))}
