@@ -35,11 +35,23 @@ function _vAddMeia(meias, nome, q) {
   meias[k] = (meias[k] || 0) + (q || 1);
 }
 
+// Opção "solta" (sem option_group_name) é ambígua — combos costumam listar
+// metades de pizza lado a lado com bebidas de verdade, ambas sem grupo. Só
+// decide que é bebida se o nome não corresponder a nenhum sabor cadastrado.
+function _vSaborCadastrado(nome) {
+  if (typeof _cwRank !== 'function' || typeof opcoes === 'undefined') return false;
+  const key = _cwSaborKey(nome);
+  if (!key) return false;
+  const c = _cwRank(key, opcoes, 'nome', 1)[0];
+  return !!(c && c.s >= 0.6);
+}
+
 // Interpreta 1 item de pedido → { pizzas:[...], bebidas:[...] }
 function _vInterpretarItem(it) {
   const opts    = it.options || [];
   const porGrupo = {}; // option_group_id → { tamanho, meias }
   const bebidas  = [];
+  const soltas   = []; // opções sem grupo que resolveram como sabor de pizza
   const sizeOpt  = opts.find(o => _RE_SIZE_OPT.test(o.name || ''));
 
   for (const o of opts) {
@@ -57,7 +69,8 @@ function _vInterpretarItem(it) {
       if (!porGrupo[gid]) porGrupo[gid] = { tamanho: 'pequena', meias: {} };
       _vAddMeia(porGrupo[gid].meias, o.name, o.quantity);
     } else if (!g) {
-      bebidas.push({ nome: o.name, qtd: o.quantity || 1 });
+      if (_vSaborCadastrado(o.name)) soltas.push(o);
+      else bebidas.push({ nome: o.name, qtd: o.quantity || 1 });
     }
   }
 
@@ -68,6 +81,37 @@ function _vInterpretarItem(it) {
     const meias = {};
     (it.name || '').split('|')[0].split('+').forEach(p => _vAddMeia(meias, p, 1));
     if (Object.keys(meias).length) pizzas = [{ tamanho: _vTam(sizeOpt.name), meias }];
+  }
+
+  // Layout C: tudo embutido no nome do item ("Sabor1 + Sabor2 | Pizza Grande"),
+  // sem nenhuma opção — variante de combo que o CW manda com options:[].
+  if (!pizzas.length && !opts.length) {
+    const parteTam = ((it.name || '').split('|')[1] || '').trim();
+    if (_RE_SIZE_OPT.test(parteTam)) {
+      const meias = {};
+      (it.name || '').split('|')[0].split('+').forEach(p => _vAddMeia(meias, p, 1));
+      if (Object.keys(meias).length) pizzas = [{ tamanho: _vTam(parteTam), meias }];
+    }
+  }
+
+  // Opções soltas de combo (sem option_group_id pra parear as metades) —
+  // agrupa 2 a 2 na ordem em que vieram (metades de uma mesma pizza costumam
+  // vir adjacentes); sabor "inteiro" (sem "1/2") vira 1 pizza com 2 meias.
+  // Tamanho aproximado pelo nome do item — combos com tamanhos mistos podem
+  // classificar o tamanho errado, mas o sabor/custo do recheio fica correto.
+  if (soltas.length) {
+    const tamanho = _vTam(it.name || '');
+    let buffer = null;
+    for (const o of soltas) {
+      const ehMetade = /^\s*1\/2\b/.test(o.name || '');
+      if (!ehMetade) {
+        pizzas.push({ tamanho, meias: { [_cwSaborKey(o.name)]: 2 } });
+        continue;
+      }
+      if (!buffer) { buffer = { tamanho, meias: {} }; pizzas.push(buffer); }
+      _vAddMeia(buffer.meias, o.name, o.quantity);
+      if (Object.keys(buffer.meias).length >= 2) buffer = null; // pizza fechou, próxima metade abre outra
+    }
   }
 
   // Item avulso de revenda (bebida) — sem opções e não é pizza/combo
