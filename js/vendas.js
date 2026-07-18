@@ -39,11 +39,10 @@ function _vAddMeia(meias, nome, q) {
 // metades de pizza lado a lado com bebidas de verdade, ambas sem grupo. Só
 // decide que é bebida se o nome não corresponder a nenhum sabor cadastrado.
 function _vSaborCadastrado(nome) {
-  if (typeof _cwRank !== 'function' || typeof opcoes === 'undefined') return false;
+  if (typeof vendasOpcaoDeSabor !== 'function') return false;
   const key = _cwSaborKey(nome);
   if (!key) return false;
-  const c = _cwRank(key, opcoes, 'nome', 1)[0];
-  return !!(c && c.s >= 0.6);
+  return !!vendasOpcaoDeSabor(key);
 }
 
 // Interpreta 1 item de pedido → { pizzas:[...], bebidas:[...] }
