@@ -427,13 +427,24 @@ function vendasPorCategoria(linhas) {
   return cat;
 }
 
-// Produtos (sabores/bebidas) que aparecem em cada categoria, com nº de vendas
+// Produtos (sabores/bebidas) que aparecem em cada categoria, com nº de vendas.
+// Sabor vem com a divisão por tamanho (grande/pequena) — pizza grande sempre
+// leva 2 opções (meio a meio) e pizza pequena 1 opção (sabor único) — e a
+// categoria soma quantas pizzas grandes/pequenas ela tem, pro custo da base
+// (massa, caixa, embalagem) aparecer separado do custo do recheio.
 function vendasProdutosPorCategoria(linhas) {
   const cat = {};
-  const g = c => cat[c] || (cat[c] = { sabores: {}, bebidas: {} });
+  const g = c => cat[c] || (cat[c] = { sabores: {}, bebidas: {}, pizzasGrande: 0, pizzasPequena: 0 });
   for (const l of linhas) {
     const c = g(l.categoria);
-    for (const pz of l.pizzas) for (const [k, m] of Object.entries(pz.meias)) c.sabores[k] = (c.sabores[k] || 0) + m;
+    for (const pz of l.pizzas) {
+      if (pz.tamanho === 'grande') c.pizzasGrande++; else c.pizzasPequena++;
+      for (const [k, m] of Object.entries(pz.meias)) {
+        const s = c.sabores[k] || (c.sabores[k] = { grande: 0, pequena: 0, total: 0 });
+        s[pz.tamanho] += m;
+        s.total += m;
+      }
+    }
     for (const b of l.bebidas) c.bebidas[_cwNorm(b.nome)] = (c.bebidas[_cwNorm(b.nome)] || 0) + (b.qtd || 1);
   }
   return cat;

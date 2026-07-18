@@ -121,29 +121,45 @@ async function renderVendasCMV() {
     ${VENDAS_CATEGORIAS.map(linhaCat).join('')}`;
 }
 
-// Drill-down: opções/bebidas vendidas na categoria, com custo de ficha
+// Drill-down: opções/bebidas vendidas na categoria, com custo de ficha.
+// Pizza Grande/Pequena entram como linhas próprias (custo da massa, caixa,
+// embalagem — separado do recheio) sempre no topo; sabores mostram a
+// quantidade total de meias já dividida por tamanho.
 function _vdDrillCategoria(dados) {
   if (!dados) return '';
+  const base = [];
+  if (dados.pizzasGrande) {
+    const custoUn = vendasCustoBase('grande');
+    base.push({ nome: 'Pizza Grande — massa, caixa e embalagem', qtdHtml: `${dados.pizzasGrande} un`, custoUn, custoTot: custoUn * dados.pizzasGrande, temFicha: custoUn > 0, destaque: true });
+  }
+  if (dados.pizzasPequena) {
+    const custoUn = vendasCustoBase('pequena');
+    base.push({ nome: 'Pizza Pequena — massa, caixa e embalagem', qtdHtml: `${dados.pizzasPequena} un`, custoUn, custoTot: custoUn * dados.pizzasPequena, temFicha: custoUn > 0, destaque: true });
+  }
+
   const itens = [];
-  for (const [k, meias] of Object.entries(dados.sabores || {})) {
+  for (const [k, m] of Object.entries(dados.sabores || {})) {
     const opc = vendasOpcaoDeSabor(k);
     const custoUn = vendasCustoOpcao(k);
-    itens.push({ nome: opc ? opc.nome : _cwTitulo(k), qtd: meias, unid: 'meias', custoUn, custoTot: custoUn * meias, temFicha: opc?.fichaTecnica?.ingredientes?.length > 0 });
+    const qtdHtml = `${m.total} meias<div style="font-size:.7rem;color:var(--muted);font-weight:400">${m.grande} grande · ${m.pequena} pequena</div>`;
+    itens.push({ nome: opc ? opc.nome : _cwTitulo(k), qtdHtml, custoUn, custoTot: custoUn * m.total, temFicha: opc?.fichaTecnica?.ingredientes?.length > 0 });
   }
   for (const [k, q] of Object.entries(dados.bebidas || {})) {
     const c = _cwRank(k, _cwPoolBebidas(), 'nome', 1)[0];
     const alvo = (c && c.s >= 0.6) ? c.x : null;
     const item = alvo ? (alvo.tipo === 'produto' ? produtos.find(p => p.id === alvo.id) : items.find(i => i.id === alvo.id)) : null;
     const custoUn = item?.fichaTecnica ? _calcCustoFicha(item.fichaTecnica) : (item?.cost || 0);
-    itens.push({ nome: item ? (item.name || item.nome) : _cwTitulo(k), qtd: q, unid: 'un', custoUn, custoTot: custoUn * q, temFicha: !!item });
+    itens.push({ nome: item ? (item.name || item.nome) : _cwTitulo(k), qtdHtml: `${q} un`, custoUn, custoTot: custoUn * q, temFicha: !!item });
   }
   itens.sort((a, b) => b.custoTot - a.custoTot);
-  if (!itens.length) return '';
+
+  const todos = [...base, ...itens];
+  if (!todos.length) return '';
   return `<div style="border-top:1px solid var(--border);background:var(--surface2)">
-    ${itens.map(x => `<div style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:8px 16px;font-size:.82rem">
+    ${todos.map(x => `<div style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:8px 16px;font-size:.82rem;${x.destaque?'background:var(--surface);font-weight:600':''}">
       <span></span>
       <div>${x.nome} ${x.temFicha?'':`<span style="font-size:.66rem;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:1px 6px;border-radius:var(--r6);margin-left:4px">sem ficha</span>`}</div>
-      <div style="text-align:right;color:var(--muted)">${x.qtd} ${x.unid}</div>
+      <div style="text-align:right;color:var(--muted)">${x.qtdHtml}</div>
       <div style="text-align:right;color:var(--muted)">R$ ${fmt(x.custoUn)}</div>
       <div></div>
       <div style="text-align:right;font-weight:600">R$ ${fmt(x.custoTot)}</div>
