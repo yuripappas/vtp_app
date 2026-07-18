@@ -15,6 +15,13 @@ let _vdCanal   = '';   // '' = todos
 let _vdMetaCMV = 30;   // % meta de CMV
 let _vdCatOpen = null; // categoria expandida no drill-down
 
+// Intervalo personalizado — só usado pelo CMV (pra conferir período exato
+// contra o relatório do Cardápio Web), não mexe no filtro rápido (30/60/90
+// dias) compartilhado com os outros filhos de Vendas.
+let _vdCmvCustomOn = false;
+let _vdCmvDe  = '';
+let _vdCmvAte = '';
+
 function renderVendas() {
   const el = document.getElementById('vendasContent');
   if (!el) return;
@@ -59,15 +66,55 @@ const _VD_CAT_ICON = {
   'Pizza Salgada':'pizza', 'Pizza Doce':'pizza', 'Bebidas':'coffee',
 };
 
+// Resolve o intervalo personalizado do CMV, se ligado — null se deve usar o
+// filtro rápido (_vdPeriodo) normal.
+function _vdCmvRange() {
+  if (!_vdCmvCustomOn || !_vdCmvDe) return null;
+  const ini = new Date(_vdCmvDe + 'T00:00:00');
+  const fim = _vdCmvAte ? new Date(_vdCmvAte + 'T23:59:59') : new Date();
+  return { inicioISO: ini.toISOString(), fimISO: fim.toISOString(), label: `${_vdCmvDe} a ${_vdCmvAte || 'hoje'}` };
+}
+
+// Filtros do CMV — igual ao _vdFiltros compartilhado, mais o intervalo
+// personalizado (só existe aqui, não afeta Produtos/Canais/Precificação).
+function _vdFiltrosCmv() {
+  const canais = ['ifood', '99food', 'site', 'outro'];
+  const custom = _vdCmvCustomOn;
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
+    ${[30,60,90].map(d => `<button class="btn btn-${!custom && d===_vdPeriodo?'primary':'outline'} btn-xs" onclick="_vdCmvCustomOn=false;_vdPeriodo=${d};renderVendasCMV()">${d} dias</button>`).join('')}
+    <button class="btn btn-${custom?'primary':'outline'} btn-xs" onclick="_vdCmvCustomOn=true;renderVendasCMV()">${lc('calendar',12,'currentColor')} Período exato</button>
+    ${custom ? `
+      <input type="date" class="inp" value="${_vdCmvDe}" onchange="_vdCmvDe=this.value;renderVendasCMV()" style="font-size:.8rem;padding:6px 8px">
+      <span style="color:var(--muted);font-size:.8rem">até</span>
+      <input type="date" class="inp" value="${_vdCmvAte}" onchange="_vdCmvAte=this.value;renderVendasCMV()" style="font-size:.8rem;padding:6px 8px">` : ''}
+    <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasCMV()">
+      <option value="">Todos os canais</option>
+      ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
+    </select>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)">Meta de CMV
+      <input type="number" class="inp" value="${_vdMetaCMV}" min="0" max="100" onchange="_vdMetaCMV=parseFloat(this.value)||30;renderVendasCMV()" style="width:62px;text-align:right;font-size:.8rem;padding:6px 8px">%
+    </div>
+    <button class="btn btn-outline btn-xs" onclick="${custom ? '_vdCmvReload()' : '_vLinhas=null;renderVendasCMV()'}">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+  </div>`;
+}
+
+// Recarrega o período personalizado (limpa só o cache daquele intervalo)
+function _vdCmvReload() {
+  const r = _vdCmvRange();
+  if (r) delete _vCache[r.inicioISO + '|' + r.fimISO];
+  renderVendasCMV();
+}
+
 // ── Filho CMV ──────────────────────────────────────────────────
 async function renderVendasCMV() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  el.innerHTML = _vdFiltros(true) + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
+  el.innerHTML = _vdFiltrosCmv() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
 
+  const range = _vdCmvRange();
   let linhas;
-  try { linhas = await vendasCarregar(_vdPeriodo); }
-  catch (e) { el.innerHTML = _vdFiltros(true) + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
+  try { linhas = range ? await vendasCarregarPeriodo(range.inicioISO, range.fimISO) : await vendasCarregar(_vdPeriodo); }
+  catch (e) { el.innerHTML = _vdFiltrosCmv() + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
   const cat  = vendasPorCategoria(linhas);
@@ -108,8 +155,8 @@ async function renderVendasCMV() {
     </div>`;
   };
 
-  el.innerHTML = _vdFiltros(true) + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${_vdPeriodo} dias</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
+  el.innerHTML = _vdFiltrosCmv() + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${range ? range.label : _vdPeriodo + ' dias'}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Receita', 'R$ ' + fmt(tot.receita))}
       ${kpi('Custo (CMV)', 'R$ ' + fmt(tot.custo))}
