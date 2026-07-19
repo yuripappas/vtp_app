@@ -200,10 +200,23 @@ function _vInterpretarPedido(p) {
       categoria: _vCategoria(it),
       nome:      it.name,
       qtd:       it.quantity || 1,
-      receita:   it.total_price ?? it.unit_price ?? 0, // preço pago no canal
+      receita:   it.total_price ?? it.unit_price ?? 0, // preço de tabela do item (ajustado abaixo)
       pizzas, bebidas,
     });
   }
+
+  // O preço de tabela por item não reflete desconto aplicado no fechamento
+  // do pedido (cupom, "pague 1 leve 2", frete grátis promocional...) — só
+  // o total do PEDIDO (p.total, o mesmo valor que bate com o Cardápio Web
+  // no Dashboard → Performance) é o valor real vendido. Reaplica esse total
+  // proporcionalmente entre as linhas, senão a receita do CMV fica sempre
+  // maior que a venda real de verdade.
+  const somaBruta = linhas.reduce((s, l) => s + l.receita, 0);
+  if (somaBruta > 0 && typeof p.total === 'number') {
+    const fator = p.total / somaBruta;
+    for (const l of linhas) l.receita *= fator;
+  }
+
   return linhas;
 }
 
