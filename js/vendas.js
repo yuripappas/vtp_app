@@ -51,6 +51,7 @@ function _vInterpretarItem(it) {
   const porGrupo = {}; // option_group_id → { tamanho, meias }
   const bebidas  = [];
   const soltas   = []; // opções sem grupo que resolveram como sabor de pizza
+  const inteiras = []; // pizzas inteiras próprias (ver comentário abaixo)
   const sizeOpt  = opts.find(o => _RE_SIZE_OPT.test(o.name || ''));
 
   for (const o of opts) {
@@ -64,12 +65,22 @@ function _vInterpretarItem(it) {
     } else if (_RE_SIZE_OPT.test(o.name || '')) {
       /* opção de tamanho (layout B) — tratada abaixo */
     } else if (/\|\s*pizza/i.test(o.name || '')) {
-      // Tamanho vem do próprio nome da opção ("Sabor | Pizza Grande/Pequena")
-      // — item como "Dia da Pizza" pode vender tanto grande quanto pequena
-      // por esse mesmo padrão, então nunca assumir um tamanho fixo aqui.
-      const gid = 'opc-' + (o.option_group_id ?? o.name);
-      if (!porGrupo[gid]) porGrupo[gid] = { tamanho: _vTam(o.name), meias: {} };
-      _vAddMeia(porGrupo[gid].meias, o.name, o.quantity);
+      // Tamanho vem do próprio nome da opção ("Sabor | Pizza Grande/Pequena").
+      // "1/2 X | Pizza Y" é METADE de uma pizza compartilhada (agrupa pelo
+      // option_group_id, como sempre) — mas sabor SEM "1/2" é uma pizza
+      // INTEIRA própria. "Dia da Pizza" deixa escolher 2 pizzas inteiras na
+      // mesma compra, ambas com o MESMO option_group_id — agrupar por gid
+      // juntaria as duas numa só (contando 1 pizza em vez de 2).
+      const tamanho  = _vTam(o.name);
+      const ehMetade = /^\s*1\/2\b/.test(o.name || '');
+      if (ehMetade) {
+        const gid = 'opc-' + (o.option_group_id ?? o.name);
+        if (!porGrupo[gid]) porGrupo[gid] = { tamanho, meias: {} };
+        _vAddMeia(porGrupo[gid].meias, o.name, o.quantity);
+      } else {
+        const key = _cwSaborKey(o.name);
+        if (key) inteiras.push({ tamanho, meias: { [key]: 2 * (o.quantity || 1) } });
+      }
     } else if (!g) {
       if (_vSaborCadastrado(o.name)) soltas.push(o);
       else bebidas.push({ nome: o.name, qtd: o.quantity || 1 });
@@ -77,6 +88,7 @@ function _vInterpretarItem(it) {
   }
 
   let pizzas = Object.values(porGrupo).filter(p => Object.keys(p.meias).length);
+  pizzas.push(...inteiras);
 
   // Layout B: sabor no nome do item, tamanho na opção de tamanho
   if (!pizzas.length && sizeOpt) {
