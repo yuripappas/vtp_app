@@ -9,7 +9,100 @@ lugar — grava o pedido de impressão direto no Supabase. O agente só precisa
 estar rodando na máquina fisicamente ligada à impressora; não depende de
 rede local, IP fixo nem `localhost`.
 
-## 1. Configurar a fila raw no macOS
+## Produção: Raspberry Pi 3B
+
+O ponto de impressão fixo da cozinha roda num Raspberry Pi 3B (Raspberry Pi
+OS Lite, 64-bit), com Node.js 22+ (o SDK do Supabase exige WebSocket nativo,
+só disponível a partir do Node 22 — o Node 20 causa o erro `Node.js detected
+but native WebSocket not found`).
+
+### Setup do zero
+
+1. Grave o cartão com o **Raspberry Pi Imager**, usando as opções avançadas
+   (⚙️) pra já configurar hostname, usuário/senha e **habilitar SSH** —
+   evita precisar de monitor.
+2. Depois de conectado por SSH:
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt-get install -y nodejs cups
+   sudo usermod -aG lpadmin $USER
+   ```
+3. Conecte a Zebra via USB e confirme que apareceu:
+   ```bash
+   lsusb | grep -i zebra
+   ```
+4. Ache o URI e crie a fila raw (ferramentas do CUPS ficam em `/usr/sbin`,
+   pode não estar no `PATH` da sessão SSH — use o caminho completo se
+   precisar):
+   ```bash
+   export PATH=$PATH:/usr/sbin
+   lpinfo -v | grep -i zebra
+   sudo lpadmin -p Zebra_ZD220 -E -v "usb://Zebra%20Technologies/ZTC%20ZD220-203dpi%20ZPL?serial=XXXX" -m raw
+   sudo lpadmin -d Zebra_ZD220
+   ```
+   (o aviso "Raw queues are deprecated" pode ser ignorado — ainda funciona.)
+5. Calibre a mídia segurando o botão **Feed** da impressora até a luz
+   piscar duas vezes.
+6. Copie `agent.js`, `package.json` e `package-lock.json` pro Raspberry
+   (`scp`) e rode `npm install` lá.
+7. Crie o serviço systemd — ver `vtp-print-agent.service` abaixo — pra ele
+   iniciar sozinho no boot e reiniciar sozinho se cair.
+8. **Só depois de tudo testado e funcionando**, ative o Overlay Filesystem
+   (sistema de arquivos somente-leitura) — assim dá pra desligar na tomada
+   a qualquer momento sem risco de corromper o cartão SD:
+   ```bash
+   sudo raspi-config nonint do_overlayfs 0
+   sudo reboot
+   ```
+   Depois disso, qualquer mudança no sistema precisa desativar o overlay
+   temporariamente (`sudo raspi-config nonint do_overlayfs 1`, mexe, reativa
+   com `0` de novo) — por isso só ativa por último.
+
+### Serviço systemd (`/etc/systemd/system/vtp-print-agent.service`)
+
+```ini
+[Unit]
+Description=VTP Print Agent - Zebra ZD220
+After=network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=SEU_USUARIO
+WorkingDirectory=/home/SEU_USUARIO/print-agent
+Environment=PRINTER_NAME=Zebra_ZD220
+ExecStart=/usr/bin/node /home/SEU_USUARIO/print-agent/agent.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now vtp-print-agent
+sudo systemctl status vtp-print-agent   # confirma "active (running)"
+```
+
+### Wi-Fi só pega 2.4GHz
+
+O Pi 3B (o original, não B+) só enxerga redes **2.4GHz** — se o roteador
+separar SSID por banda (ex: `NOME` vs `NOME-5G`), conecte na de 2.4GHz. Se
+o país do Wi-Fi não estiver configurado, o rádio fica bloqueado
+(`rfkill`) — resolve com `sudo raspi-config` → Localisation Options → WLAN
+Country. Na loja, usando Ethernet cabeado, nada disso é necessário — conecta
+sozinho via DHCP.
+
+### Gerenciar remotamente (sem monitor)
+
+```bash
+ssh usuario@IP_DO_RASPBERRY
+sudo shutdown -h now   # desligar com segurança antes de tirar da tomada
+                        # (desnecessário com overlay ativo — aí pode tirar direto)
+```
+
+## 1. Configurar a fila raw no macOS (validação/desenvolvimento)
 
 A Zebra ZD220 fala ZPL nativamente. Se o macOS usar um driver que tenta
 converter/rasterizar o conteúdo, a etiqueta sai ilegível. É preciso uma fila
