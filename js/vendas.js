@@ -134,7 +134,13 @@ function _vInterpretarItem(it) {
 function _vCategoria(it) {
   const n = _cwNorm(it.name);
   if (/combo/.test(n)) return 'Vai Ter Combo';
-  if (/promo/.test(n)) return 'Promo do Dia';
+  // "Dia da Pizza" é um item de Promo do Dia no catálogo do CW, mas não tem
+  // a palavra "promo" no nome (o pedido sincronizado não traz categoria
+  // nenhuma do catálogo — só dá pra inferir pelo nome/estrutura do item).
+  // Também evita cair em Pizza Doce/Salgada por engano: esse item deixa
+  // escolher 1 sabor doce E 1 salgado na mesma pizza (mista), então nenhuma
+  // das duas categorias representaria a venda corretamente.
+  if (/promo/.test(n) || /dia da pizza/.test(n)) return 'Promo do Dia';
   const temSlot = (it.options || []).some(o => _RE_SLOT.test(o.option_group_name || ''));
   if (temSlot || _RE_SLOT.test(it.name)) return 'Monte seu Sabor';
   // Pizza de sabor único pode vir com o tamanho só na opção de tamanho
