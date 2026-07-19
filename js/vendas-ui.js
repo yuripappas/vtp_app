@@ -14,6 +14,8 @@ let _vdPeriodo = 90;
 let _vdCanal   = '';   // '' = todos
 let _vdMetaCMV = 30;   // % meta de CMV
 let _vdCatOpen = null; // categoria expandida no drill-down
+let _vdDrillExpand = false; // "mostrar todos os sabores" na categoria aberta
+const _VD_DRILL_LIMITE = 8; // sabores visíveis antes do "mostrar mais"
 
 // Intervalo do CMV — mesmo padrão de período do Dashboard (Hoje/7/30/60 +
 // Personalizado com popover De/Até), só usado aqui, não mexe no filtro
@@ -195,16 +197,23 @@ async function renderVendasCMV() {
     const d = cat[nome]; if (!d || !d.vendas) return '';
     const pc = d.receita > 0 ? d.custo / d.receita * 100 : 0;
     const aberta = _vdCatOpen === nome;
-    return `<div class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
-      <div onclick="_vdCatOpen='${aberta ? '' : nome}';renderVendasCMV()" style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:13px 16px;cursor:pointer">
-        <span style="color:var(--muted);display:inline-flex;transform:rotate(${aberta?90:0}deg);transition:transform .15s">${lc('chevron-right',16,'currentColor')}</span>
-        <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:.9rem">${lc(_VD_CAT_ICON[nome]||'pizza',16,'var(--purple)')} ${nome}</div>
-        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">RECEITA</div><div style="font-weight:700">R$ ${fmt(d.receita)}</div></div>
-        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">CUSTO</div><div style="font-weight:700">R$ ${fmt(d.custo)}</div></div>
-        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">CMV</div><div style="font-weight:800;color:${corMeta(pc)}">${d.custo>0?fmt(pc)+'%':'—'}</div></div>
-        <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">MARGEM</div><div style="font-weight:700">R$ ${fmt(d.receita-d.custo)}</div></div>
+    // Borda esquerda na cor da meta de CMV — dá pra escanear a lista de
+    // categorias de cima a baixo e ver quais estouraram a meta sem ler
+    // nenhum número (mesma cor já usada no valor de CMV%).
+    return `<div class="card" style="padding:0;margin-bottom:8px;overflow:hidden;border-left:3px solid ${corMeta(pc)}">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <div style="min-width:560px">
+          <div onclick="_vdCatOpen='${aberta ? '' : nome}';_vdDrillExpand=false;renderVendasCMV()" style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:13px 16px;cursor:pointer">
+            <span style="color:var(--muted);display:inline-flex;transform:rotate(${aberta?90:0}deg);transition:transform .15s">${lc('chevron-right',16,'currentColor')}</span>
+            <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:.9rem">${lc(_VD_CAT_ICON[nome]||'pizza',16,'var(--purple)')} ${nome}</div>
+            <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">RECEITA</div><div style="font-weight:700">R$ ${fmt(d.receita)}</div></div>
+            <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">CUSTO</div><div style="font-weight:700">R$ ${fmt(d.custo)}</div></div>
+            <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">CMV</div><div style="font-weight:800;color:${corMeta(pc)}">${d.custo>0?fmt(pc)+'%':'—'}</div></div>
+            <div style="text-align:right"><div style="font-size:.62rem;color:var(--muted)">MARGEM</div><div style="font-weight:700">R$ ${fmt(d.receita-d.custo)}</div></div>
+          </div>
+          ${aberta ? _vdDrillCategoria(prod[nome]) : ''}
+        </div>
       </div>
-      ${aberta ? _vdDrillCategoria(prod[nome]) : ''}
     </div>`;
   };
 
@@ -223,8 +232,9 @@ async function renderVendasCMV() {
 
 // Drill-down: opções/bebidas vendidas na categoria, com custo de ficha.
 // Pizza Grande/Pequena entram como linhas próprias (custo da massa, caixa,
-// embalagem — separado do recheio) sempre no topo; sabores mostram a
-// quantidade total de meias já dividida por tamanho.
+// embalagem — separado do recheio) sempre no topo; sabores e bebidas ficam
+// em seções separadas (com ícone por tipo), e sabores de cauda longa (venda
+// baixa) ficam recolhidos atrás de "+ N outros sabores".
 function _vdDrillCategoria(dados) {
   if (!dados) return '';
   const base = [];
@@ -237,33 +247,48 @@ function _vdDrillCategoria(dados) {
     base.push({ nome: 'Pizza Pequena — massa, caixa e embalagem', qtdHtml: `${dados.pizzasPequena} un`, custoUn, custoTot: custoUn * dados.pizzasPequena, temFicha: custoUn > 0, destaque: true });
   }
 
-  const itens = [];
+  const sabores = [];
   for (const [k, m] of Object.entries(dados.sabores || {})) {
     const opc = vendasOpcaoDeSabor(k);
     const custoUn = vendasCustoOpcao(k);
     const qtdHtml = `${m.total} meias<div style="font-size:.7rem;color:var(--muted);font-weight:400">${m.grande} grande · ${m.pequena} pequena</div>`;
-    itens.push({ nome: opc ? opc.nome : _cwTitulo(k), qtdHtml, custoUn, custoTot: custoUn * m.total, temFicha: opc?.fichaTecnica?.ingredientes?.length > 0 });
+    sabores.push({ nome: opc ? opc.nome : _cwTitulo(k), qtdHtml, custoUn, custoTot: custoUn * m.total, temFicha: opc?.fichaTecnica?.ingredientes?.length > 0, icone: 'pizza' });
   }
+  sabores.sort((a, b) => b.custoTot - a.custoTot);
+
+  const bebidas = [];
   for (const [k, q] of Object.entries(dados.bebidas || {})) {
     const c = _cwRank(k, _cwPoolBebidas(), 'nome', 1)[0];
     const alvo = (c && c.s >= 0.6) ? c.x : null;
     const item = alvo ? (alvo.tipo === 'produto' ? produtos.find(p => p.id === alvo.id) : items.find(i => i.id === alvo.id)) : null;
     const custoUn = item?.fichaTecnica ? _calcCustoFicha(item.fichaTecnica) : (item?.cost || 0);
-    itens.push({ nome: item ? (item.name || item.nome) : _cwTitulo(k), qtdHtml: `${q} un`, custoUn, custoTot: custoUn * q, temFicha: !!item });
+    bebidas.push({ nome: item ? (item.name || item.nome) : _cwTitulo(k), qtdHtml: `${q} un`, custoUn, custoTot: custoUn * q, temFicha: !!item, icone: 'coffee' });
   }
-  itens.sort((a, b) => b.custoTot - a.custoTot);
+  bebidas.sort((a, b) => b.custoTot - a.custoTot);
 
-  const todos = [...base, ...itens];
-  if (!todos.length) return '';
-  return `<div style="border-top:1px solid var(--border);background:var(--surface2)">
-    ${todos.map(x => `<div style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:8px 16px;font-size:.82rem;${x.destaque?'background:var(--surface);font-weight:600':''}">
-      <span></span>
+  if (!base.length && !sabores.length && !bebidas.length) return '';
+
+  const linha = (x) => `<div style="display:grid;grid-template-columns:22px 1.4fr 1fr 1fr 90px 1fr;gap:12px;align-items:center;padding:8px 16px;font-size:.82rem;${x.destaque?'background:var(--surface);font-weight:600':''}">
+      <span style="color:var(--muted);display:inline-flex">${x.icone ? lc(x.icone, 13, 'currentColor') : ''}</span>
       <div>${x.nome} ${x.temFicha?'':`<span style="font-size:.66rem;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:1px 6px;border-radius:var(--r6);margin-left:4px">sem ficha</span>`}</div>
       <div style="text-align:right;color:var(--muted)">${x.qtdHtml}</div>
       <div style="text-align:right;color:var(--muted)">R$ ${fmt(x.custoUn)}</div>
       <div></div>
       <div style="text-align:right;font-weight:600">R$ ${fmt(x.custoTot)}</div>
-    </div>`).join('')}
+    </div>`;
+
+  const secao = (label) => `<div style="padding:7px 16px 5px;font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${label}</div>`;
+
+  const saboresVisiveis = _vdDrillExpand ? sabores : sabores.slice(0, _VD_DRILL_LIMITE);
+  const restantes = sabores.length - saboresVisiveis.length;
+  const btnMais = restantes > 0 ? `<div style="padding:8px 16px">
+      <button class="btn btn-ghost btn-xs" onclick="_vdDrillExpand=true;renderVendasCMV()">+ ${restantes} outro${restantes>1?'s':''} sabor${restantes>1?'es':''}</button>
+    </div>` : '';
+
+  return `<div style="border-top:1px solid var(--border);background:var(--surface2)">
+    ${base.map(linha).join('')}
+    ${sabores.length ? secao('Sabores') + saboresVisiveis.map(linha).join('') + btnMais : ''}
+    ${bebidas.length ? secao('Bebidas') + bebidas.map(linha).join('') : ''}
   </div>`;
 }
 
