@@ -2908,59 +2908,26 @@ function _cfgEtqOpenVal(itemId, metodoId) {
   }
 }
 
-// ── Pontos de Impressão (Fase 3) ──────────────────────────────
+// ── Pontos de Impressão ────────────────────────────────────────
 
 function _cfgEtqPontos(el) {
   el.innerHTML = `
     <div style="max-width:680px">
       <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Pontos de Impressão</div>
       <div style="font-size:.72rem;color:var(--muted);margin-bottom:16px">
-        Cada ponto é um Raspberry Pi conectado a uma impressora Zebra ZD220 via USB na cozinha.
+        Cada ponto é um dispositivo (hoje: um Raspberry Pi) conectado via USB a uma impressora
+        Zebra ZD220 na cozinha.
       </div>
 
-      <div style="background:var(--warning-bg,#FEF3C7);border:1.5px solid var(--warning-border,#FDE68A);border-radius:var(--r10);padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:20px">
-        ${lc('alert-triangle', 16, 'var(--warning-fg,#D97706)')}
+      <div style="background:var(--success-bg,#D1FAE5);border:1.5px solid var(--success-border,#A7F3D0);border-radius:var(--r10);padding:16px;display:flex;gap:12px;align-items:flex-start">
+        ${lc('check-circle', 16, 'var(--success-fg,#065F46)')}
         <div>
-          <div style="font-size:.8rem;font-weight:700;color:var(--warning-fg,#D97706);margin-bottom:4px">Fase 3 — Em desenvolvimento</div>
-          <div style="font-size:.74rem;color:var(--warning-fg,#D97706);line-height:1.6">
-            A integração com Raspberry Pi + Zebra ZD220 via protocolo ZPL está planejada para a Fase 3.
-            Quando ativada, cada etiqueta gerada no wizard será impressa automaticamente no ponto configurado.
-            <br><br>
-            <strong>Hardware necessário:</strong> Raspberry Pi 4B (2GB+) · Zebra ZD220 · Cabo USB-B · Rede local
+          <div style="font-size:.8rem;font-weight:700;color:var(--success-fg,#065F46);margin-bottom:4px">Impressão ativa</div>
+          <div style="font-size:.74rem;color:var(--success-fg,#065F46);line-height:1.6">
+            Toda etiqueta gerada no wizard de Etiquetagem entra numa fila de impressão. O dispositivo
+            ligado à Zebra fica escutando essa fila em tempo real e imprime automaticamente — de
+            qualquer lugar que o pedido tenha sido feito, não precisa estar na mesma rede.
           </div>
-        </div>
-      </div>
-
-      <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden;margin-bottom:14px">
-        <div style="padding:12px 16px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:.8rem;font-weight:700">Pontos cadastrados</div>
-          <button class="btn btn-outline btn-xs" disabled style="opacity:.5;cursor:not-allowed">
-            ${lc('plus',11,'currentColor')} Adicionar ponto
-          </button>
-        </div>
-        <div style="padding:14px 16px;opacity:.5">
-          <div style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px dashed var(--border);border-radius:var(--r8)">
-            <div style="width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center">
-              ${lc('cpu', 18, 'var(--muted)')}
-            </div>
-            <div>
-              <div style="font-size:.8rem;font-weight:700">COZINHA</div>
-              <div style="font-size:.68rem;color:var(--muted)">Raspberry Pi 4B · Zebra ZD220 · Aguardando Fase 3</div>
-            </div>
-            <span style="margin-left:auto;font-size:.65rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--muted)">OFFLINE</span>
-          </div>
-        </div>
-      </div>
-
-      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px">
-        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Especificações técnicas do agente</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.76rem">
-          <div><span style="color:var(--muted)">Hardware</span><br><strong>Raspberry Pi 4B (2GB+)</strong></div>
-          <div><span style="color:var(--muted)">Impressora</span><br><strong>Zebra ZD220</strong></div>
-          <div><span style="color:var(--muted)">Protocolo</span><br><strong>ZPL via USB (lp0)</strong></div>
-          <div><span style="color:var(--muted)">Comunicação</span><br><strong>Supabase Realtime</strong></div>
-          <div><span style="color:var(--muted)">Etiqueta</span><br><strong>60×60mm térmica direta</strong></div>
-          <div><span style="color:var(--muted)">Runtime</span><br><strong>Node.js + systemd</strong></div>
         </div>
       </div>
     </div>

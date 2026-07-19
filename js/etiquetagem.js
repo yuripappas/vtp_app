@@ -113,8 +113,17 @@ let _etqValidades = null;
 let _etiquetas    = null;
 let _etqPontos    = null;
 
-// Produção — filtro ativo
-let _etqProdFiltro = 'hoje';
+// Produção — filtro de período (padrão Dashboard: 0|7|30|60|'custom')
+let _etqProdFiltro       = 0;
+let _etqProdCustomInicio = null;
+let _etqProdCustomFim    = null;
+let _etqProdCustomAberto = false;
+
+// Validades — filtro de período (prospectivo: vencendo nos próximos N dias)
+let _etqValidFiltro       = 7;
+let _etqValidCustomInicio = null;
+let _etqValidCustomFim    = null;
+let _etqValidCustomAberto = false;
 
 // Validades — drill
 let _etqValidDrill = null;
@@ -217,13 +226,31 @@ function _etqSetTab(tab) {
   _etqRenderTab();
 }
 
-function _etqRenderTab() {
+async function _etqRenderTab() {
   const el = document.getElementById('etqTabContent');
   if (!el) return;
-  if (_etqTab === 'imprimir')       _etqRenderWizard(el);
-  else if (_etqTab === 'validades') _etqRenderValidades(el);
-  else if (_etqTab === 'producao')  _etqRenderProducao(el);
-  else _etqRenderWizard(el); // fallback
+  if (_etqTab === 'imprimir') { _etqRenderWizard(el); return; }
+  if (_etqTab !== 'validades' && _etqTab !== 'producao') { _etqRenderWizard(el); return; }
+
+  // Validades/Produção mostram dados de todo mundo, não só do que foi
+  // impresso nessa sessão — re-sincroniza do Supabase antes de renderizar,
+  // em vez de confiar só no que foi carregado no boot da página.
+  const tabNoInicio = _etqTab;
+  el.innerHTML = `
+    <div style="text-align:center;padding:60px 20px;color:var(--muted)">
+      ${lc('refresh-cw',24,'currentColor')}
+      <div style="margin-top:10px;font-size:.82rem">Carregando…</div>
+    </div>`;
+  try {
+    if (window._vtpSb) await db.syncFromSupabase(window._vtpSb);
+  } catch (e) {
+    console.warn('[VTP Etiquetagem] Falha ao ressincronizar:', e?.message);
+  }
+  _etqInit();
+  if (_etqTab !== tabNoInicio) return; // usuário trocou de aba enquanto sincronizava
+
+  if (_etqTab === 'validades') _etqRenderValidades(el);
+  else _etqRenderProducao(el);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1030,6 +1057,9 @@ function _etqRenderValidades(el) {
         <button class="btn btn-primary" onclick="_etqOpenScanner()" style="display:flex;align-items:center;gap:7px">
           ${lc('scan-line',16,'#fff')} Dar Baixa por QR
         </button>
+        <button class="btn btn-primary" onclick="_etqAbrirBaixaManual()" style="display:flex;align-items:center;gap:7px">
+          ${lc('search',16,'#fff')} Baixa Manual
+        </button>
         <div style="font-size:.75rem;color:var(--muted)">ou abra uma etiqueta abaixo e use os botões de baixa</div>
       </div>
 
@@ -1041,11 +1071,54 @@ function _etqRenderValidades(el) {
       </div>
 
       <div>
-        <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:12px">Próximos 7 dias</div>
-        ${_etqValidTimelineHtml()}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="font-size:.8rem;font-weight:700;color:var(--text)">Vencendo no período</div>
+          ${_etqPeriodoFiltroHtml({
+            RANGES: [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']],
+            filtroAtual: _etqValidFiltro,
+            customAberto: _etqValidCustomAberto,
+            customInicio: _etqValidCustomInicio,
+            customFim: _etqValidCustomFim,
+            fnSet: '_etqValidSetRange', fnToggle: '_etqValidToggleCustomRange', fnAplicar: '_etqValidAplicarCustomRange',
+            idInicio: 'etqValidCustomInicio', idFim: 'etqValidCustomFim',
+          })}
+        </div>
+        ${_etqValidTimelineHtml(_etqValidGetRange())}
       </div>
     </div>
   `;
+}
+
+// Padrão Dashboard, mas prospectivo (vencendo nos próximos N dias, não os últimos).
+function _etqValidSetRange(dias) {
+  _etqValidFiltro = dias;
+  _etqValidCustomAberto = false;
+  _etqRenderValidades(document.getElementById('etqTabContent'));
+}
+function _etqValidToggleCustomRange() {
+  _etqValidCustomAberto = !_etqValidCustomAberto;
+  _etqRenderValidades(document.getElementById('etqTabContent'));
+}
+function _etqValidAplicarCustomRange() {
+  const i = document.getElementById('etqValidCustomInicio')?.value;
+  const f = document.getElementById('etqValidCustomFim')?.value;
+  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
+  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
+  _etqValidCustomInicio = i;
+  _etqValidCustomFim    = f;
+  _etqValidFiltro       = 'custom';
+  _etqValidCustomAberto = false;
+  _etqRenderValidades(document.getElementById('etqTabContent'));
+}
+function _etqValidGetRange() {
+  const hoje = new Date();
+  hoje.setHours(0,0,0,0);
+  if (_etqValidFiltro === 'custom' && _etqValidCustomInicio && _etqValidCustomFim) {
+    return { inicio: new Date(_etqValidCustomInicio + 'T00:00:00'), fim: new Date(_etqValidCustomFim + 'T23:59:59') };
+  }
+  const fim = new Date(hoje.getTime() + Math.max(_etqValidFiltro, 0) * 864e5);
+  fim.setHours(23,59,59,999);
+  return { inicio: hoje, fim };
 }
 
 function _etqValidCard(label, etqs, cor, bg, date) {
@@ -1060,16 +1133,24 @@ function _etqValidCard(label, etqs, cor, bg, date) {
   `;
 }
 
-function _etqValidTimelineHtml() {
+function _etqValidTimelineHtml({ inicio, fim }) {
   const hoje = new Date();
   hoje.setHours(0,0,0,0);
+  const amanha = new Date(hoje.getTime() + 864e5);
   const dias = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(hoje.getTime() + i * 864e5);
+  const cursor = new Date(inicio);
+  cursor.setHours(0,0,0,0);
+  const fimDia = new Date(fim);
+  fimDia.setHours(0,0,0,0);
+  let guard = 0;
+  while (cursor <= fimDia && guard < 366) {
+    const d = new Date(cursor);
     const etqs = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), d));
     if (etqs.length > 0) dias.push({ d, etqs });
+    cursor.setDate(cursor.getDate() + 1);
+    guard++;
   }
-  if (dias.length === 0) return `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:.82rem">Nenhuma etiqueta vencendo nos próximos 7 dias</div>`;
+  if (dias.length === 0) return `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:.82rem">Nenhuma etiqueta vencendo no período selecionado</div>`;
 
   return dias.map(({ d, etqs }) => {
     const label = _sameDay(d, hoje) ? 'Hoje' : _sameDay(d, new Date(hoje.getTime() + 864e5)) ? 'Amanhã' : _etqFmtDate(d);
@@ -1572,44 +1653,164 @@ function _etqExcluirBatch() {
   _etqDarBaixaSelecao('excluida');
 }
 
+// ── Baixa Manual — busca por nome, sem QR ─────────────────────
+
+function _etqAbrirBaixaManual() {
+  const ovId = 'etqBaixaManualOverlay';
+  let ov = document.getElementById(ovId);
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = ovId;
+    ov.className = 'overlay';
+    document.body.appendChild(ov);
+  }
+
+  ov.innerHTML = `
+    <div class="mbox" style="max-width:460px">
+      <div class="mh">
+        <div class="mt">${lc('search',16,'var(--brand-purple)')} Baixa Manual</div>
+        <button class="mc" onclick="closeModal('${ovId}')"></button>
+      </div>
+      <div class="mb" style="display:flex;flex-direction:column;gap:12px">
+        <input class="inp" id="etqBaixaManualBusca" placeholder="Buscar por nome do produto..."
+          oninput="_etqBaixaManualAtualizarLista()" autofocus>
+        <div id="etqBaixaManualLista" style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto"></div>
+      </div>
+    </div>`;
+
+  ov.classList.add('open');
+  _etqBaixaManualAtualizarLista();
+  setTimeout(() => document.getElementById('etqBaixaManualBusca')?.focus(), 50);
+}
+
+function _etqBaixaManualAtualizarLista() {
+  const el = document.getElementById('etqBaixaManualLista');
+  if (!el) return;
+  const busca = (document.getElementById('etqBaixaManualBusca')?.value || '').trim().toLowerCase();
+
+  const validas = _etiquetas
+    .filter(e => e.status === 'valida')
+    .filter(e => !busca || e.item_nome.toLowerCase().includes(busca))
+    .sort((a, b) => new Date(a.dt_validade) - new Date(b.dt_validade));
+
+  if (validas.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:.82rem">
+      ${busca ? 'Nenhuma etiqueta encontrada' : 'Nenhuma etiqueta válida no momento'}
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = validas.slice(0, 50).map(e => {
+    const sv = _etqStatusValidade(e.dt_validade);
+    const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
+    return `
+      <button onclick="closeModal('etqBaixaManualOverlay');_etqAbrirDetalheEtq('${e.id}')"
+        style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r8);
+          border:1.5px solid var(--border);background:var(--surface);cursor:pointer;text-align:left;
+          font-family:Inter,sans-serif;width:100%">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.82rem;font-weight:700;color:var(--text)">${e.item_nome}</div>
+          <div style="font-size:.7rem;color:var(--muted)">${metLabel} · Resp.: ${e.responsavel_nome || '—'}</div>
+        </div>
+        <span style="font-size:.65rem;font-weight:700;background:${sv.cor}22;color:${sv.cor};border-radius:4px;padding:2px 7px;flex-shrink:0">${sv.label}</span>
+      </button>`;
+  }).join('') + (validas.length > 50 ? `<div style="text-align:center;padding:8px;color:var(--muted);font-size:.7rem">+${validas.length - 50} outras — refine a busca</div>` : '');
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ABA: PRODUÇÃO
 // ═══════════════════════════════════════════════════════════════
 
-function _etqRenderProducao(el) {
-  const filtros = [
-    { id: 'hoje',   label: 'Hoje' },
-    { id: 'ontem',  label: 'Ontem' },
-    { id: '7dias',  label: '7 dias' },
-    { id: '30dias', label: '30 dias' },
-  ];
+// Mesmo padrão de estado/cálculo do filtro de período do Dashboard
+// (js/dashboard.js: _dashSetRange/_dashToggleCustomRange/_dashAplicarCustomRange/_perfGetRange).
+function _etqProdSetRange(dias) {
+  _etqProdFiltro = dias;
+  _etqProdCustomAberto = false;
+  _etqRenderProducao(document.getElementById('etqTabContent'));
+}
+function _etqProdToggleCustomRange() {
+  _etqProdCustomAberto = !_etqProdCustomAberto;
+  _etqRenderProducao(document.getElementById('etqTabContent'));
+}
+function _etqProdAplicarCustomRange() {
+  const i = document.getElementById('etqProdCustomInicio')?.value;
+  const f = document.getElementById('etqProdCustomFim')?.value;
+  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
+  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
+  _etqProdCustomInicio = i;
+  _etqProdCustomFim    = f;
+  _etqProdFiltro       = 'custom';
+  _etqProdCustomAberto = false;
+  _etqRenderProducao(document.getElementById('etqTabContent'));
+}
+function _etqProdGetRange() {
+  if (_etqProdFiltro === 'custom' && _etqProdCustomInicio && _etqProdCustomFim) {
+    return { inicio: new Date(_etqProdCustomInicio + 'T00:00:00'), fim: new Date(_etqProdCustomFim + 'T23:59:59') };
+  }
+  const fim = new Date();
+  const inicio = _etqProdFiltro > 0
+    ? new Date(new Date(fim.getTime() - _etqProdFiltro * 864e5).setHours(0,0,0,0))
+    : new Date(new Date().setHours(0,0,0,0));
+  return { inicio, fim };
+}
+function _etqPeriodoFiltroHtml(opts) {
+  const { RANGES, filtroAtual, customAberto, customInicio, customFim, fnSet, fnToggle, fnAplicar, idInicio, idFim } = opts;
+  const isCustom = filtroAtual === 'custom';
+  const customLabel = isCustom
+    ? `${customInicio?.split('-').reverse().join('/')} – ${customFim?.split('-').reverse().join('/')}`
+    : 'Personalizado';
+  return `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
+      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
+        ${RANGES.map(([d,l]) => `
+          <button onclick="${fnSet}(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${filtroAtual===d?'700':'500'};background:${filtroAtual===d?'var(--bg)':'transparent'};color:${filtroAtual===d?'var(--purple)':'var(--text2)'};box-shadow:${filtroAtual===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
+        `).join('')}
+        <button onclick="${fnToggle}()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
+          ${lc('calendar',11,'currentColor')} ${customLabel}
+        </button>
+      </div>
+      ${customAberto ? `
+        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
+            <input type="date" id="${idInicio}" value="${customInicio||''}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
+            <input type="date" id="${idFim}" value="${customFim||''}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <button class="btn btn-primary btn-xs" onclick="${fnAplicar}()">Aplicar</button>
+        </div>` : ''}
+    </div>`;
+}
 
-  const hoje  = new Date();
-  hoje.setHours(0,0,0,0);
-  const ontem = new Date(hoje.getTime() - 864e5);
+function _etqRenderProducao(el) {
+  const { inicio, fim } = _etqProdGetRange();
 
   let etqs = _etiquetas.filter(e => e.status !== 'excluida');
-  if (_etqProdFiltro === 'hoje') {
-    etqs = etqs.filter(e => _sameDay(new Date(e.dt_manipulacao), hoje));
-  } else if (_etqProdFiltro === 'ontem') {
-    etqs = etqs.filter(e => _sameDay(new Date(e.dt_manipulacao), ontem));
-  } else if (_etqProdFiltro === '7dias') {
-    etqs = etqs.filter(e => new Date(e.dt_manipulacao) >= new Date(hoje.getTime() - 7 * 864e5));
-  } else if (_etqProdFiltro === '30dias') {
-    etqs = etqs.filter(e => new Date(e.dt_manipulacao) >= new Date(hoje.getTime() - 30 * 864e5));
-  }
+  etqs = etqs.filter(e => {
+    const d = new Date(e.dt_manipulacao);
+    return d >= inicio && d <= fim;
+  });
 
   // Ordena por mais recente
   etqs.sort((a, b) => new Date(b.dt_manipulacao) - new Date(a.dt_manipulacao));
 
+  const filtroHtml = _etqPeriodoFiltroHtml({
+    RANGES: [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']],
+    filtroAtual: _etqProdFiltro,
+    customAberto: _etqProdCustomAberto,
+    customInicio: _etqProdCustomInicio,
+    customFim: _etqProdCustomFim,
+    fnSet: '_etqProdSetRange', fnToggle: '_etqProdToggleCustomRange', fnAplicar: '_etqProdAplicarCustomRange',
+    idInicio: 'etqProdCustomInicio', idFim: 'etqProdCustomFim',
+  });
+
   el.innerHTML = `
     <div style="padding:16px 24px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
-        ${filtros.map(f => `
-          <button onclick="_etqProdFiltro='${f.id}';_etqRenderProducao(document.getElementById('etqTabContent'))"
-            class="btn btn-sm ${_etqProdFiltro === f.id ? 'btn-primary' : 'btn-ghost'}">${f.label}</button>
-        `).join('')}
-        <span style="font-size:.72rem;color:var(--muted);margin-left:4px">${etqs.length} registro${etqs.length !== 1 ? 's' : ''}</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        ${filtroHtml}
+        <span style="font-size:.72rem;color:var(--muted)">${etqs.length} registro${etqs.length !== 1 ? 's' : ''}</span>
       </div>
 
       ${etqs.length === 0 ? `
@@ -1907,81 +2108,6 @@ function _etqDeleteValidade() {
   closeModal('etqValidadeOverlay');
   toast('Validade removida', 'ok');
   _etqRefreshCadastros();
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ABA: CONFIGURAÇÕES
-// ═══════════════════════════════════════════════════════════════
-
-function _etqRenderConfig(el) {
-  const cfg = _etqConfigEmpresa();
-
-  el.innerHTML = `
-    <div style="padding:20px 24px;max-width:700px">
-
-      <!-- Dados da unidade (read-only — editar em Configurações) -->
-      <div class="card" style="margin-bottom:20px;padding:18px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <div style="width:32px;height:32px;border-radius:8px;background:var(--brand-purple);display:flex;align-items:center;justify-content:center">
-            ${lc('building-2', 16, '#fff')}
-          </div>
-          <div>
-            <div style="font-size:.86rem;font-weight:800;color:var(--text)">Dados da Unidade</div>
-            <div style="font-size:.68rem;color:var(--muted)">Exibidos nas etiquetas — editar em Configurações → Empresa</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.78rem">
-          <div><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">Empresa</span><br><strong>${cfg.nome || '—'}</strong></div>
-          <div><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">Responsável</span><br><strong>${cfg.resp || '—'}</strong></div>
-          ${cfg.cnpj     ? `<div><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">CNPJ</span><br><strong>${cfg.cnpj}</strong></div>` : ''}
-          ${cfg.endereco ? `<div style="grid-column:1/-1"><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">Endereço</span><br><strong>${cfg.endereco}</strong></div>` : ''}
-        </div>
-      </div>
-
-      <!-- Pontos de impressão (Fase 3 placeholder) -->
-      <div class="card" style="padding:18px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <div style="width:32px;height:32px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center">
-            ${lc('cpu', 16, 'var(--muted)')}
-          </div>
-          <div>
-            <div style="font-size:.86rem;font-weight:800;color:var(--text)">Pontos de Impressão</div>
-            <div style="font-size:.68rem;color:var(--muted)">Raspberry Pi + Zebra ZD220</div>
-          </div>
-        </div>
-
-        <div style="background:var(--warning-bg,#FEF3C7);border:1.5px solid var(--warning-border,#FDE68A);border-radius:var(--r8);padding:14px;display:flex;gap:12px;align-items:flex-start">
-          ${lc('alert-triangle', 16, 'var(--warning-fg,#D97706)')}
-          <div>
-            <div style="font-size:.8rem;font-weight:700;color:var(--warning-fg,#D97706);margin-bottom:4px">Fase 3 — Em desenvolvimento</div>
-            <div style="font-size:.74rem;color:var(--warning-fg,#D97706);line-height:1.5">
-              A integração com Raspberry Pi e a impressora Zebra ZD220 via protocolo ZPL está planejada para a Fase 3.
-              Quando ativada, cada etiqueta gerada aqui será impressa automaticamente no ponto de cozinha mais próximo.
-            </div>
-          </div>
-        </div>
-
-        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
-          <div style="padding:14px;border-radius:var(--r8);border:1.5px dashed var(--border);display:flex;align-items:center;gap:12px;opacity:.5">
-            <div style="width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center">
-              ${lc('cpu', 18, 'var(--muted)')}
-            </div>
-            <div>
-              <div style="font-size:.8rem;font-weight:700">COZINHA</div>
-              <div style="font-size:.68rem;color:var(--muted)">Raspberry Pi 4B · Zebra ZD220 · USB · Offline</div>
-            </div>
-            <span style="margin-left:auto;font-size:.66rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--muted)">OFFLINE</span>
-          </div>
-        </div>
-
-        <div style="margin-top:12px">
-          <button class="btn btn-outline btn-sm" disabled style="opacity:.5;cursor:not-allowed">
-            ${lc('plus', 12, 'currentColor')} Adicionar ponto (disponível na Fase 3)
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
 }
 
 // ═══════════════════════════════════════════════════════════════
