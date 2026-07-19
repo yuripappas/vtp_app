@@ -64,8 +64,11 @@ function _vInterpretarItem(it) {
     } else if (_RE_SIZE_OPT.test(o.name || '')) {
       /* opção de tamanho (layout B) — tratada abaixo */
     } else if (/\|\s*pizza/i.test(o.name || '')) {
+      // Tamanho vem do próprio nome da opção ("Sabor | Pizza Grande/Pequena")
+      // — item como "Dia da Pizza" pode vender tanto grande quanto pequena
+      // por esse mesmo padrão, então nunca assumir um tamanho fixo aqui.
       const gid = 'opc-' + (o.option_group_id ?? o.name);
-      if (!porGrupo[gid]) porGrupo[gid] = { tamanho: 'pequena', meias: {} };
+      if (!porGrupo[gid]) porGrupo[gid] = { tamanho: _vTam(o.name), meias: {} };
       _vAddMeia(porGrupo[gid].meias, o.name, o.quantity);
     } else if (!g) {
       if (_vSaborCadastrado(o.name)) soltas.push(o);
