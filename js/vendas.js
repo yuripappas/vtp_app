@@ -78,8 +78,12 @@ function _vInterpretarItem(it) {
         if (!porGrupo[gid]) porGrupo[gid] = { tamanho, meias: {} };
         _vAddMeia(porGrupo[gid].meias, o.name, o.quantity);
       } else {
+        // quantity aqui é nº de pizzas INTEIRAS desse sabor (ex.: "Dia da
+        // Pizza" com quantity:2 = 2 pizzas grandes de Catupirella, não 1
+        // pizza com o dobro de recheio) — cada unidade vira sua própria
+        // pizza, senão a base (massa/caixa/embalagem) fica subcobrada.
         const key = _cwSaborKey(o.name);
-        if (key) inteiras.push({ tamanho, meias: { [key]: 2 * (o.quantity || 1) } });
+        if (key) for (let i = 0; i < (o.quantity || 1); i++) inteiras.push({ tamanho, meias: { [key]: 2 } });
       }
     } else if (!g) {
       if (_vSaborCadastrado(o.name)) soltas.push(o);
