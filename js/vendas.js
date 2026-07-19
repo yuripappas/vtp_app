@@ -151,6 +151,14 @@ function _vCategoria(it) {
     }
     return 'Bebidas';
   }
+  // O sabor realmente escolhido (via Opção cadastrada) decide doce/salgada —
+  // não o texto do grupo. Promos como "Dia da Pizza" usam um grupo único
+  // "Salgada e Doce" pros dois tipos juntos, então checar "doce" no texto do
+  // grupo classifica errado qualquer sabor salgado vendido por ali.
+  if (optPizza) {
+    const opc = typeof vendasOpcaoDeSabor === 'function' ? vendasOpcaoDeSabor(_cwSaborKey(optPizza.name)) : null;
+    if (opc) return opc.categoria === 'doce' ? 'Pizza Doce' : 'Pizza Salgada';
+  }
   const ehDoce = /doce/.test(n) || /doce/i.test(optPizza?.option_group_name || '') || /doce/i.test(optPizza?.name || '');
   return ehDoce ? 'Pizza Doce' : 'Pizza Salgada';
 }
