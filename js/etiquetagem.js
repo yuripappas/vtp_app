@@ -1017,6 +1017,14 @@ function _etqRenderValidadesDrill(el, dateIso) {
   drillDate.setHours(0,0,0,0);
   const etqs = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), drillDate));
 
+  // O cabeçalho já diz o dia ("Vencem em DD/MM") — repetir "Hoje"/"Amanhã"/a
+  // mesma data em cada card é redundante, já que todos compartilham o mesmo
+  // dia por construção (o drill já filtrou por esse dia). Só vale mostrar o
+  // badge por card quando ele carrega informação NOVA: dentro do dia de
+  // hoje, "Crítico" (< 8h) se distingue de "Hoje" — fora disso, omite.
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const isHojeDrill = _sameDay(drillDate, hoje);
+
   el.innerHTML = `
     <div style="padding:16px 24px">
       <button onclick="_etqValidDrill=null;_etqRenderValidades(document.getElementById('etqTabContent'))"
@@ -1038,7 +1046,7 @@ function _etqRenderValidadesDrill(el, dateIso) {
                 cursor:pointer;transition:all .12s">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
                 <div style="font-size:.82rem;font-weight:700;color:var(--text);line-height:1.3">${e.item_nome}</div>
-                <span style="font-size:.65rem;font-weight:700;background:${sv.cor}22;color:${sv.cor};border-radius:4px;padding:2px 6px;flex-shrink:0;margin-left:6px">${sv.label}</span>
+                ${isHojeDrill ? `<span style="font-size:.65rem;font-weight:700;background:${sv.cor}22;color:${sv.cor};border-radius:4px;padding:2px 6px;flex-shrink:0;margin-left:6px">${sv.label}</span>` : ''}
               </div>
               <div style="font-size:.72rem;color:var(--muted);margin-bottom:4px">${metLabel}</div>
               <div style="font-size:.72rem;color:var(--muted)">Resp.: ${e.responsavel_nome}</div>
