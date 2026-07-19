@@ -3,9 +3,8 @@
  * Módulo completo de etiquetagem para cozinha profissional
  * Inspirado na Suflex · Integrado com items, users e funcionarios do app
  *
- * Fase 1: Wizard de impressão (simulada) + Validades + Produção + Cadastros
- * Fase 2: Integração com Pré-produção e Dashboard
- * Fase 3 (pendente): Raspberry Pi + Zebra ZD220 + Supabase Realtime
+ * Wizard de impressão + Validades + Produção + Cadastros. Impressão física
+ * via fila (etiq_print_jobs) + Supabase Realtime — ver print-agent/.
  */
 
 // ═══════════════════════════════════════════════════════════════
