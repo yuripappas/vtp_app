@@ -29,6 +29,11 @@
 
 function _vTam(str) { return /grande/i.test(str) ? 'grande' : 'pequena'; }
 
+// Nº de "meias porções" que uma pizza INTEIRA de 1 sabor só vale — regra de
+// negócio: grande sempre soma 2 (meio a meio 1+1, ou inteira do mesmo sabor
+// 2x); pequena sempre soma 1 (nunca é dividida, é sempre 1 sabor só).
+function _vUnidadesInteira(tamanho) { return tamanho === 'grande' ? 2 : 1; }
+
 function _vAddMeia(meias, nome, q) {
   const k = _cwSaborKey(nome);
   if (!k || /^(grande|pequena)\b/.test(k) || /pedaco/.test(k)) return;
@@ -82,8 +87,9 @@ function _vInterpretarItem(it) {
         // Pizza" com quantity:2 = 2 pizzas grandes de Catupirella, não 1
         // pizza com o dobro de recheio) — cada unidade vira sua própria
         // pizza, senão a base (massa/caixa/embalagem) fica subcobrada.
+        // Meias por unidade: 2 se grande, 1 se pequena (pequena nunca soma 2).
         const key = _cwSaborKey(o.name);
-        if (key) for (let i = 0; i < (o.quantity || 1); i++) inteiras.push({ tamanho, meias: { [key]: 2 } });
+        if (key) for (let i = 0; i < (o.quantity || 1); i++) inteiras.push({ tamanho, meias: { [key]: _vUnidadesInteira(tamanho) } });
       }
     } else if (!g) {
       if (_vSaborCadastrado(o.name)) soltas.push(o);
@@ -92,13 +98,25 @@ function _vInterpretarItem(it) {
   }
 
   let pizzas = Object.values(porGrupo).filter(p => Object.keys(p.meias).length);
+  // Grupo com só 1 sabor selecionado (não meio a meio) é pizza inteira desse
+  // sabor — grande soma 2, pequena soma 1, nunca 1 fixo (só acontece quando
+  // o cliente escolhe 1 sabor só numa pizza que permite meio a meio).
+  for (const pz of pizzas) {
+    const chaves = Object.keys(pz.meias);
+    if (chaves.length === 1) pz.meias[chaves[0]] = _vUnidadesInteira(pz.tamanho);
+  }
   pizzas.push(...inteiras);
 
-  // Layout B: sabor no nome do item, tamanho na opção de tamanho
+  // Layout B: sabor no nome do item, tamanho na opção de tamanho. Sabor único
+  // (sem "+") é pizza inteira — vale _vUnidadesInteira(tamanho), não 1 fixo;
+  // meio a meio ("+") já soma certo (1+1) via _vAddMeia.
   if (!pizzas.length && sizeOpt) {
     const meias = {};
     (it.name || '').split('|')[0].split('+').forEach(p => _vAddMeia(meias, p, 1));
-    if (Object.keys(meias).length) pizzas = [{ tamanho: _vTam(sizeOpt.name), meias }];
+    const tamanho = _vTam(sizeOpt.name);
+    const chaves = Object.keys(meias);
+    if (chaves.length === 1) meias[chaves[0]] = _vUnidadesInteira(tamanho);
+    if (chaves.length) pizzas = [{ tamanho, meias }];
   }
 
   // Layout C: tudo embutido no nome do item ("Sabor1 + Sabor2 | Pizza Grande"),
@@ -108,27 +126,75 @@ function _vInterpretarItem(it) {
     if (_RE_SIZE_OPT.test(parteTam)) {
       const meias = {};
       (it.name || '').split('|')[0].split('+').forEach(p => _vAddMeia(meias, p, 1));
-      if (Object.keys(meias).length) pizzas = [{ tamanho: _vTam(parteTam), meias }];
+      const tamanho = _vTam(parteTam);
+      const chaves = Object.keys(meias);
+      if (chaves.length === 1) meias[chaves[0]] = _vUnidadesInteira(tamanho);
+      if (chaves.length) pizzas = [{ tamanho, meias }];
     }
   }
 
   // Opções soltas de combo (sem option_group_id pra parear as metades) —
-  // agrupa 2 a 2 na ordem em que vieram (metades de uma mesma pizza costumam
-  // vir adjacentes); sabor "inteiro" (sem "1/2") vira 1 pizza com 2 meias.
-  // Tamanho aproximado pelo nome do item — combos com tamanhos mistos podem
-  // classificar o tamanho errado, mas o sabor/custo do recheio fica correto.
+  // sabor "inteiro" (sem "1/2") vira 1 pizza própria; metades usam uma fila
+  // de "pendentes" (pizzas com só 1 metade, aguardando a 2ª) em vez de fechar
+  // por "2 chaves distintas" — combos com pizzas IDÊNTICAS costumam vir como
+  // "1/2 X" quantity:2 + "1/2 Y" quantity:2 (2 pizzas X+Y), não como 2 opções
+  // repetidas; fechar por chave distinta jogava as 2 pizzas numa só (ex.:
+  // {calabresa:2, frango:2} = 4 meias numa "pizza" só, em vez de 2 pizzas
+  // com 2 meias cada).
+  // Tamanho: quando o nome do item menciona os dois ("02 Pizzas Grandes +
+  // 01 Pizza Doce Pequena Grátis | Combo Galera"), o padrão observado é
+  // meio a meio = grande e sabor único = pequena (a pizza "grátis"/bônus
+  // do combo); com um só tamanho no nome, usa esse pra tudo.
   if (soltas.length) {
-    const tamanho = _vTam(it.name || '');
-    let buffer = null;
-    for (const o of soltas) {
-      const ehMetade = /^\s*1\/2\b/.test(o.name || '');
-      if (!ehMetade) {
-        pizzas.push({ tamanho, meias: { [_cwSaborKey(o.name)]: 2 } });
-        continue;
+    const nomeItem   = it.name || '';
+    const temAmbos   = /grande/i.test(nomeItem) && /pequena/i.test(nomeItem);
+    const tamMetade  = temAmbos ? 'grande' : _vTam(nomeItem);
+    const tamInteira = temAmbos ? 'pequena' : _vTam(nomeItem);
+
+    // Processa sabores com quantity MAIOR primeiro — se um sabor se repete
+    // em 2 pizzas (quantity:2) mas aparece DEPOIS de sabores quantity:1 na
+    // lista, fechar na ordem de chegada casava os quantity:1 entre si e
+    // deixava as 2 unidades do repetido sem par (2 pizzas com só 1 metade
+    // cada, em vez de cada uma completando um dos outros sabores). Ordenar
+    // por quantity desc garante que o sabor repetido abre as "vagas" antes
+    // dos sabores únicos chegarem pra preenchê-las.
+    const metades  = soltas.filter(o => /^\s*1\/2\b/.test(o.name || ''))
+                           .sort((a, b) => (b.quantity || 1) - (a.quantity || 1));
+    const inteiras2 = soltas.filter(o => !/^\s*1\/2\b/.test(o.name || ''));
+
+    for (const o of inteiras2) {
+      for (let i = 0; i < (o.quantity || 1); i++) {
+        pizzas.push({ tamanho: tamInteira, meias: { [_cwSaborKey(o.name)]: _vUnidadesInteira(tamInteira) } });
       }
-      if (!buffer) { buffer = { tamanho, meias: {} }; pizzas.push(buffer); }
-      _vAddMeia(buffer.meias, o.name, o.quantity);
-      if (Object.keys(buffer.meias).length >= 2) buffer = null; // pizza fechou, próxima metade abre outra
+    }
+
+    let pendentes = []; // pizzas com só 1 metade, aguardando a 2ª
+    for (const o of metades) {
+      let n = o.quantity || 1;
+      while (n > 0 && pendentes.length) {
+        const p = pendentes.shift();
+        _vAddMeia(p.meias, o.name, 1);
+        n--;
+      }
+      while (n > 0) {
+        const p = { tamanho: tamMetade, meias: {} };
+        _vAddMeia(p.meias, o.name, 1);
+        pizzas.push(p);
+        pendentes.push(p);
+        n--;
+      }
+    }
+
+    // Sobrou pendente sem par de sabor diferente — acontece quando o MESMO
+    // sabor vem repetido como "1/2 X" quantity:2 sozinho (pizza inteira de
+    // 1 sabor só, sem nenhum outro sabor no item pra completar como meio a
+    // meio). Mescla os que sobraram 2 a 2 em vez de deixá-los órfãos com só
+    // 1 meia cada.
+    while (pendentes.length >= 2) {
+      const a = pendentes.shift();
+      const b = pendentes.shift();
+      for (const [k, v] of Object.entries(b.meias)) a.meias[k] = (a.meias[k] || 0) + v;
+      pizzas = pizzas.filter(p => p !== b);
     }
   }
 
@@ -140,7 +206,8 @@ function _vInterpretarItem(it) {
       && !/combo|promo|pizza\s+(grande|pequena)/i.test(it.name || '')
       && !/\|\s*pizza/i.test(it.name || '')) {
     if (_vSaborCadastrado(it.name)) {
-      pizzas = [{ tamanho: _vTam(it.name || ''), meias: { [_cwSaborKey(it.name)]: 2 } }];
+      const tamanho = _vTam(it.name || '');
+      pizzas = [{ tamanho, meias: { [_cwSaborKey(it.name)]: _vUnidadesInteira(tamanho) } }];
     } else {
       bebidas.push({ nome: it.name, qtd: it.quantity || 1 });
     }
