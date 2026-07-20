@@ -262,8 +262,19 @@ function _vInterpretarPedido(p) {
   const linhas = [];
   const ts    = p.cw_created_at;
   const canal = typeof _cwMapCanal === 'function' ? _cwMapCanal(p.sales_channel) : p.sales_channel;
+
+  // "Promo da Quarta - Frete Grátis - Cupom: FRETEGRATIS" é um item marcador
+  // (R$0, sem opções) que acompanha a venda real no mesmo pedido — o item que
+  // carrega o valor (ex.: uma pizza Monte Seu Sabor) tem sua própria estrutura
+  // normal, mas a venda pertence à Promo do Dia por ter sido feita através
+  // desse cupom. Confirmado com o Yuri (2026-07-20): é a única variante desse
+  // marcador em todo o histórico. Redireciona a(s) linha(s) reais do pedido
+  // pra "Promo do Dia" com o nome do próprio marcador como produto.
+  const marcadorPromo = (p.items || []).find(it => /cupom:?\s*fretegratis/.test(_cwNorm(it.name)));
+
   for (const it of (p.items || [])) {
     if (it.status === 'canceled') continue;
+    if (it === marcadorPromo) continue; // marcador não gera linha própria (R$0, sem ficha)
 
     // Alguns combos vêm com os sub-itens ANINHADOS dentro do próprio item
     // (it.items — cada um já com options completas), em vez de tudo solto em
@@ -289,8 +300,8 @@ function _vInterpretarPedido(p) {
     linhas.push({
       pedidoId:  p.id,
       ts, canal,
-      categoria: _vCategoria(it),
-      nome:      it.name,
+      categoria: marcadorPromo ? 'Promo do Dia' : _vCategoria(it),
+      nome:      marcadorPromo ? marcadorPromo.name : it.name,
       qtd:       it.quantity || 1,
       receita:   it.total_price ?? it.unit_price ?? 0, // preço de tabela do item (ajustado abaixo)
       pizzas, bebidas,
@@ -578,6 +589,99 @@ function vendasProdutosPorCategoria(linhas) {
       }
     }
     for (const b of l.bebidas) c.bebidas[_cwNorm(b.nome)] = (c.bebidas[_cwNorm(b.nome)] || 0) + (b.qtd || 1);
+  }
+  return cat;
+}
+
+// ── Agregação por PRODUTO (aba "Geral" do CMV) ─────────────────
+// Cada categoria define seu próprio conceito de "produto", batendo com o
+// catálogo real cadastrado no Cardápio Web (confirmado com o Yuri,
+// 2026-07-20):
+//   • Vai Ter Combo      → nome canônico do combo (texto após o último "|").
+//   • Monte seu Sabor    → tamanho×categoria (4 baldes fixos: Grande/Pequena
+//     × Salgada/Doce) — NUNCA por sabor. O catálogo só tem 4 produtos aqui;
+//     o(s) sabor(es) escolhido(s) (mesmo repetido 2x) não mudam o produto.
+//   • Pizza Salgada/Doce → o sabor (Opção) escolhido — aqui cada sabor É um
+//     produto cadastrado à parte, diferente de Monte seu Sabor.
+//   • Bebidas            → a bebida vendida avulsa.
+//   • Promo do Dia       → nome exato do item, mantendo variantes por dia
+//     separadas (inclui o marcador "Cupom: FRETEGRATIS" já redirecionado
+//     pra cá em _vInterpretarPedido).
+// "Qtde vendida" é sempre unidade FÍSICA do produto (1 pizza, 1 combo, 1
+// bebida) — diferente da métrica de "meias" usada no drill-down por Insumo,
+// que pondera pelo tamanho pra custear a ficha corretamente.
+function _vNomeCombo(nome) {
+  const partes = (nome || '').split('|');
+  return (partes.length > 1 ? partes[partes.length - 1] : partes[0]).trim();
+}
+
+function vendasPorProduto(linhas) {
+  const cat = {};
+  const g = c => cat[c] || (cat[c] = { vendas: 0, receita: 0, custo: 0, produtos: {} });
+  const addProduto = (c, nome, qtd, receita, custo) => {
+    const p = c.produtos[nome] || (c.produtos[nome] = { nome, qtd: 0, receita: 0, custo: 0 });
+    p.qtd += qtd; p.receita += receita; p.custo += custo;
+  };
+
+  for (const l of linhas) {
+    const c = g(l.categoria);
+    c.vendas += l.qtd;
+    c.receita += l.receita;
+    const custoLinha = vendasCustoLinha(l);
+    c.custo += custoLinha;
+
+    if (l.categoria === 'Vai Ter Combo') {
+      addProduto(c, _vNomeCombo(l.nome), l.qtd, l.receita, custoLinha);
+
+    } else if (l.categoria === 'Monte seu Sabor') {
+      const n = l.pizzas.length || 1;
+      for (const pz of l.pizzas) {
+        const chaves = Object.keys(pz.meias);
+        let catSD = null;
+        for (const k of chaves) { const opc = vendasOpcaoDeSabor(k); if (opc) { catSD = opc.categoria; break; } }
+        const nome = `${pz.tamanho === 'grande' ? 'Grande' : 'Pequena'} ${catSD === 'doce' ? 'Doce' : 'Salgada'}`;
+        const custoPz = vendasCustoBase(pz.tamanho) + chaves.reduce((s, k) => s + vendasCustoOpcao(k) * pz.meias[k], 0);
+        addProduto(c, nome, 1, l.receita / n, custoPz);
+      }
+      if (!l.pizzas.length) addProduto(c, 'Grande Salgada', l.qtd, l.receita, custoLinha);
+
+    } else if (l.categoria === 'Pizza Salgada' || l.categoria === 'Pizza Doce') {
+      const n = l.pizzas.length || 1;
+      for (const pz of l.pizzas) {
+        const k = Object.keys(pz.meias)[0];
+        const opc = k ? vendasOpcaoDeSabor(k) : null;
+        const nome = opc ? opc.nome : (k ? _cwTitulo(k) : l.nome);
+        const custoPz = vendasCustoBase(pz.tamanho) + (k ? vendasCustoOpcao(k) * pz.meias[k] : 0);
+        addProduto(c, nome, 1, l.receita / n, custoPz);
+      }
+      if (!l.pizzas.length) addProduto(c, l.nome, l.qtd, l.receita, custoLinha);
+
+    } else if (l.categoria === 'Bebidas') {
+      const totQtd = l.bebidas.reduce((s, b) => s + (b.qtd || 1), 0) || 1;
+      for (const b of l.bebidas) {
+        const rk = _cwRank(b.nome, _cwPoolBebidas(), 'nome', 1)[0];
+        const alvo = (rk && rk.s >= 0.6) ? rk.x : null;
+        const item = alvo ? (alvo.tipo === 'produto' ? produtos.find(p => p.id === alvo.id) : items.find(i => i.id === alvo.id)) : null;
+        const nome = item ? (item.name || item.nome) : _cwTitulo(b.nome);
+        const custoUn = item?.fichaTecnica ? _calcCustoFicha(item.fichaTecnica) : (item?.cost || 0);
+        const qtd = b.qtd || 1;
+        addProduto(c, nome, qtd, l.receita * (qtd / totQtd), custoUn * qtd);
+      }
+      if (!l.bebidas.length) addProduto(c, l.nome, l.qtd, l.receita, custoLinha);
+
+    } else { // Promo do Dia (e qualquer categoria nova sem regra própria)
+      const n = l.pizzas.length || l.qtd || 1;
+      addProduto(c, l.nome, n, l.receita, custoLinha);
+    }
+  }
+
+  for (const c of Object.values(cat)) {
+    c.produtos = Object.values(c.produtos).map(p => ({
+      ...p,
+      precoMedio: p.qtd > 0 ? p.receita / p.qtd : 0,
+      custoMedio: p.qtd > 0 ? p.custo / p.qtd : 0,
+      lucro: p.receita - p.custo,
+    })).sort((a, b) => b.receita - a.receita);
   }
   return cat;
 }
