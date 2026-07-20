@@ -294,11 +294,13 @@ function _vdDrillCategoria(dados) {
 
 
 // ══════════════════════════════════════════════════════════════
-// Filho CONSUMO DE INSUMOS — quanto de cada item cadastrado (insumo ou
-// preparado) saiu por período, expandindo a ficha técnica de cada pizza
-// vendida. Lista TODO o cadastro — quem não vendeu no período aparece
-// com consumo zero. % é por CUSTO (unidades diferentes não somam em
-// quantidade). Filtro de categoria aceita múltipla seleção.
+// Filho CONSUMO DE INSUMOS — quanto de cada INSUMO CRU saiu por período.
+// Preparados (ex.: Mussarela Triturada) não aparecem — o consumo deles
+// cascateia pra ficha técnica própria até virar insumo cru (Mussarela em
+// Barra), que é o que interessa pra comprar/repor estoque. Lista TODO o
+// cadastro de insumos — quem não vendeu no período aparece com consumo
+// zero. % é por CUSTO (unidades diferentes não somam em quantidade).
+// Filtro de categoria aceita múltipla seleção.
 // ══════════════════════════════════════════════════════════════
 
 let _inPreset   = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
@@ -401,18 +403,26 @@ async function renderVendasInsumos() {
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
   _inDados = vendasInsumosConsumidos(linhas);
-  const { insumos, custoTotal } = _inDados;
+  const { insumos, custoTotal, naoRastreado } = _inDados;
 
   const kpi = (lbl, val, sub) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
     <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
     <div style="font-size:1.5rem;font-weight:800">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
 
+  const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
+  const banner = naoRastreado.length ? `<div class="card" style="padding:12px 16px;margin-bottom:16px;border-color:var(--warning-fg,#D97706);background:var(--warning-bg,#FEF3C7)">
+      <div style="font-size:.84rem;font-weight:700;color:var(--warning-fg,#B45309)">${lc('alert-triangle',14,'currentColor')} Consumo parcial — ${naoRastreado.length} preparado(s) sem ficha técnica</div>
+      <div style="font-size:.76rem;color:var(--warning-fg,#92400E);margin-top:3px">${naoRastreado.slice(0,6).map(x=>`${x.nome} (${nf(x.qtd)} ${x.unidade})`).join(' · ')}${naoRastreado.length>6?' …':''}</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-top:5px">Cadastre a ficha em <a href="#" onclick="event.preventDefault();setCadTab('preparo');goModule('cadastros')" style="color:var(--purple);font-weight:600;text-decoration:none">Cadastros → Pré-preparo</a> para o consumo entrar no cálculo.</div>
+    </div>` : '';
+
   el.innerHTML = _inFiltros() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos e preparados cadastrados, com o consumo nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''}.</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos cadastrados, com o consumo nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''} — preparados cascateiam pro insumo cru que consomem.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px">
-      ${kpi('Itens cadastrados', insumos.length)}
+      ${kpi('Insumos cadastrados', insumos.length)}
       ${kpi('Custo total', 'R$ ' + fmt(custoTotal), 'valor consumido no período')}
     </div>
+    ${banner}
     <div id="inTabelaWrap"></div>`;
 
   _inRenderTabela();

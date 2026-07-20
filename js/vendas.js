@@ -454,57 +454,88 @@ function vendasMeiasPorDiaSemana(linhas) {
 }
 
 // ── Consumo de INSUMOS (aba Insumos) ───────────────────────────
-// Expande a ficha técnica de cada pizza vendida (base + opções) em
-// quantidades de insumo, na unidade nativa de cada um. A quantidade da
-// ficha (peso_g no modo produto/opção) já está na unidade do insumo.
-function _vExpandeFicha(ficha, mult, tamanho, acc) {
+// Expande o consumo de 1 item (insumo cru OU preparado) até chegar em
+// insumo cru, cascateando pela ficha técnica de cada preparado no
+// caminho — ex.: pizza usa "Mussarela Triturada" (preparado), que por sua
+// vez usa "Mussarela em Barra" (insumo); o consumo final é creditado na
+// Mussarela em Barra, não no preparado.
+//
+// Duas escalas coexistem, cada uma no seu nível (validado nos cadastros):
+//   • Ficha de Produto/Opção (pizza): peso_g já está na unidade nativa do
+//     item referenciado — sem conversão, só multiplica pela quantidade
+//     vendida (mult).
+//   • Ficha de Preparado: peso_g é sempre em GRAMAS, e rendimento_kg diz
+//     quantos kg aquela receita rende de uma vez. A fração do lote
+//     consumida é qtd(kg) ÷ rendimento_kg, aplicada a cada ingrediente
+//     (convertido de g pra kg).
+//
+// Preparado sem ficha técnica cadastrada não tem como cascatear — registra
+// em naoRastreado pra avisar na UI, em vez de ficar silenciosamente de
+// fora do cálculo.
+function _vExpandeItem(itemId, qtd, tamanho, acc, naoRastreado, visitados) {
+  if (!(qtd > 0)) return;
+  const it = items.find(i => i.id === itemId);
+  if (!it || visitados.has(it.id)) return;
+  if (!it.isProd) {
+    if (acc[it.id]) acc[it.id][tamanho] += qtd;
+    return;
+  }
+  const ings = it.fichaTecnica?.ingredientes;
+  if (!ings || !ings.length) {
+    const r = naoRastreado[it.id] || (naoRastreado[it.id] = { nome: it.name, unidade: it.unit, qtd: 0 });
+    r.qtd += qtd;
+    return;
+  }
+  const fracaoLote = qtd / (it.fichaTecnica.rendimento_kg || 1);
+  visitados.add(it.id);
+  for (const sub of ings) _vExpandeItem(sub.item_id, (sub.peso_g || 0) / 1000 * fracaoLote, tamanho, acc, naoRastreado, visitados);
+  visitados.delete(it.id);
+}
+
+function _vExpandeFicha(ficha, mult, tamanho, acc, naoRastreado) {
   for (const ing of (ficha?.ingredientes || [])) {
-    const ins = items.find(i => i.id === ing.item_id);
-    if (!ins) continue;
-    if (!acc[ins.id]) acc[ins.id] = { id: ins.id, nome: ins.name, unidade: ins.unit, cat: ins.cat, custoUn: ins.cost || 0, grande: 0, pequena: 0 };
-    acc[ins.id][tamanho] += (ing.peso_g || 0) * mult;
+    _vExpandeItem(ing.item_id, (ing.peso_g || 0) * mult, tamanho, acc, naoRastreado, new Set());
   }
 }
 
 // Resolve 1 bebida vendida ao seu Produto/Insumo cadastrado (mesma
-// similaridade de vendasCustoLinha, reaproveitada) e soma a quantidade.
-// Insumo direto (garrafa/lata cadastrada) soma na hora; Produto com ficha
-// própria (ex.: drink montado) expande os ingredientes. Produto sem ficha
-// não tem como virar consumo de insumo — fica de fora (mesma limitação já
-// aceita no cálculo de custo).
-function _vExpandeBebida(nome, qtd, acc) {
+// similaridade de vendasCustoLinha, reaproveitada) e cascateia o consumo.
+// Produto sem ficha própria não tem como virar consumo de insumo — fica
+// de fora (mesma limitação já aceita no cálculo de custo).
+function _vExpandeBebida(nome, qtd, acc, naoRastreado) {
   if (typeof _cwPoolBebidas !== 'function' || typeof _cwRank !== 'function') return;
   const c = _cwRank(nome, _cwPoolBebidas(), 'nome', 1)[0];
   if (!c || c.s < 0.6) return;
   if (c.x.tipo === 'insumo') {
-    const ins = items.find(i => i.id === c.x.id);
-    if (ins && acc[ins.id]) acc[ins.id].pequena += qtd;
+    _vExpandeItem(c.x.id, qtd, 'pequena', acc, naoRastreado, new Set());
   } else {
     const prod = produtos.find(p => p.id === c.x.id);
-    if (prod?.fichaTecnica) _vExpandeFicha(prod.fichaTecnica, qtd, 'pequena', acc);
+    if (prod?.fichaTecnica) _vExpandeFicha(prod.fichaTecnica, qtd, 'pequena', acc, naoRastreado);
   }
 }
 
-// Consumo de insumos das PIZZAS e BEBIDAS vendidas, separado por tamanho
+// Consumo de INSUMOS CRUS (nunca preparados — eles cascateiam pro insumo
+// que consomem) nas PIZZAS e BEBIDAS vendidas, separado por tamanho
 // (bebida entra toda em "pequena" — a distinção não se aplica a ela).
-// Parte de TODOS os itens cadastrados (insumos e preparados) — quem não
-// foi vendido no período aparece com consumo zero, pra dar visão completa
-// do cadastro.
+// Parte de TODOS os insumos cadastrados — quem não foi vendido no
+// período aparece com consumo zero, pra dar visão completa do cadastro.
 function vendasInsumosConsumidos(linhas) {
   const acc = {};
   for (const it of items) {
+    if (it.isProd) continue;
     acc[it.id] = { id: it.id, nome: it.name, unidade: it.unit, cat: it.cat, custoUn: it.cost || 0, grande: 0, pequena: 0 };
   }
+  const naoRastreado = {};
   for (const l of linhas) {
     for (const pz of l.pizzas) {
       const base = produtosPizza.find(p => new RegExp(pz.tamanho, 'i').test(p.nome));
-      if (base) _vExpandeFicha(base.fichaTecnica, 1, pz.tamanho, acc);
+      if (base) _vExpandeFicha(base.fichaTecnica, 1, pz.tamanho, acc, naoRastreado);
       for (const [k, meias] of Object.entries(pz.meias)) {
         const opc = vendasOpcaoDeSabor(k);
-        if (opc) _vExpandeFicha(opc.fichaTecnica, meias, pz.tamanho, acc);
+        if (opc) _vExpandeFicha(opc.fichaTecnica, meias, pz.tamanho, acc, naoRastreado);
       }
     }
-    for (const b of l.bebidas) _vExpandeBebida(b.nome, b.qtd || 1, acc);
+    for (const b of l.bebidas) _vExpandeBebida(b.nome, b.qtd || 1, acc, naoRastreado);
   }
   const arr = Object.values(acc).map(x => {
     const total = x.grande + x.pequena;
@@ -513,7 +544,7 @@ function vendasInsumosConsumidos(linhas) {
   const custoTotal = arr.reduce((s, x) => s + x.custo, 0);
   arr.forEach(x => x.pct = custoTotal > 0 ? x.custo / custoTotal * 100 : 0);
   arr.sort((a, b) => b.custo - a.custo);
-  return { insumos: arr, custoTotal };
+  return { insumos: arr, custoTotal, naoRastreado: Object.values(naoRastreado) };
 }
 
 // ── Curva ABC de sabores (aba Produtos) ────────────────────────
