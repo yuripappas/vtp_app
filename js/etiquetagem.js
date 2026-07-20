@@ -259,10 +259,34 @@ async function _etqRenderTab() {
       mudou = true;
     }
   });
+  if (_etqBackfillLotePosicao()) mudou = true;
   if (mudou) _saveEtiquetas();
 
   if (_etqTab === 'validades') _etqRenderValidades(el);
   else _etqRenderProducao(el);
+}
+
+// Etiquetas impressas antes do campo lote_posicao existir não têm sua
+// posição real gravada. Como todas as etiquetas do mesmo lote são criadas
+// com o mesmo created_at (mesmo "now" do loop de impressão) e na mesma
+// ordem em que entram no array, dá pra reconstruir a posição de verdade
+// agrupando por item+método+created_at exatos. Roda uma vez e persiste —
+// depois disso os registros já ficam corrigidos permanentemente.
+function _etqBackfillLotePosicao() {
+  const grupos = {};
+  let mudou = false;
+  _etiquetas.forEach(e => {
+    if (e.lote_posicao) return; // já tem posição real, não mexe
+    const key = `${e.item_id}|${e.metodo_id}|${e.created_at}`;
+    (grupos[key] = grupos[key] || []).push(e);
+  });
+  Object.values(grupos).forEach(grupo => {
+    grupo.forEach((e, idx) => {
+      e.lote_posicao = idx + 1;
+      mudou = true;
+    });
+  });
+  return mudou;
 }
 
 // ═══════════════════════════════════════════════════════════════
