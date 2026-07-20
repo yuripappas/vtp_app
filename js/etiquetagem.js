@@ -2058,7 +2058,11 @@ function _etqStatusValidade(dtIso) {
     return { label: 'Hoje', cor: '#D97706', bg: '#FEF3C7' };
   }
   if (_sameDay(val, amanha)) return { label: 'Amanhã', cor: 'var(--success-fg,#059669)', bg: 'var(--success-bg,#D1FAE5)' };
-  return { label: _etqFmtDate(val), cor: 'var(--muted)', bg: 'var(--surface2)' };
+  // --surface2 é quase idêntico ao fundo da página (--bg) — usado como
+  // "preenchimento sutil" em outros lugares, mas aqui fazia o card sumir
+  // visualmente. --surface é o branco de verdade, usado por cards no resto
+  // do app.
+  return { label: _etqFmtDate(val), cor: 'var(--muted)', bg: 'var(--surface)' };
 }
 
 function _sameDay(a, b) {
