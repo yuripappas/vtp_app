@@ -548,8 +548,8 @@ async function renderVendasProdutos() {
   // Contagem por classe
   const nCl = { A: 0, B: 0, C: 0 };
   abc.itens.forEach(x => nCl[x.classe]++);
-  const corCl = c => c === 'A' ? 'var(--green)' : c === 'B' ? 'var(--orange-dark)' : 'var(--muted)';
-  const bgCl  = c => c === 'A' ? 'var(--green-light)' : c === 'B' ? 'var(--orange-light)' : 'var(--surface2)';
+  const corCl = c => c === 'A' ? 'var(--green)' : c === 'B' ? 'var(--orange-dark)' : 'var(--red)';
+  const bgCl  = c => c === 'A' ? 'var(--green-light)' : c === 'B' ? 'var(--orange-light)' : 'var(--red-light)';
 
   const kpi = (lbl, v, sub, bg, fg) => `<div style="background:${bg};border-radius:var(--r12,10px);padding:16px 18px">
     <div style="font-size:.72rem;font-weight:700;color:${fg};text-transform:uppercase;letter-spacing:.5px;opacity:.85">${lbl}</div>
