@@ -496,13 +496,15 @@ function _inRenderTabela() {
   if (!lista.length) { wrap.innerHTML = `<div class="ft-empty-list">${_inDados.insumos.length ? 'Nenhum insumo com esses filtros' : 'Nenhum insumo cadastrado ainda'}</div>`; return; }
   const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
   wrap.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
-    <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 90px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
-      <div>Insumo</div><div>Categoria</div><div style="text-align:right">Kg/Qtd</div><div style="text-align:right">% do total</div>
+    <div style="display:grid;grid-template-columns:1.4fr .9fr 1fr 100px 110px 80px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
+      <div>Insumo</div><div>Categoria</div><div style="text-align:right">Kg/Qtd</div><div style="text-align:right">Custo Unit.</div><div style="text-align:right">Custo Total</div><div style="text-align:right">% do total</div>
     </div>
-    ${lista.map(x => `<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 90px;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
+    ${lista.map(x => `<div style="display:grid;grid-template-columns:1.4fr .9fr 1fr 100px 110px 80px;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
       <div style="font-weight:600">${x.nome}</div>
       <div style="color:var(--muted)">${x.cat || '—'}</div>
       <div style="text-align:right;font-weight:700">${nf(x.total)} <span style="font-size:.66rem;color:var(--muted)">${x.unidade}</span></div>
+      <div style="text-align:right;color:var(--muted)">R$ ${fmt(x.custoUn)}</div>
+      <div style="text-align:right;font-weight:700">R$ ${fmt(x.custo)}</div>
       <div style="text-align:right;font-weight:700;color:var(--purple)">${fmt(custoSelecao > 0 ? x.custo / custoSelecao * 100 : 0)}%</div>
     </div>`).join('')}
   </div>`;
