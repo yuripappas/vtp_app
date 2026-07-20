@@ -248,6 +248,19 @@ async function _etqRenderTab() {
   _etqInit();
   if (_etqTab !== tabNoInicio) return; // usuário trocou de aba enquanto sincronizava
 
+  // Marca como 'vencida' quem passou da validade sem baixa — feito aqui (não
+  // só dentro de Validades) pra Produção também refletir o status correto,
+  // não importa qual aba o usuário abriu primeiro.
+  const agora = new Date();
+  let mudou = false;
+  _etiquetas.forEach(e => {
+    if (e.status === 'valida' && new Date(e.dt_validade) < agora) {
+      e.status = 'vencida';
+      mudou = true;
+    }
+  });
+  if (mudou) _saveEtiquetas();
+
   if (_etqTab === 'validades') _etqRenderValidades(el);
   else _etqRenderProducao(el);
 }
@@ -871,24 +884,18 @@ function _etqRenderValidades(el) {
   const depAmanha = new Date(hoje.getTime() + 2 * 864e5);
   const ontem   = new Date(hoje.getTime() - 864e5);
 
-  // Atualiza status das vencidas
-  const agora = new Date();
-  _etiquetas.forEach(e => {
-    if (e.status === 'valida' && new Date(e.dt_validade) < agora) {
-      e.status = 'vencida';
-    }
-  });
-  _saveEtiquetas();
-
   if (_etqValidDrill) {
     _etqRenderValidadesDrill(el, _etqValidDrill);
     return;
   }
 
-  const vencOntem   = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), ontem));
-  const vencHoje    = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), hoje));
-  const vencAmanha  = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), amanha));
-  const vencDepAmanha = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), depAmanha));
+  // Só etiquetas ainda pendentes ('valida') — quem já recebeu baixa não é
+  // mais uma pendência, sai dessas listas (mas continua visível no histórico
+  // de Produção, com o status real do que aconteceu com ela).
+  const vencOntem   = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), ontem));
+  const vencHoje    = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), hoje));
+  const vencAmanha  = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), amanha));
+  const vencDepAmanha = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), depAmanha));
 
   el.innerHTML = `
     <div style="padding:20px 24px">
@@ -985,7 +992,7 @@ function _etqValidTimelineHtml({ inicio, fim }) {
   let guard = 0;
   while (cursor <= fimDia && guard < 366) {
     const d = new Date(cursor);
-    const etqs = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), d));
+    const etqs = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), d));
     if (etqs.length > 0) dias.push({ d, etqs });
     cursor.setDate(cursor.getDate() + 1);
     guard++;
@@ -1014,7 +1021,7 @@ function _etqValidTimelineHtml({ inicio, fim }) {
 function _etqRenderValidadesDrill(el, dateIso) {
   const drillDate = new Date(dateIso);
   drillDate.setHours(0,0,0,0);
-  const etqs = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), drillDate));
+  const etqs = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), drillDate));
 
   // O cabeçalho já diz o dia ("Vencem em DD/MM") — repetir "Hoje"/"Amanhã"/a
   // mesma data em cada card é redundante, já que todos compartilham o mesmo
@@ -1067,7 +1074,7 @@ function _etqAbrirDetalheEtq(id) {
   _etqDetalheId = id;
 
   const cfg = _etqConfigEmpresa();
-  const sv  = _etqStatusValidade(e.dt_validade);
+  const sv  = _etqStatusInfo(e);
   const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
   const dtManip  = new Date(e.dt_manipulacao);
   const dtVal    = new Date(e.dt_validade);
@@ -1139,7 +1146,7 @@ function _etqAbrirDetalheEtq(id) {
   ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   assocEl.innerHTML = sameBatch.map((x, idx) => {
-    const xsv = _etqStatusValidade(x.dt_validade);
+    const xsv = _etqStatusInfo(x);
     const isThis = x.id === id;
     return `
       <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r8);
@@ -1454,7 +1461,7 @@ function _etqBaixaPorHash(hash) {
   _etqStopCamera();
   closeModal('etqScannerOverlay');
 
-  const sv  = _etqStatusValidade(e.dt_validade);
+  const sv  = _etqStatusInfo(e);
   const cfg = _etqConfigEmpresa();
 
   document.getElementById('etqBaixaTitle').textContent = e.item_nome;
@@ -1683,7 +1690,7 @@ function _etqRenderProducao(el) {
             </thead>
             <tbody>
               ${etqs.map((e, i) => {
-                const sv = _etqStatusValidade(e.dt_validade);
+                const sv = _etqStatusInfo(e); // disposição (baixa) tem prioridade sobre urgência de validade
                 const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
                 const medidaStr = e.medida ? `${e.medida} ${e.unidade || ''}` : '—';
                 return `
@@ -1968,7 +1975,7 @@ function _etqUpdateBadge() {
   const amanha = new Date(hoje.getTime() + 864e5);
 
   const urgentes = _etiquetas.filter(e =>
-    e.status !== 'excluida' &&
+    e.status === 'valida' &&
     new Date(e.dt_validade) >= hoje &&
     new Date(e.dt_validade) < amanha
   ).length;
@@ -2063,6 +2070,22 @@ function _etqStatusValidade(dtIso) {
   // visualmente. --surface é o branco de verdade, usado por cards no resto
   // do app.
   return { label: _etqFmtDate(val), cor: 'var(--muted)', bg: 'var(--surface)' };
+}
+
+// O que aconteceu com a etiqueta (baixa) importa mais que "quando vence"
+// quando ela já foi resolvida — senão uma etiqueta já Consumida continua
+// mostrando "Vencida"/"Hoje" como se ainda estivesse pendente. Só cai pra
+// urgência de validade (_etqStatusValidade) quando ainda está 'valida'.
+const ETQ_DISPOSICAO = {
+  consumida:       { label: 'Consumida',       cor: 'var(--green)',      bg: 'var(--green-light)' },
+  descartada:      { label: 'Descartada',      cor: 'var(--orange-dark)', bg: 'var(--orange-light)' },
+  nao_encontrada:  { label: 'Não encontrada',  cor: 'var(--red)',        bg: 'var(--danger-bg,#FEE2E2)' },
+  excluida:        { label: 'Excluída',        cor: 'var(--muted)',      bg: 'var(--surface2)' },
+};
+function _etqStatusInfo(etq) {
+  if (ETQ_DISPOSICAO[etq.status]) return ETQ_DISPOSICAO[etq.status];
+  if (etq.status === 'vencida') return { label: 'Vencida', cor: 'var(--red)', bg: 'var(--danger-bg,#FEE2E2)' };
+  return _etqStatusValidade(etq.dt_validade); // status 'valida' — mostra urgência
 }
 
 function _sameDay(a, b) {
