@@ -551,17 +551,18 @@ async function renderVendasProdutos() {
   const corCl = c => c === 'A' ? 'var(--green)' : c === 'B' ? 'var(--orange-dark)' : 'var(--muted)';
   const bgCl  = c => c === 'A' ? 'var(--green-light)' : c === 'B' ? 'var(--orange-light)' : 'var(--surface2)';
 
-  const kpi = (lbl, v, sub) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
-    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
-    <div style="font-size:1.4rem;font-weight:800">${v}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
+  const kpi = (lbl, v, sub, bg, fg) => `<div style="background:${bg};border-radius:var(--r12,10px);padding:16px 18px">
+    <div style="font-size:.72rem;font-weight:700;color:${fg};text-transform:uppercase;letter-spacing:.5px;opacity:.85">${lbl}</div>
+    <div style="font-size:2rem;font-weight:900;color:${fg};line-height:1.15;margin-top:4px">${v}</div>
+    ${sub?`<div style="font-size:.76rem;color:${fg};opacity:.8;margin-top:2px">${sub}</div>`:''}</div>`;
 
   el.innerHTML = _prFiltros() + `
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Curva ABC de sabores em <b>${range.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · <span style="font-style:italic">receita de combos rateada por porção</span></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
-      ${kpi('Sabores', abc.itens.length)}
-      ${kpi('Classe A', nCl.A, '80% do volume')}
-      ${kpi('Classe B', nCl.B, 'próximos 15%')}
-      ${kpi('Classe C', nCl.C, 'cauda — 5%')}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,220px));gap:14px;margin-bottom:22px">
+      ${kpi('Sabores', abc.itens.length, 'no período', 'var(--purple-xlight)', 'var(--purple)')}
+      ${kpi('Classe A', nCl.A, '80% do volume', bgCl('A'), corCl('A'))}
+      ${kpi('Classe B', nCl.B, 'próximos 15%', bgCl('B'), corCl('B'))}
+      ${kpi('Classe C', nCl.C, 'cauda — 5%', bgCl('C'), corCl('C'))}
     </div>
 
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
