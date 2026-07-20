@@ -466,10 +466,30 @@ function _vExpandeFicha(ficha, mult, tamanho, acc) {
   }
 }
 
-// Consumo de insumos das PIZZAS vendidas (base + coberturas), separado por
-// tamanho. Parte de TODOS os itens cadastrados (insumos e preparados) —
-// quem não foi vendido no período aparece com consumo zero, pra dar visão
-// completa do cadastro, não só do que teve saída.
+// Resolve 1 bebida vendida ao seu Produto/Insumo cadastrado (mesma
+// similaridade de vendasCustoLinha, reaproveitada) e soma a quantidade.
+// Insumo direto (garrafa/lata cadastrada) soma na hora; Produto com ficha
+// própria (ex.: drink montado) expande os ingredientes. Produto sem ficha
+// não tem como virar consumo de insumo — fica de fora (mesma limitação já
+// aceita no cálculo de custo).
+function _vExpandeBebida(nome, qtd, acc) {
+  if (typeof _cwPoolBebidas !== 'function' || typeof _cwRank !== 'function') return;
+  const c = _cwRank(nome, _cwPoolBebidas(), 'nome', 1)[0];
+  if (!c || c.s < 0.6) return;
+  if (c.x.tipo === 'insumo') {
+    const ins = items.find(i => i.id === c.x.id);
+    if (ins && acc[ins.id]) acc[ins.id].pequena += qtd;
+  } else {
+    const prod = produtos.find(p => p.id === c.x.id);
+    if (prod?.fichaTecnica) _vExpandeFicha(prod.fichaTecnica, qtd, 'pequena', acc);
+  }
+}
+
+// Consumo de insumos das PIZZAS e BEBIDAS vendidas, separado por tamanho
+// (bebida entra toda em "pequena" — a distinção não se aplica a ela).
+// Parte de TODOS os itens cadastrados (insumos e preparados) — quem não
+// foi vendido no período aparece com consumo zero, pra dar visão completa
+// do cadastro.
 function vendasInsumosConsumidos(linhas) {
   const acc = {};
   for (const it of items) {
@@ -484,6 +504,7 @@ function vendasInsumosConsumidos(linhas) {
         if (opc) _vExpandeFicha(opc.fichaTecnica, meias, pz.tamanho, acc);
       }
     }
+    for (const b of l.bebidas) _vExpandeBebida(b.nome, b.qtd || 1, acc);
   }
   const arr = Object.values(acc).map(x => {
     const total = x.grande + x.pequena;
