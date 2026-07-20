@@ -467,9 +467,14 @@ function _vExpandeFicha(ficha, mult, tamanho, acc) {
 }
 
 // Consumo de insumos das PIZZAS vendidas (base + coberturas), separado por
-// tamanho. Só entram insumos que aparecem em alguma ficha técnica.
+// tamanho. Parte de TODOS os itens cadastrados (insumos e preparados) —
+// quem não foi vendido no período aparece com consumo zero, pra dar visão
+// completa do cadastro, não só do que teve saída.
 function vendasInsumosConsumidos(linhas) {
   const acc = {};
+  for (const it of items) {
+    acc[it.id] = { id: it.id, nome: it.name, unidade: it.unit, cat: it.cat, custoUn: it.cost || 0, grande: 0, pequena: 0 };
+  }
   for (const l of linhas) {
     for (const pz of l.pizzas) {
       const base = produtosPizza.find(p => new RegExp(pz.tamanho, 'i').test(p.nome));

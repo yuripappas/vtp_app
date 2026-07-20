@@ -294,16 +294,19 @@ function _vdDrillCategoria(dados) {
 
 
 // ══════════════════════════════════════════════════════════════
-// Filho INSUMOS — quanto de cada insumo saiu por período
-// Expande a ficha técnica de cada pizza vendida. Só entram insumos
-// que estão em alguma ficha. % é por CUSTO (unidades diferentes não
-// somam em quantidade).
+// Filho CONSUMO DE INSUMOS — quanto de cada item cadastrado (insumo ou
+// preparado) saiu por período, expandindo a ficha técnica de cada pizza
+// vendida. Lista TODO o cadastro — quem não vendeu no período aparece
+// com consumo zero. % é por CUSTO (unidades diferentes não somam em
+// quantidade). Filtro de categoria aceita múltipla seleção.
 // ══════════════════════════════════════════════════════════════
 
-let _inPreset = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
-let _inDe     = '';     // yyyy-mm-dd (custom)
-let _inAte    = '';
-let _inBusca  = '';
+let _inPreset   = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
+let _inDe       = '';     // yyyy-mm-dd (custom)
+let _inAte      = '';
+let _inBusca    = '';
+let _inCats     = [];     // categorias selecionadas — [] = todas
+let _inCatAberto = false;
 
 const _IN_PRESETS = [['hoje','Hoje'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['90','90 dias'],['custom','Personalizado']];
 
@@ -324,6 +327,44 @@ function _inRange() {
   return { inicioISO: new Date(now - d * 864e5).toISOString(), fimISO, label: `${d} dias`, dias: d };
 }
 
+function _inToggleCatPopover() {
+  _inCatAberto = !_inCatAberto;
+  renderVendasInsumos();
+}
+
+function _inToggleCat(cat) {
+  const i = _inCats.indexOf(cat);
+  if (i >= 0) _inCats.splice(i, 1); else _inCats.push(cat);
+  renderVendasInsumos();
+}
+
+function _inLimparCats() {
+  _inCats = [];
+  renderVendasInsumos();
+}
+
+function _inFiltroCategoria() {
+  const cats = (typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []);
+  const label = _inCats.length === 0 ? 'Todas categorias' : _inCats.length === 1 ? _inCats[0] : `${_inCats.length} categorias`;
+  return `<div style="position:relative">
+    <button onclick="_inToggleCatPopover()" style="font-size:var(--text-xs);padding:6px 12px;border-radius:var(--r8);border:1.5px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px;font-weight:${_inCats.length?'700':'500'};background:${_inCats.length?'var(--purple-xlight)':'var(--bg)'};color:${_inCats.length?'var(--purple)':'var(--text2)'}">
+      ${lc('filter',11,'currentColor')} ${label}
+    </button>
+    ${_inCatAberto ? `
+      <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:200px;max-height:280px;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+          <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Categorias</span>
+          <button onclick="_inLimparCats()" style="font-size:.7rem;color:var(--purple);background:none;border:none;cursor:pointer;font-weight:600;padding:0">Limpar</button>
+        </div>
+        ${cats.map(c => `
+          <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;padding:4px 2px;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" ${_inCats.includes(c)?'checked':''} onchange="_inToggleCat('${c.replace(/'/g,"\\'")}')" style="accent-color:var(--purple)">
+            ${c}
+          </label>`).join('') || '<div style="font-size:.78rem;color:var(--muted)">Nenhuma categoria cadastrada</div>'}
+      </div>` : ''}
+  </div>`;
+}
+
 function _inFiltros() {
   return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
     ${_IN_PRESETS.map(([id,lbl]) => `<button class="btn btn-${id===_inPreset?'primary':'outline'} btn-xs" onclick="_inPreset='${id}';renderVendasInsumos()">${lbl}</button>`).join('')}
@@ -331,6 +372,7 @@ function _inFiltros() {
       <input type="date" class="inp" value="${_inDe}" onchange="_inDe=this.value;renderVendasInsumos()" style="font-size:.78rem;padding:5px 8px">
       <span style="color:var(--muted);font-size:.8rem">até</span>
       <input type="date" class="inp" value="${_inAte}" onchange="_inAte=this.value;renderVendasInsumos()" style="font-size:.78rem;padding:5px 8px">` : ''}
+    ${_inFiltroCategoria()}
     <div style="position:relative;margin-left:auto">
       <input class="inp" id="inBusca" placeholder="Buscar insumo..." value="${_inBusca.replace(/"/g,'&quot;')}" oninput="_inBusca=this.value;_inRenderTabela()" style="width:220px;font-size:.8rem;padding:6px 10px 6px 30px">
       <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none">${lc('search',14,'currentColor')}</span>
@@ -366,10 +408,10 @@ async function renderVendasInsumos() {
     <div style="font-size:1.5rem;font-weight:800">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
 
   el.innerHTML = _inFiltros() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Insumos consumidos nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} — expandido da ficha técnica.</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos e preparados cadastrados, com o consumo nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''}.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px">
-      ${kpi('Insumos distintos', insumos.length)}
-      ${kpi('Custo total', 'R$ ' + fmt(custoTotal), 'valor dos insumos no período')}
+      ${kpi('Itens cadastrados', insumos.length)}
+      ${kpi('Custo total', 'R$ ' + fmt(custoTotal), 'valor consumido no período')}
     </div>
     <div id="inTabelaWrap"></div>`;
 
@@ -380,8 +422,8 @@ function _inRenderTabela() {
   const wrap = document.getElementById('inTabelaWrap');
   if (!wrap || !_inDados) return;
   const q = _cwNorm(_inBusca);
-  const lista = _inDados.insumos.filter(x => !q || _cwNorm(x.nome).includes(q));
-  if (!lista.length) { wrap.innerHTML = `<div class="ft-empty-list">${_inDados.insumos.length ? 'Nenhum insumo com esse nome' : 'Nenhum insumo — cadastre fichas técnicas com insumos primeiro'}</div>`; return; }
+  const lista = _inDados.insumos.filter(x => (!q || _cwNorm(x.nome).includes(q)) && (!_inCats.length || _inCats.includes(x.cat)));
+  if (!lista.length) { wrap.innerHTML = `<div class="ft-empty-list">${_inDados.insumos.length ? 'Nenhum insumo com esses filtros' : 'Nenhum insumo cadastrado ainda'}</div>`; return; }
   const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
   wrap.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
     <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 90px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
