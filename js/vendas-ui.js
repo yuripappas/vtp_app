@@ -833,108 +833,340 @@ function _cnRenderChart(canais) {
 // canal (comissão descontada) e simula "e se" com preço manual.
 // ══════════════════════════════════════════════════════════════
 
-let _pcTamanho = 'grande';
-let _pcTipo    = 'inteira';   // 'inteira' | 'meio'
-let _pcOpc1    = null;
-let _pcOpc2    = null;
-let _pcMeta    = 30;          // % meta de CMV
-let _pcCanal   = 'ifood';
-let _pcPreco   = null;        // preço manual (null = usa o ideal)
+// Custo sempre vem do cadastro (ficha técnica); o preço de cada canal é
+// derivado da meta de CMV que o Yuri aponta — não é mais simulação avulsa,
+// os produtos ficam salvos (kv_store) pra acompanhar/ajustar mês a mês.
+// Confirmado com o Yuri (2026-07-20): "o cadastro de produto vai dar o
+// custo, a gente vai entender a precificação correta apontando o CMV que
+// queremos" — e o preço de cada plataforma é o preço do site "inflado"
+// pelo Total% dela, pra a comissão ser paga pelo cliente da plataforma e
+// não corroer a margem (preço plataforma = preço site ÷ (1 − total%)).
 
-function _pcCusto() {
-  const base = produtosPizza.find(p => new RegExp(_pcTamanho, 'i').test(p.nome));
-  let c = base ? _calcCustoFicha(base.fichaTecnica) : 0;
-  const o1 = opcoes.find(o => o.id === _pcOpc1);
-  const o2 = opcoes.find(o => o.id === _pcOpc2);
-  if (_pcTipo === 'inteira') {
-    if (o1) c += _calcCustoFicha(o1.fichaTecnica) * (_pcTamanho === 'grande' ? 2 : 1);
-  } else {
-    if (o1) c += _calcCustoFicha(o1.fichaTecnica);
-    if (o2) c += _calcCustoFicha(o2.fichaTecnica);
+function _pcConfig() {
+  return db._get('vtp_precificacao_config', {
+    metaCmvSite: 30,
+    plataformas: [
+      { id: 'ifood',  nome: 'iFood',  entregaPropria: 12, retirado: 9, pagtoOnline: 3.5, promocoes: 4, antecipacao: 3.8 },
+      { id: '99food', nome: '99Food', entregaPropria: 10, retirado: 7, pagtoOnline: 3,   promocoes: 4, antecipacao: 3 },
+    ],
+  });
+}
+function _pcSalvarConfig(cfg) { db._set('vtp_precificacao_config', cfg); }
+function _pcTotalPlataforma(p) { return (p.entregaPropria || 0) + (p.retirado || 0) + (p.pagtoOnline || 0) + (p.promocoes || 0) + (p.antecipacao || 0); }
+
+function _pcProdutosSalvos() { return db._get('vtp_precificacao_produtos', []); }
+function _pcSalvarProdutos(arr) { db._set('vtp_precificacao_produtos', arr); }
+
+// A Opção já é cadastrada com o prefixo "1/2 " embutido no nome (reflete o
+// texto bruto do CW, ex.: "1/2 Calabresa") — remove pra exibir uma pizza
+// inteira sem "meia" nenhuma; o meio a meio usa o nome como já vem, sem
+// duplicar o prefixo.
+function _pcSaborNomeBase(o) { return o ? o.nome.replace(/^1\/2\s+/i, '') : '(sabor removido)'; }
+
+function _pcNomeProduto(p) {
+  if (p.tipo === 'produto') {
+    const item = produtos.find(x => x.id === p.produtoId) || items.find(x => x.id === p.produtoId);
+    return item ? (item.name || item.nome) : '(produto removido)';
   }
-  return c;
+  const tam = p.tamanho === 'grande' ? 'Grande' : 'Pequena';
+  const o1 = opcoes.find(o => o.id === p.sabor1Id);
+  const o2 = p.sabor2Id ? opcoes.find(o => o.id === p.sabor2Id) : null;
+  if (o2) return `Pizza ${tam} — 1/2 ${_pcSaborNomeBase(o1)} + 1/2 ${_pcSaborNomeBase(o2)}`;
+  return `Pizza ${tam} — ${_pcSaborNomeBase(o1)}`;
 }
 
-function _pcSaborSelect(id, sel, ph) {
-  return `<select class="inp" id="${id}" onchange="${id==='pcOpc1'?'_pcOpc1':'_pcOpc2'}=parseInt(this.value)||null;renderVendasPrecos()" style="width:100%;font-size:.86rem;padding:8px 10px">
-    <option value="">${ph}</option>
-    ${opcoes.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(o => `<option value="${o.id}"${o.id===sel?' selected':''}>${o.nome}${o.fichaTecnica?.ingredientes?.length?'':' (sem ficha)'}</option>`).join('')}
-  </select>`;
+// Meio a meio = 1 unidade de cada sabor (grande soma 2 no total); sabor
+// único (sem sabor 2) vale _vUnidadesInteira(tamanho) — 2 se grande, 1 se
+// pequena — mesma regra central usada na interpretação de vendas.
+function _pcCustoProduto(p) {
+  if (p.tipo === 'produto') {
+    const item = produtos.find(x => x.id === p.produtoId) || items.find(x => x.id === p.produtoId);
+    return item?.fichaTecnica ? _calcCustoFicha(item.fichaTecnica) : (item?.cost || 0);
+  }
+  const base = vendasCustoBase(p.tamanho);
+  const o1 = opcoes.find(o => o.id === p.sabor1Id);
+  const o2 = p.sabor2Id ? opcoes.find(o => o.id === p.sabor2Id) : null;
+  const c1 = o1 ? _calcCustoFicha(o1.fichaTecnica) : 0;
+  if (o2) return base + c1 + _calcCustoFicha(o2.fichaTecnica);
+  return base + c1 * _vUnidadesInteira(p.tamanho);
 }
+
+function _pcPrecos(p, cfg) {
+  const custo = _pcCustoProduto(p);
+  const precoSiteCalc = cfg.metaCmvSite > 0 ? custo / (cfg.metaCmvSite / 100) : 0;
+  const siteManual = p.precoManual?.site;
+  const precoSite = siteManual != null ? siteManual : precoSiteCalc;
+  const out = { custo, site: { preco: precoSite, manual: siteManual != null, cmv: precoSite > 0 ? custo / precoSite * 100 : 0 } };
+  for (const plat of cfg.plataformas) {
+    const total = _pcTotalPlataforma(plat);
+    const calc = total < 100 ? precoSite / (1 - total / 100) : 0;
+    const manual = p.precoManual?.[plat.id];
+    const preco = manual != null ? manual : calc;
+    out[plat.id] = { preco, manual: manual != null, cmv: preco > 0 ? custo / preco * 100 : 0, total };
+  }
+  return out;
+}
+
+function _pcSetPrecoManual(id, canalId, valor) {
+  const arr = _pcProdutosSalvos();
+  const p = arr.find(x => x.id === id); if (!p) return;
+  p.precoManual = p.precoManual || {};
+  const v = parseFloat((valor + '').replace(',', '.'));
+  if (!valor || isNaN(v)) delete p.precoManual[canalId]; else p.precoManual[canalId] = v;
+  _pcSalvarProdutos(arr);
+  renderVendasPrecos();
+}
+
+function _pcRemoverProduto(id) {
+  if (!confirm('Remover este produto da tabela de precificação?')) return;
+  _pcSalvarProdutos(_pcProdutosSalvos().filter(x => x.id !== id));
+  renderVendasPrecos();
+}
+
+// ── Config de plataformas (cabeçalho) ──────────────────────────
+
+function _pcSetMetaCmvSite(v) {
+  const cfg = _pcConfig();
+  cfg.metaCmvSite = parseFloat((v + '').replace(',', '.')) || 30;
+  _pcSalvarConfig(cfg);
+  renderVendasPrecos();
+}
+function _pcSetCampoPlataforma(id, campo, v) {
+  const cfg = _pcConfig();
+  const p = cfg.plataformas.find(x => x.id === id); if (!p) return;
+  p[campo] = parseFloat((v + '').replace(',', '.')) || 0;
+  _pcSalvarConfig(cfg);
+  renderVendasPrecos();
+}
+function _pcRemoverPlataforma(id) {
+  if (!confirm('Remover esta plataforma? Os produtos deixam de mostrar o preço dela.')) return;
+  const cfg = _pcConfig();
+  cfg.plataformas = cfg.plataformas.filter(x => x.id !== id);
+  _pcSalvarConfig(cfg);
+  renderVendasPrecos();
+}
+function _pcAbrirNovaPlataforma() {
+  const ov = document.createElement('div'); ov.className = 'overlay open';
+  ov.innerHTML = `<div class="modal" style="width:320px;padding:22px" onclick="event.stopPropagation()">
+    <div style="font-size:var(--text-md);font-weight:700;margin-bottom:16px">Nova plataforma</div>
+    <div class="field"><label class="slbl">Nome *</label><input id="npNome" class="inp" placeholder="Ex.: Rappi"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-ghost" style="flex:1" onclick="this.closest('.overlay').remove()">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="_pcSalvarNovaPlataforma(this)">Adicionar</button>
+    </div>
+  </div>`;
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+function _pcSalvarNovaPlataforma(btn) {
+  const nome = document.getElementById('npNome')?.value.trim();
+  if (!nome) { toast('Nome não pode ser vazio', 'err'); return; }
+  const cfg = _pcConfig();
+  cfg.plataformas.push({ id: 'plat_' + Date.now(), nome, entregaPropria: 0, retirado: 0, pagtoOnline: 0, promocoes: 0, antecipacao: 0 });
+  _pcSalvarConfig(cfg);
+  btn.closest('.overlay').remove();
+  renderVendasPrecos();
+}
+
+// ── Modal: adicionar produto à tabela ───────────────────────────
+
+let _pcNovoTipo      = 'pizza'; // 'pizza' | 'produto'
+let _pcNovoTamanho   = 'grande';
+let _pcNovoSabor1    = null;
+let _pcNovoSabor2    = null;
+let _pcNovoProdutoId = null;
+
+function _pcSaborOptions(sel) {
+  return `<option value="">Escolha o sabor...</option>` +
+    opcoes.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(o => `<option value="${o.id}"${o.id === sel ? ' selected' : ''}>${o.nome}${o.fichaTecnica?.ingredientes?.length ? '' : ' (sem ficha)'}</option>`).join('');
+}
+function _pcProdutoOptions(sel) {
+  return `<option value="">Escolha o produto...</option>` +
+    produtos.slice().sort((a, b) => (a.name || a.nome).localeCompare(b.name || b.nome)).map(x => `<option value="${x.id}"${x.id === sel ? ' selected' : ''}>${x.name || x.nome}</option>`).join('');
+}
+
+function _pcAbrirModalProduto() {
+  _pcNovoTipo = 'pizza'; _pcNovoTamanho = 'grande'; _pcNovoSabor1 = null; _pcNovoSabor2 = null; _pcNovoProdutoId = null;
+  const ov = document.createElement('div'); ov.id = 'pcModalProduto'; ov.className = 'overlay open';
+  ov.innerHTML = _pcModalProdutoHtml();
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+function _pcAtualizarModalProduto() {
+  const ov = document.getElementById('pcModalProduto'); if (!ov) return;
+  ov.innerHTML = _pcModalProdutoHtml();
+}
+function _pcModalSetTipo(t) { _pcNovoTipo = t; _pcAtualizarModalProduto(); }
+function _pcModalSetTamanho(t) { _pcNovoTamanho = t; if (t === 'pequena') _pcNovoSabor2 = null; _pcAtualizarModalProduto(); }
+function _pcModalSetSabor1(v) { _pcNovoSabor1 = parseInt(v) || null; _pcAtualizarModalProduto(); }
+function _pcModalSetSabor2(v) { _pcNovoSabor2 = parseInt(v) || null; _pcAtualizarModalProduto(); }
+function _pcModalSetProduto(v) { _pcNovoProdutoId = parseInt(v) || null; _pcAtualizarModalProduto(); }
+
+function _pcModalProdutoHtml() {
+  const seg = (opts, val, fn) => `<div style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
+    ${opts.map(([id, lbl]) => `<button onclick="${fn}('${id}')" style="padding:7px 16px;font-size:.82rem;font-weight:600;border:none;cursor:pointer;background:${id === val ? 'var(--purple)' : 'transparent'};color:${id === val ? '#fff' : 'var(--muted)'}">${lbl}</button>`).join('')}
+  </div>`;
+
+  let preview = '';
+  if (_pcNovoTipo === 'pizza' && _pcNovoSabor1) {
+    const p = { tipo: 'pizza', tamanho: _pcNovoTamanho, sabor1Id: _pcNovoSabor1, sabor2Id: _pcNovoSabor2 };
+    const chips = [`Base Pizza ${_pcNovoTamanho === 'grande' ? 'Grande' : 'Pequena'}`];
+    const o1 = opcoes.find(o => o.id === _pcNovoSabor1);
+    if (o1) chips.push(_pcNovoSabor2 ? '1/2 ' + _pcSaborNomeBase(o1) : _pcSaborNomeBase(o1));
+    if (_pcNovoSabor2) { const o2 = opcoes.find(o => o.id === _pcNovoSabor2); if (o2) chips.push('1/2 ' + _pcSaborNomeBase(o2)); }
+    preview = `<div style="background:var(--surface2);border-radius:var(--r8);padding:10px 12px;margin-bottom:16px">
+      ${chips.map(c => `<span class="badge" style="background:var(--purple-xlight,#EFE7FE);color:var(--purple);margin:2px 4px 2px 0">${c}</span>`).join('')}
+      <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:.86rem"><span style="color:var(--muted)">Nome gerado</span><b>${_pcNomeProduto(p)}</b></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:.86rem"><span style="color:var(--muted)">Custo pela ficha</span><b>R$ ${fmt(_pcCustoProduto(p))}</b></div>
+    </div>`;
+  } else if (_pcNovoTipo === 'produto' && _pcNovoProdutoId) {
+    const p = { tipo: 'produto', produtoId: _pcNovoProdutoId };
+    preview = `<div style="background:var(--surface2);border-radius:var(--r8);padding:10px 12px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:.86rem"><span style="color:var(--muted)">Custo pela ficha</span><b>R$ ${fmt(_pcCustoProduto(p))}</b></div>
+    </div>`;
+  }
+
+  const podeSalvar = (_pcNovoTipo === 'pizza' && _pcNovoSabor1) || (_pcNovoTipo === 'produto' && _pcNovoProdutoId);
+
+  return `<div class="modal" style="width:460px;max-width:92vw;padding:22px" onclick="event.stopPropagation()">
+    <div style="font-size:var(--text-md);font-weight:700;margin-bottom:16px">Adicionar produto</div>
+
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Tipo</div>
+    <div style="margin-bottom:16px">${seg([['pizza', 'Pizza (montar)'], ['produto', 'Produto do cadastro']], _pcNovoTipo, '_pcModalSetTipo')}</div>
+
+    ${_pcNovoTipo === 'pizza' ? `
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Tamanho</div>
+      <div style="margin-bottom:16px">${seg([['grande', 'Grande'], ['pequena', 'Pequena']], _pcNovoTamanho, '_pcModalSetTamanho')}</div>
+
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Sabor 1</div>
+      <select class="inp" style="width:100%;margin-bottom:10px" onchange="_pcModalSetSabor1(this.value)">${_pcSaborOptions(_pcNovoSabor1)}</select>
+
+      ${_pcNovoTamanho === 'grande' ? `
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Sabor 2 <span style="font-weight:400">(meio a meio — opcional, pode repetir o sabor 1)</span></div>
+        <select class="inp" style="width:100%;margin-bottom:14px" onchange="_pcModalSetSabor2(this.value)"><option value="">Nenhum — pizza inteira</option>${_pcSaborOptions(_pcNovoSabor2)}</select>
+      ` : ''}
+    ` : `
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Produto</div>
+      <select class="inp" style="width:100%;margin-bottom:14px" onchange="_pcModalSetProduto(this.value)">${_pcProdutoOptions(_pcNovoProdutoId)}</select>
+    `}
+
+    ${preview}
+
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="this.closest('.overlay').remove()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="_pcSalvarNovoProduto(this)"${podeSalvar ? '' : ' disabled'}>Salvar produto</button>
+    </div>
+  </div>`;
+}
+
+function _pcSalvarNovoProduto(btn) {
+  const p = _pcNovoTipo === 'pizza'
+    ? { id: Date.now(), tipo: 'pizza', tamanho: _pcNovoTamanho, sabor1Id: _pcNovoSabor1, sabor2Id: _pcNovoSabor2, precoManual: {} }
+    : { id: Date.now(), tipo: 'produto', produtoId: _pcNovoProdutoId, precoManual: {} };
+  const arr = _pcProdutosSalvos();
+  arr.push(p);
+  _pcSalvarProdutos(arr);
+  btn.closest('.overlay').remove();
+  renderVendasPrecos();
+  toast('Produto adicionado', 'ok');
+}
+
+// ── Render ───────────────────────────────────────────────────────
 
 function renderVendasPrecos() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
 
-  const custo = _pcCusto();
-  const precoIdeal = _pcMeta > 0 ? custo / (_pcMeta / 100) : 0;
-  const preco = _pcPreco != null ? _pcPreco : precoIdeal;
-  const com = _cnComissoes()[_pcCanal] || 0;
-  const cmvPct = preco > 0 ? custo / preco * 100 : 0;
-  const comissao = preco * com / 100;
-  const margem = preco - custo - comissao;
-  const margemPct = preco > 0 ? margem / preco * 100 : 0;
+  const cfg = _pcConfig();
+  const produtosSalvos = _pcProdutosSalvos();
 
-  const seg = (opts, val, fn) => `<div style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
-    ${opts.map(([id,lbl]) => `<button onclick="${fn}('${id}')" style="padding:7px 16px;font-size:.82rem;font-weight:600;border:none;cursor:pointer;background:${id===val?'var(--purple)':'transparent'};color:${id===val?'#fff':'var(--muted)'}">${lbl}</button>`).join('')}
-  </div>`;
+  const platCard = (p) => {
+    const total = _pcTotalPlataforma(p);
+    const campo = (lbl, chave) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;font-size:.76rem">
+      <label style="color:var(--muted);flex:1">${lbl}</label>
+      <input type="number" class="inp" value="${p[chave]}" step="0.5" onchange="_pcSetCampoPlataforma('${p.id}','${chave}',this.value)" style="width:64px;text-align:right;font-size:.8rem;padding:4px 6px">
+      <span style="font-size:.78rem;color:var(--muted)">%</span>
+    </div>`;
+    return `<div class="card" style="padding:14px 16px;flex:1;min-width:230px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700;font-size:.88rem">${p.nome}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="font-size:1.2rem;font-weight:800;color:var(--purple)">${fmt(total)}%</div>
+          <button class="btn btn-ghost btn-xs" onclick="_pcRemoverPlataforma('${p.id}')" title="Remover plataforma">${lc('trash-2', 12, 'currentColor')}</button>
+        </div>
+      </div>
+      ${campo('Comissão — entrega própria', 'entregaPropria')}
+      ${campo('Comissão — retirado', 'retirado')}
+      ${campo('Comissão — pagto. online', 'pagtoOnline')}
+      ${campo('Taxa de promoções', 'promocoes')}
+      ${campo('Taxa de antecipação', 'antecipacao')}
+    </div>`;
+  };
 
-  const box = (lbl, val, cor, sub) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
-    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
-    <div style="font-size:1.5rem;font-weight:800;${cor?'color:'+cor:''}">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
+  const linhaProduto = (p) => {
+    const precos = _pcPrecos(p, cfg);
+    const corCmv = pc => pc <= 0 ? 'var(--muted)' : pc > cfg.metaCmvSite ? 'var(--red)' : 'var(--green)';
+    const celulaPreco = (canalId, dado) => `<td style="text-align:right;padding:8px 12px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+        <span style="font-size:.7rem;color:var(--muted)">R$</span>
+        <input type="number" class="inp" value="${dado.preco.toFixed(2)}" step="0.5"
+          onchange="_pcSetPrecoManual(${p.id},'${canalId}',this.value)"
+          style="width:78px;text-align:right;font-size:.84rem;font-weight:700;padding:4px 6px${dado.manual ? ';border-color:var(--orange-dark)' : ''}">
+        ${dado.manual ? `<button class="btn btn-ghost btn-xs" onclick="_pcSetPrecoManual(${p.id},'${canalId}','')" title="Voltar ao calculado">${lc('refresh-cw', 11, 'currentColor')}</button>` : ''}
+      </div>
+      <div style="font-size:.66rem;color:${corCmv(dado.cmv)};text-align:right;margin-top:2px">CMV ${fmt(dado.cmv)}%${dado.manual ? ' · ajustado' : ''}</div>
+    </td>`;
 
-  const semFicha = custo === 0;
+    return `<tr>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--border)"><b>${_pcNomeProduto(p)}</b></td>
+      <td style="text-align:right;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">R$ ${fmt(precos.custo)}</td>
+      ${celulaPreco('site', precos.site)}
+      ${cfg.plataformas.map(plat => celulaPreco(plat.id, precos[plat.id])).join('')}
+      <td style="text-align:center;padding:10px 12px;border-bottom:1px solid var(--border)"><button class="btn btn-ghost btn-xs" onclick="_pcRemoverProduto(${p.id})" title="Remover">${lc('trash-2', 13, 'currentColor')}</button></td>
+    </tr>`;
+  };
 
   el.innerHTML = `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:18px">Simule o preço ideal de um produto pela ficha técnica e veja a margem líquida por canal.</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:20px">Preço de cada produto pela ficha técnica, comparado nos canais de venda. Acompanhe mês a mês se algum precisa de ajuste.</div>
 
-      <div class="card" style="padding:18px">
-        <div style="font-size:.74rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:14px">1. Monte o produto</div>
-        <div style="display:flex;flex-direction:column;gap:14px">
-          <div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Tamanho</div>${seg([['grande','Grande'],['pequena','Pequena']], _pcTamanho, '_pcSetTam')}</div>
-          ${_pcTamanho==='grande' ? `<div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Tipo</div>${seg([['inteira','Inteira (1 sabor)'],['meio','Meio a meio']], _pcTipo, '_pcSetTipo')}</div>` : ''}
-          <div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">${_pcTipo==='meio'&&_pcTamanho==='grande'?'Sabor 1':'Sabor'}</div>${_pcSaborSelect('pcOpc1', _pcOpc1, 'Escolha o sabor...')}</div>
-          ${_pcTipo==='meio'&&_pcTamanho==='grande' ? `<div><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Sabor 2</div>${_pcSaborSelect('pcOpc2', _pcOpc2, 'Escolha o sabor...')}</div>` : ''}
+    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Plataformas</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:26px;align-items:stretch">
+      <div class="card" style="padding:14px 16px;flex:1;min-width:230px;background:var(--purple-xlight,#EFE7FE);border:1.5px dashed var(--purple)">
+        <div style="font-weight:700;font-size:.88rem">Site / loja própria</div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:6px">Preço praticado é gerado pela meta de CMV — sem comissão de terceiros.</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px;font-size:.82rem">
+          <label style="color:var(--muted)">Meta de CMV</label>
+          <div style="display:flex;align-items:center;gap:6px"><input type="number" class="inp" value="${cfg.metaCmvSite}" min="1" max="90" onchange="_pcSetMetaCmvSite(this.value)" style="width:70px;text-align:right;font-size:.86rem;padding:6px 8px">%</div>
         </div>
-        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:baseline">
-          <span style="font-size:.82rem;color:var(--muted)">Custo pela ficha técnica</span>
-          <span style="font-size:1.3rem;font-weight:800;color:${semFicha?'var(--muted)':'var(--text)'}">R$ ${fmt(custo)}</span>
-        </div>
-        ${semFicha ? `<div style="font-size:.72rem;color:var(--warning-fg,#B45309);margin-top:6px">${lc('alert-triangle',12,'currentColor')} Ficha vazia — preencha em Configurações → Produtos pra o custo aparecer.</div>` : ''}
       </div>
-
-      <div class="card" style="padding:18px">
-        <div style="font-size:.74rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:14px">2. Simulação</div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
-          <div style="flex:1;min-width:120px"><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Meta de CMV</div>
-            <div style="display:flex;align-items:center;gap:6px"><input type="number" class="inp" value="${_pcMeta}" min="1" max="90" onchange="_pcMeta=parseFloat(this.value)||30;_pcPreco=null;renderVendasPrecos()" style="width:80px;text-align:right;font-size:.9rem;padding:7px 8px">%</div></div>
-          <div style="flex:1;min-width:120px"><div style="font-size:.76rem;color:var(--muted);margin-bottom:6px">Canal</div>
-            <select class="inp" onchange="_pcCanal=this.value;renderVendasPrecos()" style="width:100%;font-size:.86rem;padding:8px 10px">
-              ${Object.keys(_cnComissoes()).map(c=>`<option value="${c}"${c===_pcCanal?' selected':''}>${c} (${_cnComissoes()[c]}%)</option>`).join('')}
-            </select></div>
+      ${cfg.plataformas.map(platCard).join('')}
+      <div class="card" style="padding:14px 16px;min-width:150px;display:flex;align-items:center;justify-content:center;border:1.5px dashed var(--border);background:transparent;cursor:pointer" onclick="_pcAbrirNovaPlataforma()">
+        <div style="text-align:center;color:var(--muted)">
+          ${lc('plus', 18, 'currentColor')}
+          <div style="font-size:.8rem;font-weight:600;margin-top:4px">Nova plataforma</div>
         </div>
+      </div>
+    </div>
 
-        <div style="background:var(--purple-xlight);border-radius:var(--r10,8px);padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
-          <div><div style="font-size:.72rem;color:var(--purple);text-transform:uppercase;letter-spacing:.4px;font-weight:700">Preço ideal p/ CMV ${_pcMeta}%</div>
-            <div style="font-size:1.7rem;font-weight:800;color:var(--purple)">R$ ${fmt(precoIdeal)}</div></div>
-          <button class="btn btn-outline btn-sm" onclick="_pcPreco=null;renderVendasPrecos()">usar ideal</button>
-        </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Produtos precificados <span style="font-weight:400;text-transform:none">— ${produtosSalvos.length} cadastrado${produtosSalvos.length === 1 ? '' : 's'}</span></div>
+      <button class="btn btn-primary btn-xs" onclick="_pcAbrirModalProduto()">+ Adicionar produto</button>
+    </div>
 
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-          <span style="font-size:.82rem;color:var(--muted)">Simular preço:</span>
-          <div style="display:flex;align-items:center;gap:4px">R$ <input type="number" class="inp" value="${(_pcPreco!=null?_pcPreco:precoIdeal).toFixed(2)}" step="0.5" onchange="_pcPreco=parseFloat(this.value);renderVendasPrecos()" style="width:100px;text-align:right;font-size:.95rem;font-weight:700;padding:7px 8px"></div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          ${box('CMV neste preço', preco>0?fmt(cmvPct)+'%':'—', cmvPct>_pcMeta?'var(--red)':'var(--green)')}
-          ${box('Comissão '+_pcCanal, 'R$ '+fmt(comissao), null, com+'% da venda')}
-          ${box('Margem líquida', 'R$ '+fmt(margem), margem<0?'var(--red)':'var(--green)', 'após custo e comissão')}
-          ${box('Margem %', preco>0?fmt(margemPct)+'%':'—', margemPct<0?'var(--red)':'var(--green)')}
-        </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.84rem">
+          <thead><tr style="background:var(--surface2)">
+            <th style="text-align:left;font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:10px 12px">Produto</th>
+            <th style="text-align:right;font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:10px 12px">Custo</th>
+            <th style="text-align:right;font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:10px 12px">Preço site<span style="display:block;font-size:.62rem;font-weight:700;color:var(--purple);text-transform:none">meta CMV ${fmt(cfg.metaCmvSite)}%</span></th>
+            ${cfg.plataformas.map(p => `<th style="text-align:right;font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:10px 12px">Preço ${p.nome}<span style="display:block;font-size:.62rem;font-weight:700;color:var(--purple);text-transform:none">taxa total ${fmt(_pcTotalPlataforma(p))}%</span></th>`).join('')}
+            <th style="padding:10px 12px"></th>
+          </tr></thead>
+          <tbody>
+            ${produtosSalvos.length ? produtosSalvos.map(linhaProduto).join('') : `<tr><td colspan="${4 + cfg.plataformas.length}" style="padding:24px;text-align:center;color:var(--muted)">Nenhum produto cadastrado — clique em "+ Adicionar produto" pra começar.</td></tr>`}
+          </tbody>
+        </table>
       </div>
     </div>`;
 }
-
-function _pcSetTam(t)  { _pcTamanho = t; if (t === 'pequena') _pcTipo = 'inteira'; _pcPreco = null; renderVendasPrecos(); }
-function _pcSetTipo(t) { _pcTipo = t; _pcPreco = null; renderVendasPrecos(); }
