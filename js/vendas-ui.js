@@ -443,25 +443,107 @@ function _inRenderTabela() {
 // Filho PRODUTOS / CURVA ABC — campeões de venda e comportamento
 // ══════════════════════════════════════════════════════════════
 
-let _prMetrica = 'qtd';   // 'qtd' (meias) | 'receita'
-let _prChartABC = null;
-let _prChartHora = null;
+// Intervalo do filho Produtos — mesmo padrão de período do Dashboard/CMV
+// (Hoje/7/30/60 dias + Personalizado com popover De/Até/Aplicar).
+let _prRangeDias    = 30;   // 0 (hoje) | 7 | 30 | 60 | 'custom'
+let _prCustomAberto = false;
+let _prDe  = '';
+let _prAte = '';
+
+function _prGetRange() {
+  if (_prRangeDias === 'custom' && _prDe && _prAte) {
+    const inicio = new Date(_prDe + 'T00:00:00');
+    const fim    = new Date(_prAte + 'T23:59:59');
+    return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
+      label: `${_prDe.split('-').reverse().join('/')} – ${_prAte.split('-').reverse().join('/')}` };
+  }
+  const fim = new Date();
+  const inicio = _prRangeDias > 0
+    ? new Date(new Date(fim.getTime() - _prRangeDias * 86400000).setHours(0,0,0,0))
+    : new Date(new Date().setHours(0,0,0,0));
+  return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
+    label: _prRangeDias === 0 ? 'hoje' : `${_prRangeDias} dias` };
+}
+
+function _prSetRange(dias) {
+  _prRangeDias = dias;
+  _prCustomAberto = false;
+  renderVendasProdutos();
+}
+
+function _prToggleCustom() {
+  _prCustomAberto = !_prCustomAberto;
+  renderVendasProdutos();
+}
+
+function _prAplicarCustom() {
+  const i = document.getElementById('prCustomDe')?.value;
+  const f = document.getElementById('prCustomAte')?.value;
+  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
+  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
+  _prDe = i; _prAte = f;
+  _prRangeDias = 'custom';
+  _prCustomAberto = false;
+  renderVendasProdutos();
+}
+
+function _prReload() {
+  const r = _prGetRange();
+  delete _vCache[r.inicioISO + '|' + r.fimISO];
+  renderVendasProdutos();
+}
+
+function _prFiltros() {
+  const canais = ['ifood', '99food', 'site', 'outro'];
+  const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
+  const isCustom = _prRangeDias === 'custom';
+  const customLabel = isCustom
+    ? `${_prDe.split('-').reverse().join('/')} – ${_prAte.split('-').reverse().join('/')}`
+    : 'Personalizado';
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
+      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
+        ${RANGES.map(([d,l]) => `
+          <button onclick="_prSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${!isCustom&&_prRangeDias===d?'700':'500'};background:${!isCustom&&_prRangeDias===d?'var(--bg)':'transparent'};color:${!isCustom&&_prRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${!isCustom&&_prRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
+        `).join('')}
+        <button onclick="_prToggleCustom()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
+          ${lc('calendar',11,'currentColor')} ${customLabel}
+        </button>
+      </div>
+      ${_prCustomAberto ? `
+        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
+            <input type="date" id="prCustomDe" value="${_prDe}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
+            <input type="date" id="prCustomAte" value="${_prAte}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <button class="btn btn-primary btn-xs" onclick="_prAplicarCustom()">Aplicar</button>
+        </div>` : ''}
+    </div>
+    <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasProdutos()">
+      <option value="">Todos os canais</option>
+      ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
+    </select>
+    <div style="margin-left:auto"></div>
+    <button class="btn btn-outline btn-xs" onclick="_prReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+  </div>`;
+}
 
 async function renderVendasProdutos() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
+  el.innerHTML = _prFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
 
+  const range = _prGetRange();
   let linhas;
-  try { linhas = await vendasCarregar(_vdPeriodo); }
-  catch (e) { el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+  try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
+  catch (e) { el.innerHTML = _prFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
-  const abc  = vendasABCsabores(linhas, _prMetrica);
-  const comp = vendasComportamento(linhas);
-
-  const isRec = _prMetrica === 'receita';
-  const val = v => isRec ? 'R$ ' + fmt(v) : fmt(v);
+  const abc = vendasABCsabores(linhas);
 
   // Contagem por classe
   const nCl = { A: 0, B: 0, C: 0 };
@@ -473,15 +555,8 @@ async function renderVendasProdutos() {
     <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
     <div style="font-size:1.4rem;font-weight:800">${v}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
 
-  const toggle = `<div style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
-    ${[['qtd','Quantidade'],['receita','Receita']].map(([id,lbl])=>`<button onclick="_prMetrica='${id}';renderVendasProdutos()" style="padding:6px 14px;font-size:.78rem;font-weight:600;border:none;cursor:pointer;background:${id===_prMetrica?'var(--purple)':'transparent'};color:${id===_prMetrica?'#fff':'var(--muted)'}">${lbl}</button>`).join('')}
-  </div>`;
-
-  el.innerHTML = _vdFiltros(false) + `
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-      <div style="font-size:.82rem;color:var(--muted)">Curva ABC de sabores em <b>${_vdPeriodo} dias</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${isRec?' · <span style="font-style:italic">receita de combos rateada por porção</span>':''}</div>
-      ${toggle}
-    </div>
+  el.innerHTML = _prFiltros() + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Curva ABC de sabores em <b>${range.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · <span style="font-style:italic">receita de combos rateada por porção</span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Sabores', abc.itens.length)}
       ${kpi('Classe A', nCl.A, '80% do volume')}
@@ -489,93 +564,20 @@ async function renderVendasProdutos() {
       ${kpi('Classe C', nCl.C, 'cauda — 5%')}
     </div>
 
-    <div class="card" style="padding:16px;margin-bottom:20px">
-      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Pareto — ${isRec?'receita':'meias vendidas'} por sabor (barras) e acumulado % (linha)</div>
-      <div style="height:300px"><canvas id="prChartABC"></canvas></div>
-    </div>
-
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
-      <div style="display:grid;grid-template-columns:40px 1.6fr 1fr 1fr 100px 90px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
-        <div>ABC</div><div>Sabor</div><div style="text-align:right">Grande</div><div style="text-align:right">Pequena</div><div style="text-align:right">${isRec?'Receita':'Meias'}</div><div style="text-align:right">Acum.</div>
+      <div style="display:grid;grid-template-columns:40px 1.6fr 1fr 1fr 90px 100px 70px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
+        <div>ABC</div><div>Sabor por Porção</div><div style="text-align:right">Pizza Grande</div><div style="text-align:right">Pizza Pequena</div><div style="text-align:right">Quantidade</div><div style="text-align:right">Receita</div><div style="text-align:right">%</div>
       </div>
-      ${abc.itens.map(x => `<div style="display:grid;grid-template-columns:40px 1.6fr 1fr 1fr 100px 90px;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
+      ${abc.itens.map(x => `<div style="display:grid;grid-template-columns:40px 1.6fr 1fr 1fr 90px 100px 70px;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
         <div><span style="display:inline-block;width:22px;text-align:center;font-weight:800;font-size:.74rem;color:${corCl(x.classe)};background:${bgCl(x.classe)};border-radius:var(--r6);padding:2px 0">${x.classe}</span></div>
         <div style="font-weight:600">${x.nome}</div>
         <div style="text-align:right;color:var(--muted)">${x.grande}</div>
         <div style="text-align:right;color:var(--muted)">${x.pequena}</div>
-        <div style="text-align:right;font-weight:700">${val(x.valor)}</div>
-        <div style="text-align:right;color:var(--muted)">${fmt(x.cumPct)}%</div>
+        <div style="text-align:right;font-weight:700">${fmt(x.qtd)}</div>
+        <div style="text-align:right;color:var(--muted)">R$ ${fmt(x.receita)}</div>
+        <div style="text-align:right;color:var(--muted)">${fmt(x.pct)}%</div>
       </div>`).join('') || '<div class="ft-empty-list" style="padding:14px">Sem dados no período</div>'}
-    </div>
-
-    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Comportamento de compra</div>
-    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:14px">
-      <div class="card" style="padding:16px"><div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">Pedidos por hora do dia</div><div style="height:200px"><canvas id="prChartHora"></canvas></div></div>
-      <div class="card" style="padding:16px">
-        <div style="font-size:.72rem;color:var(--muted);margin-bottom:12px">Pedidos por canal</div>
-        ${_prCanalBars(comp.porCanal)}
-      </div>
     </div>`;
-
-  _prRenderCharts(abc, comp);
-}
-
-function _prCanalBars(porCanal) {
-  const ents = Object.entries(porCanal).sort((a,b)=>b[1]-a[1]);
-  const max = Math.max(1, ...ents.map(e=>e[1]));
-  const tot = ents.reduce((s,e)=>s+e[1],0) || 1;
-  return ents.map(([c,n],i)=>`<div style="margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:3px"><span style="font-weight:600">${c}</span><span style="color:var(--muted)">${n} · ${fmt(n/tot*100)}%</span></div>
-    <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div style="width:${(n/max*100).toFixed(0)}%;height:100%;background:var(--chart-${(i%8)+1},var(--brand-purple))"></div></div>
-  </div>`).join('') || '<div style="color:var(--muted);font-size:.82rem">Sem dados</div>';
-}
-
-function _prRenderCharts(abc, comp) {
-  if (typeof Chart === 'undefined') return;
-  const css = getComputedStyle(document.body);
-  const c1 = css.getPropertyValue('--chart-1').trim() || '#6B21D4';
-  const c3 = css.getPropertyValue('--chart-3').trim() || '#D97706';
-  const txt = css.getPropertyValue('--muted').trim() || '#888';
-
-  // Pareto ABC
-  if (_prChartABC) { _prChartABC.destroy(); _prChartABC = null; }
-  const cvA = document.getElementById('prChartABC');
-  if (cvA) {
-    const top = abc.itens.slice(0, 15);
-    _prChartABC = new Chart(cvA, {
-      data: {
-        labels: top.map(x => x.nome),
-        datasets: [
-          { type: 'bar', label: _prMetrica === 'receita' ? 'Receita' : 'Meias', data: top.map(x => +x.valor.toFixed(2)), backgroundColor: top.map(x => x.classe==='A'?c1:x.classe==='B'?c3:'#B4B2A9'), borderRadius: 3, yAxisID: 'y' },
-          { type: 'line', label: 'Acumulado %', data: top.map(x => +x.cumPct.toFixed(1)), borderColor: '#E24B4A', backgroundColor: '#E24B4A', pointRadius: 2, tension: .3, yAxisID: 'y1' },
-        ],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-          x: { ticks: { color: txt, font: { size: 10 }, maxRotation: 55, minRotation: 45 }, grid: { display: false } },
-          y: { position: 'left', ticks: { color: txt }, grid: { color: 'rgba(0,0,0,.06)' } },
-          y1: { position: 'right', min: 0, max: 100, ticks: { color: txt, callback: v => v + '%' }, grid: { display: false } },
-        },
-        plugins: { legend: { labels: { color: txt, boxWidth: 12, font: { size: 11 } } } },
-      },
-    });
-  }
-
-  // Pedidos por hora
-  if (_prChartHora) { _prChartHora.destroy(); _prChartHora = null; }
-  const cvH = document.getElementById('prChartHora');
-  if (cvH) {
-    _prChartHora = new Chart(cvH, {
-      type: 'bar',
-      data: { labels: comp.porHora.map((_, h) => h + 'h'), datasets: [{ label: 'Pedidos', data: comp.porHora, backgroundColor: c1, borderRadius: 2 }] },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: { x: { ticks: { color: txt, font: { size: 9 }, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } }, y: { ticks: { color: txt }, grid: { color: 'rgba(0,0,0,.06)' } } },
-        plugins: { legend: { display: false } },
-      },
-    });
-  }
 }
 
 // ══════════════════════════════════════════════════════════════
