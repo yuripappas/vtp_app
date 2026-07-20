@@ -768,6 +768,7 @@ function _etqImprimir() {
       dt_manipulacao: now.toISOString(),
       dt_validade:    dtVal.toISOString(),
       quantidade:     qty,
+      lote_posicao:   i + 1, // qual etiqueta é essa dentro do lote (ex: 2 de "2/4")
       medida:         medida,
       unidade:        unidade,
       validade_original: valOrig,
@@ -829,6 +830,9 @@ function _etqGerarZPL(etq, cfg) {
   const dtManip = esc(_etqFmtDT(etq.dt_manipulacao));
   const dtVal   = esc(_etqFmtDT(etq.dt_validade));
   const hash    = esc(etq.qr_hash);
+  // Posição dessa etiqueta física dentro do lote (ex: "2/4") — só mostra se
+  // o lote tiver mais de 1 etiqueta, pra não poluir etiqueta avulsa.
+  const posLote = etq.quantidade > 1 ? esc(`${etq.lote_posicao || 1}/${etq.quantidade}`) : '';
 
   // Etiqueta 60×60mm a 203dpi → 480×480 dots (^PW/^LL). QR nativo via ^BQN.
   // Bloco de rodapé (RESP/empresa/CNPJ/hash) começa mais perto do fim da
@@ -856,6 +860,7 @@ function _etqGerarZPL(etq, cfg) {
     // usa o espaço que antes ficava em branco, igual um rodapé de recibo.
     '^FO20,395^GB440,2,2^FS',
     `^FO20,412^A0N,28,28^FD${hash}^FS`,
+    posLote ? `^FO320,418^A0N,22,22^FD${posLote}^FS` : '',
     '^XZ',
   ].filter(Boolean).join('\n');
 }
@@ -1096,7 +1101,7 @@ function _etqAbrirDetalheEtq(id) {
         <div style="font-weight:bold">${(cfg.nome || 'VAI TER PIZZA!').toUpperCase()}</div>
         ${cfg.cnpj ? `<div>CNPJ: ${cfg.cnpj}</div>` : ''}
         ${cfg.cep  ? `<div>CEP: ${cfg.cep}${cfg.endereco ? ' ' + cfg.endereco : ''}</div>` : ''}
-        <div style="margin-top:4px;font-size:11px;font-weight:bold">${e.qr_hash}</div>
+        <div style="margin-top:4px;font-size:11px;font-weight:bold">${e.qr_hash}${e.quantidade > 1 ? ` · ${e.lote_posicao || 1}/${e.quantidade}` : ''}</div>
       </div>
       <img id="etqDetQRImg" width="62" height="62" alt="QR" style="border-radius:3px;flex-shrink:0">
     </div>
@@ -1146,6 +1151,7 @@ function _etqAbrirDetalheEtq(id) {
         background:${isThis ? 'var(--purple-xlight)' : 'var(--surface)'};cursor:pointer">
         <span style="font-size:.72rem;color:var(--muted);min-width:20px;text-align:right">${String(idx+1).padStart(2,'0')}</span>
         <span style="font-family:monospace;font-size:.78rem;font-weight:700;color:var(--brand-purple);flex:1">${x.qr_hash}</span>
+        ${x.quantidade > 1 ? `<span style="font-size:.68rem;color:var(--muted);font-family:monospace">${x.lote_posicao || 1}/${x.quantidade}</span>` : ''}
         <span style="font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${xsv.bg};color:${xsv.cor}">${xsv.label}</span>
         <input type="checkbox" class="etq-assoc-chk" data-id="${x.id}" ${isThis ? 'checked' : ''}
           style="width:16px;height:16px;accent-color:var(--brand-purple)">
@@ -1675,7 +1681,7 @@ function _etqRenderProducao(el) {
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Categoria</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Conservação</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Medida</th>
-                <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Qtd</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Nº no lote</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Responsável</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Status</th>
               </tr>
@@ -1692,7 +1698,7 @@ function _etqRenderProducao(el) {
                     <td style="padding:10px 14px;color:var(--muted)">${e.item_cat || '—'}</td>
                     <td style="padding:10px 14px;color:var(--muted)">${metLabel}</td>
                     <td style="padding:10px 14px;color:var(--muted);font-family:monospace">${medidaStr}</td>
-                    <td style="padding:10px 14px;font-weight:700;text-align:center">${e.quantidade}</td>
+                    <td style="padding:10px 14px;font-weight:700;text-align:center;font-family:monospace">${e.lote_posicao || 1}/${e.quantidade}</td>
                     <td style="padding:10px 14px;color:var(--muted)">${e.responsavel_nome || '—'}</td>
                     <td style="padding:10px 14px">
                       <span style="font-size:.65rem;font-weight:700;background:${sv.cor}22;color:${sv.cor};border-radius:4px;padding:2px 7px">${sv.label}</span>
