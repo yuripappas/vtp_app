@@ -86,7 +86,7 @@ const _OPERACAO_SUBMENU_ITEMS = [
 const _VENDAS_SUBMENU_ITEMS = [
   { id: 'cmv',           icon: 'dollar-sign', label: 'CMV'                     },
   { id: 'produtos',      icon: 'bar-chart-2', label: 'Produtos (Curva ABC)'    },
-  { id: 'insumos',       icon: 'package',     label: 'Insumos'                 },
+  { id: 'insumos',       icon: 'package',     label: 'Consumo de Insumos'      },
   { id: 'canais',        icon: 'link',        label: 'Canais'                  },
   { id: 'precos',        icon: 'tag',         label: 'Precificação'            },
 ];
@@ -315,7 +315,7 @@ const modInfo = {
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
   compras:        { title: 'Compras',               sub: 'Lista · Cotação · Aprovação · OC · Recebimento · Fornecedores' },
-  vendas:         { title: 'Vendas',                sub: 'CMV · Produtos · Insumos · Canais · Precificação — interpretado dos pedidos' },
+  vendas:         { title: 'Vendas',                sub: 'CMV · Produtos · Consumo de Insumos · Canais · Precificação — interpretado dos pedidos' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
   previsao:       { title: 'Previsão de Demanda',   sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },

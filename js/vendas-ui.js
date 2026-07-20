@@ -304,7 +304,6 @@ let _inPreset = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
 let _inDe     = '';     // yyyy-mm-dd (custom)
 let _inAte    = '';
 let _inBusca  = '';
-let _inChart  = null;   // instância Chart.js
 
 const _IN_PRESETS = [['hoje','Hoje'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['90','90 dias'],['custom','Personalizado']];
 
@@ -366,56 +365,15 @@ async function renderVendasInsumos() {
     <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
     <div style="font-size:1.5rem;font-weight:800">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
 
-  const top = insumos[0];
   el.innerHTML = _inFiltros() + `
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Insumos consumidos nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} — expandido da ficha técnica.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Insumos distintos', insumos.length)}
       ${kpi('Custo total', 'R$ ' + fmt(custoTotal), 'valor dos insumos no período')}
-      ${kpi('Maior consumo', top ? top.nome : '—', top ? fmt(top.pct) + '% do custo' : '')}
     </div>
-    ${insumos.length ? `
-    <div class="card" style="padding:16px;margin-bottom:20px">
-      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Top insumos por custo (R$) — grande vs pequena</div>
-      <div style="height:${Math.max(180, Math.min(12, insumos.length) * 34)}px"><canvas id="inChart"></canvas></div>
-    </div>` : ''}
     <div id="inTabelaWrap"></div>`;
 
-  _inRenderChart();
   _inRenderTabela();
-}
-
-function _inRenderChart() {
-  if (typeof Chart === 'undefined') return;
-  const cv = document.getElementById('inChart');
-  if (!cv || !_inDados) return;
-  if (_inChart) { _inChart.destroy(); _inChart = null; }
-  const top = _inDados.insumos.slice(0, 12);
-  const css = getComputedStyle(document.body);
-  const cG = css.getPropertyValue('--chart-1').trim() || '#6B21D4';
-  const cP = css.getPropertyValue('--chart-3').trim() || '#D97706';
-  const txt = css.getPropertyValue('--muted').trim() || '#888';
-  _inChart = new Chart(cv, {
-    type: 'bar',
-    data: {
-      labels: top.map(x => x.nome),
-      datasets: [
-        { label: 'Grande', data: top.map(x => +(x.grande * x.custoUn).toFixed(2)), backgroundColor: cG, borderRadius: 3 },
-        { label: 'Pequena', data: top.map(x => +(x.pequena * x.custoUn).toFixed(2)), backgroundColor: cP, borderRadius: 3 },
-      ],
-    },
-    options: {
-      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { stacked: true, ticks: { color: txt, callback: v => 'R$ ' + v }, grid: { color: 'rgba(0,0,0,.06)' } },
-        y: { stacked: true, ticks: { color: txt, font: { size: 11 } }, grid: { display: false } },
-      },
-      plugins: {
-        legend: { labels: { color: txt, boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: c => `${c.dataset.label}: R$ ${fmt(c.raw)}` } },
-      },
-    },
-  });
 }
 
 function _inRenderTabela() {
@@ -426,13 +384,12 @@ function _inRenderTabela() {
   if (!lista.length) { wrap.innerHTML = `<div class="ft-empty-list">${_inDados.insumos.length ? 'Nenhum insumo com esse nome' : 'Nenhum insumo — cadastre fichas técnicas com insumos primeiro'}</div>`; return; }
   const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
   wrap.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
-    <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1.1fr 80px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
-      <div>Insumo</div><div style="text-align:right">Pizza Grande</div><div style="text-align:right">Pizza Pequena</div><div style="text-align:right">Total</div><div style="text-align:right">% custo</div>
+    <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 90px;gap:12px;padding:10px 16px;background:var(--surface2);font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
+      <div>Insumo</div><div>Categoria</div><div style="text-align:right">Kg/Qtd</div><div style="text-align:right">% do total</div>
     </div>
-    ${lista.map(x => `<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1.1fr 80px;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
-      <div><span style="font-weight:600">${x.nome}</span> <span style="font-size:.66rem;color:var(--muted)">${x.unidade}</span></div>
-      <div style="text-align:right;color:var(--muted)">${nf(x.grande)}</div>
-      <div style="text-align:right;color:var(--muted)">${nf(x.pequena)}</div>
+    ${lista.map(x => `<div style="display:grid;grid-template-columns:1.6fr 1fr 1fr 90px;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
+      <div style="font-weight:600">${x.nome}</div>
+      <div style="color:var(--muted)">${x.cat || '—'}</div>
       <div style="text-align:right;font-weight:700">${nf(x.total)} <span style="font-size:.66rem;color:var(--muted)">${x.unidade}</span></div>
       <div style="text-align:right;font-weight:700;color:var(--purple)">${fmt(x.pct)}%</div>
     </div>`).join('')}
