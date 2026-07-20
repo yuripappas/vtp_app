@@ -252,43 +252,45 @@ function _vdRenderGeral(prodPorCategoria) {
   const catsComVenda = VENDAS_CATEGORIAS.filter(c => prodPorCategoria[c]?.produtos?.length);
   if (!catsComVenda.length) return '<div class="ft-empty-list">Sem vendas no período</div>';
 
-  const maxQtd = Math.max(1, ...catsComVenda.map(c => prodPorCategoria[c].vendas));
-  const maxFat = Math.max(1, ...catsComVenda.map(c => prodPorCategoria[c].receita));
   const fmtQ = n => Math.round(n).toLocaleString('pt-BR');
-  const barra = (pct, cor) => `<div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:4px"><div style="width:${Math.max(0,Math.min(100,pct)).toFixed(0)}%;height:100%;background:${cor}"></div></div>`;
-  const GRID = '22px 1.6fr 1.1fr 1.3fr 1fr 1fr 1fr 1fr';
+  const corMeta = pc => pc <= 0 ? 'var(--muted)' : pc > _vdMetaCMV ? 'var(--red)' : 'var(--green)';
+  const GRID = '22px 1.6fr 1fr 1.2fr 1fr 1fr 1fr 80px 1fr';
 
-  const linhaProd = (p, maxQtdCat, maxFatCat) => `<div style="display:grid;grid-template-columns:${GRID};gap:12px;align-items:center;padding:8px 16px 8px 38px;font-size:.82rem;border-top:1px solid var(--border)">
+  const linhaProd = (p) => {
+    const pc = p.receita > 0 ? p.custo / p.receita * 100 : 0;
+    return `<div style="display:grid;grid-template-columns:${GRID};gap:12px;align-items:center;padding:8px 16px 8px 38px;font-size:.82rem;border-top:1px solid var(--border)">
       <div></div>
       <div>${p.nome}</div>
-      <div style="text-align:right">${fmtQ(p.qtd)}${barra(maxQtdCat>0?p.qtd/maxQtdCat*100:0,'var(--chart-2,#9F7AEA)')}</div>
-      <div style="text-align:right">R$ ${fmt(p.receita)}${barra(maxFatCat>0?p.receita/maxFatCat*100:0,'var(--chart-1,#6B21D4)')}</div>
+      <div style="text-align:right">${fmtQ(p.qtd)}</div>
+      <div style="text-align:right">R$ ${fmt(p.receita)}</div>
       <div style="text-align:right;color:var(--muted)">R$ ${fmt(p.precoMedio)}</div>
       <div style="text-align:right;color:var(--muted)">R$ ${fmt(p.custoMedio)}</div>
       <div style="text-align:right;color:var(--muted)">R$ ${fmt(p.custo)}</div>
+      <div style="text-align:right;font-weight:700;color:${corMeta(pc)}">${p.custo>0?fmt(pc)+'%':'—'}</div>
       <div style="text-align:right;font-weight:700;color:${p.lucro<0?'var(--red)':'var(--green)'}">R$ ${fmt(p.lucro)}</div>
     </div>`;
+  };
 
   const linhaCat = (nome) => {
     const d = prodPorCategoria[nome]; if (!d || !d.produtos.length) return '';
     const aberta = _vdProdOpen === nome;
     const lucro = d.receita - d.custo;
-    const maxQtdCat = Math.max(1, ...d.produtos.map(p => p.qtd));
-    const maxFatCat = Math.max(1, ...d.produtos.map(p => p.receita));
+    const pc = d.receita > 0 ? d.custo / d.receita * 100 : 0;
     return `<div class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-        <div style="min-width:780px">
+        <div style="min-width:820px">
           <div onclick="_vdProdOpen='${aberta ? '' : nome}';renderVendasCMV()" style="display:grid;grid-template-columns:${GRID};gap:12px;align-items:center;padding:13px 16px;cursor:pointer;background:var(--surface2)">
             <span style="color:var(--muted);display:inline-flex;transform:rotate(${aberta?90:0}deg);transition:transform .15s">${lc('chevron-right',16,'currentColor')}</span>
             <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:.9rem">${lc(_VD_CAT_ICON[nome]||'pizza',16,'var(--purple)')} ${nome}</div>
-            <div style="text-align:right;font-weight:700">${fmtQ(d.vendas)}${barra(maxQtd>0?d.vendas/maxQtd*100:0,'var(--chart-2,#9F7AEA)')}</div>
-            <div style="text-align:right;font-weight:700">R$ ${fmt(d.receita)}${barra(maxFat>0?d.receita/maxFat*100:0,'var(--chart-1,#6B21D4)')}</div>
+            <div style="text-align:right;font-weight:700">${fmtQ(d.vendas)}</div>
+            <div style="text-align:right;font-weight:700">R$ ${fmt(d.receita)}</div>
             <div style="text-align:right;color:var(--muted)">R$ ${fmt(d.vendas>0?d.receita/d.vendas:0)}</div>
             <div style="text-align:right;color:var(--muted)">R$ ${fmt(d.vendas>0?d.custo/d.vendas:0)}</div>
             <div style="text-align:right;color:var(--muted)">R$ ${fmt(d.custo)}</div>
+            <div style="text-align:right;font-weight:800;color:${corMeta(pc)}">${d.custo>0?fmt(pc)+'%':'—'}</div>
             <div style="text-align:right;font-weight:800;color:${lucro<0?'var(--red)':'var(--green)'}">R$ ${fmt(lucro)}</div>
           </div>
-          ${aberta ? d.produtos.map(p => linhaProd(p, maxQtdCat, maxFatCat)).join('') : ''}
+          ${aberta ? d.produtos.map(linhaProd).join('') : ''}
         </div>
       </div>
     </div>`;
@@ -296,7 +298,7 @@ function _vdRenderGeral(prodPorCategoria) {
 
   return `<div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por categoria e produto <span style="font-weight:400;text-transform:none">— clique para expandir</span></div>
     <div style="display:grid;grid-template-columns:${GRID};gap:12px;padding:0 16px 6px;font-size:.62rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
-      <div></div><div>Categoria / Produto</div><div style="text-align:right">Qtde vendida</div><div style="text-align:right">Faturamento</div><div style="text-align:right">Preço médio</div><div style="text-align:right">Custo médio</div><div style="text-align:right">Custo total</div><div style="text-align:right">Lucro</div>
+      <div></div><div>Categoria / Produto</div><div style="text-align:right">Qtde vendida</div><div style="text-align:right">Faturamento</div><div style="text-align:right">Preço médio</div><div style="text-align:right">Custo médio</div><div style="text-align:right">Custo total</div><div style="text-align:right">CMV</div><div style="text-align:right">Lucro</div>
     </div>
     ${catsComVenda.map(linhaCat).join('')}`;
 }
