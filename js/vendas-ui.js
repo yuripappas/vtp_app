@@ -345,6 +345,11 @@ function _inLimparCats() {
   renderVendasInsumos();
 }
 
+function _inMarcarTodasCats() {
+  _inCats = [...(typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : [])];
+  renderVendasInsumos();
+}
+
 function _inFiltroCategoria() {
   const cats = (typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []);
   const label = _inCats.length === 0 ? 'Todas categorias' : _inCats.length === 1 ? _inCats[0] : `${_inCats.length} categorias`;
@@ -356,7 +361,10 @@ function _inFiltroCategoria() {
       <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:10px;box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:200px;max-height:280px;overflow-y:auto">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)">
           <span style="font-size:.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Categorias</span>
-          <button onclick="_inLimparCats()" style="font-size:.7rem;color:var(--purple);background:none;border:none;cursor:pointer;font-weight:600;padding:0">Limpar</button>
+          <span style="display:flex;gap:8px">
+            <button onclick="_inMarcarTodasCats()" style="font-size:.7rem;color:var(--purple);background:none;border:none;cursor:pointer;font-weight:600;padding:0">Marcar todas</button>
+            <button onclick="_inLimparCats()" style="font-size:.7rem;color:var(--purple);background:none;border:none;cursor:pointer;font-weight:600;padding:0">Limpar</button>
+          </span>
         </div>
         ${cats.map(c => `
           <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;padding:4px 2px;cursor:pointer;white-space:nowrap">
@@ -420,7 +428,11 @@ async function renderVendasInsumos() {
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos cadastrados, com o consumo nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''} — preparados cascateiam pro insumo cru que consomem.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Insumos cadastrados', insumos.length)}
-      ${kpi('Custo total', 'R$ ' + fmt(custoTotal), 'valor consumido no período')}
+      <div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
+        <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Custo total</div>
+        <div id="inKpiCusto" style="font-size:1.5rem;font-weight:800">R$ ${fmt(custoTotal)}</div>
+        <div style="font-size:.72rem;color:var(--muted)">valor consumido no período${_inCats.length||_inBusca?' · da seleção atual':''}</div>
+      </div>
     </div>
     ${banner}
     <div id="inTabelaWrap"></div>`;
@@ -433,6 +445,9 @@ function _inRenderTabela() {
   if (!wrap || !_inDados) return;
   const q = _cwNorm(_inBusca);
   const lista = _inDados.insumos.filter(x => (!q || _cwNorm(x.nome).includes(q)) && (!_inCats.length || _inCats.includes(x.cat)));
+  const custoSelecao = lista.reduce((s, x) => s + x.custo, 0);
+  const custoKpi = document.getElementById('inKpiCusto');
+  if (custoKpi) custoKpi.textContent = 'R$ ' + fmt(custoSelecao);
   if (!lista.length) { wrap.innerHTML = `<div class="ft-empty-list">${_inDados.insumos.length ? 'Nenhum insumo com esses filtros' : 'Nenhum insumo cadastrado ainda'}</div>`; return; }
   const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
   wrap.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
@@ -443,7 +458,7 @@ function _inRenderTabela() {
       <div style="font-weight:600">${x.nome}</div>
       <div style="color:var(--muted)">${x.cat || '—'}</div>
       <div style="text-align:right;font-weight:700">${nf(x.total)} <span style="font-size:.66rem;color:var(--muted)">${x.unidade}</span></div>
-      <div style="text-align:right;font-weight:700;color:var(--purple)">${fmt(x.pct)}%</div>
+      <div style="text-align:right;font-weight:700;color:var(--purple)">${fmt(custoSelecao > 0 ? x.custo / custoSelecao * 100 : 0)}%</div>
     </div>`).join('')}
   </div>`;
 }
