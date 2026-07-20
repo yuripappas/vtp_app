@@ -303,30 +303,53 @@ function _vdDrillCategoria(dados) {
 // Filtro de categoria aceita múltipla seleção.
 // ══════════════════════════════════════════════════════════════
 
-let _inPreset   = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
-let _inDe       = '';     // yyyy-mm-dd (custom)
-let _inAte      = '';
-let _inBusca    = '';
-let _inCats     = [];     // categorias selecionadas — [] = todas
-let _inCatAberto = false;
+let _inPreset       = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
+let _inCustomAberto = false;
+let _inDe           = '';     // yyyy-mm-dd (custom)
+let _inAte          = '';
+let _inBusca        = '';
+let _inCats         = [];     // categorias selecionadas — [] = todas
+let _inCatAberto    = false;
 
-const _IN_PRESETS = [['hoje','Hoje'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['90','90 dias'],['custom','Personalizado']];
+const _IN_PRESETS = [['hoje','Hoje'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['90','90 dias']];
 
 // Resolve o preset atual em { inicioISO, fimISO, label }
 function _inRange() {
   const now = new Date();
-  const fimISO = now.toISOString();
-  if (_inPreset === 'custom' && _inDe) {
+  if (_inPreset === 'custom' && _inDe && _inAte) {
     const ini = new Date(_inDe + 'T00:00:00');
-    const fim = _inAte ? new Date(_inAte + 'T23:59:59') : now;
-    return { inicioISO: ini.toISOString(), fimISO: fim.toISOString(), label: `${_inDe} a ${_inAte || 'hoje'}`, dias: Math.max(1, Math.round((fim - ini) / 864e5)) };
+    const fim = new Date(_inAte + 'T23:59:59');
+    return { inicioISO: ini.toISOString(), fimISO: fim.toISOString(),
+      label: `${_inDe.split('-').reverse().join('/')} – ${_inAte.split('-').reverse().join('/')}` };
   }
   if (_inPreset === 'hoje') {
     const ini = new Date(now); ini.setHours(0, 0, 0, 0);
-    return { inicioISO: ini.toISOString(), fimISO, label: 'hoje', dias: 1 };
+    return { inicioISO: ini.toISOString(), fimISO: now.toISOString(), label: 'hoje' };
   }
   const d = parseInt(_inPreset) || 15;
-  return { inicioISO: new Date(now - d * 864e5).toISOString(), fimISO, label: `${d} dias`, dias: d };
+  return { inicioISO: new Date(now - d * 864e5).toISOString(), fimISO: now.toISOString(), label: `${d} dias` };
+}
+
+function _inSetPreset(id) {
+  _inPreset = id;
+  _inCustomAberto = false;
+  renderVendasInsumos();
+}
+
+function _inToggleCustom() {
+  _inCustomAberto = !_inCustomAberto;
+  renderVendasInsumos();
+}
+
+function _inAplicarCustom() {
+  const i = document.getElementById('inCustomDe')?.value;
+  const f = document.getElementById('inCustomAte')?.value;
+  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
+  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
+  _inDe = i; _inAte = f;
+  _inPreset = 'custom';
+  _inCustomAberto = false;
+  renderVendasInsumos();
 }
 
 function _inToggleCatPopover() {
@@ -376,12 +399,33 @@ function _inFiltroCategoria() {
 }
 
 function _inFiltros() {
-  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
-    ${_IN_PRESETS.map(([id,lbl]) => `<button class="btn btn-${id===_inPreset?'primary':'outline'} btn-xs" onclick="_inPreset='${id}';renderVendasInsumos()">${lbl}</button>`).join('')}
-    ${_inPreset === 'custom' ? `
-      <input type="date" class="inp" value="${_inDe}" onchange="_inDe=this.value;renderVendasInsumos()" style="font-size:.78rem;padding:5px 8px">
-      <span style="color:var(--muted);font-size:.8rem">até</span>
-      <input type="date" class="inp" value="${_inAte}" onchange="_inAte=this.value;renderVendasInsumos()" style="font-size:.78rem;padding:5px 8px">` : ''}
+  const isCustom = _inPreset === 'custom';
+  const customLabel = isCustom
+    ? `${_inDe.split('-').reverse().join('/')} – ${_inAte.split('-').reverse().join('/')}`
+    : 'Personalizado';
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
+      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
+        ${_IN_PRESETS.map(([id,lbl]) => `
+          <button onclick="_inSetPreset('${id}')" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${!isCustom&&_inPreset===id?'700':'500'};background:${!isCustom&&_inPreset===id?'var(--bg)':'transparent'};color:${!isCustom&&_inPreset===id?'var(--purple)':'var(--text2)'};box-shadow:${!isCustom&&_inPreset===id?'0 1px 3px rgba(0,0,0,.1)':'none'}">${lbl}</button>
+        `).join('')}
+        <button onclick="_inToggleCustom()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
+          ${lc('calendar',11,'currentColor')} ${customLabel}
+        </button>
+      </div>
+      ${_inCustomAberto ? `
+        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
+            <input type="date" id="inCustomDe" value="${_inDe}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
+            <input type="date" id="inCustomAte" value="${_inAte}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <button class="btn btn-primary btn-xs" onclick="_inAplicarCustom()">Aplicar</button>
+        </div>` : ''}
+    </div>
     ${_inFiltroCategoria()}
     <div style="position:relative;margin-left:auto">
       <input class="inp" id="inBusca" placeholder="Buscar insumo..." value="${_inBusca.replace(/"/g,'&quot;')}" oninput="_inBusca=this.value;_inRenderTabela()" style="width:220px;font-size:.8rem;padding:6px 10px 6px 30px">
@@ -467,34 +511,47 @@ function _inRenderTabela() {
 // Filho PRODUTOS / CURVA ABC — campeões de venda e comportamento
 // ══════════════════════════════════════════════════════════════
 
-// Intervalo do filho Produtos — mesmo padrão de período do Consumo de
-// Insumos (Hoje/7/30/60 dias + Personalizado inline, sem popover): ao
-// selecionar "Personalizado" os campos De/Até aparecem direto na barra
-// de filtro e aplicam ao mudar, sem botão de confirmar separado.
-let _prRangeDias = 30;   // 0 (hoje) | 7 | 30 | 60 | 'custom'
+// Intervalo do filho Produtos — mesmo padrão de período do Dashboard/CMV
+// (Hoje/7/30/60 dias + Personalizado com popover De/Até/Aplicar).
+let _prRangeDias    = 30;   // 0 (hoje) | 7 | 30 | 60 | 'custom'
+let _prCustomAberto = false;
 let _prDe  = '';
 let _prAte = '';
 
-const _PR_PRESETS = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias'],['custom','Personalizado']];
-
 function _prGetRange() {
-  const now = new Date();
-  if (_prRangeDias === 'custom' && _prDe) {
+  if (_prRangeDias === 'custom' && _prDe && _prAte) {
     const inicio = new Date(_prDe + 'T00:00:00');
-    const fim    = _prAte ? new Date(_prAte + 'T23:59:59') : now;
+    const fim    = new Date(_prAte + 'T23:59:59');
     return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
-      label: `${_prDe.split('-').reverse().join('/')} – ${_prAte ? _prAte.split('-').reverse().join('/') : 'hoje'}` };
+      label: `${_prDe.split('-').reverse().join('/')} – ${_prAte.split('-').reverse().join('/')}` };
   }
-  if (_prRangeDias === 0) {
-    const inicio = new Date(now); inicio.setHours(0, 0, 0, 0);
-    return { inicioISO: inicio.toISOString(), fimISO: now.toISOString(), label: 'hoje' };
-  }
-  const d = parseInt(_prRangeDias) || 30;
-  return { inicioISO: new Date(now - d * 864e5).toISOString(), fimISO: now.toISOString(), label: `${d} dias` };
+  const fim = new Date();
+  const inicio = _prRangeDias > 0
+    ? new Date(new Date(fim.getTime() - _prRangeDias * 86400000).setHours(0,0,0,0))
+    : new Date(new Date().setHours(0,0,0,0));
+  return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
+    label: _prRangeDias === 0 ? 'hoje' : `${_prRangeDias} dias` };
 }
 
 function _prSetRange(dias) {
   _prRangeDias = dias;
+  _prCustomAberto = false;
+  renderVendasProdutos();
+}
+
+function _prToggleCustom() {
+  _prCustomAberto = !_prCustomAberto;
+  renderVendasProdutos();
+}
+
+function _prAplicarCustom() {
+  const i = document.getElementById('prCustomDe')?.value;
+  const f = document.getElementById('prCustomAte')?.value;
+  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
+  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
+  _prDe = i; _prAte = f;
+  _prRangeDias = 'custom';
+  _prCustomAberto = false;
   renderVendasProdutos();
 }
 
@@ -506,12 +563,34 @@ function _prReload() {
 
 function _prFiltros() {
   const canais = ['ifood', '99food', 'site', 'outro'];
-  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
-    ${_PR_PRESETS.map(([d,l]) => `<button class="btn btn-${d===_prRangeDias?'primary':'outline'} btn-xs" onclick="_prSetRange(${typeof d==='string'?`'${d}'`:d})">${l}</button>`).join('')}
-    ${_prRangeDias === 'custom' ? `
-      <input type="date" class="inp" value="${_prDe}" onchange="_prDe=this.value;renderVendasProdutos()" style="font-size:.78rem;padding:5px 8px">
-      <span style="color:var(--muted);font-size:.8rem">até</span>
-      <input type="date" class="inp" value="${_prAte}" onchange="_prAte=this.value;renderVendasProdutos()" style="font-size:.78rem;padding:5px 8px">` : ''}
+  const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
+  const isCustom = _prRangeDias === 'custom';
+  const customLabel = isCustom
+    ? `${_prDe.split('-').reverse().join('/')} – ${_prAte.split('-').reverse().join('/')}`
+    : 'Personalizado';
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
+      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
+        ${RANGES.map(([d,l]) => `
+          <button onclick="_prSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${!isCustom&&_prRangeDias===d?'700':'500'};background:${!isCustom&&_prRangeDias===d?'var(--bg)':'transparent'};color:${!isCustom&&_prRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${!isCustom&&_prRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
+        `).join('')}
+        <button onclick="_prToggleCustom()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
+          ${lc('calendar',11,'currentColor')} ${customLabel}
+        </button>
+      </div>
+      ${_prCustomAberto ? `
+        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
+            <input type="date" id="prCustomDe" value="${_prDe}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <div>
+            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
+            <input type="date" id="prCustomAte" value="${_prAte}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
+          </div>
+          <button class="btn btn-primary btn-xs" onclick="_prAplicarCustom()">Aplicar</button>
+        </div>` : ''}
+    </div>
     <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasProdutos()">
       <option value="">Todos os canais</option>
       ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
