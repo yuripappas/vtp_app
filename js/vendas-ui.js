@@ -457,9 +457,10 @@ async function renderVendasInsumos() {
   _inDados = vendasInsumosConsumidos(linhas);
   const { insumos, custoTotal, naoRastreado } = _inDados;
 
-  const kpi = (lbl, val, sub) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
-    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
-    <div style="font-size:1.5rem;font-weight:800">${val}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
+  const kpi = (lbl, val, sub, bg, fg) => `<div style="background:${bg};border-radius:var(--r12,10px);padding:16px 18px">
+    <div style="font-size:.72rem;font-weight:700;color:${fg};text-transform:uppercase;letter-spacing:.5px;opacity:.85">${lbl}</div>
+    <div style="font-size:2rem;font-weight:900;color:${fg};line-height:1.15;margin-top:4px">${val}</div>
+    ${sub?`<div style="font-size:.76rem;color:${fg};opacity:.8;margin-top:2px">${sub}</div>`:''}</div>`;
 
   const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
   const banner = naoRastreado.length ? `<div class="card" style="padding:12px 16px;margin-bottom:16px;border-color:var(--warning-fg,#D97706);background:var(--warning-bg,#FEF3C7)">
@@ -470,12 +471,12 @@ async function renderVendasInsumos() {
 
   el.innerHTML = _inFiltros() + `
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos cadastrados, com o consumo nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''} — preparados cascateiam pro insumo cru que consomem.</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px">
-      ${kpi('Insumos cadastrados', insumos.length)}
-      <div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
-        <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Custo total</div>
-        <div id="inKpiCusto" style="font-size:1.5rem;font-weight:800">R$ ${fmt(custoTotal)}</div>
-        <div style="font-size:.72rem;color:var(--muted)">valor consumido no período${_inCats.length||_inBusca?' · da seleção atual':''}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,220px));gap:14px;margin-bottom:22px">
+      ${kpi('Insumos cadastrados', insumos.length, 'no cadastro', 'var(--purple-xlight)', 'var(--purple)')}
+      <div style="background:var(--green-light);border-radius:var(--r12,10px);padding:16px 18px">
+        <div style="font-size:.72rem;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;opacity:.85">Custo total</div>
+        <div id="inKpiCusto" style="font-size:2rem;font-weight:900;color:var(--green);line-height:1.15;margin-top:4px">R$ ${fmt(custoTotal)}</div>
+        <div style="font-size:.76rem;color:var(--green);opacity:.8;margin-top:2px">valor consumido no período${_inCats.length||_inBusca?' · da seleção atual':''}</div>
       </div>
     </div>
     ${banner}
