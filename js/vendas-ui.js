@@ -13,9 +13,14 @@ let _vdTab     = 'cmv';
 let _vdPeriodo = 90;
 let _vdCanal   = '';   // '' = todos
 let _vdMetaCMV = 30;   // % meta de CMV
-let _vdCatOpen = null; // categoria expandida no drill-down
+let _vdCatOpen = null; // categoria expandida no drill-down (aba Por Insumo)
 let _vdDrillExpand = false; // "mostrar todos os sabores" na categoria aberta
 const _VD_DRILL_LIMITE = 8; // sabores visíveis antes do "mostrar mais"
+
+// Sub-abas do CMV: "Geral" (categoria → produto) e "Por Insumo" (categoria →
+// sabor/bebida — o drill-down que já existia, inalterado).
+let _vdCmvSubTab = 'geral'; // 'geral' | 'insumo'
+let _vdProdOpen  = null;    // categoria expandida na aba Geral
 
 // Intervalo do CMV — mesmo padrão de período do Dashboard (Hoje/7/30/60 +
 // Personalizado com popover De/Até), só usado aqui, não mexe no filtro
@@ -173,7 +178,8 @@ async function renderVendasCMV() {
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
   const cat  = vendasPorCategoria(linhas);
-  const prod = vendasProdutosPorCategoria(linhas);
+  const prod = _vdCmvSubTab === 'insumo' ? vendasProdutosPorCategoria(linhas) : null;
+  const prodGeral = _vdCmvSubTab === 'geral' ? vendasPorProduto(linhas) : null;
   const pend = vendasPendencias(linhas);
 
   const tot = { vendas: 0, receita: 0, custo: 0 };
@@ -217,6 +223,16 @@ async function renderVendasCMV() {
     </div>`;
   };
 
+  const subTabBtn = (id, lbl) => `<button onclick="_vdCmvSubTab='${id}';renderVendasCMV()" style="padding:8px 18px;font-size:.82rem;font-weight:700;border:none;cursor:pointer;background:${id===_vdCmvSubTab?'var(--purple)':'transparent'};color:${id===_vdCmvSubTab?'#fff':'var(--muted)'};border-radius:var(--r8)">${lbl}</button>`;
+  const subTabs = `<div style="display:inline-flex;gap:3px;background:var(--surface2);border-radius:var(--r10);padding:3px;margin-bottom:16px">
+    ${subTabBtn('geral','Geral')}${subTabBtn('insumo','Por Insumo')}
+  </div>`;
+
+  const corpo = _vdCmvSubTab === 'geral'
+    ? _vdRenderGeral(prodGeral)
+    : `<div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por categoria <span style="font-weight:400;text-transform:none">— clique para ver o detalhe</span></div>
+       ${VENDAS_CATEGORIAS.map(linhaCat).join('')}`;
+
   el.innerHTML = _vdFiltrosCmv() + `
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${range.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
@@ -226,8 +242,63 @@ async function renderVendasCMV() {
       ${kpi('Margem', 'R$ ' + fmt(margem))}
     </div>
     ${banner}
-    <div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por categoria <span style="font-weight:400;text-transform:none">— clique para ver o detalhe</span></div>
-    ${VENDAS_CATEGORIAS.map(linhaCat).join('')}`;
+    ${subTabs}
+    ${corpo}`;
+}
+
+// Aba "Geral" — categoria → produto (o que o catálogo do CW realmente vende
+// em cada categoria; ver comentário de vendasPorProduto em vendas.js).
+function _vdRenderGeral(prodPorCategoria) {
+  const catsComVenda = VENDAS_CATEGORIAS.filter(c => prodPorCategoria[c]?.produtos?.length);
+  if (!catsComVenda.length) return '<div class="ft-empty-list">Sem vendas no período</div>';
+
+  const maxQtd = Math.max(1, ...catsComVenda.map(c => prodPorCategoria[c].vendas));
+  const maxFat = Math.max(1, ...catsComVenda.map(c => prodPorCategoria[c].receita));
+  const fmtQ = n => Math.round(n).toLocaleString('pt-BR');
+  const barra = (pct, cor) => `<div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:4px"><div style="width:${Math.max(0,Math.min(100,pct)).toFixed(0)}%;height:100%;background:${cor}"></div></div>`;
+  const GRID = '22px 1.6fr 1.1fr 1.3fr 1fr 1fr 1fr 1fr';
+
+  const linhaProd = (p, maxQtdCat, maxFatCat) => `<div style="display:grid;grid-template-columns:${GRID};gap:12px;align-items:center;padding:8px 16px 8px 38px;font-size:.82rem;border-top:1px solid var(--border)">
+      <div></div>
+      <div>${p.nome}</div>
+      <div style="text-align:right">${fmtQ(p.qtd)}${barra(maxQtdCat>0?p.qtd/maxQtdCat*100:0,'var(--chart-2,#9F7AEA)')}</div>
+      <div style="text-align:right">R$ ${fmt(p.receita)}${barra(maxFatCat>0?p.receita/maxFatCat*100:0,'var(--chart-1,#6B21D4)')}</div>
+      <div style="text-align:right;color:var(--muted)">R$ ${fmt(p.precoMedio)}</div>
+      <div style="text-align:right;color:var(--muted)">R$ ${fmt(p.custoMedio)}</div>
+      <div style="text-align:right;color:var(--muted)">R$ ${fmt(p.custo)}</div>
+      <div style="text-align:right;font-weight:700;color:${p.lucro<0?'var(--red)':'var(--green)'}">R$ ${fmt(p.lucro)}</div>
+    </div>`;
+
+  const linhaCat = (nome) => {
+    const d = prodPorCategoria[nome]; if (!d || !d.produtos.length) return '';
+    const aberta = _vdProdOpen === nome;
+    const lucro = d.receita - d.custo;
+    const maxQtdCat = Math.max(1, ...d.produtos.map(p => p.qtd));
+    const maxFatCat = Math.max(1, ...d.produtos.map(p => p.receita));
+    return `<div class="card" style="padding:0;margin-bottom:8px;overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <div style="min-width:780px">
+          <div onclick="_vdProdOpen='${aberta ? '' : nome}';renderVendasCMV()" style="display:grid;grid-template-columns:${GRID};gap:12px;align-items:center;padding:13px 16px;cursor:pointer;background:var(--surface2)">
+            <span style="color:var(--muted);display:inline-flex;transform:rotate(${aberta?90:0}deg);transition:transform .15s">${lc('chevron-right',16,'currentColor')}</span>
+            <div style="display:flex;align-items:center;gap:8px;font-weight:700;font-size:.9rem">${lc(_VD_CAT_ICON[nome]||'pizza',16,'var(--purple)')} ${nome}</div>
+            <div style="text-align:right;font-weight:700">${fmtQ(d.vendas)}${barra(maxQtd>0?d.vendas/maxQtd*100:0,'var(--chart-2,#9F7AEA)')}</div>
+            <div style="text-align:right;font-weight:700">R$ ${fmt(d.receita)}${barra(maxFat>0?d.receita/maxFat*100:0,'var(--chart-1,#6B21D4)')}</div>
+            <div style="text-align:right;color:var(--muted)">R$ ${fmt(d.vendas>0?d.receita/d.vendas:0)}</div>
+            <div style="text-align:right;color:var(--muted)">R$ ${fmt(d.vendas>0?d.custo/d.vendas:0)}</div>
+            <div style="text-align:right;color:var(--muted)">R$ ${fmt(d.custo)}</div>
+            <div style="text-align:right;font-weight:800;color:${lucro<0?'var(--red)':'var(--green)'}">R$ ${fmt(lucro)}</div>
+          </div>
+          ${aberta ? d.produtos.map(p => linhaProd(p, maxQtdCat, maxFatCat)).join('') : ''}
+        </div>
+      </div>
+    </div>`;
+  };
+
+  return `<div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por categoria e produto <span style="font-weight:400;text-transform:none">— clique para expandir</span></div>
+    <div style="display:grid;grid-template-columns:${GRID};gap:12px;padding:0 16px 6px;font-size:.62rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">
+      <div></div><div>Categoria / Produto</div><div style="text-align:right">Qtde vendida</div><div style="text-align:right">Faturamento</div><div style="text-align:right">Preço médio</div><div style="text-align:right">Custo médio</div><div style="text-align:right">Custo total</div><div style="text-align:right">Lucro</div>
+    </div>
+    ${catsComVenda.map(linhaCat).join('')}`;
 }
 
 // Drill-down: opções/bebidas vendidas na categoria, com custo de ficha.

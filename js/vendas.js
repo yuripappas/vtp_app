@@ -297,10 +297,24 @@ function _vInterpretarPedido(p) {
     }
 
     if (!pizzas.length && !bebidas.length) continue;
+
+    let categoria = marcadorPromo ? 'Promo do Dia' : _vCategoria(it);
+    // Pizza Salgada/Doce NUNCA tem meio a meio (regra confirmada com o Yuri,
+    // 2026-07-20) — mas o layout "tudo embutido no nome, sem opção nenhuma"
+    // (ex.: "1/2 Frango Cremoso + 1/2 Calabresa | Pizza Grande", options:[])
+    // não dá pra _vCategoria() reconhecer de antemão (não existe grupo de
+    // opção pra bater o padrão de Monte Seu Sabor). Se a pizza já interpretada
+    // saiu com 2 sabores diferentes numa categoria que não deveria permitir
+    // isso, a origem real da venda é Monte Seu Sabor — corrige aqui.
+    if ((categoria === 'Pizza Salgada' || categoria === 'Pizza Doce')
+        && pizzas.some(pz => Object.keys(pz.meias).length > 1)) {
+      categoria = 'Monte seu Sabor';
+    }
+
     linhas.push({
       pedidoId:  p.id,
       ts, canal,
-      categoria: marcadorPromo ? 'Promo do Dia' : _vCategoria(it),
+      categoria,
       nome:      marcadorPromo ? marcadorPromo.name : it.name,
       qtd:       it.quantity || 1,
       receita:   it.total_price ?? it.unit_price ?? 0, // preço de tabela do item (ajustado abaixo)
