@@ -156,12 +156,13 @@ function renderOmnichannel() {
   page.innerHTML = '';
 
   switch (_atdPaginaAtiva) {
-    case 'inbox':         _atdRenderInbox(); break;
-    case 'respostas':     _atdRenderRespostas(); break;
-    case 'estatisticas':  _atdRenderEstatisticas(); break;
-    case 'integracoes':   _atdRenderIntegracoes(); break;
-    case 'configuracoes': _atdRenderConfiguracoes(); break;
-    default:              _atdRenderInbox();
+    case 'inbox':              _atdRenderInbox(); break;
+    case 'respostas':          _atdRenderRespostas(); break;
+    case 'avaliacoes-ifood':   _atdRenderAvaliacoesIfood(); break;
+    case 'estatisticas':       _atdRenderEstatisticas(); break;
+    case 'integracoes':        _atdRenderIntegracoes(); break;
+    case 'configuracoes':      _atdRenderConfiguracoes(); break;
+    default:                   _atdRenderInbox();
   }
 }
 
@@ -2348,12 +2349,255 @@ function _atdIconeCanal(tipo, size = 20) {
 }
 
 const ATD_CANAIS_DEFINICAO = [
-  { tipo: 'whatsapp', nome: 'WhatsApp', cor: '#25D366', disponivel: true },
-  { tipo: 'instagram', nome: 'Instagram', cor: '#E1306C', disponivel: true },
-  { tipo: 'ifood', nome: 'iFood', cor: '#EA1D2C', disponivel: false },
-  { tipo: '99food', nome: '99Food', cor: '#FFC700', disponivel: false },
-  { tipo: 'google', nome: 'Google Meu Negócio', cor: '#4285F4', disponivel: false },
+  { tipo: 'whatsapp',  nome: 'WhatsApp',            cor: '#25D366', disponivel: true  },
+  { tipo: 'instagram', nome: 'Instagram',            cor: '#E1306C', disponivel: true  },
+  { tipo: 'ifood',     nome: 'iFood',                cor: '#EA1D2C', disponivel: true  },
+  { tipo: '99food',    nome: '99Food',               cor: '#FFC700', disponivel: false },
+  { tipo: 'google',    nome: 'Google Meu Negócio',  cor: '#4285F4', disponivel: false },
 ];
+
+// ══════════════════════════════════════════════════════════════
+// AVALIAÇÕES IFOOD
+// ══════════════════════════════════════════════════════════════
+
+const _ATD_IFOOD_BASE = () => {
+  const base = typeof VTP_SUPABASE_URL !== 'undefined'
+    ? VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1')
+    : '';
+  return `${base}/ifood-reviews`;
+};
+
+const _atdIfoodState = {
+  avaliacoes: [],
+  page: 1,
+  pageSize: 20,
+  total: 0,
+  filtroStatus: '',   // '' | 'NOT_REPLIED' | 'REPLIED'
+  carregando: false,
+};
+
+async function _atdRenderAvaliacoesIfood() {
+  const wrap = document.getElementById('page-omnichannel');
+  wrap.innerHTML = `
+    <div style="max-width:900px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:36px;height:36px;border-radius:var(--r8);background:#EA1D2C18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#EA1D2C"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+          </span>
+          <div>
+            <h2 style="font-size:var(--text-lg);font-weight:800;color:var(--text);margin:0;line-height:1.2">Avaliações iFood</h2>
+            <div style="font-size:var(--text-xs);color:var(--fg-muted)">Responda avaliações de clientes diretamente aqui</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="atdIfoodFiltro" onchange="_atdIfoodAplicarFiltro(this.value)"
+            style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--r8);font-size:var(--text-xs);background:var(--bg);color:var(--text);outline:none">
+            <option value="">Todas</option>
+            <option value="NOT_REPLIED">Sem resposta</option>
+            <option value="REPLIED">Respondidas</option>
+          </select>
+          <button class="btn btn-ghost" onclick="_atdIfoodCarregar(true)" style="font-size:var(--text-xs)">
+            ${lc('refresh-cw', 13, 'currentColor')} Atualizar
+          </button>
+        </div>
+      </div>
+
+      <!-- Aviso de credenciais -->
+      <div id="atdIfoodAvisoCredenciais" style="display:none;background:var(--warning-bg);border:1px solid var(--warning-border,#fde68a);border-radius:var(--r8);padding:12px 16px;margin-bottom:16px;font-size:var(--text-xs);color:var(--warning-fg);display:flex;align-items:flex-start;gap:8px">
+        ${lc('alert-triangle', 16, 'currentColor')}
+        <div>
+          <strong>Credenciais iFood não configuradas.</strong> Para ativar, cadastre <code>IFOOD_CLIENT_ID</code> e <code>IFOOD_CLIENT_SECRET</code> nos Secrets da Edge Function no painel do Supabase.
+          <br>Você pode obter essas credenciais no <strong>Portal de Desenvolvedores do iFood</strong> após criar uma aplicação do tipo Merchant.
+        </div>
+      </div>
+
+      <div id="atdIfoodLista" style="display:flex;flex-direction:column;gap:10px">
+        <div style="text-align:center;padding:40px;color:var(--fg-subtle)">
+          ${lc('loader', 20, 'var(--fg-subtle)')} Carregando avaliações...
+        </div>
+      </div>
+
+      <div id="atdIfoodPaginacao" style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:16px;display:none"></div>
+    </div>`;
+
+  await _atdIfoodCarregar();
+}
+
+async function _atdIfoodCarregar(resetPagina = false) {
+  if (resetPagina) _atdIfoodState.page = 1;
+  _atdIfoodState.carregando = true;
+
+  const lista = document.getElementById('atdIfoodLista');
+  if (!lista) return;
+  lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg-subtle)">${lc('loader', 20, 'var(--fg-subtle)')} Carregando...</div>`;
+
+  try {
+    const base = _ATD_IFOOD_BASE();
+    const params = new URLSearchParams({
+      action: 'list',
+      page: String(_atdIfoodState.page),
+      pageSize: String(_atdIfoodState.pageSize),
+    });
+    if (_atdIfoodState.filtroStatus) params.set('status', _atdIfoodState.filtroStatus);
+
+    const r = await fetch(`${base}?${params}`, {
+      headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` }
+    });
+    const data = await r.json();
+
+    if (!r.ok) {
+      const isCredErr = (data.error ?? '').includes('CLIENT_ID') || (data.error ?? '').includes('CLIENT_SECRET') || (data.error ?? '').includes('não configurados');
+      const aviso = document.getElementById('atdIfoodAvisoCredenciais');
+      if (aviso) aviso.style.display = isCredErr ? 'flex' : 'none';
+      lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);font-size:var(--text-sm)">${lc('alert-circle', 18, 'currentColor')} ${data.error ?? 'Erro ao carregar avaliações.'}</div>`;
+      return;
+    }
+
+    const aviso = document.getElementById('atdIfoodAvisoCredenciais');
+    if (aviso) aviso.style.display = 'none';
+
+    // A API do iFood retorna { reviews: [], total: N } (verificar com credenciais reais)
+    const reviews = data.reviews ?? data.content ?? data.data ?? [];
+    _atdIfoodState.total = data.total ?? data.totalElements ?? reviews.length;
+    _atdIfoodState.avaliacoes = reviews;
+
+    _atdIfoodRenderLista();
+    _atdIfoodRenderPaginacao();
+  } catch (e) {
+    lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);font-size:var(--text-sm)">${lc('wifi-off', 18, 'currentColor')} Erro de conexão: ${e.message}</div>`;
+  } finally {
+    _atdIfoodState.carregando = false;
+  }
+}
+
+function _atdIfoodRenderLista() {
+  const lista = document.getElementById('atdIfoodLista');
+  if (!lista) return;
+
+  const reviews = _atdIfoodState.avaliacoes;
+  if (!reviews.length) {
+    lista.innerHTML = `<div style="text-align:center;padding:60px;color:var(--fg-subtle)">${lc('star', 32, 'var(--fg-subtle)')}<br><br>Nenhuma avaliação encontrada.</div>`;
+    return;
+  }
+
+  lista.innerHTML = reviews.map(rv => {
+    const estrelas = (rv.rating ?? rv.stars ?? 0);
+    const respondida = rv.status === 'REPLIED' || !!rv.reply?.message || !!rv.answer?.message;
+    const nomeCliente = rv.customer?.name ?? rv.customerName ?? 'Cliente';
+    const comentario  = rv.comment ?? rv.message ?? rv.text ?? '';
+    const resposta    = rv.reply?.message ?? rv.answer?.message ?? '';
+    const data        = rv.createdAt ? new Date(rv.createdAt).toLocaleDateString('pt-BR') : '';
+    const id          = rv.id ?? rv.reviewId ?? '';
+
+    const estrelasHtml = Array.from({ length: 5 }, (_, i) =>
+      `<span style="color:${i < estrelas ? '#F5A800' : 'var(--border)'};font-size:15px">★</span>`
+    ).join('');
+
+    const respostaHtml = respondida
+      ? `<div style="margin-top:10px;padding:10px 12px;background:var(--success-bg);border-radius:var(--r8);border:1px solid var(--success-border,#bbf7d0);font-size:var(--text-xs);color:var(--fg-muted)">
+           <div style="font-weight:700;color:var(--green);margin-bottom:4px;display:flex;align-items:center;gap:4px">${lc('check-circle', 12, 'currentColor')} Você respondeu:</div>
+           ${resposta}
+         </div>`
+      : `<div style="margin-top:10px">
+           <textarea id="atdIfoodResp_${id}" placeholder="Escreva sua resposta (10–300 caracteres)..."
+             style="width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8);font-size:var(--text-xs);background:var(--bg);color:var(--text);resize:vertical;box-sizing:border-box;outline:none;font-family:inherit"
+             oninput="_atdIfoodContarChars('${id}', this.value)"></textarea>
+           <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+             <span id="atdIfoodCount_${id}" style="font-size:10px;color:var(--fg-subtle)">0 / 300</span>
+             <button class="btn btn-primary" style="font-size:var(--text-xs);padding:6px 14px"
+               onclick="_atdIfoodResponder('${id}')">
+               ${lc('send', 12, '#fff')} Responder
+             </button>
+           </div>
+         </div>`;
+
+    return `
+      <div id="atdIfoodCard_${id}" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r12);padding:16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px">
+          <div>
+            <div style="font-weight:700;font-size:var(--text-sm);color:var(--text)">${nomeCliente}</div>
+            <div style="margin-top:2px">${estrelasHtml} <span style="font-size:var(--text-xs);color:var(--fg-muted);margin-left:4px">${data}</span></div>
+          </div>
+          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;
+            ${respondida ? 'background:var(--success-bg);color:var(--green)' : 'background:var(--warning-bg);color:var(--warning-fg)'}">
+            ${respondida ? 'Respondida' : 'Pendente'}
+          </span>
+        </div>
+        ${comentario ? `<div style="font-size:var(--text-xs);color:var(--text);line-height:1.5">${comentario}</div>` : ''}
+        ${respostaHtml}
+      </div>`;
+  }).join('');
+}
+
+function _atdIfoodContarChars(id, valor) {
+  const count = document.getElementById(`atdIfoodCount_${id}`);
+  if (!count) return;
+  const n = valor.length;
+  count.textContent = `${n} / 300`;
+  count.style.color = n > 300 ? 'var(--danger)' : (n < 10 && n > 0 ? 'var(--warning-fg)' : 'var(--fg-subtle)');
+}
+
+async function _atdIfoodResponder(reviewId) {
+  const textarea = document.getElementById(`atdIfoodResp_${reviewId}`);
+  if (!textarea) return;
+  const message = textarea.value.trim();
+  if (message.length < 10)  { toast('A resposta deve ter pelo menos 10 caracteres', 'warn'); return; }
+  if (message.length > 300) { toast('A resposta não pode ultrapassar 300 caracteres', 'warn'); return; }
+
+  textarea.disabled = true;
+  try {
+    const base = _ATD_IFOOD_BASE();
+    const r = await fetch(`${base}?action=reply`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reviewId, message }),
+    });
+    const data = await r.json();
+    if (!r.ok) { toast(data.error ?? 'Erro ao enviar resposta', 'error'); textarea.disabled = false; return; }
+
+    toast('Resposta enviada com sucesso!', 'success');
+    // Atualizar card localmente sem recarregar tudo
+    const card = document.getElementById(`atdIfoodCard_${reviewId}`);
+    if (card) {
+      const rv = _atdIfoodState.avaliacoes.find(a => (a.id ?? a.reviewId) === reviewId);
+      if (rv) {
+        rv.status = 'REPLIED';
+        rv.reply  = { message };
+      }
+      _atdIfoodRenderLista();
+    }
+  } catch (e) {
+    toast('Erro de conexão: ' + e.message, 'error');
+    textarea.disabled = false;
+  }
+}
+
+function _atdIfoodRenderPaginacao() {
+  const pag = document.getElementById('atdIfoodPaginacao');
+  if (!pag) return;
+  const totalPages = Math.ceil(_atdIfoodState.total / _atdIfoodState.pageSize);
+  if (totalPages <= 1) { pag.style.display = 'none'; return; }
+  pag.style.display = 'flex';
+  pag.innerHTML = `
+    <button class="btn btn-ghost" style="font-size:var(--text-xs)" ${_atdIfoodState.page <= 1 ? 'disabled' : ''} onclick="_atdIfoodPagina(${_atdIfoodState.page - 1})">
+      ${lc('chevron-left', 14, 'currentColor')} Anterior
+    </button>
+    <span style="font-size:var(--text-xs);color:var(--fg-muted)">Página ${_atdIfoodState.page} de ${totalPages}</span>
+    <button class="btn btn-ghost" style="font-size:var(--text-xs)" ${_atdIfoodState.page >= totalPages ? 'disabled' : ''} onclick="_atdIfoodPagina(${_atdIfoodState.page + 1})">
+      Próxima ${lc('chevron-right', 14, 'currentColor')}
+    </button>`;
+}
+
+function _atdIfoodPagina(n) {
+  _atdIfoodState.page = n;
+  _atdIfoodCarregar();
+}
+
+function _atdIfoodAplicarFiltro(status) {
+  _atdIfoodState.filtroStatus = status;
+  _atdIfoodCarregar(true);
+}
 
 // ══════════════════════════════════════════════════════════════
 // RESPOSTAS — módulo completo (Rápidas + Regras da IA)
@@ -2920,13 +3164,19 @@ async function _atdRenderIntegracoes() {
         acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirDetalheCanal('${def.tipo}')">Gerenciar</button>`;
       }
     } else {
-      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Não conectado</span>`;
-      if (def.tipo === 'whatsapp') {
-        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Conectar via QR Code</button>`;
-      } else if (def.tipo === 'instagram') {
-        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirGuiaInstagram()">${lc('link', 13, '#fff')} Conectar</button>`;
+      // iFood: sempre disponível, status vem da configuração de credenciais (não de atd_canais)
+      if (def.tipo === 'ifood') {
+        statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:#EA1D2C;background:#EA1D2C18;padding:2px 8px;border-radius:999px">Via API iFood</span>`;
+        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs);background:#EA1D2C;border-color:#EA1D2C" onclick="_atdIrParaAvaliacoesIfood()">${lc('star', 13, '#fff')} Ver Avaliações</button>`;
       } else {
-        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" disabled>Conectar</button>`;
+        statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Não conectado</span>`;
+        if (def.tipo === 'whatsapp') {
+          acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Conectar via QR Code</button>`;
+        } else if (def.tipo === 'instagram') {
+          acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirGuiaInstagram()">${lc('link', 13, '#fff')} Conectar</button>`;
+        } else {
+          acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" disabled>Conectar</button>`;
+        }
       }
     }
 
@@ -2958,6 +3208,12 @@ async function _atdRenderIntegracoes() {
 
 function _atdAbrirDetalheCanal(tipo) {
   if (tipo === 'instagram') _atdAbrirGuiaInstagram();
+  if (tipo === 'ifood') _atdIrParaAvaliacoesIfood();
+}
+
+function _atdIrParaAvaliacoesIfood() {
+  _atdPaginaAtiva = 'avaliacoes-ifood';
+  renderOmnichannel();
 }
 
 async function _atdAbrirQRWhatsApp() {
