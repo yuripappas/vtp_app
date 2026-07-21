@@ -863,7 +863,11 @@ function _pcSalvarProdutos(arr) { db._set('vtp_precificacao_produtos', arr); }
 // duplicar o prefixo.
 function _pcSaborNomeBase(o) { return o ? o.nome.replace(/^1\/2\s+/i, '') : '(sabor removido)'; }
 
+// Nome customizado (opcional) tem prioridade sobre o gerado automaticamente
+// — dá pra descrever o produto do seu jeito (ex.: "Pizza da Casa") em vez
+// de ficar preso ao nome montado a partir dos componentes.
 function _pcNomeProduto(p) {
+  if (p.nome) return p.nome;
   if (p.tipo === 'produto') {
     const item = produtos.find(x => x.id === p.produtoId) || items.find(x => x.id === p.produtoId);
     return item ? (item.name || item.nome) : '(produto removido)';
@@ -975,6 +979,8 @@ let _pcNovoTamanho   = 'grande';
 let _pcNovoSabor1    = null;
 let _pcNovoSabor2    = null;
 let _pcNovoProdutoId = null;
+let _pcNovoNome      = '';   // nome customizado (opcional) — sobrepõe o gerado
+let _pcEditandoId    = null; // id do produto em edição (null = criando novo)
 
 function _pcSaborOptions(sel) {
   return `<option value="">Escolha o sabor...</option>` +
@@ -985,8 +991,17 @@ function _pcProdutoOptions(sel) {
     produtos.slice().sort((a, b) => (a.name || a.nome).localeCompare(b.name || b.nome)).map(x => `<option value="${x.id}"${x.id === sel ? ' selected' : ''}>${x.name || x.nome}</option>`).join('');
 }
 
-function _pcAbrirModalProduto() {
-  _pcNovoTipo = 'pizza'; _pcNovoTamanho = 'grande'; _pcNovoSabor1 = null; _pcNovoSabor2 = null; _pcNovoProdutoId = null;
+// id != null → edita o produto existente (pré-carrega os campos); sem id →
+// modal em branco pra criar um novo.
+function _pcAbrirModalProduto(id) {
+  const existente = id != null ? _pcProdutosSalvos().find(x => x.id === id) : null;
+  _pcEditandoId    = existente ? existente.id : null;
+  _pcNovoTipo      = existente ? existente.tipo : 'pizza';
+  _pcNovoTamanho   = existente?.tamanho || 'grande';
+  _pcNovoSabor1    = existente?.sabor1Id || null;
+  _pcNovoSabor2    = existente?.sabor2Id || null;
+  _pcNovoProdutoId = existente?.produtoId || null;
+  _pcNovoNome      = existente?.nome || '';
   const ov = document.createElement('div'); ov.id = 'pcModalProduto'; ov.className = 'overlay open';
   ov.innerHTML = _pcModalProdutoHtml();
   ov.onclick = e => { if (e.target === ov) ov.remove(); };
@@ -1001,35 +1016,40 @@ function _pcModalSetTamanho(t) { _pcNovoTamanho = t; if (t === 'pequena') _pcNov
 function _pcModalSetSabor1(v) { _pcNovoSabor1 = parseInt(v) || null; _pcAtualizarModalProduto(); }
 function _pcModalSetSabor2(v) { _pcNovoSabor2 = parseInt(v) || null; _pcAtualizarModalProduto(); }
 function _pcModalSetProduto(v) { _pcNovoProdutoId = parseInt(v) || null; _pcAtualizarModalProduto(); }
+function _pcModalSetNome(v) { _pcNovoNome = v; }
 
 function _pcModalProdutoHtml() {
   const seg = (opts, val, fn) => `<div style="display:inline-flex;border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
     ${opts.map(([id, lbl]) => `<button onclick="${fn}('${id}')" style="padding:7px 16px;font-size:.82rem;font-weight:600;border:none;cursor:pointer;background:${id === val ? 'var(--purple)' : 'transparent'};color:${id === val ? '#fff' : 'var(--muted)'}">${lbl}</button>`).join('')}
   </div>`;
 
+  let autoNome = '';
   let preview = '';
   if (_pcNovoTipo === 'pizza' && _pcNovoSabor1) {
     const p = { tipo: 'pizza', tamanho: _pcNovoTamanho, sabor1Id: _pcNovoSabor1, sabor2Id: _pcNovoSabor2 };
+    autoNome = _pcNomeProduto(p);
     const chips = [`Base Pizza ${_pcNovoTamanho === 'grande' ? 'Grande' : 'Pequena'}`];
     const o1 = opcoes.find(o => o.id === _pcNovoSabor1);
     if (o1) chips.push(_pcNovoSabor2 ? '1/2 ' + _pcSaborNomeBase(o1) : _pcSaborNomeBase(o1));
     if (_pcNovoSabor2) { const o2 = opcoes.find(o => o.id === _pcNovoSabor2); if (o2) chips.push('1/2 ' + _pcSaborNomeBase(o2)); }
     preview = `<div style="background:var(--surface2);border-radius:var(--r8);padding:10px 12px;margin-bottom:16px">
       ${chips.map(c => `<span class="badge" style="background:var(--purple-xlight,#EFE7FE);color:var(--purple);margin:2px 4px 2px 0">${c}</span>`).join('')}
-      <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:.86rem"><span style="color:var(--muted)">Nome gerado</span><b>${_pcNomeProduto(p)}</b></div>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:.86rem"><span style="color:var(--muted)">Nome final</span><b>${_pcNovoNome || autoNome}</b></div>
       <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:.86rem"><span style="color:var(--muted)">Custo pela ficha</span><b>R$ ${fmt(_pcCustoProduto(p))}</b></div>
     </div>`;
   } else if (_pcNovoTipo === 'produto' && _pcNovoProdutoId) {
     const p = { tipo: 'produto', produtoId: _pcNovoProdutoId };
+    autoNome = _pcNomeProduto(p);
     preview = `<div style="background:var(--surface2);border-radius:var(--r8);padding:10px 12px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;font-size:.86rem"><span style="color:var(--muted)">Custo pela ficha</span><b>R$ ${fmt(_pcCustoProduto(p))}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:.86rem"><span style="color:var(--muted)">Nome final</span><b>${_pcNovoNome || autoNome}</b></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:.86rem"><span style="color:var(--muted)">Custo pela ficha</span><b>R$ ${fmt(_pcCustoProduto(p))}</b></div>
     </div>`;
   }
 
   const podeSalvar = (_pcNovoTipo === 'pizza' && _pcNovoSabor1) || (_pcNovoTipo === 'produto' && _pcNovoProdutoId);
 
   return `<div class="modal" style="width:460px;max-width:92vw;padding:22px" onclick="event.stopPropagation()">
-    <div style="font-size:var(--text-md);font-weight:700;margin-bottom:16px">Adicionar produto</div>
+    <div style="font-size:var(--text-md);font-weight:700;margin-bottom:16px">${_pcEditandoId != null ? 'Editar produto' : 'Adicionar produto'}</div>
 
     <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Tipo</div>
     <div style="margin-bottom:16px">${seg([['pizza', 'Pizza (montar)'], ['produto', 'Produto do cadastro']], _pcNovoTipo, '_pcModalSetTipo')}</div>
@@ -1050,25 +1070,38 @@ function _pcModalProdutoHtml() {
       <select class="inp" style="width:100%;margin-bottom:14px" onchange="_pcModalSetProduto(this.value)">${_pcProdutoOptions(_pcNovoProdutoId)}</select>
     `}
 
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:6px">Nome do produto <span style="font-weight:400">(opcional — em branco usa o nome gerado automaticamente)</span></div>
+    <input class="inp" style="width:100%;margin-bottom:16px" placeholder="${autoNome || 'Ex.: Pizza da Casa'}" value="${_pcNovoNome.replace(/"/g, '&quot;')}" onchange="_pcModalSetNome(this.value)">
+
     ${preview}
 
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <button class="btn btn-outline btn-sm" onclick="this.closest('.overlay').remove()">Cancelar</button>
-      <button class="btn btn-primary btn-sm" onclick="_pcSalvarNovoProduto(this)"${podeSalvar ? '' : ' disabled'}>Salvar produto</button>
+      <button class="btn btn-primary btn-sm" onclick="_pcSalvarNovoProduto(this)"${podeSalvar ? '' : ' disabled'}>${_pcEditandoId != null ? 'Salvar alterações' : 'Salvar produto'}</button>
     </div>
   </div>`;
 }
 
 function _pcSalvarNovoProduto(btn) {
-  const p = _pcNovoTipo === 'pizza'
-    ? { id: Date.now(), tipo: 'pizza', tamanho: _pcNovoTamanho, sabor1Id: _pcNovoSabor1, sabor2Id: _pcNovoSabor2, precoManual: {} }
-    : { id: Date.now(), tipo: 'produto', produtoId: _pcNovoProdutoId, precoManual: {} };
+  const nome = _pcNovoNome.trim() || null;
   const arr = _pcProdutosSalvos();
-  arr.push(p);
+
+  if (_pcEditandoId != null) {
+    const p = arr.find(x => x.id === _pcEditandoId); if (!p) return;
+    p.tipo = _pcNovoTipo; p.nome = nome;
+    if (_pcNovoTipo === 'pizza') { p.tamanho = _pcNovoTamanho; p.sabor1Id = _pcNovoSabor1; p.sabor2Id = _pcNovoSabor2; delete p.produtoId; }
+    else { p.produtoId = _pcNovoProdutoId; delete p.tamanho; delete p.sabor1Id; delete p.sabor2Id; }
+  } else {
+    const p = _pcNovoTipo === 'pizza'
+      ? { id: Date.now(), tipo: 'pizza', tamanho: _pcNovoTamanho, sabor1Id: _pcNovoSabor1, sabor2Id: _pcNovoSabor2, nome, precoManual: {} }
+      : { id: Date.now(), tipo: 'produto', produtoId: _pcNovoProdutoId, nome, precoManual: {} };
+    arr.push(p);
+  }
+
   _pcSalvarProdutos(arr);
   btn.closest('.overlay').remove();
   renderVendasPrecos();
-  toast('Produto adicionado', 'ok');
+  toast(_pcEditandoId != null ? 'Produto atualizado' : 'Produto adicionado', 'ok');
 }
 
 // ── Render ───────────────────────────────────────────────────────
