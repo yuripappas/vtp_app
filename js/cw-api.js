@@ -77,22 +77,35 @@ async function _getPedidosCW(dataInicio, dataFim) {
   const inicio = (dataInicio || new Date(new Date().setHours(0, 0, 0, 0))).toISOString();
   const fim    = (dataFim    || new Date()).toISOString();
 
-  const { data, error } = await sb
-    .from('cw_pedidos')
-    .select('*')
-    .gte('cw_created_at', inicio)
-    .lte('cw_created_at', fim)
-    .order('cw_created_at', { ascending: false });
+  // PostgREST corta em 1000 linhas por request — sem paginar, qualquer período
+  // com mais de 1000 pedidos (comum em ranges de várias semanas) perdia os
+  // mais antigos silenciosamente (Faturamento/Pedidos/Ticket médio saíam bem
+  // abaixo do CardápioWeb). Mesmo padrão de página que _vFetchPeriodo usa
+  // no CMV (js/vendas.js).
+  const PAGE = 1000;
+  const data = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data: pagina, error } = await sb
+      .from('cw_pedidos')
+      .select('*')
+      .gte('cw_created_at', inicio)
+      .lte('cw_created_at', fim)
+      .order('cw_created_at', { ascending: false })
+      .range(from, from + PAGE - 1);
 
-  if (error) {
-    const e = new Error(error.message);
-    e.code = 'SUPABASE_ERROR';
-    throw e;
+    if (error) {
+      const e = new Error(error.message);
+      e.code = 'SUPABASE_ERROR';
+      throw e;
+    }
+
+    data.push(...(pagina || []));
+    if (!pagina || pagina.length < PAGE) break;
   }
 
   const now = new Date();
 
-  return (data || [])
+  return data
     .filter(d => d.status !== 'canceling' && d.status !== 'canceled')
     .map(d => {
       const created = new Date(d.cw_created_at);
