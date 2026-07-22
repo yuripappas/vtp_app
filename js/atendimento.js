@@ -64,6 +64,7 @@ function _atdInitIfoodWidget() {
       window.iFoodWidget?.init({
         widgetId: '017265b4-d996-4271-ad33-cbe928ac4f70',
         merchantIds: ['b4ea9cad-91d4-435c-9d1c-738353d19586'],
+        // authCode: 'QTLX-PRZZ' — usar se o widget não ativar automaticamente
       });
     };
     document.body.appendChild(s);
@@ -71,6 +72,7 @@ function _atdInitIfoodWidget() {
     window.iFoodWidget.init({
       widgetId: '017265b4-d996-4271-ad33-cbe928ac4f70',
       merchantIds: ['b4ea9cad-91d4-435c-9d1c-738353d19586'],
+      // authCode: 'QTLX-PRZZ' — usar se o widget não ativar automaticamente
     });
   }
 }
