@@ -490,18 +490,18 @@ function _atdAbrirBuscaAvancada() {
 
   const overlay = document.createElement('div');
   overlay.id = 'atdBuscaAvancadaOverlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.25)';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px';
   overlay.innerHTML = `
-    <div onclick="event.stopPropagation()" style="position:absolute;top:0;right:0;bottom:0;width:320px;background:var(--bg);border-left:1px solid var(--border);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(0,0,0,.12)">
-      <div style="padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+    <div onclick="event.stopPropagation()" style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.22);overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
         <div style="font-weight:800;font-size:var(--text-sm);display:flex;align-items:center;gap:8px">
           ${lc('sliders', 15, 'var(--purple)')} Filtrar conversas
         </div>
-        <button onclick="document.getElementById('atdBuscaAvancadaOverlay').remove()" style="background:none;border:none;cursor:pointer;color:var(--fg-muted)">
+        <button onclick="document.getElementById('atdBuscaAvancadaOverlay').remove()" style="background:none;border:none;cursor:pointer;color:var(--fg-muted);padding:4px;display:flex;align-items:center">
           ${lc('x', 16, 'currentColor')}
         </button>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:18px">
+      <div style="flex:1;overflow-y:auto;padding:20px">
 
         <!-- Canal -->
         <div style="margin-bottom:18px">
@@ -587,7 +587,7 @@ function _atdAbrirBuscaAvancada() {
         </div>
 
       </div>
-      <div style="padding:14px 18px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
         <button class="btn btn-ghost" style="flex:1" onclick="_atdLimparFiltrosAvancados()">Limpar</button>
         <button class="btn btn-primary" style="flex:1" onclick="_atdExecutarBuscaAvancada()">
           ${lc('search', 13, '#fff')} Aplicar
@@ -595,6 +595,13 @@ function _atdAbrirBuscaAvancada() {
       </div>
     </div>`;
   overlay.addEventListener('click', () => overlay.remove());
+
+  // Fecha com ESC
+  const _atdFiltroEscHandler = (e) => {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', _atdFiltroEscHandler); }
+  };
+  document.addEventListener('keydown', _atdFiltroEscHandler);
+
   document.body.appendChild(overlay);
 }
 
