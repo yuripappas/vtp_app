@@ -208,18 +208,19 @@ function _atdRenderInbox() {
               ${_atdState.botGlobalAtivo
                 ? 'background:#dcfce7;border-color:#86efac;'
                 : 'background:var(--surface3);border-color:var(--border);'}">
-            <div style="width:36px;height:20px;border-radius:999px;position:relative;flex-shrink:0;transition:background .2s;
-              background:${_atdState.botGlobalAtivo ? 'var(--green)' : 'var(--border)'}">
-              <div style="position:absolute;top:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s;
-                left:${_atdState.botGlobalAtivo ? '18px' : '2px'}"></div>
-            </div>
+            <span style="flex-shrink:0;color:${_atdState.botGlobalAtivo ? 'var(--green)' : 'var(--fg-muted)'}">
+              ${lc('cpu', 16, 'currentColor')}
+            </span>
             <div style="flex:1;min-width:0">
               <div style="font-size:var(--text-xs);font-weight:800;color:${_atdState.botGlobalAtivo ? '#166534' : 'var(--text)'}">
-                ${_atdState.botGlobalAtivo ? '⚡ Bot ativo — respondendo automaticamente' : '🤖 Modo automático (bot)'}
+                ${_atdState.botGlobalAtivo ? 'Respostas automáticas ativas' : 'Ativar respostas automáticas'}
               </div>
-              <div style="font-size:10px;color:${_atdState.botGlobalAtivo ? '#15803d' : 'var(--fg-subtle)'}">
-                ${_atdState.botGlobalAtivo ? 'Você será alertado se precisar intervir' : 'Clique para ativar respostas automáticas'}
-              </div>
+              ${_atdState.botGlobalAtivo ? `<div style="font-size:10px;color:#15803d">Clique para desativar</div>` : ''}
+            </div>
+            <div style="width:32px;height:18px;border-radius:999px;position:relative;flex-shrink:0;transition:background .2s;
+              background:${_atdState.botGlobalAtivo ? 'var(--green)' : 'var(--border)'}">
+              <div style="position:absolute;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s;
+                left:${_atdState.botGlobalAtivo ? '16px' : '2px'}"></div>
             </div>
           </div>
 
@@ -1892,16 +1893,42 @@ async function _atdConcluirConversa(conversaId) {
 
 // ── F1: Toggle bot GLOBAL ─────────────────────────────────────────────────────
 function _atdToggleBotGlobal() {
-  _atdState.botGlobalAtivo = !_atdState.botGlobalAtivo;
-  // Persiste na sessão do browser
-  if (_atdState.botGlobalAtivo) {
+  const ativo = _atdState.botGlobalAtivo;
+  const titulo = ativo ? 'Desativar respostas automáticas?' : 'Ativar respostas automáticas?';
+  const msg    = ativo
+    ? 'O bot vai parar de responder automaticamente. As conversas precisarão de atenção manual.'
+    : 'O bot vai responder automaticamente todas as mensagens recebidas. Você será alertado se precisar intervir.';
+  const btnLabel = ativo ? 'Sim, desativar' : 'Sim, ativar';
+  const btnClass = ativo ? 'btn-red' : 'btn-primary';
+
+  const modal = document.createElement('div');
+  modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:380px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="color:${ativo ? 'var(--danger)' : 'var(--purple)'}">
+          ${lc('cpu', 20, 'currentColor')}
+        </span>
+        <div style="font-size:var(--text-base);font-weight:800;color:var(--text)">${titulo}</div>
+      </div>
+      <div style="font-size:var(--text-sm);color:var(--fg-muted);line-height:1.5;margin-bottom:20px">${msg}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="this.closest('[style*=fixed]').remove()">Cancelar</button>
+        <button class="btn ${btnClass}" style="font-size:var(--text-xs)" onclick="_atdConfirmarToggleBot(${!ativo}); this.closest('[style*=fixed]').remove()">${btnLabel}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function _atdConfirmarToggleBot(novoEstado) {
+  _atdState.botGlobalAtivo = novoEstado;
+  if (novoEstado) {
     localStorage.setItem('atd_bot_global', '1');
-    toast('⚡ Bot ativado — todas as mensagens serão respondidas automaticamente', 'ok');
+    toast('Respostas automáticas ativadas', 'ok');
   } else {
     localStorage.removeItem('atd_bot_global');
-    toast('Bot desativado — modo manual', 'info');
+    toast('Respostas automáticas desativadas', 'info');
   }
-  // Re-render a sidebar para atualizar o toggle visual
   _atdRenderInbox();
 }
 
