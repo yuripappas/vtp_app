@@ -2017,3 +2017,11 @@ svg { display: block; }
     z-index: 1 !important;
   }
 }
+
+/* iFood Widget — visível apenas no módulo Omnichannel */
+body:not(.vtp-omnichannel) #ifood-widget-button,
+body:not(.vtp-omnichannel) [id^="ifood-widget"],
+body:not(.vtp-omnichannel) [class*="ifood-widget"],
+body:not(.vtp-omnichannel) iframe[src*="ifood"] {
+  display: none !important;
+}

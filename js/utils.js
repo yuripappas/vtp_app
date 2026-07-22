@@ -513,6 +513,9 @@ function goModule(mod) {
 
   const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
 
+  // Mostra widget iFood apenas no Omnichannel
+  document.body.classList.toggle('vtp-omnichannel', mod === 'omnichannel');
+
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
   // Submódulos de Operação destacam o item "Operação" no sidebar
   if (_OPERACAO_MODS.includes(mod)) {
