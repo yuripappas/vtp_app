@@ -52,6 +52,29 @@ window._atdSetPaginaAtiva = (v) => { _atdPaginaAtiva = v; };
 window._vtpGetTab_omnichannel = () => _atdPaginaAtiva;
 window._vtpSetTab_omnichannel = (v) => { _atdPaginaAtiva = v; };
 
+function _atdInitIfoodWidget() {
+  if (window._atdIfoodWidgetLoaded) return;
+  window._atdIfoodWidgetLoaded = true;
+
+  if (!document.querySelector('script[src*="widgets.ifood.com.br"]')) {
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://widgets.ifood.com.br/widget.js';
+    s.onload = () => {
+      window.iFoodWidget?.init({
+        widgetId: '017265b4-d996-4271-ad33-cbe928ac4f70',
+        merchantIds: ['b4ea9cad-91d4-435c-9d1c-738353d19586'],
+      });
+    };
+    document.body.appendChild(s);
+  } else if (window.iFoodWidget) {
+    window.iFoodWidget.init({
+      widgetId: '017265b4-d996-4271-ad33-cbe928ac4f70',
+      merchantIds: ['b4ea9cad-91d4-435c-9d1c-738353d19586'],
+    });
+  }
+}
+
 function renderOmnichannel() {
   // Injeta os estilos uma única vez
   if (!document.getElementById('atd-styles')) {
@@ -148,6 +171,9 @@ function renderOmnichannel() {
     `;
     document.head.appendChild(s);
   }
+
+  // Inicializa widget iFood (botão flutuante) uma única vez por sessão
+  _atdInitIfoodWidget();
 
   // Marca o sub-item correto no painel lateral e renderiza a página
   _setSubPanelActive(_atdPaginaAtiva);
