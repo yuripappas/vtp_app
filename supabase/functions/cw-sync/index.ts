@@ -18,69 +18,15 @@ const CW_CANAL_MAP: Record<string, string> = {
   whatsapp_extension: 'site',
 };
 
-// ── Contagem de pizzas (mesma lógica validada em js/cw-api.js) ────────────
-
-const RE_GRUPO_GRANDE   = /^pizza grande\s*\(/i;
-const RE_GRUPO_PEQUENA  = /^pizza pequena\s*\(/i;
-const RE_SUFIXO_GRANDE  = /\|\s*pizza grande\b/i;
-const RE_SUFIXO_PEQUENA = /\|\s*pizza pequena\b/i;
-
-interface CwOption { name?: string; option_group_name?: string; option_group_id?: number; quantity?: number; }
-interface CwItem {
-  name?: string; quantity?: number; status?: string;
-  options?: CwOption[]; items?: CwItem[];
-}
-
-function contarPizzasItem(it: CwItem): { grande: number; pequena: number } {
-  const grupos: Record<string, { tipo: 'grande' | 'pequena'; dividir: boolean; qty: number }> = {};
-
-  for (const op of (it.options || [])) {
-    const gNome = op.option_group_name || '';
-    const oNome = op.name || '';
-    let tipo: 'grande' | 'pequena' | null = null;
-    let dividir = false;
-
-    if (RE_GRUPO_GRANDE.test(gNome))       { tipo = 'grande';  dividir = true;  }
-    else if (RE_GRUPO_PEQUENA.test(gNome)) { tipo = 'pequena'; dividir = false; }
-    else if (RE_SUFIXO_GRANDE.test(oNome) || RE_SUFIXO_GRANDE.test(gNome))   { tipo = 'grande';  dividir = false; }
-    else if (RE_SUFIXO_PEQUENA.test(oNome) || RE_SUFIXO_PEQUENA.test(gNome)) { tipo = 'pequena'; dividir = false; }
-    if (!tipo) continue;
-
-    const chave = `${op.option_group_id ?? gNome}|${tipo}`;
-    grupos[chave] = grupos[chave] || { tipo, dividir, qty: 0 };
-    grupos[chave].qty += (op.quantity || 1);
-  }
-
-  let grande = 0, pequena = 0;
-  for (const g of Object.values(grupos)) {
-    const n = g.dividir ? g.qty / 2 : g.qty;
-    if (g.tipo === 'grande') grande += n; else pequena += n;
-  }
-
-  if (!grande && !pequena && !(it.options || []).length) {
-    if (RE_GRUPO_GRANDE.test(it.name || '') || RE_SUFIXO_GRANDE.test(it.name || ''))  grande = 1;
-    else if (RE_GRUPO_PEQUENA.test(it.name || '') || RE_SUFIXO_PEQUENA.test(it.name || '')) pequena = 1;
-  }
-
-  return { grande, pequena };
-}
-
-function contarPizzas(items: CwItem[] | undefined): { grande: number; pequena: number } {
-  let grande = 0, pequena = 0;
-  for (const it of (items || [])) {
-    if (it.status === 'canceled') continue;
-    const mult = it.quantity || 1;
-    const own = contarPizzasItem(it);
-    grande += own.grande * mult;
-    pequena += own.pequena * mult;
-    if (it.items && it.items.length) {
-      const sub = contarPizzas(it.items);
-      grande += sub.grande * mult;
-      pequena += sub.pequena * mult;
-    }
-  }
-  return { grande, pequena };
-}
+// Contagem de pizzas grandes/pequenas NÃO é feita aqui — a Edge Function só
+// grava o payload bruto de `items` (ver `linhas` mais abaixo). A interpretação
+// (tamanho, sabor, meio a meio, combos aninhados) é toda feita no navegador
+// por js/vendas.js (_vInterpretarPedido/contarPizzasPedido), que é o único
+// motor de classificação usado pelo app inteiro (Dashboard e CMV) — antes essa
+// função duplicava essa lógica com uma regex mais simples e desatualizada, e
+// os dois números divergiam (ex.: Dashboard contava 23 pizzas, CMV contava 40
+// pro mesmo dia). Duplicar essa lógica em Deno exigiria replicar também o
+// cadastro de sabores (vtp_sabores/opções), que só existe no navegador.
 
 // ── Cliente e endereço (para o módulo de omnichannel) ──────────────────────
 
@@ -135,7 +81,6 @@ Deno.serve(async (_req) => {
       const det = await detRes.json();
 
       const existente = existentesMap.get(s.id);
-      const pz = contarPizzas(det.items);
       const statusTs = { ...(existente?.status_timestamps || {}) };
       if (!statusTs[det.status]) statusTs[det.status] = new Date().toISOString();
 
@@ -148,8 +93,6 @@ Deno.serve(async (_req) => {
         order_timing:      det.order_timing,
         sales_channel:     det.sales_channel,
         total:             det.total || 0,
-        pizzas_grande:     pz.grande,
-        pizzas_pequena:    pz.pequena,
         items:             det.items || [],
         status_timestamps: statusTs,
         cw_created_at:     det.created_at,

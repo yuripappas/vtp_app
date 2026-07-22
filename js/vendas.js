@@ -337,6 +337,24 @@ function _vInterpretarPedido(p) {
   return linhas;
 }
 
+// Nº de pizzas INTEIRAS (grande/pequena) de 1 pedido — motor único usado
+// tanto pelo CMV (vendasProdutosPorCategoria, agregando várias linhas) quanto
+// pelo Dashboard (cw-api.js, por pedido). Antes o Dashboard lia uma contagem
+// pré-calculada e desatualizada (cw_pedidos.pizzas_grande/pequena, gravada
+// por uma regex simplificada na Edge Function cw-sync) que não reconhecia
+// todos os formatos de pedido do CW — chegou a subcontar 30 pedidos entregues
+// como só 23 pizzas, quando o CMV (este motor) contava 40. Reutilizar
+// _vInterpretarPedido aqui garante que as duas telas nunca mais divirjam.
+function contarPizzasPedido(p) {
+  let grande = 0, pequena = 0;
+  for (const l of _vInterpretarPedido(p)) {
+    for (const pz of l.pizzas) {
+      if (pz.tamanho === 'grande') grande++; else pequena++;
+    }
+  }
+  return { grande, pequena };
+}
+
 // ── Carga + cache ──────────────────────────────────────────────
 
 let _vLinhas = null;   // cache do CMV (janela por dias)

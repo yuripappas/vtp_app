@@ -98,6 +98,9 @@ async function _getPedidosCW(dataInicio, dataFim) {
       const created = new Date(d.cw_created_at);
       const mAtrs   = Math.max(0, Math.round((now - created) / 60000));
       const tempos  = _cwCalcTempos(d.status_timestamps, d.order_type);
+      // Mesmo motor de interpretação do CMV (js/vendas.js), não uma contagem
+      // pré-calculada à parte — ver contarPizzasPedido() pro histórico do bug.
+      const pz      = contarPizzasPedido(d);
 
       return {
         id:     d.id,
@@ -109,9 +112,9 @@ async function _getPedidosCW(dataInicio, dataFim) {
         ts:     created,
         hora:   created.getHours(),
         mAtrs,
-        pizzasGrande:  d.pizzas_grande || 0,
-        pizzasPequena: d.pizzas_pequena || 0,
-        pizzas:        (d.pizzas_grande || 0) + (d.pizzas_pequena || 0),
+        pizzasGrande:  pz.grande,
+        pizzasPequena: pz.pequena,
+        pizzas:        pz.grande + pz.pequena,
         tempoPreparo:  tempos.tempoPreparo,
         tempoEntrega:  tempos.tempoEntrega,
         tempoTotal:    tempos.tempoTotal,
