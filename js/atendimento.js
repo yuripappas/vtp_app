@@ -446,7 +446,7 @@ async function _atdCarregarConversas() {
     .limit(viewMode === 'concluidos' ? 200 : 500);
 
   if (error) { console.error('[atendimento] erro ao carregar conversas', error); return; }
-  _atdState.conversas = data || [];
+  _atdState.conversas = (data || []).filter(c => c.ultima_mensagem !== null);
   _atdRenderLista();
 }
 
