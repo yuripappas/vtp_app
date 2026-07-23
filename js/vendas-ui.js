@@ -10,7 +10,6 @@
  */
 
 let _vdTab     = 'cmv';
-let _vdPeriodo = 90;
 let _vdCanal   = '';   // '' = todos
 let _vdMetaCMV = 30;   // % meta de CMV
 let _vdCatOpen = null; // categoria expandida no drill-down (aba Por Insumo)
@@ -21,14 +20,6 @@ const _VD_DRILL_LIMITE = 8; // sabores visíveis antes do "mostrar mais"
 // sabor/bebida — o drill-down que já existia, inalterado).
 let _vdCmvSubTab = 'geral'; // 'geral' | 'insumo'
 let _vdProdOpen  = null;    // categoria expandida na aba Geral
-
-// Intervalo do CMV — mesmo padrão de período do Dashboard (Hoje/7/30/60 +
-// Personalizado com popover De/Até), só usado aqui, não mexe no filtro
-// rápido (30/60/90 dias) compartilhado com os outros filhos de Vendas.
-let _vdCmvRangeDias    = 30;   // 0 (hoje) | 7 | 30 | 60 | 'custom'
-let _vdCmvCustomAberto = false;
-let _vdCmvDe  = '';
-let _vdCmvAte = '';
 
 function renderVendas() {
   const el = document.getElementById('vendasContent');
@@ -52,21 +43,190 @@ function _vdRerender() {
   else                           renderVendasProdutos();
 }
 
-// ── Filtros comuns ─────────────────────────────────────────────
-// meta=true inclui o campo de meta de CMV (só faz sentido no filho CMV)
-function _vdFiltros(meta) {
-  const canais = ['ifood', '99food', 'site', 'outro'];
-  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px">
-    ${[30,60,90].map(d => `<button class="btn btn-${d===_vdPeriodo?'primary':'outline'} btn-xs" onclick="_vdPeriodo=${d};_vdRerender()">${d} dias</button>`).join('')}
-    <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;_vdRerender()">
-      <option value="">Todos os canais</option>
-      ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
-    </select>
-    ${meta ? `<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)">Meta de CMV
-      <input type="number" class="inp" value="${_vdMetaCMV}" min="0" max="100" onchange="_vdMetaCMV=parseFloat(this.value)||30;renderVendasCMV()" style="width:62px;text-align:right;font-size:.8rem;padding:6px 8px">%
-    </div>` : '<div style="margin-left:auto"></div>'}
-    <button class="btn btn-outline btn-xs" onclick="_vLinhas=null;_vdRerender()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+// ══════════════════════════════════════════════════════════════
+// Componente de PERÍODO compartilhado — dropdown de atalhos (Hoje,
+// Ontem, Esta semana, Semana passada, Este mês, Mês passado, os 3
+// meses anteriores por nome, Últimos 2/3/6 meses) + calendário duplo
+// pra período personalizado. Vira o padrão de TODAS as páginas de
+// Vendas (CMV, Produtos, Consumo de Insumos, Vendas/Canais) a partir
+// de 2026-07-23 — substituiu 4 implementações quase idênticas de
+// Hoje/7/30/60+popover. Cada página tem seu próprio namespace (ns) de
+// estado, mas todas usam o mesmo HTML/lógica.
+// ══════════════════════════════════════════════════════════════
+
+const _perState = {}; // ns → { aberto, modo, de, ate, calEsq, calDir, pendente }
+function _per(ns) {
+  return _perState[ns] || (_perState[ns] = { aberto: false, modo: 'hoje', de: null, ate: null, calEsq: null, calDir: null, pendente: null });
+}
+const _PER_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function _perIni(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function _perFim(d) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
+function _perFmtDataHora(d) { return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+// Data LOCAL em "yyyy-mm-dd" — nunca usar .toISOString() aqui: converte pra
+// UTC e, em fusos negativos (Brasil, UTC-3), 23:59:59 local vira o dia
+// SEGUINTE em UTC, destacando 2 dias no calendário em vez de 1.
+function _perIsoLocal(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+function _perPresets() {
+  const hoje = _perIni(new Date());
+  const fimHoje = _perFim(new Date());
+  const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1);
+  const domEsta = new Date(hoje); domEsta.setDate(hoje.getDate() - hoje.getDay());
+  const domPassada = new Date(domEsta); domPassada.setDate(domPassada.getDate() - 7);
+  const sabPassado = new Date(domEsta); sabPassado.setDate(sabPassado.getDate() - 1);
+  const primEsteMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const primMesPassado = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  const ultMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+  const mesEspecifico = (offset) => {
+    const p = new Date(hoje.getFullYear(), hoje.getMonth() + offset, 1);
+    const u = new Date(hoje.getFullYear(), hoje.getMonth() + offset + 1, 0);
+    return { id: 'mes' + offset, label: `${_PER_MESES[p.getMonth()]}/${p.getFullYear()}`, de: _perIni(p), ate: _perFim(u) };
+  };
+  return [
+    { id: 'hoje', label: 'Hoje', de: hoje, ate: fimHoje },
+    { id: 'ontem', label: 'Ontem', de: _perIni(ontem), ate: _perFim(ontem) },
+    { id: 'semana', label: 'Esta semana', de: domEsta, ate: fimHoje },
+    { id: 'semana_passada', label: 'Semana passada', de: domPassada, ate: _perFim(sabPassado) },
+    { id: 'mes', label: 'Este mês', de: primEsteMes, ate: fimHoje },
+    { id: 'mes_passado', label: 'Mês passado', de: primMesPassado, ate: _perFim(ultMesPassado) },
+    mesEspecifico(-2), mesEspecifico(-3), mesEspecifico(-4),
+    { id: 'ult2', label: 'Últimos 2 meses', de: _perIni(new Date(hoje.getFullYear(), hoje.getMonth() - 2, hoje.getDate())), ate: fimHoje },
+    { id: 'ult3', label: 'Últimos 3 meses', de: _perIni(new Date(hoje.getFullYear(), hoje.getMonth() - 3, hoje.getDate())), ate: fimHoje },
+    { id: 'ult6', label: 'Últimos 6 meses', de: _perIni(new Date(hoje.getFullYear(), hoje.getMonth() - 6, hoje.getDate())), ate: fimHoje },
+  ];
+}
+
+// Intervalo atual do namespace, em ISO — default "Hoje" se nunca escolhido.
+function _perRange(ns) {
+  const s = _per(ns);
+  if (!s.de || !s.ate) {
+    const p = _perPresets().find(x => x.id === 'hoje');
+    s.de = p.de; s.ate = p.ate;
+  }
+  return { inicioISO: s.de.toISOString(), fimISO: s.ate.toISOString() };
+}
+
+// Rótulo legível do intervalo atual (pra frases tipo "Interpretado de X").
+function _perLabel(ns) {
+  const s = _per(ns);
+  if (s.modo !== 'custom') return (_perPresets().find(p => p.id === s.modo) || {}).label || 'Hoje';
+  return s.de && s.ate ? `${s.de.toLocaleDateString('pt-BR')} – ${s.ate.toLocaleDateString('pt-BR')}` : 'período personalizado';
+}
+
+function _perToggle(ns, renderFn) {
+  const s = _per(ns);
+  s.aberto = !s.aberto;
+  if (s.aberto) {
+    const base = s.de || new Date();
+    s.calDir = new Date(base.getFullYear(), base.getMonth(), 1);
+    s.calEsq = new Date(base.getFullYear(), base.getMonth() - 1, 1);
+    s.pendente = null;
+  }
+  _perAtualizarBar(ns, renderFn);
+}
+function _perSetPreset(ns, id, renderFn) {
+  const s = _per(ns);
+  const p = _perPresets().find(x => x.id === id); if (!p) return;
+  s.modo = id; s.de = p.de; s.ate = p.ate; s.pendente = null; s.aberto = false;
+  window[renderFn]();
+}
+function _perCalNav(ns, lado, delta, renderFn) {
+  const s = _per(ns);
+  const ref = lado === 'esq' ? s.calEsq : s.calDir;
+  ref.setMonth(ref.getMonth() + delta);
+  _perAtualizarBar(ns, renderFn);
+}
+function _perCalClickDia(ns, iso, renderFn) {
+  const s = _per(ns);
+  const d = new Date(iso + 'T00:00:00');
+  if (!s.pendente) { s.pendente = d; s.de = _perIni(d); s.ate = _perFim(d); }
+  else {
+    if (d < s.pendente) { s.de = _perIni(d); s.ate = _perFim(s.pendente); }
+    else { s.de = _perIni(s.pendente); s.ate = _perFim(d); }
+    s.pendente = null;
+  }
+  s.modo = 'custom';
+  _perAtualizarBar(ns, renderFn);
+}
+function _perAplicarCustom(ns, renderFn) {
+  _per(ns).aberto = false;
+  window[renderFn]();
+}
+
+function _perCalendarioHtml(ns, mesDate, lado, renderFn) {
+  const s = _per(ns);
+  const ano = mesDate.getFullYear(), mes = mesDate.getMonth();
+  const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+  const diasMesAnterior = new Date(ano, mes, 0).getDate();
+  const hojeIso = _perIsoLocal(new Date());
+  const deIso = s.de ? _perIsoLocal(s.de) : null;
+  const ateIso = s.ate ? _perIsoLocal(s.ate) : null;
+
+  const celulas = [];
+  for (let i = primeiroDiaSemana - 1; i >= 0; i--) celulas.push({ dia: diasMesAnterior - i, fora: true });
+  for (let d = 1; d <= diasNoMes; d++) celulas.push({ dia: d, fora: false, iso: `${ano}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+  while (celulas.length % 7 !== 0) celulas.push({ dia: '', fora: true });
+  const semanas = [];
+  for (let i = 0; i < celulas.length; i += 7) semanas.push(celulas.slice(i, i + 7));
+
+  return `<div style="width:220px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <button onclick="_perCalNav('${ns}','${lado}',-1,'${renderFn}')" style="border:none;background:none;cursor:pointer;color:var(--muted);padding:2px;display:flex">${lc('chevron-left', 14, 'currentColor')}</button>
+      <span style="font-size:.8rem;font-weight:700">${_PER_MESES[mes].toLowerCase()}, ${ano}</span>
+      <button onclick="_perCalNav('${ns}','${lado}',1,'${renderFn}')" style="border:none;background:none;cursor:pointer;color:var(--muted);padding:2px;display:flex">${lc('chevron-right', 14, 'currentColor')}</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.62rem;color:var(--muted);text-align:center;margin-bottom:4px">
+      ${['Do', 'Se', 'Te', 'Qu', 'Qu', 'Se', 'Sá'].map(d => `<div>${d}</div>`).join('')}
+    </div>
+    ${semanas.map(sem => `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px">
+      ${sem.map(c => {
+        if (c.fora) return `<div style="aspect-ratio:1"></div>`;
+        const noRange = deIso && ateIso && c.iso >= deIso && c.iso <= ateIso;
+        const isPonta = c.iso === deIso || c.iso === ateIso;
+        const isHoje = c.iso === hojeIso;
+        const bg = isPonta ? 'var(--purple)' : noRange ? 'var(--purple-xlight,#EFE7FE)' : 'transparent';
+        const cor = isPonta ? '#fff' : 'var(--text)';
+        return `<div onclick="_perCalClickDia('${ns}','${c.iso}','${renderFn}')" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:.76rem;cursor:pointer;border-radius:6px;background:${bg};color:${cor};${isHoje && !isPonta ? 'box-shadow:inset 0 0 0 1px var(--purple)' : ''}">${c.dia}</div>`;
+      }).join('')}
+    </div>`).join('')}
   </div>`;
+}
+
+function _perRenderBar(ns, renderFn) {
+  const s = _per(ns);
+  const presets = _perPresets();
+  const labelAtual = s.modo !== 'custom'
+    ? (presets.find(p => p.id === s.modo)?.label || 'Hoje')
+    : (s.de && s.ate ? `${_perFmtDataHora(s.de)} ~ ${_perFmtDataHora(s.ate)}` : 'Selecione o período');
+
+  const dropdown = s.aberto ? `<div id="perDropdown_${ns}" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);box-shadow:0 8px 24px rgba(0,0,0,.15);display:flex" onclick="event.stopPropagation()">
+    <div style="width:150px;border-right:1px solid var(--border);padding:8px 0">
+      ${presets.map(p => `<div onclick="_perSetPreset('${ns}','${p.id}','${renderFn}')" style="padding:8px 14px;font-size:.82rem;cursor:pointer;color:${s.modo === p.id ? 'var(--purple)' : 'var(--text)'};font-weight:${s.modo === p.id ? '700' : '400'}">${p.label}</div>`).join('')}
+    </div>
+    <div style="padding:14px 16px">
+      <div style="font-size:.8rem;font-weight:600;margin-bottom:10px">${s.de && s.ate ? `${_perFmtDataHora(s.de)} ~ ${_perFmtDataHora(s.ate)}` : 'Selecione o período'}</div>
+      <div style="display:flex;gap:16px">
+        ${_perCalendarioHtml(ns, s.calEsq, 'esq', renderFn)}
+        ${_perCalendarioHtml(ns, s.calDir, 'dir', renderFn)}
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="_perAplicarCustom('${ns}','${renderFn}')">OK</button>
+      </div>
+    </div>
+  </div>` : '';
+
+  return `<div id="perBar_${ns}" style="position:relative;display:inline-block">
+    <button onclick="_perToggle('${ns}','${renderFn}')" class="btn btn-outline btn-sm" style="display:inline-flex;align-items:center;gap:8px">
+      ${lc('calendar', 14, 'currentColor')} ${labelAtual} ${lc('chevron-down', 12, 'currentColor')}
+    </button>
+    ${dropdown}
+  </div>`;
+}
+function _perAtualizarBar(ns, renderFn) {
+  const el = document.getElementById('perBar_' + ns);
+  if (el) el.outerHTML = _perRenderBar(ns, renderFn);
 }
 
 const _VD_CAT_ICON = {
@@ -74,86 +234,17 @@ const _VD_CAT_ICON = {
   'Pizza Salgada':'pizza', 'Pizza Doce':'pizza', 'Bebidas':'coffee',
 };
 
-// Resolve o intervalo do CMV — mesma lógica de _perfGetRange() (dashboard.js):
-// dias>0 = hoje-N até agora; 0 = só hoje (meia-noite até agora); 'custom' =
-// intervalo exato escolhido.
-function _vdCmvGetRange() {
-  if (_vdCmvRangeDias === 'custom' && _vdCmvDe && _vdCmvAte) {
-    const inicio = new Date(_vdCmvDe + 'T00:00:00');
-    const fim    = new Date(_vdCmvAte + 'T23:59:59');
-    return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
-      label: `${_vdCmvDe.split('-').reverse().join('/')} – ${_vdCmvAte.split('-').reverse().join('/')}` };
-  }
-  const fim = new Date();
-  const inicio = _vdCmvRangeDias > 0
-    ? new Date(new Date(fim.getTime() - _vdCmvRangeDias * 86400000).setHours(0,0,0,0))
-    : new Date(new Date().setHours(0,0,0,0));
-  return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
-    label: _vdCmvRangeDias === 0 ? 'hoje' : `${_vdCmvRangeDias} dias` };
-}
-
-function _vdCmvSetRange(dias) {
-  _vdCmvRangeDias = dias;
-  _vdCmvCustomAberto = false;
-  renderVendasCMV();
-}
-
-function _vdCmvToggleCustom() {
-  _vdCmvCustomAberto = !_vdCmvCustomAberto;
-  renderVendasCMV();
-}
-
-function _vdCmvAplicarCustom() {
-  const i = document.getElementById('cmvCustomDe')?.value;
-  const f = document.getElementById('cmvCustomAte')?.value;
-  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
-  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
-  _vdCmvDe = i; _vdCmvAte = f;
-  _vdCmvRangeDias = 'custom';
-  _vdCmvCustomAberto = false;
-  renderVendasCMV();
-}
-
 // Recarrega o período atual do CMV (limpa só o cache daquele intervalo)
-function _vdCmvReload() {
-  const r = _vdCmvGetRange();
+function _cmvReload() {
+  const r = _perRange('cmv');
   delete _vCache[r.inicioISO + '|' + r.fimISO];
   renderVendasCMV();
 }
 
-// Filtros do CMV — mesmo design de período do Dashboard (Hoje/7/30/60 dias +
-// Personalizado com popover De/Até/Aplicar), só existe aqui, não afeta
-// Produtos/Canais/Precificação (que seguem no _vdFiltros compartilhado).
-function _vdFiltrosCmv() {
+function _cmvFiltros() {
   const canais = ['ifood', '99food', 'site', 'outro'];
-  const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
-  const isCustom = _vdCmvRangeDias === 'custom';
-  const customLabel = isCustom
-    ? `${_vdCmvDe.split('-').reverse().join('/')} – ${_vdCmvAte.split('-').reverse().join('/')}`
-    : 'Personalizado';
   return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
-      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
-        ${RANGES.map(([d,l]) => `
-          <button onclick="_vdCmvSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${!isCustom&&_vdCmvRangeDias===d?'700':'500'};background:${!isCustom&&_vdCmvRangeDias===d?'var(--bg)':'transparent'};color:${!isCustom&&_vdCmvRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${!isCustom&&_vdCmvRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
-        `).join('')}
-        <button onclick="_vdCmvToggleCustom()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
-          ${lc('calendar',11,'currentColor')} ${customLabel}
-        </button>
-      </div>
-      ${_vdCmvCustomAberto ? `
-        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
-            <input type="date" id="cmvCustomDe" value="${_vdCmvDe}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
-            <input type="date" id="cmvCustomAte" value="${_vdCmvAte}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <button class="btn btn-primary btn-xs" onclick="_vdCmvAplicarCustom()">Aplicar</button>
-        </div>` : ''}
-    </div>
+    ${_perRenderBar('cmv', 'renderVendasCMV')}
     <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasCMV()">
       <option value="">Todos os canais</option>
       ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
@@ -161,7 +252,7 @@ function _vdFiltrosCmv() {
     <div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--muted)">Meta de CMV
       <input type="number" class="inp" value="${_vdMetaCMV}" min="0" max="100" onchange="_vdMetaCMV=parseFloat(this.value)||30;renderVendasCMV()" style="width:62px;text-align:right;font-size:.8rem;padding:6px 8px">%
     </div>
-    <button class="btn btn-outline btn-xs" onclick="_vdCmvReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
+    <button class="btn btn-outline btn-xs" onclick="_cmvReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
   </div>`;
 }
 
@@ -169,12 +260,12 @@ function _vdFiltrosCmv() {
 async function renderVendasCMV() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  el.innerHTML = _vdFiltrosCmv() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
+  el.innerHTML = _cmvFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
 
-  const range = _vdCmvGetRange();
+  const range = _perRange('cmv');
   let linhas;
   try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
-  catch (e) { el.innerHTML = _vdFiltrosCmv() + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
+  catch (e) { el.innerHTML = _cmvFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui ler os pedidos: ${e.message}</div>`; return; }
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
   const cat  = vendasPorCategoria(linhas);
@@ -233,8 +324,8 @@ async function renderVendasCMV() {
     : `<div style="font-size:.78rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Por categoria <span style="font-weight:400;text-transform:none">— clique para ver o detalhe</span></div>
        ${VENDAS_CATEGORIAS.map(linhaCat).join('')}`;
 
-  el.innerHTML = _vdFiltrosCmv() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${range.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
+  el.innerHTML = _cmvFiltros() + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Interpretado de <b>${_perLabel('cmv')}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · ${tot.vendas} linhas de venda</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Receita', 'R$ ' + fmt(tot.receita))}
       ${kpi('Custo (CMV)', 'R$ ' + fmt(tot.custo))}
@@ -376,54 +467,9 @@ function _vdDrillCategoria(dados) {
 // Filtro de categoria aceita múltipla seleção.
 // ══════════════════════════════════════════════════════════════
 
-let _inPreset       = '15';   // 'hoje' | '7' | '15' | '30' | '90' | 'custom'
-let _inCustomAberto = false;
-let _inDe           = '';     // yyyy-mm-dd (custom)
-let _inAte          = '';
 let _inBusca        = '';
 let _inCats         = [];     // categorias selecionadas — [] = todas
 let _inCatAberto    = false;
-
-const _IN_PRESETS = [['hoje','Hoje'],['7','7 dias'],['15','15 dias'],['30','30 dias'],['90','90 dias']];
-
-// Resolve o preset atual em { inicioISO, fimISO, label }
-function _inRange() {
-  const now = new Date();
-  if (_inPreset === 'custom' && _inDe && _inAte) {
-    const ini = new Date(_inDe + 'T00:00:00');
-    const fim = new Date(_inAte + 'T23:59:59');
-    return { inicioISO: ini.toISOString(), fimISO: fim.toISOString(),
-      label: `${_inDe.split('-').reverse().join('/')} – ${_inAte.split('-').reverse().join('/')}` };
-  }
-  if (_inPreset === 'hoje') {
-    const ini = new Date(now); ini.setHours(0, 0, 0, 0);
-    return { inicioISO: ini.toISOString(), fimISO: now.toISOString(), label: 'hoje' };
-  }
-  const d = parseInt(_inPreset) || 15;
-  return { inicioISO: new Date(now - d * 864e5).toISOString(), fimISO: now.toISOString(), label: `${d} dias` };
-}
-
-function _inSetPreset(id) {
-  _inPreset = id;
-  _inCustomAberto = false;
-  renderVendasInsumos();
-}
-
-function _inToggleCustom() {
-  _inCustomAberto = !_inCustomAberto;
-  renderVendasInsumos();
-}
-
-function _inAplicarCustom() {
-  const i = document.getElementById('inCustomDe')?.value;
-  const f = document.getElementById('inCustomAte')?.value;
-  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
-  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
-  _inDe = i; _inAte = f;
-  _inPreset = 'custom';
-  _inCustomAberto = false;
-  renderVendasInsumos();
-}
 
 function _inToggleCatPopover() {
   _inCatAberto = !_inCatAberto;
@@ -472,33 +518,8 @@ function _inFiltroCategoria() {
 }
 
 function _inFiltros() {
-  const isCustom = _inPreset === 'custom';
-  const customLabel = isCustom
-    ? `${_inDe.split('-').reverse().join('/')} – ${_inAte.split('-').reverse().join('/')}`
-    : 'Personalizado';
   return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
-      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
-        ${_IN_PRESETS.map(([id,lbl]) => `
-          <button onclick="_inSetPreset('${id}')" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${!isCustom&&_inPreset===id?'700':'500'};background:${!isCustom&&_inPreset===id?'var(--bg)':'transparent'};color:${!isCustom&&_inPreset===id?'var(--purple)':'var(--text2)'};box-shadow:${!isCustom&&_inPreset===id?'0 1px 3px rgba(0,0,0,.1)':'none'}">${lbl}</button>
-        `).join('')}
-        <button onclick="_inToggleCustom()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
-          ${lc('calendar',11,'currentColor')} ${customLabel}
-        </button>
-      </div>
-      ${_inCustomAberto ? `
-        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
-            <input type="date" id="inCustomDe" value="${_inDe}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
-            <input type="date" id="inCustomAte" value="${_inAte}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <button class="btn btn-primary btn-xs" onclick="_inAplicarCustom()">Aplicar</button>
-        </div>` : ''}
-    </div>
+    ${_perRenderBar('insumos', 'renderVendasInsumos')}
     ${_inFiltroCategoria()}
     <div style="position:relative;margin-left:auto">
       <input class="inp" id="inBusca" placeholder="Buscar insumo..." value="${_inBusca.replace(/"/g,'&quot;')}" oninput="_inBusca=this.value;_inRenderTabela()" style="width:220px;font-size:.8rem;padding:6px 10px 6px 30px">
@@ -511,7 +532,7 @@ function _inFiltros() {
 let _inDados = null; // { insumos, custoTotal } do período atual
 
 function _inReload() {
-  const r = _inRange();
+  const r = _perRange('insumos');
   delete _vCache[r.inicioISO + '|' + r.fimISO];
   renderVendasInsumos();
 }
@@ -519,7 +540,7 @@ function _inReload() {
 async function renderVendasInsumos() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  const r = _inRange();
+  const r = _perRange('insumos');
   el.innerHTML = _inFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Somando os insumos vendidos...</div>`;
 
   let linhas;
@@ -543,7 +564,7 @@ async function renderVendasInsumos() {
     </div>` : '';
 
   el.innerHTML = _inFiltros() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos cadastrados, com o consumo nas pizzas vendidas em <b>${r.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''} — preparados cascateiam pro insumo cru que consomem.</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos cadastrados, com o consumo nas pizzas vendidas em <b>${_perLabel('insumos')}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''} — preparados cascateiam pro insumo cru que consomem.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,220px));gap:14px;margin-bottom:22px">
       ${kpi('Insumos cadastrados', insumos.length, 'no cadastro', 'var(--purple-xlight)', 'var(--purple)')}
       <div style="background:var(--green-light);border-radius:var(--r12,10px);padding:16px 18px">
@@ -587,86 +608,16 @@ function _inRenderTabela() {
 // Filho PRODUTOS / CURVA ABC — campeões de venda e comportamento
 // ══════════════════════════════════════════════════════════════
 
-// Intervalo do filho Produtos — mesmo padrão de período do Dashboard/CMV
-// (Hoje/7/30/60 dias + Personalizado com popover De/Até/Aplicar).
-let _prRangeDias    = 30;   // 0 (hoje) | 7 | 30 | 60 | 'custom'
-let _prCustomAberto = false;
-let _prDe  = '';
-let _prAte = '';
-
-function _prGetRange() {
-  if (_prRangeDias === 'custom' && _prDe && _prAte) {
-    const inicio = new Date(_prDe + 'T00:00:00');
-    const fim    = new Date(_prAte + 'T23:59:59');
-    return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
-      label: `${_prDe.split('-').reverse().join('/')} – ${_prAte.split('-').reverse().join('/')}` };
-  }
-  const fim = new Date();
-  const inicio = _prRangeDias > 0
-    ? new Date(new Date(fim.getTime() - _prRangeDias * 86400000).setHours(0,0,0,0))
-    : new Date(new Date().setHours(0,0,0,0));
-  return { inicioISO: inicio.toISOString(), fimISO: fim.toISOString(),
-    label: _prRangeDias === 0 ? 'hoje' : `${_prRangeDias} dias` };
-}
-
-function _prSetRange(dias) {
-  _prRangeDias = dias;
-  _prCustomAberto = false;
-  renderVendasProdutos();
-}
-
-function _prToggleCustom() {
-  _prCustomAberto = !_prCustomAberto;
-  renderVendasProdutos();
-}
-
-function _prAplicarCustom() {
-  const i = document.getElementById('prCustomDe')?.value;
-  const f = document.getElementById('prCustomAte')?.value;
-  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
-  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
-  _prDe = i; _prAte = f;
-  _prRangeDias = 'custom';
-  _prCustomAberto = false;
-  renderVendasProdutos();
-}
-
 function _prReload() {
-  const r = _prGetRange();
+  const r = _perRange('produtos');
   delete _vCache[r.inicioISO + '|' + r.fimISO];
   renderVendasProdutos();
 }
 
 function _prFiltros() {
   const canais = ['ifood', '99food', 'site', 'outro'];
-  const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
-  const isCustom = _prRangeDias === 'custom';
-  const customLabel = isCustom
-    ? `${_prDe.split('-').reverse().join('/')} – ${_prAte.split('-').reverse().join('/')}`
-    : 'Personalizado';
   return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px">
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
-      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
-        ${RANGES.map(([d,l]) => `
-          <button onclick="_prSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${!isCustom&&_prRangeDias===d?'700':'500'};background:${!isCustom&&_prRangeDias===d?'var(--bg)':'transparent'};color:${!isCustom&&_prRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${!isCustom&&_prRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
-        `).join('')}
-        <button onclick="_prToggleCustom()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
-          ${lc('calendar',11,'currentColor')} ${customLabel}
-        </button>
-      </div>
-      ${_prCustomAberto ? `
-        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
-            <input type="date" id="prCustomDe" value="${_prDe}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
-            <input type="date" id="prCustomAte" value="${_prAte}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <button class="btn btn-primary btn-xs" onclick="_prAplicarCustom()">Aplicar</button>
-        </div>` : ''}
-    </div>
+    ${_perRenderBar('produtos', 'renderVendasProdutos')}
     <select class="inp" style="max-width:170px;font-size:.8rem;padding:6px 10px" onchange="_vdCanal=this.value;renderVendasProdutos()">
       <option value="">Todos os canais</option>
       ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
@@ -681,7 +632,7 @@ async function renderVendasProdutos() {
   if (!el) return;
   el.innerHTML = _prFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
 
-  const range = _prGetRange();
+  const range = _perRange('produtos');
   let linhas;
   try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
   catch (e) { el.innerHTML = _prFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
@@ -701,7 +652,7 @@ async function renderVendasProdutos() {
     ${sub?`<div style="font-size:.76rem;color:${fg};opacity:.8;margin-top:2px">${sub}</div>`:''}</div>`;
 
   el.innerHTML = _prFiltros() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Curva ABC de sabores em <b>${range.label}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · <span style="font-style:italic">receita de combos rateada por porção</span></div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Curva ABC de sabores em <b>${_perLabel('produtos')}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''} · <span style="font-style:italic">receita de combos rateada por porção</span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,220px));gap:14px;margin-bottom:22px">
       ${kpi('Sabores', abc.itens.length, 'no período', 'var(--purple-xlight)', 'var(--purple)')}
       ${kpi('Classe A', nCl.A, '80% do volume', bgCl('A'), corCl('A'))}
@@ -753,183 +704,28 @@ function _cnSetImposto(canal, pct) {
   renderVendasCanais();
 }
 
-// ── Período (dropdown de atalhos + calendário duplo) ────────────
-
-let _cnPerAberto    = false;
-let _cnPerModo      = 'hoje';
-let _cnPerDe        = null;
-let _cnPerAte       = null;
-let _cnCalMesEsq    = null;
-let _cnCalMesDir    = null;
-let _cnCalPendente  = null;
-const _CN_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-
-function _cnIni(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
-function _cnFim(d) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
-function _cnFmtDataHora(d) { return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
-// Data LOCAL em "yyyy-mm-dd" — nunca usar .toISOString() aqui: converte pra
-// UTC e, em fusos negativos (Brasil, UTC-3), 23:59:59 local vira o dia
-// SEGUINTE em UTC, destacando 2 dias no calendário em vez de 1.
-function _cnIsoLocal(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
-
-function _cnPeriodoPresets() {
-  const hoje = _cnIni(new Date());
-  const fimHoje = _cnFim(new Date());
-  const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1);
-  const domEsta = new Date(hoje); domEsta.setDate(hoje.getDate() - hoje.getDay());
-  const domPassada = new Date(domEsta); domPassada.setDate(domPassada.getDate() - 7);
-  const sabPassado = new Date(domEsta); sabPassado.setDate(sabPassado.getDate() - 1);
-  const primEsteMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const primMesPassado = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-  const ultMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
-  const mesEspecifico = (offset) => {
-    const p = new Date(hoje.getFullYear(), hoje.getMonth() + offset, 1);
-    const u = new Date(hoje.getFullYear(), hoje.getMonth() + offset + 1, 0);
-    return { id: 'mes' + offset, label: `${_CN_MESES[p.getMonth()]}/${p.getFullYear()}`, de: _cnIni(p), ate: _cnFim(u) };
-  };
-  return [
-    { id: 'hoje', label: 'Hoje', de: hoje, ate: fimHoje },
-    { id: 'ontem', label: 'Ontem', de: _cnIni(ontem), ate: _cnFim(ontem) },
-    { id: 'semana', label: 'Esta semana', de: domEsta, ate: fimHoje },
-    { id: 'semana_passada', label: 'Semana passada', de: domPassada, ate: _cnFim(sabPassado) },
-    { id: 'mes', label: 'Este mês', de: primEsteMes, ate: fimHoje },
-    { id: 'mes_passado', label: 'Mês passado', de: primMesPassado, ate: _cnFim(ultMesPassado) },
-    mesEspecifico(-2), mesEspecifico(-3), mesEspecifico(-4),
-    { id: 'ult2', label: 'Últimos 2 meses', de: _cnIni(new Date(hoje.getFullYear(), hoje.getMonth() - 2, hoje.getDate())), ate: fimHoje },
-    { id: 'ult3', label: 'Últimos 3 meses', de: _cnIni(new Date(hoje.getFullYear(), hoje.getMonth() - 3, hoje.getDate())), ate: fimHoje },
-    { id: 'ult6', label: 'Últimos 6 meses', de: _cnIni(new Date(hoje.getFullYear(), hoje.getMonth() - 6, hoje.getDate())), ate: fimHoje },
-  ];
-}
-
-function _cnPeriodoRange() {
-  if (!_cnPerDe || !_cnPerAte) {
-    const p = _cnPeriodoPresets().find(x => x.id === 'hoje');
-    _cnPerDe = p.de; _cnPerAte = p.ate;
-  }
-  return { inicioISO: _cnPerDe.toISOString(), fimISO: _cnPerAte.toISOString() };
-}
-
-function _cnTogglePeriodo() {
-  _cnPerAberto = !_cnPerAberto;
-  if (_cnPerAberto) {
-    const base = _cnPerDe || new Date();
-    _cnCalMesDir = new Date(base.getFullYear(), base.getMonth(), 1);
-    _cnCalMesEsq = new Date(base.getFullYear(), base.getMonth() - 1, 1);
-    _cnCalPendente = null;
-  }
-  _cnAtualizarPeriodoBar();
-}
-function _cnSetPreset(id) {
-  const p = _cnPeriodoPresets().find(x => x.id === id); if (!p) return;
-  _cnPerModo = id; _cnPerDe = p.de; _cnPerAte = p.ate; _cnCalPendente = null;
-  _cnPerAberto = false;
-  renderVendasCanais();
-}
-function _cnCalNav(lado, delta) {
-  const ref = lado === 'esq' ? _cnCalMesEsq : _cnCalMesDir;
-  ref.setMonth(ref.getMonth() + delta);
-  _cnAtualizarPeriodoBar();
-}
-function _cnCalClickDia(iso) {
-  const d = new Date(iso + 'T00:00:00');
-  if (!_cnCalPendente) {
-    _cnCalPendente = d;
-    _cnPerDe = _cnIni(d); _cnPerAte = _cnFim(d);
-  } else {
-    if (d < _cnCalPendente) { _cnPerDe = _cnIni(d); _cnPerAte = _cnFim(_cnCalPendente); }
-    else { _cnPerDe = _cnIni(_cnCalPendente); _cnPerAte = _cnFim(d); }
-    _cnCalPendente = null;
-  }
-  _cnPerModo = 'custom';
-  _cnAtualizarPeriodoBar();
-}
-function _cnAplicarCustom() {
-  _cnPerAberto = false;
+function _cnReload() {
+  const r = _perRange('canais');
+  delete _vCache[r.inicioISO + '|' + r.fimISO];
   renderVendasCanais();
 }
 
-function _cnCalendarioHtml(mesDate, ladoId) {
-  const ano = mesDate.getFullYear(), mes = mesDate.getMonth();
-  const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
-  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
-  const diasMesAnterior = new Date(ano, mes, 0).getDate();
-  const hojeIso = _cnIsoLocal(new Date());
-  const deIso = _cnPerDe ? _cnIsoLocal(_cnPerDe) : null;
-  const ateIso = _cnPerAte ? _cnIsoLocal(_cnPerAte) : null;
-
-  const celulas = [];
-  for (let i = primeiroDiaSemana - 1; i >= 0; i--) celulas.push({ dia: diasMesAnterior - i, fora: true });
-  for (let d = 1; d <= diasNoMes; d++) celulas.push({ dia: d, fora: false, iso: `${ano}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
-  while (celulas.length % 7 !== 0) celulas.push({ dia: '', fora: true });
-  const semanas = [];
-  for (let i = 0; i < celulas.length; i += 7) semanas.push(celulas.slice(i, i + 7));
-
-  return `<div style="width:220px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <button onclick="_cnCalNav('${ladoId}',-1)" style="border:none;background:none;cursor:pointer;color:var(--muted);padding:2px;display:flex">${lc('chevron-left', 14, 'currentColor')}</button>
-      <span style="font-size:.8rem;font-weight:700">${_CN_MESES[mes].toLowerCase()}, ${ano}</span>
-      <button onclick="_cnCalNav('${ladoId}',1)" style="border:none;background:none;cursor:pointer;color:var(--muted);padding:2px;display:flex">${lc('chevron-right', 14, 'currentColor')}</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.62rem;color:var(--muted);text-align:center;margin-bottom:4px">
-      ${['Do', 'Se', 'Te', 'Qu', 'Qu', 'Se', 'Sá'].map(d => `<div>${d}</div>`).join('')}
-    </div>
-    ${semanas.map(sem => `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px">
-      ${sem.map(c => {
-        if (c.fora) return `<div style="aspect-ratio:1"></div>`;
-        const noRange = deIso && ateIso && c.iso >= deIso && c.iso <= ateIso;
-        const isPonta = c.iso === deIso || c.iso === ateIso;
-        const isHoje = c.iso === hojeIso;
-        const bg = isPonta ? 'var(--purple)' : noRange ? 'var(--purple-xlight,#EFE7FE)' : 'transparent';
-        const cor = isPonta ? '#fff' : 'var(--text)';
-        return `<div onclick="_cnCalClickDia('${c.iso}')" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:.76rem;cursor:pointer;border-radius:6px;background:${bg};color:${cor};${isHoje && !isPonta ? 'box-shadow:inset 0 0 0 1px var(--purple)' : ''}">${c.dia}</div>`;
-      }).join('')}
-    </div>`).join('')}
+function _cnFiltros() {
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${_perRenderBar('canais', 'renderVendasCanais')}
+    <button class="btn btn-outline btn-xs" onclick="_cnReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
   </div>`;
-}
-
-function _cnRenderPeriodoBar() {
-  const presets = _cnPeriodoPresets();
-  const labelAtual = _cnPerModo !== 'custom'
-    ? (presets.find(p => p.id === _cnPerModo)?.label || 'Hoje')
-    : (_cnPerDe && _cnPerAte ? `${_cnFmtDataHora(_cnPerDe)} ~ ${_cnFmtDataHora(_cnPerAte)}` : 'Selecione o período');
-
-  const dropdown = _cnPerAberto ? `<div id="cnPeriodoDropdown" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);box-shadow:0 8px 24px rgba(0,0,0,.15);display:flex" onclick="event.stopPropagation()">
-    <div style="width:150px;border-right:1px solid var(--border);padding:8px 0">
-      ${presets.map(p => `<div onclick="_cnSetPreset('${p.id}')" style="padding:8px 14px;font-size:.82rem;cursor:pointer;color:${_cnPerModo === p.id ? 'var(--purple)' : 'var(--text)'};font-weight:${_cnPerModo === p.id ? '700' : '400'}">${p.label}</div>`).join('')}
-    </div>
-    <div style="padding:14px 16px">
-      <div style="font-size:.8rem;font-weight:600;margin-bottom:10px">${_cnPerDe && _cnPerAte ? `${_cnFmtDataHora(_cnPerDe)} ~ ${_cnFmtDataHora(_cnPerAte)}` : 'Selecione o período'}</div>
-      <div style="display:flex;gap:16px">
-        ${_cnCalendarioHtml(_cnCalMesEsq, 'esq')}
-        ${_cnCalendarioHtml(_cnCalMesDir, 'dir')}
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:10px">
-        <button class="btn btn-primary btn-sm" onclick="_cnAplicarCustom()">OK</button>
-      </div>
-    </div>
-  </div>` : '';
-
-  return `<div id="cnPeriodoBar" style="position:relative;display:inline-block;margin-bottom:16px">
-    <button onclick="_cnTogglePeriodo()" class="btn btn-outline btn-sm" style="display:inline-flex;align-items:center;gap:8px">
-      ${lc('calendar', 14, 'currentColor')} ${labelAtual} ${lc('chevron-down', 12, 'currentColor')}
-    </button>
-    ${dropdown}
-  </div>`;
-}
-function _cnAtualizarPeriodoBar() {
-  const el = document.getElementById('cnPeriodoBar');
-  if (el) el.outerHTML = _cnRenderPeriodoBar();
 }
 
 async function renderVendasCanais() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  el.innerHTML = _cnRenderPeriodoBar() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
+  el.innerHTML = _cnFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
 
-  const range = _cnPeriodoRange();
+  const range = _perRange('canais');
   let linhas;
   try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
-  catch (e) { el.innerHTML = _cnRenderPeriodoBar() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+  catch (e) { el.innerHTML = _cnFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
 
   const porCanal = vendasPorCanal(linhas);
   const com = _cnComissoes();
@@ -950,7 +746,7 @@ async function renderVendasCanais() {
     <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
     <div style="font-size:1.4rem;font-weight:800;${cor?'color:'+cor:''}">${v}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
 
-  el.innerHTML = _cnRenderPeriodoBar() + `
+  el.innerHTML = _cnFiltros() + `
     <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Rentabilidade por canal — receita real do canal menos custo (ficha), comissão e imposto. Ajuste comissão e imposto de cada canal abaixo.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Receita bruta', 'R$ ' + fmt(tot.receita))}
