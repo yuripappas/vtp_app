@@ -726,8 +726,11 @@ async function renderVendasProdutos() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Filho CANAIS — margem líquida por canal (comissão descontada)
-// A comissão % é cadastro editável aqui mesmo (persistido).
+// Filho VENDAS (ex-"Canais") — receita, CMV, comissão, impostos e
+// margem líquida por canal. Comissão e imposto % são cadastro editável
+// aqui mesmo (persistido, por canal). Período próprio (não usa o filtro
+// 30/60/90 compartilhado) — dropdown de período com atalhos + calendário
+// personalizado, default "Hoje".
 // ══════════════════════════════════════════════════════════════
 
 let _cnChart = null;
@@ -740,36 +743,220 @@ function _cnSetComissao(canal, pct) {
   db._set('vtp_canais_comissao', c);
   renderVendasCanais();
 }
+function _cnImpostos() {
+  return db._get('vtp_canais_imposto', { ifood: 6, '99food': 6, site: 4, outro: 0 });
+}
+function _cnSetImposto(canal, pct) {
+  const c = _cnImpostos();
+  c[canal] = parseFloat(pct) || 0;
+  db._set('vtp_canais_imposto', c);
+  renderVendasCanais();
+}
+
+// ── Período (dropdown de atalhos + calendário duplo) ────────────
+
+let _cnPerAberto    = false;
+let _cnPerModo      = 'hoje';
+let _cnPerDe        = null;
+let _cnPerAte       = null;
+let _cnCalMesEsq    = null;
+let _cnCalMesDir    = null;
+let _cnCalPendente  = null;
+const _CN_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function _cnIni(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function _cnFim(d) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
+function _cnFmtDataHora(d) { return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+// Data LOCAL em "yyyy-mm-dd" — nunca usar .toISOString() aqui: converte pra
+// UTC e, em fusos negativos (Brasil, UTC-3), 23:59:59 local vira o dia
+// SEGUINTE em UTC, destacando 2 dias no calendário em vez de 1.
+function _cnIsoLocal(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+function _cnPeriodoPresets() {
+  const hoje = _cnIni(new Date());
+  const fimHoje = _cnFim(new Date());
+  const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1);
+  const domEsta = new Date(hoje); domEsta.setDate(hoje.getDate() - hoje.getDay());
+  const domPassada = new Date(domEsta); domPassada.setDate(domPassada.getDate() - 7);
+  const sabPassado = new Date(domEsta); sabPassado.setDate(sabPassado.getDate() - 1);
+  const primEsteMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const primMesPassado = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  const ultMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+  const mesEspecifico = (offset) => {
+    const p = new Date(hoje.getFullYear(), hoje.getMonth() + offset, 1);
+    const u = new Date(hoje.getFullYear(), hoje.getMonth() + offset + 1, 0);
+    return { id: 'mes' + offset, label: `${_CN_MESES[p.getMonth()]}/${p.getFullYear()}`, de: _cnIni(p), ate: _cnFim(u) };
+  };
+  return [
+    { id: 'hoje', label: 'Hoje', de: hoje, ate: fimHoje },
+    { id: 'ontem', label: 'Ontem', de: _cnIni(ontem), ate: _cnFim(ontem) },
+    { id: 'semana', label: 'Esta semana', de: domEsta, ate: fimHoje },
+    { id: 'semana_passada', label: 'Semana passada', de: domPassada, ate: _cnFim(sabPassado) },
+    { id: 'mes', label: 'Este mês', de: primEsteMes, ate: fimHoje },
+    { id: 'mes_passado', label: 'Mês passado', de: primMesPassado, ate: _cnFim(ultMesPassado) },
+    mesEspecifico(-2), mesEspecifico(-3), mesEspecifico(-4),
+    { id: 'ult2', label: 'Últimos 2 meses', de: _cnIni(new Date(hoje.getFullYear(), hoje.getMonth() - 2, hoje.getDate())), ate: fimHoje },
+    { id: 'ult3', label: 'Últimos 3 meses', de: _cnIni(new Date(hoje.getFullYear(), hoje.getMonth() - 3, hoje.getDate())), ate: fimHoje },
+    { id: 'ult6', label: 'Últimos 6 meses', de: _cnIni(new Date(hoje.getFullYear(), hoje.getMonth() - 6, hoje.getDate())), ate: fimHoje },
+  ];
+}
+
+function _cnPeriodoRange() {
+  if (!_cnPerDe || !_cnPerAte) {
+    const p = _cnPeriodoPresets().find(x => x.id === 'hoje');
+    _cnPerDe = p.de; _cnPerAte = p.ate;
+  }
+  return { inicioISO: _cnPerDe.toISOString(), fimISO: _cnPerAte.toISOString() };
+}
+
+function _cnTogglePeriodo() {
+  _cnPerAberto = !_cnPerAberto;
+  if (_cnPerAberto) {
+    const base = _cnPerDe || new Date();
+    _cnCalMesDir = new Date(base.getFullYear(), base.getMonth(), 1);
+    _cnCalMesEsq = new Date(base.getFullYear(), base.getMonth() - 1, 1);
+    _cnCalPendente = null;
+  }
+  _cnAtualizarPeriodoBar();
+}
+function _cnSetPreset(id) {
+  const p = _cnPeriodoPresets().find(x => x.id === id); if (!p) return;
+  _cnPerModo = id; _cnPerDe = p.de; _cnPerAte = p.ate; _cnCalPendente = null;
+  _cnPerAberto = false;
+  renderVendasCanais();
+}
+function _cnCalNav(lado, delta) {
+  const ref = lado === 'esq' ? _cnCalMesEsq : _cnCalMesDir;
+  ref.setMonth(ref.getMonth() + delta);
+  _cnAtualizarPeriodoBar();
+}
+function _cnCalClickDia(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  if (!_cnCalPendente) {
+    _cnCalPendente = d;
+    _cnPerDe = _cnIni(d); _cnPerAte = _cnFim(d);
+  } else {
+    if (d < _cnCalPendente) { _cnPerDe = _cnIni(d); _cnPerAte = _cnFim(_cnCalPendente); }
+    else { _cnPerDe = _cnIni(_cnCalPendente); _cnPerAte = _cnFim(d); }
+    _cnCalPendente = null;
+  }
+  _cnPerModo = 'custom';
+  _cnAtualizarPeriodoBar();
+}
+function _cnAplicarCustom() {
+  _cnPerAberto = false;
+  renderVendasCanais();
+}
+
+function _cnCalendarioHtml(mesDate, ladoId) {
+  const ano = mesDate.getFullYear(), mes = mesDate.getMonth();
+  const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+  const diasMesAnterior = new Date(ano, mes, 0).getDate();
+  const hojeIso = _cnIsoLocal(new Date());
+  const deIso = _cnPerDe ? _cnIsoLocal(_cnPerDe) : null;
+  const ateIso = _cnPerAte ? _cnIsoLocal(_cnPerAte) : null;
+
+  const celulas = [];
+  for (let i = primeiroDiaSemana - 1; i >= 0; i--) celulas.push({ dia: diasMesAnterior - i, fora: true });
+  for (let d = 1; d <= diasNoMes; d++) celulas.push({ dia: d, fora: false, iso: `${ano}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}` });
+  while (celulas.length % 7 !== 0) celulas.push({ dia: '', fora: true });
+  const semanas = [];
+  for (let i = 0; i < celulas.length; i += 7) semanas.push(celulas.slice(i, i + 7));
+
+  return `<div style="width:220px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <button onclick="_cnCalNav('${ladoId}',-1)" style="border:none;background:none;cursor:pointer;color:var(--muted);padding:2px;display:flex">${lc('chevron-left', 14, 'currentColor')}</button>
+      <span style="font-size:.8rem;font-weight:700">${_CN_MESES[mes].toLowerCase()}, ${ano}</span>
+      <button onclick="_cnCalNav('${ladoId}',1)" style="border:none;background:none;cursor:pointer;color:var(--muted);padding:2px;display:flex">${lc('chevron-right', 14, 'currentColor')}</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:.62rem;color:var(--muted);text-align:center;margin-bottom:4px">
+      ${['Do', 'Se', 'Te', 'Qu', 'Qu', 'Se', 'Sá'].map(d => `<div>${d}</div>`).join('')}
+    </div>
+    ${semanas.map(sem => `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px">
+      ${sem.map(c => {
+        if (c.fora) return `<div style="aspect-ratio:1"></div>`;
+        const noRange = deIso && ateIso && c.iso >= deIso && c.iso <= ateIso;
+        const isPonta = c.iso === deIso || c.iso === ateIso;
+        const isHoje = c.iso === hojeIso;
+        const bg = isPonta ? 'var(--purple)' : noRange ? 'var(--purple-xlight,#EFE7FE)' : 'transparent';
+        const cor = isPonta ? '#fff' : 'var(--text)';
+        return `<div onclick="_cnCalClickDia('${c.iso}')" style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:.76rem;cursor:pointer;border-radius:6px;background:${bg};color:${cor};${isHoje && !isPonta ? 'box-shadow:inset 0 0 0 1px var(--purple)' : ''}">${c.dia}</div>`;
+      }).join('')}
+    </div>`).join('')}
+  </div>`;
+}
+
+function _cnRenderPeriodoBar() {
+  const presets = _cnPeriodoPresets();
+  const labelAtual = _cnPerModo !== 'custom'
+    ? (presets.find(p => p.id === _cnPerModo)?.label || 'Hoje')
+    : (_cnPerDe && _cnPerAte ? `${_cnFmtDataHora(_cnPerDe)} ~ ${_cnFmtDataHora(_cnPerAte)}` : 'Selecione o período');
+
+  const dropdown = _cnPerAberto ? `<div id="cnPeriodoDropdown" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);box-shadow:0 8px 24px rgba(0,0,0,.15);display:flex" onclick="event.stopPropagation()">
+    <div style="width:150px;border-right:1px solid var(--border);padding:8px 0">
+      ${presets.map(p => `<div onclick="_cnSetPreset('${p.id}')" style="padding:8px 14px;font-size:.82rem;cursor:pointer;color:${_cnPerModo === p.id ? 'var(--purple)' : 'var(--text)'};font-weight:${_cnPerModo === p.id ? '700' : '400'}">${p.label}</div>`).join('')}
+    </div>
+    <div style="padding:14px 16px">
+      <div style="font-size:.8rem;font-weight:600;margin-bottom:10px">${_cnPerDe && _cnPerAte ? `${_cnFmtDataHora(_cnPerDe)} ~ ${_cnFmtDataHora(_cnPerAte)}` : 'Selecione o período'}</div>
+      <div style="display:flex;gap:16px">
+        ${_cnCalendarioHtml(_cnCalMesEsq, 'esq')}
+        ${_cnCalendarioHtml(_cnCalMesDir, 'dir')}
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="_cnAplicarCustom()">OK</button>
+      </div>
+    </div>
+  </div>` : '';
+
+  return `<div id="cnPeriodoBar" style="position:relative;display:inline-block;margin-bottom:16px">
+    <button onclick="_cnTogglePeriodo()" class="btn btn-outline btn-sm" style="display:inline-flex;align-items:center;gap:8px">
+      ${lc('calendar', 14, 'currentColor')} ${labelAtual} ${lc('chevron-down', 12, 'currentColor')}
+    </button>
+    ${dropdown}
+  </div>`;
+}
+function _cnAtualizarPeriodoBar() {
+  const el = document.getElementById('cnPeriodoBar');
+  if (el) el.outerHTML = _cnRenderPeriodoBar();
+}
 
 async function renderVendasCanais() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
-  el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
+  el.innerHTML = _cnRenderPeriodoBar() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
 
+  const range = _cnPeriodoRange();
   let linhas;
-  try { linhas = await vendasCarregar(_vdPeriodo); }
-  catch (e) { el.innerHTML = _vdFiltros(false) + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+  try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
+  catch (e) { el.innerHTML = _cnRenderPeriodoBar() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
 
   const porCanal = vendasPorCanal(linhas);
   const com = _cnComissoes();
+  const imp = _cnImpostos();
   const canais = Object.values(porCanal).sort((a, b) => b.receita - a.receita).map(c => {
     const pct = com[c.canal] ?? 0;
+    const pctImp = imp[c.canal] ?? 0;
     const comissao = c.receita * pct / 100;
-    const margem = c.receita - c.custo - comissao;
-    return { ...c, pct, comissao, margem, margemPct: c.receita > 0 ? margem / c.receita * 100 : 0 };
+    const imposto = c.receita * pctImp / 100;
+    const margem = c.receita - c.custo - comissao - imposto;
+    return { ...c, pct, pctImp, comissao, imposto, margem, margemPct: c.receita > 0 ? margem / c.receita * 100 : 0 };
   });
 
-  const tot = canais.reduce((a, c) => ({ receita: a.receita + c.receita, custo: a.custo + c.custo, comissao: a.comissao + c.comissao, margem: a.margem + c.margem }), { receita: 0, custo: 0, comissao: 0, margem: 0 });
+  const tot = canais.reduce((a, c) => ({ receita: a.receita + c.receita, custo: a.custo + c.custo, comissao: a.comissao + c.comissao, imposto: a.imposto + c.imposto, margem: a.margem + c.margem }), { receita: 0, custo: 0, comissao: 0, imposto: 0, margem: 0 });
+  const cmvPct = tot.receita > 0 ? tot.custo / tot.receita * 100 : 0;
 
   const kpi = (lbl, v, sub, cor) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
     <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
     <div style="font-size:1.4rem;font-weight:800;${cor?'color:'+cor:''}">${v}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
 
-  el.innerHTML = _vdFiltros(false) + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Rentabilidade por canal em <b>${_vdPeriodo} dias</b> — receita real do canal menos custo (ficha) e comissão. Ajuste a comissão de cada canal abaixo.</div>
+  el.innerHTML = _cnRenderPeriodoBar() + `
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Rentabilidade por canal — receita real do canal menos custo (ficha), comissão e imposto. Ajuste comissão e imposto de cada canal abaixo.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
       ${kpi('Receita bruta', 'R$ ' + fmt(tot.receita))}
       ${kpi('Comissão total', 'R$ ' + fmt(tot.comissao), tot.receita>0?fmt(tot.comissao/tot.receita*100)+'% da receita':'')}
+      ${kpi('CMV', tot.receita>0?fmt(cmvPct)+'%':'—', 'R$ ' + fmt(tot.custo))}
+      ${kpi('Impostos', 'R$ ' + fmt(tot.imposto), tot.receita>0?fmt(tot.imposto/tot.receita*100)+'% da receita':'')}
       ${kpi('Margem líquida', 'R$ ' + fmt(tot.margem), '', tot.margem<0?'var(--red)':'var(--green)')}
     </div>
 
@@ -779,19 +966,23 @@ async function renderVendasCanais() {
     </div>
 
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1fr 90px 1fr 1fr 90px;gap:10px;padding:10px 16px;background:var(--surface2);font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px">
-        <div>Canal</div><div style="text-align:right">Vendas</div><div style="text-align:right">Receita</div><div style="text-align:right">Custo</div><div style="text-align:center">Comissão %</div><div style="text-align:right">Comissão R$</div><div style="text-align:right">Margem líq.</div><div style="text-align:right">Margem %</div>
+      <div style="overflow-x:auto">
+      <div style="display:grid;grid-template-columns:1fr 60px 1fr 1fr 80px 1fr 80px 1fr 1fr 80px;gap:10px;padding:10px 16px;background:var(--surface2);font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;min-width:920px">
+        <div>Canal</div><div style="text-align:right">Vendas</div><div style="text-align:right">Receita</div><div style="text-align:right">Custo</div><div style="text-align:center">Comissão %</div><div style="text-align:right">Comissão R$</div><div style="text-align:center">Imposto %</div><div style="text-align:right">Imposto R$</div><div style="text-align:right">Margem líq.</div><div style="text-align:right">Margem %</div>
       </div>
-      ${canais.map(c => `<div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1fr 90px 1fr 1fr 90px;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem">
+      ${canais.map(c => `<div style="display:grid;grid-template-columns:1fr 60px 1fr 1fr 80px 1fr 80px 1fr 1fr 80px;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem;min-width:920px">
         <div style="font-weight:700">${c.canal}</div>
         <div style="text-align:right;color:var(--muted)">${c.vendas}</div>
         <div style="text-align:right;font-weight:600">R$ ${fmt(c.receita)}</div>
         <div style="text-align:right;color:var(--muted)">R$ ${fmt(c.custo)}</div>
-        <div style="text-align:center"><input type="number" class="inp" value="${c.pct}" min="0" max="100" step="0.5" onchange="_cnSetComissao('${c.canal}',this.value)" style="width:66px;text-align:right;font-size:.8rem;padding:4px 6px"></div>
+        <div style="text-align:center"><input type="number" class="inp" value="${c.pct}" min="0" max="100" step="0.5" onchange="_cnSetComissao('${c.canal}',this.value)" style="width:60px;text-align:right;font-size:.8rem;padding:4px 6px"></div>
         <div style="text-align:right;color:var(--orange-dark)">R$ ${fmt(c.comissao)}</div>
+        <div style="text-align:center"><input type="number" class="inp" value="${c.pctImp}" min="0" max="100" step="0.5" onchange="_cnSetImposto('${c.canal}',this.value)" style="width:60px;text-align:right;font-size:.8rem;padding:4px 6px"></div>
+        <div style="text-align:right;color:var(--orange-dark)">R$ ${fmt(c.imposto)}</div>
         <div style="text-align:right;font-weight:800;color:${c.margem<0?'var(--red)':'var(--green)'}">R$ ${fmt(c.margem)}</div>
         <div style="text-align:right;font-weight:700;color:${c.margemPct<0?'var(--red)':'var(--text)'}">${fmt(c.margemPct)}%</div>
       </div>`).join('') || '<div class="ft-empty-list" style="padding:14px">Sem vendas no período</div>'}
+      </div>
     </div>`;
 
   _cnRenderChart(canais);
@@ -804,7 +995,7 @@ function _cnRenderChart(canais) {
   if (_cnChart) { _cnChart.destroy(); _cnChart = null; }
   const css = getComputedStyle(document.body);
   const txt = css.getPropertyValue('--muted').trim() || '#888';
-  const cCusto = '#B4B2A9', cCom = css.getPropertyValue('--chart-3').trim() || '#D97706', cMarg = css.getPropertyValue('--chart-4').trim() || '#16A34A';
+  const cCusto = '#B4B2A9', cCom = css.getPropertyValue('--chart-3').trim() || '#D97706', cImp = css.getPropertyValue('--chart-2').trim() || '#DC7A9E', cMarg = css.getPropertyValue('--chart-4').trim() || '#16A34A';
   _cnChart = new Chart(cv, {
     type: 'bar',
     data: {
@@ -812,6 +1003,7 @@ function _cnRenderChart(canais) {
       datasets: [
         { label: 'Custo', data: canais.map(c => +c.custo.toFixed(2)), backgroundColor: cCusto, borderRadius: 3 },
         { label: 'Comissão', data: canais.map(c => +c.comissao.toFixed(2)), backgroundColor: cCom, borderRadius: 3 },
+        { label: 'Imposto', data: canais.map(c => +c.imposto.toFixed(2)), backgroundColor: cImp, borderRadius: 3 },
         { label: 'Margem', data: canais.map(c => +Math.max(0, c.margem).toFixed(2)), backgroundColor: cMarg, borderRadius: 3 },
       ],
     },
@@ -1155,7 +1347,10 @@ function renderVendasPrecos() {
       <td style="text-align:right;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">R$ ${fmt(precos.custo)}</td>
       ${celulaPreco('site', precos.site)}
       ${cfg.plataformas.map(plat => celulaPreco(plat.id, precos[plat.id])).join('')}
-      <td style="text-align:center;padding:10px 12px;border-bottom:1px solid var(--border)"><button class="btn btn-ghost btn-xs" onclick="_pcRemoverProduto(${p.id})" title="Remover">${lc('trash-2', 13, 'currentColor')}</button></td>
+      <td style="text-align:center;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap">
+        <button class="btn btn-ghost btn-xs" onclick="_pcAbrirModalProduto(${p.id})" title="Editar">${lc('edit-2', 13, 'currentColor')}</button>
+        <button class="btn btn-ghost btn-xs" onclick="_pcRemoverProduto(${p.id})" title="Remover">${lc('trash-2', 13, 'currentColor')}</button>
+      </td>
     </tr>`;
   };
 
