@@ -154,6 +154,53 @@ function _setSubPanelActive(selector) {
   if (btn) btn.classList.add('active');
 }
 
+// ══════════════════════════════════════════════════════════════
+// SWITCHER DE EMPRESA/UNIDADE — dropdown ancorado na caixa do topo da sidebar
+// ══════════════════════════════════════════════════════════════
+
+function toggleBrandSwitcher(anchorEl) {
+  const existing = document.getElementById('brandSwitcherPopup');
+  if (existing) { existing.remove(); return; }
+
+  const cfg      = typeof getConfig === 'function' ? getConfig() : {};
+  const nome     = cfg.empresa  || 'Vai Ter Pizza!';
+  const endereco = cfg.endereco || 'Unidade principal';
+  const logoSrc  = document.getElementById('sbLogoImg')?.src || 'assets/logo-bg.jpg';
+
+  const rect  = anchorEl?.getBoundingClientRect() || { left: 16, bottom: 60 };
+  const cardW = 260;
+  const left  = Math.max(8, Math.min(rect.left, window.innerWidth - cardW - 12));
+  const top   = rect.bottom + 8;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'brandSwitcherPopup';
+  // z-index acima do drawer mobile (950) — o chevron vive dentro da própria sidebar,
+  // diferente do sino/config (fora do drawer), então precisa ficar por cima dele.
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:960';
+  wrap.innerHTML = `
+    <div style="position:fixed;top:${top}px;left:${left}px;width:${cardW}px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-xl);box-shadow:0 16px 48px rgba(0,0,0,.16);overflow:hidden">
+      <div style="padding:10px 14px;font-size:var(--text-2xs);font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-subtle);border-bottom:1px solid var(--border)">Empresas &amp; unidades</div>
+      <div style="padding:8px">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius-md);background:var(--accent-subtle)">
+          <div style="width:30px;height:30px;border-radius:var(--radius-md);overflow:hidden;flex-shrink:0">
+            <img src="${logoSrc}" style="width:100%;height:100%;object-fit:cover">
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--text-sm);font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+            <div style="font-size:var(--text-2xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${endereco}</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+      </div>
+      <button onclick="document.getElementById('brandSwitcherPopup')?.remove(); toast('Em breve: múltiplas empresas e unidades','info')"
+        style="width:100%;padding:11px;border:none;border-top:1px solid var(--border);background:var(--bg-subtle);color:var(--purple);font-weight:700;font-size:var(--text-xs);cursor:pointer;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px">
+        + Adicionar empresa/unidade
+      </button>
+    </div>`;
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
+}
+
 // ── Hover-expand sidebar (só desktop, só quando sidebar colapsado) ──
 function _initSidebarHover() {
   const sidebar = document.getElementById('sidebar');

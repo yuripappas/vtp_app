@@ -580,6 +580,8 @@ function _updateSidebarLogo() {
   if (img) img.src = cfg.logoBase64 || 'assets/logo-bg.jpg';
   const txt = document.getElementById('sbLogoText');
   if (txt) txt.textContent = cfg.empresa || 'Vai Ter Pizza!';
+  const sub = document.getElementById('sbBrandSub');
+  if (sub) sub.textContent = cfg.endereco || 'Unidade principal';
 }
 
 function _cfgSetGrupoTab(tab) {
