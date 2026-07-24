@@ -120,12 +120,11 @@ function _openMobileSubmenu(items, parentLabel) {
   nav.innerHTML = `
     <button class="sb-mobile-back" onclick="_closeMobileSubmenu()">
       ${lc('arrow-left', 16, 'currentColor')}
-      ${parentLabel}
+      Voltar
     </button>
     <div class="sb-mobile-submenu-label">${parentLabel}</div>
     ${items.map(item => `
-      <button class="sb-item" style="justify-content:flex-start;gap:10px" onclick="${item.action}">
-        <span class="sb-icon">${lc(item.icon, 18, 'currentColor')}</span>
+      <button class="sb-item sb-item-plain" onclick="${item.action}">
         <span class="sb-label" style="opacity:1;width:auto">${item.label}</span>
       </button>
     `).join('')}

@@ -1644,6 +1644,9 @@ svg { display: block; }
   padding: 12px 16px 4px;
 }
 
+/* Itens do drill-down: texto puro, sem ícone, alinhados com o rótulo da seção acima */
+.sb-item-plain { padding: 9px 16px; justify-content: flex-start; }
+
 @media (max-width: 768px) {
   /* Header global (desktop) some — mobile-topbar já cobre esse papel */
   .global-topbar { display: none; }
