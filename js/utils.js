@@ -36,7 +36,7 @@ function _positionSbToggle(expanded) {
   const toggle = document.getElementById('sbToggle');
   if (toggle) toggle.style.left = expanded
     ? `calc(var(--sb-w) - 12px)`
-    : `10px`;
+    : `2px`;
 }
 
 function toggleSidebar() {

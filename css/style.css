@@ -49,16 +49,28 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 20px 0 16px;
+  padding-right: 20px;
 }
-.gtb-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* Coluna da logo: SEMPRE a largura da sidebar expandida (var(--sb-w)),
+   com divisória na borda direita — não muda quando a sidebar colapsa. */
+.gtb-brand-col {
+  width: var(--sb-w);
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
 .gtb-logo { height: 26px; width: auto; flex-shrink: 0; display: block; }
-.gtb-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
 .gtb-title {
+  flex: 1;
+  min-width: 0;
+  padding: 0 20px;
   font-size: var(--text-xl);
-  font-weight: var(--weight-extrabold);
-  color: var(--fg);
+  font-weight: var(--weight-regular);
+  color: var(--fg-subtle);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
