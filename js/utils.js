@@ -11,6 +11,16 @@ const fmtDT = d => d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short',
 const sname = id => { const s = suppliers.find(x => x.id === id); return s ? s.name : '—'; };
 const genToken = () => Math.random().toString(36).slice(2, 10).toUpperCase();
 
+// Atualiza o título da página em todas as cópias — header global (desktop)
+// e mobile-topbar — usado por módulos com abas internas (Vendas, Compras,
+// Omnichannel, Configurações) pra refletir a aba específica, não só o módulo.
+function _setPageTitle(text) {
+  const desktop = document.getElementById('topbarTitle');
+  if (desktop) desktop.textContent = text;
+  const mobile = document.getElementById('mobileModuleTitle');
+  if (mobile) mobile.textContent = text;
+}
+
 function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
   el.innerHTML = msg;
@@ -41,6 +51,10 @@ function _positionSbToggle(expanded) {
 
 function toggleSidebar() {
   sidebarOpen = !sidebarOpen;
+  // Ao colapsar com um drill-down aberto, fecha ele também — senão a
+  // classe .submenu-open sozinha continua forçando width:var(--sb-w) e a
+  // sidebar não encolhe (só a seta reposiciona, ficando "solta").
+  if (!sidebarOpen && _mobileSubmenuActive) _closeMobileSubmenu();
   document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
   document.getElementById('toggleIcon').innerHTML = sidebarOpen
     ? '<path d="M8 2l-4 4 4 4"/>'

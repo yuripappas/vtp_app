@@ -25,12 +25,8 @@ function renderVendas() {
   const el = document.getElementById('vendasContent');
   if (!el) return;
   const item = (typeof _VENDAS_SUBMENU_ITEMS !== 'undefined' && _VENDAS_SUBMENU_ITEMS.find(i => i.id === _vdTab)) || { icon: 'bar-chart-2', label: 'Vendas' };
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px">
-      ${lc(item.icon, 18, 'var(--purple)')}
-      <span style="font-size:1.05rem;font-weight:700">${item.label}</span>
-    </div>
-    <div id="vendasTabContent"></div>`;
+  _setPageTitle(item.label);
+  el.innerHTML = `<div id="vendasTabContent"></div>`;
   _vdRerender();
 }
 

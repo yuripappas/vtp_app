@@ -104,11 +104,8 @@ function renderAlertas() {
     <div style="padding:20px 24px;max-width:800px">
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-        <div>
-          <h3 style="font-size:var(--text-base);font-weight:800;margin-bottom:3px;display:flex;align-items:center;gap:8px">
-            ${lc('bell', 14, 'var(--purple)')} Alertas
-            ${naoLidos > 0 ? `<span style="padding:2px 9px;border-radius:10px;background:var(--purple);color:#fff;font-size:var(--text-2xs);font-weight:700">${naoLidos} novo${naoLidos > 1 ? 's' : ''}</span>` : ''}
-          </h3>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${naoLidos > 0 ? `<span style="padding:2px 9px;border-radius:10px;background:var(--purple);color:#fff;font-size:var(--text-2xs);font-weight:700">${naoLidos} novo${naoLidos > 1 ? 's' : ''}</span>` : ''}
           <div style="font-size:var(--text-xs);color:var(--muted)">Notificações de movimentações e eventos do sistema</div>
         </div>
         ${meus.length > 0 ? `

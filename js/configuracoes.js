@@ -88,6 +88,8 @@ function setCfgSection(section) {
   _CFG_SECTIONS.forEach(s =>
     document.getElementById(`cfgNav-${s.id}`)?.classList.toggle('active', s.id === section)
   );
+  const secInfo = _CFG_SECTIONS.find(s => s.id === section);
+  if (secInfo) _setPageTitle(secInfo.label);
 
   const el = document.getElementById('cfgSectionContent');
   if (!el) return;
@@ -107,34 +109,10 @@ function _renderCfgCadSection(section, el) {
   const cadPage = document.getElementById('page-cadastros');
   if (!cadPage) return;
 
-  // 1. Mapas de título/ícone por seção
-  const titles = {
-    insumos:      { icon:'package',  title:'Insumos',      sub:'Matérias-primas e ingredientes usados na produção' },
-    fornecedores: { icon:'truck',    title:'Fornecedores', sub:'Cadastro de fornecedores e condições comerciais'   },
-    preparo:      { icon:'chef-hat', title:'Preparados',   sub:'Preparados internos usados na produção'            },
-    produtos:     { icon:'pizza',    title:'Produtos',     sub:'Sabores de pizza e outros produtos'                },
-    servicos:     { icon:'wrench',   title:'Serviços',     sub:'Prestadores externos e categorias de serviço'      },
-  };
-  const info = titles[section];
+  // Título/subtítulo de página são só o #topbarTitle (setCfgSection já atualiza) —
+  // não duplica mais um cabeçalho aqui dentro.
 
-  // 2. Injeta ou atualiza cabeçalho padronizado
-  const existingTitle = el.querySelector('.settings-section-title');
-  if (existingTitle && info) {
-    // Já existe (navegando entre seções de cadastro) — só atualiza
-    existingTitle.innerHTML = `${lc(info.icon, 16, 'var(--purple)')} ${info.title}`;
-    const existingSub = el.querySelector('.settings-section-sub');
-    if (existingSub) existingSub.textContent = info.sub;
-  } else if (info) {
-    // Primeira entrada — injeta o cabeçalho antes de tudo
-    const hdr = document.createElement('div');
-    hdr.className = 'cfg-cad-header';
-    hdr.innerHTML = `
-      <div class="settings-section-title">${lc(info.icon, 16, 'var(--purple)')} ${info.title}</div>
-      <div class="settings-section-sub">${info.sub}</div>`;
-    el.insertBefore(hdr, el.firstChild);
-  }
-
-  // 3. Transplanta conteúdo do page-cadastros
+  // Transplanta conteúdo do page-cadastros
   if (cadPage.children.length > 0) {
     while (cadPage.firstChild) el.appendChild(cadPage.firstChild);
   }
@@ -217,9 +195,6 @@ function _renderCfgSecEmpresa(el) {
     : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${lc('image', 26, 'var(--border-strong)')}</div>`;
 
   el.innerHTML = `
-    <div class="settings-section-title">${lc('building-2',16,'var(--purple)')} Empresa</div>
-    <div class="settings-section-sub">Identidade da empresa e aparência do sistema</div>
-
     <div style="margin-bottom:28px">
       <div style="font-size:var(--text-xs);font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Logo / Foto da empresa</div>
       <div class="cfg-logo-wrap">
@@ -494,8 +469,6 @@ function _renderCfgSecModulos(el) {
   }).join('');
 
   el.innerHTML = `
-    <div class="settings-section-title">${lc('settings',16,'var(--purple)')} Personalização</div>
-    <div class="settings-section-sub">Configurações específicas de cada módulo operacional</div>
     <div style="display:flex;overflow-x:auto;border-bottom:1.5px solid var(--border);margin-bottom:20px">
       ${tabsHtml}
     </div>
@@ -511,8 +484,6 @@ function _renderCfgSecModulos(el) {
 
 function _renderCfgSecUsuarios(el) {
   el.innerHTML = `
-    <div class="settings-section-title">${lc('shield',16,'var(--purple)')} Usuários & Permissões</div>
-    <div class="settings-section-sub">Cadastro de usuários e controle de acesso ao sistema</div>
     <div id="cfgUserList" style="display:flex;flex-direction:column;gap:12px"></div>`;
   _renderCfgUsuarios();
 }
@@ -522,9 +493,6 @@ function _renderCfgSecUsuarios(el) {
 function _renderCfgSecIntegracoes(el) {
   const cfg = getConfig();
   el.innerHTML = `
-    <div class="settings-section-title">${lc('zap',16,'var(--purple)')} Integrações</div>
-    <div class="settings-section-sub">Tokens e conexões com sistemas externos</div>
-
     <div style="border:1.5px solid var(--border);border-radius:var(--r12);padding:18px 20px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         ${lc('monitor',16,'var(--purple)')}
@@ -2676,9 +2644,6 @@ function _renderCfgSecEtiquetagem(el) {
   if (typeof _etqInit === 'function') _etqInit();
 
   el.innerHTML = `
-    <div class="settings-section-title">${lc('tag', 16, 'var(--purple)')} Etiquetagem</div>
-    <div class="settings-section-sub">Métodos de conservação · Validades por produto · Categorias visíveis · Pontos de impressão</div>
-
     <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
       <button onclick="_cfgEtqTab='metodos';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
         class="btn btn-sm ${_cfgEtqTab==='metodos'?'btn-primary':'btn-ghost'}">

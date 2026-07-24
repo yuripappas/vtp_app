@@ -79,6 +79,9 @@ function renderComprasModule() {
 function renderComprasLayout(section) {
   if (section) _cpSection = section;
 
+  const item = (typeof _COMPRAS_SUBMENU_ITEMS !== 'undefined' && _COMPRAS_SUBMENU_ITEMS.find(i => i.id === _cpSection)) || { label: 'Lista de Compras' };
+  if (!_cpListaAberta) _setPageTitle(item.label);
+
   // Renderiza seção full-width (sem nav lateral — navegação é via sidebar)
   // Insumos saiu daqui — agora é filho de Configurações
   if (_cpSection === 'fornecedores') {
@@ -327,10 +330,7 @@ function _renderListaCompras() {
     <div style="padding:20px 24px">
       <!-- Cabeçalho -->
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-        <div>
-          <div style="font-size:var(--text-base);font-weight:800">${lc('clipboard-list', 16, 'var(--purple)')} Lista de Compras</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${lista.length} lista(s)${filtrando ? ' · filtrado' : ''}</div>
-        </div>
+        <div style="font-size:var(--text-xs);color:var(--muted)">${lista.length} lista(s)${filtrando ? ' · filtrado' : ''}</div>
         <button onclick="_abrirModalCriarLista()"
           style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r8);
           border:none;background:var(--purple);color:#fff;font-size:var(--text-sm);font-weight:700;
@@ -5950,11 +5950,7 @@ function _renderCpFornecedores() {
   if (!el) return;
   el.innerHTML = `
     <div style="padding:20px 24px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-        <div>
-          <div style="font-size:var(--text-base);font-weight:800">${lc('truck', 16, 'var(--purple)')} Fornecedores</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Cadastro de fornecedores e condições comerciais</div>
-        </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-bottom:20px;flex-wrap:wrap">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <input class="inp" style="max-width:180px;padding:7px 12px" id="srchCadForn" placeholder=" Buscar..." oninput="renderFornecedores()">
           <select class="inp" id="filFornCat" style="max-width:160px;padding:7px 12px" onchange="renderFornecedores()">

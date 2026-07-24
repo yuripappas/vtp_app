@@ -180,6 +180,9 @@ function renderOmnichannel() {
   // Marca o sub-item correto no painel lateral e renderiza a página
   _setSubPanelActive(_atdPaginaAtiva);
 
+  const omniItem = (typeof _OMNI_SUBMENU_ITEMS !== 'undefined' && _OMNI_SUBMENU_ITEMS.find(i => i.id === _atdPaginaAtiva)) || { label: 'Omnichannel' };
+  _setPageTitle(omniItem.label);
+
   const page = document.getElementById('page-omnichannel');
   page.innerHTML = '';
 
@@ -2442,16 +2445,7 @@ async function _atdRenderAvaliacoesIfood() {
   const wrap = document.getElementById('page-omnichannel');
   wrap.innerHTML = `
     <div style="max-width:900px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="width:36px;height:36px;border-radius:var(--r8);background:#EA1D2C18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="#EA1D2C"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
-          </span>
-          <div>
-            <h2 style="font-size:var(--text-lg);font-weight:800;color:var(--text);margin:0;line-height:1.2">Avaliações iFood</h2>
-            <div style="font-size:var(--text-xs);color:var(--fg-muted)">Responda avaliações de clientes diretamente aqui</div>
-          </div>
-        </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div style="display:flex;gap:8px;align-items:center">
           <select id="atdIfoodFiltro" onchange="_atdIfoodAplicarFiltro(this.value)"
             style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--r8);font-size:var(--text-xs);background:var(--bg);color:var(--text);outline:none">
@@ -2668,14 +2662,7 @@ function _atdIfoodAplicarFiltro(status) {
 function _atdRenderRespostas() {
   document.getElementById('page-omnichannel').innerHTML = `
     <div style="max-width:960px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
-        ${lc('zap', 18, 'var(--purple)')}
-        <div>
-          <h2 style="font-size:var(--text-lg);font-weight:800;color:var(--text);margin:0;line-height:1.2">Respostas</h2>
-          <div style="font-size:var(--text-xs);color:var(--fg-muted)">Atalhos rápidos e regras do assistente de IA</div>
-        </div>
-      </div>
-      <div class="atd-resp-tabs" style="display:flex;gap:0">
+      <div class="atd-resp-tabs" style="display:flex;gap:0;margin-top:4px">
         <button class="atd-resp-tab atd-resp-tab-active" data-resp="padrao" onclick="_atdRespostasAba('padrao')">
           ${lc('zap', 13, 'currentColor')} Respostas rápidas
         </button>
@@ -3149,11 +3136,7 @@ async function _atdRespostaExcluir(id) {
 function _atdRenderEstatisticas() {
   document.getElementById('page-omnichannel').innerHTML = `
     <div style="max-width:900px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-        ${lc('bar-chart-2', 18, 'var(--purple)')}
-        <h2 style="font-size:var(--text-base);font-weight:800;color:var(--text);margin:0">Estatísticas</h2>
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:20px">
+      <div style="display:flex;gap:6px;margin-bottom:20px;margin-top:4px">
         <button class="atd-canal-tab active" data-est="reputacao" onclick="_atdEstatAba('reputacao')">Reputação</button>
         <button class="atd-canal-tab" data-est="sentimento" onclick="_atdEstatAba('sentimento')">Sentimento</button>
         <button class="atd-canal-tab" data-est="performance" onclick="_atdEstatAba('performance')">Performance</button>
@@ -3178,11 +3161,7 @@ function _atdEstatAba(aba) {
 function _atdRenderConfiguracoes() {
   document.getElementById('page-omnichannel').innerHTML = `
     <div style="max-width:760px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-        ${lc('settings', 18, 'var(--purple)')}
-        <h2 style="font-size:var(--text-base);font-weight:800;color:var(--text);margin:0">Configurações</h2>
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:20px">
+      <div style="display:flex;gap:6px;margin-bottom:20px;margin-top:4px">
         <button class="atd-canal-tab active" data-cfg="tags" onclick="_atdCfgAba('tags')">Tags</button>
         <button class="atd-canal-tab" data-cfg="geral" onclick="_atdCfgAba('geral')">Geral</button>
       </div>
