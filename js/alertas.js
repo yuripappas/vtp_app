@@ -33,14 +33,56 @@ function atualizarBadgeAlertas() {
   const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
   if (!u) return;
   const count = alertas.filter(a => !a.lida && a.destino_roles.includes(u.role)).length;
-  const badge = document.getElementById('badge-alertas');
-  if (!badge) return;
-  if (count > 0) {
-    badge.style.display = '';
-    badge.textContent = count > 9 ? '9+' : String(count);
-  } else {
-    badge.style.display = 'none';
-  }
+  document.querySelectorAll('#badge-alertas, #badge-alertas-m').forEach(badge => {
+    if (count > 0) {
+      badge.style.display = '';
+      badge.textContent = count > 9 ? '9+' : String(count);
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// DROPDOWN DE NOTIFICAÇÕES — atalho rápido a partir do header
+// ══════════════════════════════════════════════════════════════
+
+function toggleNotifDropdown(anchorEl) {
+  const existing = document.getElementById('notifDropdownPopup');
+  if (existing) { existing.remove(); return; }
+
+  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  if (!u) return;
+
+  const meus     = alertas.filter(a => a.destino_roles.includes(u.role));
+  const recentes = meus.slice(0, 6);
+
+  const rect  = anchorEl?.getBoundingClientRect() || { right: window.innerWidth - 20, bottom: 60 };
+  const cardW = 340;
+  const left  = Math.min(Math.max(8, rect.right - cardW), window.innerWidth - cardW - 12);
+  const top   = rect.bottom + 10;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'notifDropdownPopup';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:700';
+  wrap.innerHTML = `
+    <div style="position:fixed;top:${top}px;left:${left}px;width:${cardW}px;max-height:420px;
+      display:flex;flex-direction:column;background:var(--surface);border:1.5px solid var(--border);
+      border-radius:var(--radius-xl);box-shadow:0 16px 48px rgba(0,0,0,.16);overflow:hidden">
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800;font-size:var(--text-sm)">Notificações</div>
+      <div style="overflow-y:auto;min-height:0;padding:8px;display:flex;flex-direction:column;gap:6px">
+        ${recentes.length === 0
+          ? `<div style="padding:24px 12px;text-align:center;color:var(--muted);font-size:var(--text-sm)">Nenhuma notificação</div>`
+          : recentes.map(a => `<div style="flex-shrink:0">${_cardAlerta(a)}</div>`).join('')}
+      </div>
+      <button onclick="document.getElementById('notifDropdownPopup')?.remove();goModule('alertas')"
+        style="padding:11px;border:none;border-top:1px solid var(--border);background:var(--bg-subtle);
+        color:var(--purple);font-weight:700;font-size:var(--text-xs);cursor:pointer;font-family:Inter,sans-serif">
+        Ver todos
+      </button>
+    </div>`;
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
 }
 
 // ══════════════════════════════════════════════════════════════

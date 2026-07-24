@@ -28,15 +28,22 @@ document.querySelectorAll('.overlay').forEach(o =>
   })
 );
 
+// Reposiciona a seta de colapsar/expandir — reaproveitado pelo hover-expand
+// e pelo estado de submenu aberto, além do próprio toggleSidebar().
+function _positionSbToggle(expanded) {
+  const toggle = document.getElementById('sbToggle');
+  if (toggle) toggle.style.left = expanded
+    ? `calc(var(--sb-w) - 12px)`
+    : `calc(var(--sb-min) - 12px)`;
+}
+
 function toggleSidebar() {
   sidebarOpen = !sidebarOpen;
   document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
   document.getElementById('toggleIcon').innerHTML = sidebarOpen
     ? '<path d="M8 2l-4 4 4 4"/>'
     : '<path d="M4 2l4 4-4 4"/>';
-  document.getElementById('sbToggle').style.left = sidebarOpen
-    ? `calc(var(--sb-w) - 12px)`
-    : `calc(var(--sb-min) - 12px)`;
+  _positionSbToggle(sidebarOpen);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -93,35 +100,22 @@ const _VENDAS_SUBMENU_ITEMS = [
 
 function _handleNavVendas() {
   const action = (id) => `_vdTab='${id}'; goModule('vendas');`;
-  if (window.innerWidth <= 480) {
-    _openMobileSubmenu(_VENDAS_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })), 'Vendas');
-  } else {
-    _openSubPanel(_VENDAS_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })), 'Vendas', 'vendas');
-  }
+  _openMobileSubmenu(_VENDAS_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })), 'Vendas');
 }
-
-// Submenu items de Configurações
-const _CFG_SUBMENU_ITEMS = [
-  { id: 'empresa',      icon: 'building-2', label: 'Empresa'        },
-  { id: 'usuarios',     icon: 'shield',     label: 'Usuários'       },
-  { id: 'insumos',      icon: 'package',    label: 'Insumos'        },
-  { id: 'preparo',      icon: 'chef-hat',   label: 'Preparados'     },
-  { id: 'produtos',     icon: 'pizza',      label: 'Produtos'       },
-  { id: 'servicos',     icon: 'wrench',     label: 'Serviços'       },
-  { id: 'modulos',      icon: 'settings',   label: 'Personalização' },
-  { id: 'integracoes',  icon: 'zap',        label: 'Integrações'    },
-  { id: 'etiquetagem', icon: 'tag',        label: 'Etiquetagem'    },
-];
 
 function _openMobileSubmenu(items, parentLabel) {
   const sidebar = document.getElementById('sidebar');
   const nav     = sidebar.querySelector('.sb-nav');
-  const bottom  = sidebar.querySelector('.sb-bottom');
+  const bottom  = sidebar.querySelector('.sb-bottom'); // rodapé não existe mais no sidebar (header global) — segue opcional
   _mobileSubmenuActive = true;
+  sidebar.classList.add('submenu-open');
+  if (!isMobile()) _positionSbToggle(true);
 
-  nav._origHTML    = nav.innerHTML;
-  bottom._origDisp = bottom.style.display;
-  bottom.style.display = 'none';
+  nav._origHTML = nav.innerHTML;
+  if (bottom) {
+    bottom._origDisp = bottom.style.display;
+    bottom.style.display = 'none';
+  }
 
   nav.innerHTML = `
     <button class="sb-mobile-back" onclick="_closeMobileSubmenu()">
@@ -145,51 +139,19 @@ function _closeMobileSubmenu() {
   if (nav._origHTML !== undefined) {
     nav.innerHTML    = nav._origHTML;
     nav._origHTML    = undefined;
-    bottom.style.display = bottom._origDisp || '';
+    if (bottom) bottom.style.display = bottom._origDisp || '';
   }
   _mobileSubmenuActive = false;
+  sidebar.classList.remove('submenu-open');
+  if (!isMobile() && !sidebarOpen) _positionSbToggle(false);
 }
 
-// ══════════════════════════════════════════════════════════════
-// SUB-PANEL — two-column nav (desktop) estilo Intercom
-// ══════════════════════════════════════════════════════════════
-
-let _subPanelGroupId = null;
-
-function _openSubPanel(items, parentLabel, groupId) {
-  // Mesmo grupo: toggle
-  if (_subPanelGroupId === groupId) { _closeSubPanel(); return; }
-
-  _subPanelGroupId = groupId;
-
-  const panel    = document.getElementById('sbSubPanel');
-  const header   = document.getElementById('sbSubPanelHeader');
-  const itemsEl  = document.getElementById('sbSubPanelItems');
-  if (!panel) return;
-
-  header.textContent = parentLabel;
-  itemsEl.innerHTML  = items.map(item => `
-    <button class="sb-sub-item" onclick="${item.action}">
-      ${lc(item.icon, 15, 'currentColor')}
-      <span>${item.label}</span>
-    </button>`).join('');
-
-  panel.classList.add('open');
-
-  // Destaca o grupo no sidebar principal
-  document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
-  document.getElementById(`nav-${groupId}`)?.classList.add('active');
-}
-
-function _closeSubPanel() {
-  _subPanelGroupId = null;
-  document.getElementById('sbSubPanel')?.classList.remove('open');
-}
-
-// Marca um sub-item como ativo dentro do painel aberto
+// Marca um sub-item como ativo dentro do drill-down aberto (chamada por
+// renderOmnichannel() em js/atendimento.js — mantém a mesma assinatura,
+// só aponta pro drill-down único do .sb-nav em vez do antigo painel de 2 colunas).
 function _setSubPanelActive(selector) {
-  document.querySelectorAll('#sbSubPanelItems .sb-sub-item').forEach(b => b.classList.remove('active'));
-  const btn = document.querySelector(`#sbSubPanelItems .sb-sub-item[onclick*="${selector}"]`);
+  document.querySelectorAll('.sb-nav .sb-item').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.sb-nav .sb-item[onclick*="${selector}"]`);
   if (btn) btn.classList.add('active');
 }
 
@@ -198,10 +160,14 @@ function _initSidebarHover() {
   const sidebar = document.getElementById('sidebar');
   if (!sidebar) return;
   sidebar.addEventListener('mouseenter', () => {
-    if (!sidebarOpen && !_subPanelGroupId) sidebar.classList.add('hover-expand');
+    if (!sidebarOpen && !_mobileSubmenuActive) {
+      sidebar.classList.add('hover-expand');
+      _positionSbToggle(true);
+    }
   });
   sidebar.addEventListener('mouseleave', () => {
     sidebar.classList.remove('hover-expand');
+    if (!sidebarOpen) _positionSbToggle(false);
   });
 }
 
@@ -212,45 +178,23 @@ const _COMPRAS_SUBMENU_ITEMS = [
 ];
 
 function _handleNavCompras() {
-  if (window.innerWidth <= 480) {
-    _openMobileSubmenu(
-      _COMPRAS_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `_cpSection='${item.id}'; goModule('compras');`
-      })),
-      'Compras'
-    );
-  } else {
-    _openSubPanel(
-      _COMPRAS_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `_cpSection='${item.id}'; goModule('compras');`
-      })),
-      'Compras',
-      'compras'
-    );
-  }
+  _openMobileSubmenu(
+    _COMPRAS_SUBMENU_ITEMS.map(item => ({
+      ...item,
+      action: `_cpSection='${item.id}'; goModule('compras');`
+    })),
+    'Compras'
+  );
 }
 
 function _handleNavOperacao() {
-  if (window.innerWidth <= 480) {
-    _openMobileSubmenu(
-      _OPERACAO_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `goModule('${item.id}');`
-      })),
-      'Operação'
-    );
-  } else {
-    _openSubPanel(
-      _OPERACAO_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `goModule('${item.id}');`
-      })),
-      'Operação',
-      'operacao'
-    );
-  }
+  _openMobileSubmenu(
+    _OPERACAO_SUBMENU_ITEMS.map(item => ({
+      ...item,
+      action: `goModule('${item.id}');`
+    })),
+    'Operação'
+  );
 }
 
 // Submenu items de Omnichannel
@@ -265,47 +209,10 @@ const _OMNI_SUBMENU_ITEMS = [
 
 function _handleNavOmnichannel() {
   const action = (id) => `_atdPaginaAtiva='${id}'; goModule('omnichannel');`;
-  if (window.innerWidth <= 480) {
-    _openMobileSubmenu(
-      _OMNI_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
-      'Omnichannel'
-    );
-  } else {
-    _openSubPanel(
-      _OMNI_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
-      'Omnichannel',
-      'omnichannel'
-    );
-  }
-}
-
-function _handleNavConfiguracoes() {
-  // IMPORTANTE: nunca atribuir "_cfgSection='x'" antes de goModule() aqui.
-  // setCfgSection() decide o que limpar comparando a seção NOVA com o valor
-  // atual de _cfgSection (a seção anterior) — se essa variável já tiver sido
-  // sobrescrita antes da chamada, a comparação vira sempre "igual" e o
-  // conteúdo da seção antiga fica grudado por baixo da nova (bug reportado).
-  // goModule('configuracoes') primeiro re-renderiza a seção ainda atual
-  // (sem custo visual, roda no mesmo tick) e só depois setCfgSection(id)
-  // faz a transição de verdade, com a seção anterior intacta pra comparar.
-  if (window.innerWidth <= 480) {
-    _openMobileSubmenu(
-      _CFG_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `goModule('configuracoes'); setCfgSection('${item.id}');`
-      })),
-      'Configurações'
-    );
-  } else {
-    _openSubPanel(
-      _CFG_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `goModule('configuracoes'); setCfgSection('${item.id}');`
-      })),
-      'Configurações',
-      'configuracoes'
-    );
-  }
+  _openMobileSubmenu(
+    _OMNI_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
+    'Omnichannel'
+  );
 }
 
 const modInfo = {
@@ -505,11 +412,9 @@ function goModule(mod) {
   // Atualiza URL (não duplica entrada se veio do popstate)
   if (!_vtpNavFromPop) _vtpPushRoute(mod);
 
-  // Fecha drawer mobile ao navegar
+  // Fecha drill-down (desktop e mobile) e drawer mobile ao navegar
   if (_mobileSubmenuActive) _closeMobileSubmenu();
   if (_mobileMenuOpen) toggleMobileMenu();
-  // Fecha sub-panel desktop sempre que navegar
-  if (_subPanelGroupId) _closeSubPanel();
 
   const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
 
@@ -561,8 +466,10 @@ function goModule(mod) {
   else if (mod === 'usuarios') {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-configuracoes')?.classList.add('active');
-    // Não atribuir _cfgSection antes de setCfgSection — veja o comentário
-    // em _handleNavConfiguracoes() sobre por que isso corrompe a transição.
+    // setCfgSection() compara a seção nova com o valor atual de _cfgSection
+    // (a seção anterior) para decidir o que limpar do DOM — nunca atribuir
+    // _cfgSection manualmente antes de chamá-la, ou a comparação vira sempre
+    // "igual" e o conteúdo da seção antiga fica grudado por baixo da nova.
     _initCfgNav();
     setCfgSection('usuarios');
   }

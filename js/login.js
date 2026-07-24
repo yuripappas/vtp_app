@@ -122,6 +122,16 @@ async function _checkPass(input, stored) {
 // LOGIN / LOGOUT
 // ══════════════════════════════════════════════════════════════
 
+// Atualiza o avatar em todas as cópias existentes (header desktop + mobile)
+function _syncAvatarUI(name, foto) {
+  const html = foto
+    ? `<img src="${foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`
+    : name.charAt(0).toUpperCase();
+  document.querySelectorAll('#sbAvatar, #sbAvatar-m').forEach(el => {
+    if (foto) el.innerHTML = html; else el.textContent = html;
+  });
+}
+
 async function doLogin() {
   const email    = document.getElementById('loginEmail').value.trim().toLowerCase();
   const password = document.getElementById('loginPassword').value;
@@ -173,8 +183,7 @@ async function doLogin() {
   if (sbName) sbName.textContent = user.name;
   const sbRole = document.getElementById('sbUserRole');
   if (sbRole) { const p=PERMS[user.role]; sbRole.innerHTML = p ? (lc(p.icon||'user',11,p.color) + ' ' + p.label) : user.role; }
-  const sbAvatar = document.getElementById('sbAvatar');
-  if (sbAvatar) sbAvatar.textContent = user.name.charAt(0).toUpperCase();
+  _syncAvatarUI(user.name, user.foto);
   const dashBadge = document.getElementById('dashRoleBadge');
   if (dashBadge) dashBadge.textContent = (PERMS[user.role]?.label || user.role) + ' · ' + user.name;
 }
@@ -223,12 +232,18 @@ function applyPermissions(user) {
     const viaPerms = _hasModPerm(perms, mod);
     navEl.style.display = (viaPerms !== null ? viaPerms : roles.includes(role)) ? '' : 'none';
   });
-  // Botão de configurações no rodapé (id diferente)
-  const cfgBottom = document.getElementById('nav-configuracoes-bottom');
-  if (cfgBottom) {
+  // Botão de configurações no header (id diferente) — desktop + cópia mobile
+  const cfgBottom  = document.getElementById('nav-configuracoes-bottom');
+  const cfgBottomM = document.getElementById('nav-configuracoes-bottom-m');
+  if (cfgBottom || cfgBottomM) {
     const viaPerms = _hasModPerm(perms, 'configuracoes');
-    cfgBottom.style.display = (viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS.configuracoes||[]).includes(role)) ? '' : 'none';
+    const visible  = (viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS.configuracoes||[]).includes(role)) ? '' : 'none';
+    if (cfgBottom)  cfgBottom.style.display  = visible;
+    if (cfgBottomM) cfgBottomM.style.display = visible;
   }
+  // Espelha a visibilidade de Notificações na cópia mobile do header
+  const alertasM = document.getElementById('nav-alertas-m');
+  if (alertasM) alertasM.style.display = document.getElementById('nav-alertas')?.style.display || '';
   _updateSections();
   if (typeof atualizarBadgeAlertas === 'function') atualizarBadgeAlertas();
 }
@@ -291,8 +306,7 @@ function initAuth() {
       if (sbName) sbName.textContent = stillExists.name;
       const sbRole = document.getElementById('sbUserRole');
       if (sbRole) { const p=PERMS[stillExists.role]; sbRole.innerHTML = p ? (lc(p.icon||'user',11,p.color) + ' ' + p.label) : stillExists.role; }
-      const sbAvatar = document.getElementById('sbAvatar');
-      if (sbAvatar) sbAvatar.textContent = stillExists.name.charAt(0).toUpperCase();
+      _syncAvatarUI(stillExists.name, stillExists.foto);
       const dashBadge = document.getElementById('dashRoleBadge');
       if (dashBadge) dashBadge.textContent = (PERMS[stillExists.role]?.label || stillExists.role) + ' · ' + stillExists.name;
       return;
@@ -327,7 +341,7 @@ function _fecharMenuPerfil() {
   document.getElementById('menuPerfilPopup')?.remove();
 }
 
-function abrirModalPerfil() {
+function abrirModalPerfil(anchorEl) {
   const u = getCurrentUser();
   if (!u) return;
   const p         = PERMS[u.role];
@@ -335,13 +349,15 @@ function abrirModalPerfil() {
 
   _fecharMenuPerfil();
 
-  const avatarEl  = document.getElementById('sbAvatar');
-  const rect      = avatarEl?.getBoundingClientRect() || { right: 72, top: window.innerHeight - 200 };
+  // Avatar agora fica no cabeçalho (topo) — popup sempre abre para baixo,
+  // alinhado à borda direita do elemento clicado (antes assumia rodapé/canto
+  // inferior-esquerdo e abria para cima-direita).
+  const avatarEl  = anchorEl || document.getElementById('sbAvatar');
+  const rect      = avatarEl?.getBoundingClientRect() || { right: window.innerWidth - 20, bottom: 60 };
   const cardW     = 268;
-  const leftRaw   = rect.right + 14;
-  const left      = Math.min(leftRaw, window.innerWidth - cardW - 12);
-  const topRaw    = rect.top - 10;
-  const top       = Math.max(8, Math.min(topRaw, window.innerHeight - 420));
+  const gap       = 10;
+  const left      = Math.min(Math.max(8, rect.right - cardW), window.innerWidth - cardW - 12);
+  const top       = Math.min(rect.bottom + gap, window.innerHeight - 420);
 
   const fotoHtml  = u.foto
     ? `<img src="${u.foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`
@@ -531,14 +547,7 @@ function salvarPerfil() {
 
   const sbName = document.getElementById('sbUserName');
   if (sbName) sbName.textContent = nome;
-  const sbAvatar = document.getElementById('sbAvatar');
-  if (sbAvatar) {
-    if (sessaoAtualizada.foto) {
-      sbAvatar.innerHTML = `<img src="${sessaoAtualizada.foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
-    } else {
-      sbAvatar.textContent = nome.charAt(0).toUpperCase();
-    }
-  }
+  _syncAvatarUI(nome, sessaoAtualizada.foto);
 
   document.getElementById('modalEditarPerfil')?.remove();
   toast('Perfil atualizado!');

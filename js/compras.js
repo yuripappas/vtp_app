@@ -80,7 +80,7 @@ function renderComprasLayout(section) {
   if (section) _cpSection = section;
 
   // Renderiza seção full-width (sem nav lateral — navegação é via sidebar)
-  // Insumos saiu daqui — agora é filho de Configurações (ver _CFG_SUBMENU_ITEMS)
+  // Insumos saiu daqui — agora é filho de Configurações
   if (_cpSection === 'fornecedores') {
     _renderCpFornecedores();
   } else if (_cpSection === 'estoque') {
