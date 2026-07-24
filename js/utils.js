@@ -28,13 +28,15 @@ document.querySelectorAll('.overlay').forEach(o =>
   })
 );
 
-// Reposiciona a seta de colapsar/expandir — reaproveitado pelo hover-expand
-// e pelo estado de submenu aberto, além do próprio toggleSidebar().
+// Reposiciona a seta de colapsar/expandir — reaproveitado pelo estado de
+// submenu aberto, além do próprio toggleSidebar(). Colapsada, a sidebar é
+// só uma tarja fina (--sb-min), então a seta fica num offset fixo perto
+// da borda em vez de derivar de --sb-min (que ficaria negativo).
 function _positionSbToggle(expanded) {
   const toggle = document.getElementById('sbToggle');
   if (toggle) toggle.style.left = expanded
     ? `calc(var(--sb-w) - 12px)`
-    : `calc(var(--sb-min) - 12px)`;
+    : `10px`;
 }
 
 function toggleSidebar() {
@@ -199,22 +201,6 @@ function toggleBrandSwitcher(anchorEl) {
     </div>`;
   document.body.appendChild(wrap);
   wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
-}
-
-// ── Hover-expand sidebar (só desktop, só quando sidebar colapsado) ──
-function _initSidebarHover() {
-  const sidebar = document.getElementById('sidebar');
-  if (!sidebar) return;
-  sidebar.addEventListener('mouseenter', () => {
-    if (!sidebarOpen && !_mobileSubmenuActive) {
-      sidebar.classList.add('hover-expand');
-      _positionSbToggle(true);
-    }
-  });
-  sidebar.addEventListener('mouseleave', () => {
-    sidebar.classList.remove('hover-expand');
-    if (!sidebarOpen) _positionSbToggle(false);
-  });
 }
 
 // Submenu items de Compras
@@ -578,5 +564,3 @@ function vtpConfirmExec() {
   if (typeof cb === 'function') cb();
 }
 
-// Inicia hover-expand do sidebar (chamado após DOM pronto)
-_initSidebarHover();

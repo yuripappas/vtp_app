@@ -386,7 +386,7 @@
      ============================================================ */
 
   --sb-w:           240px;
-  --sb-min:         60px;
+  --sb-min:         6px;
   --container-base: 960px;
   --container-wide: 1280px;
   --hit-target:     44px;

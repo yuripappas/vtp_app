@@ -53,17 +53,7 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   padding: 0 20px 0 16px;
 }
 .gtb-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
-.gtb-logo {
-  display: flex; align-items: center; gap: 1px;
-  font-family: var(--font-sans);
-  font-size: 1.2rem;
-  font-weight: var(--weight-extrabold);
-  letter-spacing: -.01em;
-  user-select: none;
-  flex-shrink: 0;
-}
-.gtb-logo-vtp { color: var(--brand-purple); }
-.gtb-logo-360 { color: var(--brand-orange); }
+.gtb-logo { height: 26px; width: auto; flex-shrink: 0; display: block; }
 .gtb-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
 .gtb-title {
   font-size: var(--text-xl);
@@ -120,7 +110,6 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   transition: opacity var(--dur-fast);
 }
 .sidebar.open .sb-brand-info,
-.sidebar.hover-expand .sb-brand-info,
 .sidebar.submenu-open .sb-brand-info { opacity: 1; }
 
 .sb-logo-text {
@@ -151,7 +140,6 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   transition: opacity var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
 }
 .sidebar.open .sb-brand-chevron,
-.sidebar.hover-expand .sb-brand-chevron,
 .sidebar.submenu-open .sb-brand-chevron { opacity: 1; }
 .sb-brand-chevron:hover { background: var(--bg-subtle); color: var(--accent); }
 
@@ -242,9 +230,7 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   color: var(--fg-subtle);
   transition: opacity var(--dur-fast), width var(--dur-fast);
 }
-.sidebar.open .sb-caret,
-.sidebar.hover-expand .sb-caret,
-.sidebar.submenu-open .sb-caret { opacity: 1; width: auto; }
+.sidebar.open .sb-item:hover .sb-caret { opacity: 1; width: auto; }
 
 /* Badge ponto indicador — sempre visível (aberto/fechado) */
 .badge-dot {
@@ -322,20 +308,15 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
 .sb-toggle:hover { opacity: 1; pointer-events: auto; }
 .sb-toggle:hover { border-color: var(--accent); background: var(--accent-subtle); color: var(--accent); }
 
-/* ── Hover-expand (desktop): sidebar expande ao passar o mouse ──
-   .submenu-open: mesmo efeito, mas fixo enquanto o drill-down estiver
-   aberto (não pode encolher se o cursor sair da sidebar) ── */
-.sidebar.hover-expand,
+/* ── .submenu-open: sidebar fica expandida enquanto o drill-down estiver
+   aberto (na prática já estará expandida, já que só dá pra abrir um
+   submenu clicando num item — e itens só ficam clicáveis com a sidebar
+   aberta, já que colapsada não mostra nada) ── */
 .sidebar.submenu-open { width: var(--sb-w); }
-.sidebar.hover-expand .sb-logo-text,
 .sidebar.submenu-open .sb-logo-text { opacity: 1; }
-.sidebar.hover-expand .sb-section,
 .sidebar.submenu-open .sb-section { opacity: 1; height: 22px; }
-.sidebar.hover-expand .sb-item,
 .sidebar.submenu-open .sb-item { justify-content: flex-start; gap: 10px; }
-.sidebar.hover-expand .sb-label,
 .sidebar.submenu-open .sb-label { opacity: 1; width: auto; }
-.sidebar.hover-expand .sb-badge,
 .sidebar.submenu-open .sb-badge { opacity: 1; width: auto; padding: 1px 5px; margin-left: auto; }
 .sb-avatar {
   width: 32px; height: 32px;

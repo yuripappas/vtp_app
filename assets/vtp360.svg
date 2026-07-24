@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Camada_2" data-name="Camada 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 701.19 219.1">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #b854f8;
+        font-family: 'PerformaVF_98.250wdth_900.000wght_1ital', 'Performa VF';
+        font-size: 137.28px;
+        font-variation-settings: 'wdth' 98, 'wght' 900;
+        letter-spacing: 0em;
+      }
+
+      .cls-2 {
+        fill: #7518cd;
+        font-family: 'PerformaVF_92.750wdth_900.000wght_1ital', 'Performa VF';
+        font-size: 182.93px;
+        font-variation-settings: 'wdth' 92, 'wght' 900;
+        letter-spacing: 0em;
+      }
+
+      .cls-3 {
+        fill: none;
+        stroke: orange;
+        stroke-linecap: square;
+        stroke-miterlimit: 10;
+        stroke-width: 30.83px;
+      }
+    </style>
+  </defs>
+  <g id="Camada_1-2" data-name="Camada 1">
+    <g>
+      <text class="cls-2" transform="translate(0 175.4)"><tspan x="0" y="0">VTP </tspan></text>
+      <text class="cls-1" transform="translate(449.28 157.88)"><tspan x="0" y="0">360</tspan></text>
+      <path class="cls-3" d="M542.36,187.64c-15.01,10.13-33.11,16.04-52.58,16.04-51.99,0-94.13-42.14-94.13-94.13S437.79,15.42,489.78,15.42c17.99,0,34.79,5.04,49.09,13.8"/>
+    </g>
+  </g>
+</svg>
