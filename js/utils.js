@@ -39,14 +39,14 @@ document.querySelectorAll('.overlay').forEach(o =>
 );
 
 // Reposiciona a seta de colapsar/expandir — reaproveitado pelo estado de
-// submenu aberto, além do próprio toggleSidebar(). Colapsada, a sidebar é
-// só uma tarja fina (--sb-min), então a seta fica num offset fixo perto
-// da borda em vez de derivar de --sb-min (que ficaria negativo).
+// submenu aberto, além do próprio toggleSidebar(). Alinhada na borda do
+// rail de ícones (--sb-min) quando colapsada, ou na borda da sidebar
+// expandida (--sb-w) quando aberta.
 function _positionSbToggle(expanded) {
   const toggle = document.getElementById('sbToggle');
   if (toggle) toggle.style.left = expanded
     ? `calc(var(--sb-w) - 12px)`
-    : `2px`;
+    : `calc(var(--sb-min) - 12px)`;
 }
 
 function toggleSidebar() {
