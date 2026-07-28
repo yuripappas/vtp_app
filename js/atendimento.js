@@ -199,7 +199,7 @@ function renderOmnichannel() {
 
 function _atdRenderInbox() {
   document.getElementById('page-omnichannel').innerHTML = `
-    <div class="atd-layout" style="display:flex;height:calc(100vh - 120px);background:var(--bg-elevated);border-radius:var(--r16);overflow:hidden;border:1px solid var(--border)">
+    <div class="atd-layout" style="display:flex;height:calc(100vh - 104px);background:var(--bg-elevated);border-radius:var(--r16);overflow:hidden;border:1px solid var(--border)">
 
       <!-- COLUNA A — lista de conversas -->
       <div class="atd-sidebar" style="width:300px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface2)">
