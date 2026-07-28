@@ -791,37 +791,47 @@ async function _atdConcluirSelecionadas() {
   await _atdCarregarConversas();
 }
 
-// AudioContext compartilhado — criado no primeiro gesto do usuário
-let _atdAudioCtx = null;
-function _atdGetAudioCtx() {
-  if (!_atdAudioCtx || _atdAudioCtx.state === 'closed') {
-    _atdAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// Gera WAV mono 22050Hz com tom senoidal + fade out
+function _atdMakeWav(freqs, duracaoTotal) {
+  const sr = 22050;
+  const n  = Math.floor(sr * duracaoTotal);
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v   = new DataView(buf);
+  const ws  = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ws(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); ws(36, 'data');
+  v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) {
+    const t   = i / sr;
+    const env = Math.min(1, (duracaoTotal - t) / 0.06); // fade out 60ms
+    let s = 0;
+    freqs.forEach(([freq, inicio, fim]) => {
+      if (t >= inicio && t < fim) s += Math.sin(2 * Math.PI * freq * t);
+    });
+    v.setInt16(44 + i * 2, Math.max(-32767, Math.min(32767, s * env * 28000 / freqs.length)), true);
   }
-  if (_atdAudioCtx.state === 'suspended') _atdAudioCtx.resume();
-  return _atdAudioCtx;
-}
-// Inicializa o contexto no primeiro clique do usuário na página
-document.addEventListener('click', () => { try { _atdGetAudioCtx(); } catch {} }, { once: true });
-
-function _atdBeep(ctx, freq, startTime, duration) {
-  const o = ctx.createOscillator();
-  const g = ctx.createGain();
-  o.type = 'triangle';
-  o.frequency.value = freq;
-  g.gain.setValueAtTime(1.0, startTime);
-  g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-  o.connect(g); g.connect(ctx.destination);
-  o.start(startTime); o.stop(startTime + duration);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 
-function _atdTocarSom() {
-  try {
-    const ctx = _atdGetAudioCtx();
-    const t = ctx.currentTime;
-    _atdBeep(ctx, 520, t,        0.15);
-    _atdBeep(ctx, 700, t + 0.18, 0.2);
-  } catch { /* sem som se browser bloquear */ }
+// Pré-gera os sons na inicialização
+let _atdSomMsg    = null;
+let _atdSomAlerta = null;
+try {
+  // Som normal: dois beeps ascendentes
+  _atdSomMsg    = _atdMakeWav([[520,0,0.15],[700,0.18,0.38]], 0.42);
+  // Som alerta: três beeps agudos
+  _atdSomAlerta = _atdMakeWav([[880,0,0.16],[880,0.22,0.38],[880,0.44,0.6]], 0.64);
+} catch {}
+
+function _atdPlayWav(url) {
+  if (!url) return;
+  try { const a = new Audio(url); a.volume = 1.0; a.play(); } catch {}
 }
+
+function _atdTocarSom()      { _atdPlayWav(_atdSomMsg); }
+
 
 const _ATD_CANAIS_CHAT = ['whatsapp', 'instagram'];
 const _ATD_CANAIS_AVAL = ['ifood', '99food'];
@@ -1979,14 +1989,7 @@ async function _atdAssumirConversa(conversaId) {
 }
 
 // ── F2: Som de alerta humano (diferente do som de mensagem normal) ────────────
-function _atdTocarSomAlerta() {
-  try {
-    const ctx = _atdGetAudioCtx();
-    const t = ctx.currentTime;
-    // Três beeps rápidos de urgência
-    [0, 0.22, 0.44].forEach(offset => _atdBeep(ctx, 880, t + offset, 0.18));
-  } catch { /* sem som se browser bloquear */ }
-}
+function _atdTocarSomAlerta() { _atdPlayWav(_atdSomAlerta); }
 
 // ── F1+F2: Auto-resposta do bot quando chega mensagem ────────────────────────
 async function _atdBotAutoResponder(conversaId) {
