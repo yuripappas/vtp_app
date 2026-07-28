@@ -261,6 +261,24 @@ function _handleNavOmnichannel() {
   );
 }
 
+// Configurações voltou pro sidebar com o mesmo padrão de drill-down dos
+// outros módulos (Vendas/Compras/Omnichannel) — reaproveita _CFG_SECTIONS
+// (definida em js/configuracoes.js) como fonte única das seções, em vez
+// de manter uma lista duplicada aqui.
+function _handleNavConfiguracoes() {
+  // IMPORTANTE: nunca atribuir "_cfgSection='x'" antes de goModule() aqui —
+  // setCfgSection() decide o que limpar comparando a seção NOVA com o valor
+  // atual de _cfgSection (a seção anterior); goModule('configuracoes') roda
+  // primeiro pra manter a seção atual intacta na comparação.
+  _openMobileSubmenu(
+    _CFG_SECTIONS.map(item => ({
+      ...item,
+      action: `goModule('configuracoes'); setCfgSection('${item.id}');`
+    })),
+    'Configurações'
+  );
+}
+
 const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
   operacao:       { title: 'Operação',              sub: 'Pré-produção · Desperdício · Previsão · Manutenção · Inventário' },
@@ -473,10 +491,6 @@ function goModule(mod) {
     document.getElementById('nav-operacao')?.classList.add('active');
   } else {
     document.getElementById(`nav-${mod}`)?.classList.add('active');
-  }
-  // Configurações tem dois botões (nav e rodapé) — ativa ambos
-  if (mod === 'configuracoes') {
-    document.getElementById('nav-configuracoes-bottom')?.classList.add('active');
   }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(`page-${mod}`)?.classList.add('active');

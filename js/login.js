@@ -232,15 +232,6 @@ function applyPermissions(user) {
     const viaPerms = _hasModPerm(perms, mod);
     navEl.style.display = (viaPerms !== null ? viaPerms : roles.includes(role)) ? '' : 'none';
   });
-  // Botão de configurações no header (id diferente) — desktop + cópia mobile
-  const cfgBottom  = document.getElementById('nav-configuracoes-bottom');
-  const cfgBottomM = document.getElementById('nav-configuracoes-bottom-m');
-  if (cfgBottom || cfgBottomM) {
-    const viaPerms = _hasModPerm(perms, 'configuracoes');
-    const visible  = (viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS.configuracoes||[]).includes(role)) ? '' : 'none';
-    if (cfgBottom)  cfgBottom.style.display  = visible;
-    if (cfgBottomM) cfgBottomM.style.display = visible;
-  }
   // Espelha a visibilidade de Notificações na cópia mobile do header
   const alertasM = document.getElementById('nav-alertas-m');
   if (alertasM) alertasM.style.display = document.getElementById('nav-alertas')?.style.display || '';
