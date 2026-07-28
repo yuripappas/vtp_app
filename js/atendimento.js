@@ -794,14 +794,20 @@ async function _atdConcluirSelecionadas() {
 function _atdTocarSom() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.frequency.setValueAtTime(520, ctx.currentTime);
-    o.frequency.setValueAtTime(640, ctx.currentTime + 0.1);
-    g.gain.setValueAtTime(0.25, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-    o.start(ctx.currentTime); o.stop(ctx.currentTime + 0.35);
+    const comp = ctx.createDynamicsCompressor();
+    comp.connect(ctx.destination);
+    // Dois osciladores em harmonia para mais presença
+    [[520, 0], [640, 0.12]].forEach(([freq, delay]) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'square';
+      o.connect(g); g.connect(comp);
+      o.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      g.gain.setValueAtTime(0.9, ctx.currentTime + delay);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.3);
+      o.start(ctx.currentTime + delay);
+      o.stop(ctx.currentTime + delay + 0.3);
+    });
   } catch { /* sem som se browser bloquear */ }
 }
 
@@ -1964,16 +1970,19 @@ async function _atdAssumirConversa(conversaId) {
 function _atdTocarSomAlerta() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    // Três beeps rápidos — padrão de urgência
-    [0, 0.18, 0.36].forEach(offset => {
+    const comp = ctx.createDynamicsCompressor();
+    comp.connect(ctx.destination);
+    // Três beeps rápidos em square — padrão de urgência
+    [0, 0.2, 0.4].forEach(offset => {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
+      o.type = 'square';
+      o.connect(g); g.connect(comp);
       o.frequency.setValueAtTime(880, ctx.currentTime + offset);
-      g.gain.setValueAtTime(0.3, ctx.currentTime + offset);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.14);
+      g.gain.setValueAtTime(0.9, ctx.currentTime + offset);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.16);
       o.start(ctx.currentTime + offset);
-      o.stop(ctx.currentTime + offset + 0.14);
+      o.stop(ctx.currentTime + offset + 0.16);
     });
   } catch { /* sem som se browser bloquear */ }
 }
