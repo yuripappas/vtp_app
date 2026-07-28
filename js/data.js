@@ -95,7 +95,7 @@ let editItemId    = null;
 let editSupId     = null;
 let editUserId    = null;
 let importData    = [];
-let sidebarOpen   = false;
+let sidebarOpen   = true;
 let _carrinho     = db._get('vtp_carrinho', []); // [{itemId, qty}]
 
 // ══════════════════════════════════════════════════════════════

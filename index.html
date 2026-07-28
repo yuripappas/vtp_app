@@ -89,7 +89,7 @@
 
   <!-- ═══ SIDEBAR ═══ -->
   <div class="sidebar-wrap">
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar open" id="sidebar">
       <div class="sb-header">
         <div class="sb-logo-icon" style="background:none;padding:0;overflow:hidden">
           <img id="sbLogoImg" src="assets/logo-bg.jpg" alt="Vai Ter Pizza!" style="width:34px;height:34px;object-fit:cover;border-radius:var(--r8);display:block">
@@ -188,8 +188,8 @@
   <div id="mobileBackdrop" class="mobile-backdrop"></div>
 
   <!-- Toggle sidebar — fora do sidebar-wrap para não herdar contexto de empilhamento do sticky -->
-  <div id="sbToggle" class="sb-toggle" onclick="toggleSidebar()" style="left:48px">
-    <svg id="toggleIcon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" style="width:10px;height:10px"><path d="M4 2l4 4-4 4"/></svg>
+  <div id="sbToggle" class="sb-toggle" onclick="toggleSidebar()" style="left:calc(var(--sb-w) - 12px)">
+    <svg id="toggleIcon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" style="width:10px;height:10px"><path d="M8 2l-4 4 4 4"/></svg>
   </div>
 
   <!-- ═══ MAIN ═══ -->
@@ -1405,7 +1405,7 @@
 <script src="js/icons.js"></script>
 <script src="js/db.js?v=115"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=184"></script>
+<script src="js/init.js?v=185"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">
