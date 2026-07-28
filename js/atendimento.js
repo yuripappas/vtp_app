@@ -791,23 +791,35 @@ async function _atdConcluirSelecionadas() {
   await _atdCarregarConversas();
 }
 
+// AudioContext compartilhado — criado no primeiro gesto do usuário
+let _atdAudioCtx = null;
+function _atdGetAudioCtx() {
+  if (!_atdAudioCtx || _atdAudioCtx.state === 'closed') {
+    _atdAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (_atdAudioCtx.state === 'suspended') _atdAudioCtx.resume();
+  return _atdAudioCtx;
+}
+// Inicializa o contexto no primeiro clique do usuário na página
+document.addEventListener('click', () => { try { _atdGetAudioCtx(); } catch {} }, { once: true });
+
+function _atdBeep(ctx, freq, startTime, duration) {
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'triangle';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(1.0, startTime);
+  g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(startTime); o.stop(startTime + duration);
+}
+
 function _atdTocarSom() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const comp = ctx.createDynamicsCompressor();
-    comp.connect(ctx.destination);
-    // Dois osciladores em harmonia para mais presença
-    [[520, 0], [640, 0.12]].forEach(([freq, delay]) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = 'square';
-      o.connect(g); g.connect(comp);
-      o.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-      g.gain.setValueAtTime(0.9, ctx.currentTime + delay);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.3);
-      o.start(ctx.currentTime + delay);
-      o.stop(ctx.currentTime + delay + 0.3);
-    });
+    const ctx = _atdGetAudioCtx();
+    const t = ctx.currentTime;
+    _atdBeep(ctx, 520, t,        0.15);
+    _atdBeep(ctx, 700, t + 0.18, 0.2);
   } catch { /* sem som se browser bloquear */ }
 }
 
@@ -1969,21 +1981,10 @@ async function _atdAssumirConversa(conversaId) {
 // ── F2: Som de alerta humano (diferente do som de mensagem normal) ────────────
 function _atdTocarSomAlerta() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const comp = ctx.createDynamicsCompressor();
-    comp.connect(ctx.destination);
-    // Três beeps rápidos em square — padrão de urgência
-    [0, 0.2, 0.4].forEach(offset => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = 'square';
-      o.connect(g); g.connect(comp);
-      o.frequency.setValueAtTime(880, ctx.currentTime + offset);
-      g.gain.setValueAtTime(0.9, ctx.currentTime + offset);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.16);
-      o.start(ctx.currentTime + offset);
-      o.stop(ctx.currentTime + offset + 0.16);
-    });
+    const ctx = _atdGetAudioCtx();
+    const t = ctx.currentTime;
+    // Três beeps rápidos de urgência
+    [0, 0.22, 0.44].forEach(offset => _atdBeep(ctx, 880, t + offset, 0.18));
   } catch { /* sem som se browser bloquear */ }
 }
 
