@@ -261,6 +261,25 @@ function _handleNavOmnichannel() {
   );
 }
 
+// Submenu items de Marketing (Rede de Criadores/Afiliados)
+const _MKT_SUBMENU_ITEMS = [
+  { id: 'criadores',    icon: 'users',          label: 'Criadores'            },
+  { id: 'cupons',       icon: 'tag',            label: 'Cupons'                },
+  { id: 'conteudo',     icon: 'file-text',      label: 'Aprovação de Conteúdo' },
+  { id: 'compliance',   icon: 'shield-check',   label: 'Auditoria de Marca'    },
+  { id: 'mencoes',      icon: 'bell',           label: 'Menções'               },
+  { id: 'pagamentos',   icon: 'dollar-sign',    label: 'Pagamentos'            },
+  { id: 'ranking',      icon: 'award',          label: 'Ranking & Desafios'    },
+];
+
+function _handleNavMarketing() {
+  const action = (id) => `_mktPaginaAtiva='${id}'; goModule('marketing');`;
+  _openMobileSubmenu(
+    _MKT_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
+    'Marketing'
+  );
+}
+
 // Configurações voltou pro sidebar com o mesmo padrão de drill-down dos
 // outros módulos (Vendas/Compras/Omnichannel) — reaproveita _CFG_SECTIONS
 // (definida em js/configuracoes.js) como fonte única das seções, em vez
@@ -283,6 +302,7 @@ const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
   operacao:       { title: 'Operação',              sub: 'Pré-produção · Desperdício · Previsão · Manutenção · Inventário' },
   omnichannel:    { title: 'Omnichannel',           sub: 'Central de atendimento e canais de venda' },
+  marketing:      { title: 'Marketing',             sub: 'Rede de Criadores · Cupons · Ranking & Desafios' },
   estoque:        { title: 'Estoque',               sub: 'Contagem e movimentações' },
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
@@ -504,6 +524,7 @@ function goModule(mod) {
   }
   if (mod === 'operacao')        renderOperacao();
   else if (mod === 'omnichannel') renderOmnichannel();
+  else if (mod === 'marketing')   renderMarketing();
   else if (mod === 'dashboard')  renderDashboard();
   else if (mod === 'estoque')    {
     // Estoque agora é módulo próprio na sidebar, mas a implementação real

@@ -10,6 +10,7 @@
 const MODULE_PERMISSIONS = {
   dashboard:     ['gerente', 'supervisor', 'comprador', 'funcionario'],
   omnichannel:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
+  marketing:     ['gerente', 'supervisor'],
   operacao:      ['gerente', 'supervisor', 'comprador', 'funcionario'],
   estoque:       ['gerente', 'supervisor', 'comprador'],
   preproducao:   ['gerente', 'supervisor', 'comprador'],
@@ -37,6 +38,7 @@ const MODULE_PERMISSIONS = {
 const MOD_PERM_LABEL = {
   dashboard:     'Ver Dashboard',
   omnichannel:   'Omnichannel',
+  marketing:     'Marketing',
   estoque:       'Estoque',
   preproducao:   'Pré-produção',
   desperdicio:   'Desperdício',

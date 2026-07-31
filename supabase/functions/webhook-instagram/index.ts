@@ -343,6 +343,70 @@ Deno.serve(async (req) => {
         filtrado,
       }, `comment_${commentId}`);
     }
+
+    // ── 4. Menções @vaiterpizza (mentions field — módulo Marketing) ─────────
+    // Só chega aqui se a Meta aprovar a permissão instagram_manage_comments e o
+    // app tiver essa subscription configurada no painel do desenvolvedor —
+    // limitação já documentada na spec do módulo. Diferente de messages/comments,
+    // o payload de "mentions" só traz media_id/comment_id — o conteúdo real é
+    // buscado com uma chamada de volta à Graph API (mentioned_comment /
+    // mentioned_media), por isso não dá pra tratar isso como polling: é
+    // essencialmente push-driven, então essa função (webhook) é o lugar certo,
+    // não um cron separado.
+    for (const change of entry.changes ?? []) {
+      if (change.field !== 'mentions') continue;
+      const val = change.value as { media_id?: string; comment_id?: string } | undefined;
+      if (!val?.media_id) continue;
+
+      const ownId = await getOwnIgAcctId();
+      const token = PAGE_TOKEN || IG_TOKEN;
+      if (!ownId || !token) continue;
+
+      let autorHandle: string | null = null;
+      let linkConteudo: string | null = null;
+      let tipoMencao: 'post' | 'story' | 'comentario' | 'reels' = 'post';
+
+      try {
+        if (val.comment_id) {
+          // Menção dentro de um comentário de terceiros
+          const r = await fetch(
+            `https://graph.facebook.com/v21.0/${ownId}?fields=mentioned_comment.comment_id(${val.comment_id}){id,text,username,timestamp}&access_token=${token}`
+          );
+          if (r.ok) {
+            const d = await r.json();
+            autorHandle = d?.mentioned_comment?.username ?? null;
+            tipoMencao = 'comentario';
+          }
+        } else {
+          // Menção na legenda de um post/reels de terceiros
+          const r = await fetch(
+            `https://graph.facebook.com/v21.0/${ownId}?fields=mentioned_media.media_id(${val.media_id}){caption,media_url,permalink,username,media_product_type}&access_token=${token}`
+          );
+          if (r.ok) {
+            const d = await r.json();
+            const mm = d?.mentioned_media;
+            autorHandle = mm?.username ?? null;
+            linkConteudo = mm?.permalink ?? null;
+            tipoMencao = mm?.media_product_type === 'REELS' ? 'reels' : mm?.media_product_type === 'STORY' ? 'story' : 'post';
+          }
+        }
+      } catch (e) { console.error('[ig-wh] erro ao resolver menção', e); }
+
+      if (!autorHandle) continue;
+
+      // Casa o handle com um criador cadastrado (fila de "não identificadas" se não bater)
+      const { data: criador } = await sb.from('mkt_creators')
+        .select('id').eq('instagram_handle', autorHandle).maybeSingle();
+
+      await sb.from('mkt_creator_mentions').upsert({
+        creator_id:          criador?.id ?? null,
+        plataforma:          'instagram',
+        tipo_mencao:         tipoMencao,
+        instagram_media_id:  val.media_id,
+        autor_handle:        autorHandle,
+        link_conteudo:       linkConteudo,
+      }, { onConflict: 'plataforma,instagram_media_id', ignoreDuplicates: true });
+    }
   }
 
   return new Response('ok', { status: 200 });

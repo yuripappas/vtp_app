@@ -1778,7 +1778,7 @@ function abrirCadastroNaConfig(tab) {
 
 // Todos os IDs de permissão (folhas da árvore) — mantido para compatibilidade
 const _CFG_ALL_PERMS = [
-  'Ver Dashboard','Omnichannel','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
+  'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
   'Pré-produção','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
   'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','Alertas',
   'Gerenciar usuários','Configurações',
@@ -1788,6 +1788,7 @@ const _CFG_ALL_PERMS = [
 const _CFG_PERMS_TREE = [
   { id:'Ver Dashboard',      label:'Dashboard',           icon:'layout-dashboard' },
   { id:'Omnichannel',        label:'Omnichannel',         icon:'message-circle'  },
+  { id:'Marketing',          label:'Marketing',           icon:'trending-up'     },
   { id:'_estoque',           label:'Estoque',             icon:'package',
     sub:[
       { id:'Estoque',                    label:'Visualizar e editar'        },

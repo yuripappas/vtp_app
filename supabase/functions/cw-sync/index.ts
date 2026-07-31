@@ -102,6 +102,10 @@ Deno.serve(async (_req) => {
         customer_name:     det.customer?.name ?? null,
         customer_phone:    normalizarTelefone(det.customer),
         delivery_address:  det.delivery_address ?? null,
+        // Cupom de criador/afiliado (módulo Marketing) — a API do CW ainda não
+        // teve esse campo confirmado; tentamos os formatos mais prováveis e
+        // gravamos null se nenhum existir (não impede o resto do sync).
+        coupon_code:       det.coupon_code ?? det.coupon?.code ?? det.discount?.code ?? null,
       };
     } catch (_e) { erros++; return null; }
   }))).filter((l): l is NonNullable<typeof l> => l !== null);

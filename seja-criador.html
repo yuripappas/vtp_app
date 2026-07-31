@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seja um Criador — Vai Ter Pizza!</title>
+  <meta name="description" content="Participe da rede de criadores de conteúdo da Vai Ter Pizza! Ganhe comissão por venda com seu cupom exclusivo.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css?v=117">
+  <link rel="stylesheet" href="css/style.css?v=121">
+  <style>
+    body { margin:0; background:var(--bg); font-family:var(--font-sans); color:var(--text); }
+    .sc-wrap { max-width:640px; margin:0 auto; padding:0 20px 60px; }
+    .sc-hero {
+      background:var(--gradient-brand); color:#fff; text-align:center;
+      padding:48px 20px 64px; border-radius:0 0 var(--r16) var(--r16); margin-bottom:-32px;
+    }
+    .sc-logo { width:72px; height:72px; border-radius:var(--r16); overflow:hidden; margin:0 auto 16px; box-shadow:0 8px 24px rgba(0,0,0,.2); }
+    .sc-logo img { width:100%; height:100%; object-fit:cover; }
+    .sc-hero h1 { font-size:1.6rem; font-weight:800; margin:0 0 8px; }
+    .sc-hero p { font-size:.95rem; opacity:.92; margin:0; max-width:440px; margin:0 auto; line-height:1.5; }
+    .sc-card { background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r16); padding:24px; position:relative; z-index:1; box-shadow:0 12px 32px rgba(26,10,46,.08); }
+    .sc-steps { display:flex; flex-direction:column; gap:10px; margin:28px 0; }
+    .sc-step { display:flex; align-items:center; gap:12px; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r10); padding:12px 16px; }
+    .sc-step-n { width:28px; height:28px; border-radius:50%; background:var(--purple); color:#fff; font-weight:800; font-size:.8rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .sc-step-txt { font-size:.85rem; color:var(--text2); }
+    .sc-section-title { font-size:1rem; font-weight:800; margin:0 0 4px; }
+    .sc-row { display:flex; gap:10px; }
+    .sc-row .field { flex:1; }
+    #scSucesso { display:none; text-align:center; padding:40px 20px; }
+    @media (max-width:520px) { .sc-row { flex-direction:column; gap:0; } }
+  </style>
+</head>
+<body>
+
+  <div class="sc-hero">
+    <div class="sc-logo"><img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!"></div>
+    <h1>Seja um Criador Vai Ter Pizza!</h1>
+    <p>Ganhe comissão por venda divulgando a pizzaria com seu cupom exclusivo. Sem pegadinha, sem letra miúda.</p>
+  </div>
+
+  <div class="sc-wrap">
+    <div class="sc-steps">
+      <div class="sc-step"><span class="sc-step-n">1</span><span class="sc-step-txt">Você se inscreve aqui e nossa equipe aprova o cadastro</span></div>
+      <div class="sc-step"><span class="sc-step-n">2</span><span class="sc-step-txt">Recebe um cupom de desconto exclusivo com o seu nome</span></div>
+      <div class="sc-step"><span class="sc-step-n">3</span><span class="sc-step-txt">Publica conteúdo (aprovado antes por nós) marcando @vaiterpizza</span></div>
+      <div class="sc-step"><span class="sc-step-n">4</span><span class="sc-step-txt">Cada pedido feito com o seu cupom gera comissão pra você</span></div>
+      <div class="sc-step"><span class="sc-step-n">5</span><span class="sc-step-txt">Recebe o pagamento (PIX ou permuta) no fechamento do período</span></div>
+    </div>
+
+    <div class="sc-card" id="scFormCard">
+      <div class="sc-section-title">Inscrição</div>
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:16px">Leva menos de 2 minutos</div>
+
+      <div class="field"><label>Nome completo</label><input class="inp" id="scNome" placeholder="Seu nome"></div>
+      <div class="field"><label>WhatsApp</label><input class="inp" id="scTelefone" type="tel" placeholder="82999999999"></div>
+
+      <div class="sc-row">
+        <div class="field"><label>Instagram</label><input class="inp" id="scInstagram" placeholder="@seuusuario"></div>
+        <div class="field"><label>TikTok (opcional)</label><input class="inp" id="scTiktok" placeholder="@seuusuario"></div>
+      </div>
+
+      <div class="sc-row">
+        <div class="field"><label>Seguidores no Instagram</label><input class="inp" id="scSeguidoresIg" type="number" placeholder="ex: 5000"></div>
+        <div class="field"><label>Seguidores no TikTok</label><input class="inp" id="scSeguidoresTk" type="number" placeholder="opcional"></div>
+      </div>
+
+      <div class="field"><label>Seu nicho de conteúdo</label><input class="inp" id="scNicho" placeholder="ex: comida, humor local, lifestyle"></div>
+
+      <div class="field">
+        <label>Diretrizes da parceria</label>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 14px;font-size:.78rem;color:var(--text2);line-height:1.6;max-height:120px;overflow-y:auto">
+          Ao participar, você concorda em: mencionar a marca corretamente e sem promessas que a pizzaria não pode cumprir;
+          respeitar a tabela de preços divulgada; enviar o roteiro/legenda do conteúdo para aprovação antes de publicar;
+          não usar o cupom para pedidos próprios ou de forma fraudulenta. O descumprimento pode levar à suspensão do cupom
+          ou encerramento da parceria.
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 18px">
+        <input type="checkbox" id="scGuideline" style="width:16px;height:16px"> Li e aceito as diretrizes acima
+      </label>
+
+      <button class="btn btn-primary" id="scSubmitBtn" style="width:100%;justify-content:center" onclick="scEnviarInscricao()">Quero ser um criador →</button>
+      <div id="scErro" style="color:var(--red);font-size:.8rem;margin-top:8px;text-align:center"></div>
+    </div>
+
+    <div class="sc-card" id="scSucesso">
+      <div style="font-size:2.4rem;margin-bottom:8px">🎉</div>
+      <div style="font-weight:800;font-size:1.1rem;margin-bottom:6px">Inscrição recebida!</div>
+      <div style="color:var(--muted);font-size:.85rem">Nossa equipe vai analisar seu perfil e te chama no WhatsApp em breve. Fique de olho!</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    const GUIDELINE_VERSAO = 'v1';
+    let scEnviando = false;
+
+    async function scEnviarInscricao() {
+      if (scEnviando) return;
+      const erroEl = document.getElementById('scErro');
+      erroEl.textContent = '';
+
+      const nome      = document.getElementById('scNome').value.trim();
+      const telefone  = document.getElementById('scTelefone').value.trim().replace(/\D/g, '');
+      const instagram = document.getElementById('scInstagram').value.trim().replace(/^@/, '');
+      const tiktok    = document.getElementById('scTiktok').value.trim().replace(/^@/, '');
+      const segIg     = parseInt(document.getElementById('scSeguidoresIg').value) || null;
+      const segTk     = parseInt(document.getElementById('scSeguidoresTk').value) || null;
+      const nicho     = document.getElementById('scNicho').value.trim();
+      const aceitou   = document.getElementById('scGuideline').checked;
+
+      if (!nome)      { erroEl.textContent = 'Informe seu nome.'; return; }
+      if (!telefone || telefone.length < 10) { erroEl.textContent = 'Informe um WhatsApp válido.'; return; }
+      if (!aceitou)   { erroEl.textContent = 'Você precisa aceitar as diretrizes pra continuar.'; return; }
+
+      scEnviando = true;
+      const btn = document.getElementById('scSubmitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+
+      const sb = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
+      const { error } = await sb.from('mkt_creators').insert({
+        nome,
+        telefone,
+        instagram_handle: instagram || null,
+        tiktok_handle: tiktok || null,
+        seguidores_instagram: segIg,
+        seguidores_tiktok: segTk,
+        nicho: nicho || null,
+        guideline_aceito: true,
+        guideline_aceito_em: new Date().toISOString(),
+        guideline_versao: GUIDELINE_VERSAO,
+        origem: 'captacao_publica',
+        status: 'em_aprovacao',
+      });
+
+      scEnviando = false;
+      btn.disabled = false;
+      btn.textContent = 'Quero ser um criador →';
+
+      if (error) {
+        erroEl.textContent = error.code === '23505'
+          ? 'Esse WhatsApp já está cadastrado — aguarde nosso contato.'
+          : 'Não foi possível enviar agora. Tente novamente em instantes.';
+        return;
+      }
+
+      document.getElementById('scFormCard').style.display = 'none';
+      document.getElementById('scSucesso').style.display = 'block';
+    }
+  </script>
+</body>
+</html>

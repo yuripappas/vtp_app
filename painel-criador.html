@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel do Criador — Vai Ter Pizza!</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/tokens.css?v=117">
+  <link rel="stylesheet" href="css/style.css?v=121">
+  <style>
+    body { margin:0; background:var(--bg); font-family:var(--font-sans); color:var(--text); }
+    .pc-wrap { max-width:720px; margin:0 auto; padding:20px 20px 60px; }
+    .pc-login-box { max-width:380px; margin:60px auto; text-align:center; }
+    .pc-logo { width:64px; height:64px; border-radius:var(--r12); overflow:hidden; margin:0 auto 14px; }
+    .pc-logo img { width:100%; height:100%; object-fit:cover; }
+    .pc-header { display:flex; align-items:center; justify-content:space-between; padding:16px 0; border-bottom:1px solid var(--border); margin-bottom:20px; }
+    .pc-header h2 { font-size:1.1rem; margin:0; }
+    .pc-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-bottom:20px; }
+    .pc-kpi { background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r10); padding:12px 14px; text-align:center; }
+    .pc-kpi-v { font-size:1.3rem; font-weight:800; color:var(--purple); }
+    .pc-kpi-l { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-top:2px; }
+    .pc-section { margin-bottom:28px; }
+    .pc-section h3 { font-size:.9rem; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); margin:0 0 10px; }
+    .pc-cupom-box { background:var(--gradient-brand); color:#fff; border-radius:var(--r12); padding:18px 20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+    .pc-cupom-code { font-size:1.5rem; font-weight:800; font-family:monospace; letter-spacing:1px; }
+    .pc-item { background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r10); padding:12px 16px; margin-bottom:8px; }
+    .pc-progress-bar { height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-top:6px; }
+    .pc-progress-fill { height:100%; background:var(--purple); border-radius:3px; }
+    #pcError { color:var(--red); font-size:.8rem; margin-top:8px; text-align:center; }
+    #pcApp { display:none; }
+  </style>
+</head>
+<body>
+
+  <div id="pcLogin" class="pc-wrap">
+    <div class="pc-login-box">
+      <div class="pc-logo"><img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!"></div>
+      <h1 style="font-size:1.3rem;font-weight:800;margin:0 0 4px">Painel do Criador</h1>
+      <div style="color:var(--muted);font-size:.85rem;margin-bottom:24px">Vai Ter Pizza!</div>
+
+      <div id="pcStep1">
+        <div class="field" style="text-align:left"><label>Seu WhatsApp cadastrado</label><input class="inp" id="pcTelefone" type="tel" placeholder="82999999999"></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="pcEnviarCodigo()" id="pcBtnEnviar">Enviar código →</button>
+      </div>
+
+      <div id="pcStep2" style="display:none">
+        <div style="font-size:.82rem;color:var(--muted);margin-bottom:12px">Enviamos um código pro seu WhatsApp. Confira e digite abaixo.</div>
+        <div class="field" style="text-align:left"><label>Código de 6 dígitos</label><input class="inp" id="pcCodigo" inputmode="numeric" maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:4px;font-size:1.2rem"></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" onclick="pcVerificarCodigo()" id="pcBtnVerificar">Entrar →</button>
+        <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:6px" onclick="pcVoltarStep1()">Usar outro número</button>
+      </div>
+
+      <div id="pcError"></div>
+    </div>
+  </div>
+
+  <div id="pcApp" class="pc-wrap">
+    <div class="pc-header">
+      <h2 id="pcNomeCriador">Olá!</h2>
+      <button class="btn btn-outline btn-sm" onclick="pcLogout()">Sair</button>
+    </div>
+
+    <div class="pc-section">
+      <h3>Meu cupom</h3>
+      <div id="pcCupomBox"></div>
+    </div>
+
+    <div class="pc-section">
+      <h3>Minhas vendas</h3>
+      <div class="pc-kpi-row" id="pcVendasKpi"></div>
+    </div>
+
+    <div class="pc-section">
+      <h3>Ranking & Pontos</h3>
+      <div class="pc-kpi-row" id="pcRankingKpi"></div>
+    </div>
+
+    <div class="pc-section">
+      <h3>Desafios ativos</h3>
+      <div id="pcDesafios"></div>
+    </div>
+
+    <div class="pc-section">
+      <h3>Meu conteúdo</h3>
+      <button class="btn btn-primary btn-sm" onclick="pcNovoRoteiro()" style="margin-bottom:10px">+ Enviar novo roteiro</button>
+      <div id="pcConteudo"></div>
+    </div>
+
+    <div class="pc-section">
+      <h3>Pagamentos</h3>
+      <div id="pcPagamentos"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    const sb = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
+    const FN_BASE = `${VTP_SUPABASE_URL}/functions/v1`;
+    const SESSION_KEY = 'mkt_portal_session';
+
+    function pcFmt(n) { return Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function pcFmtD(d) { return d ? new Date(d).toLocaleDateString('pt-BR') : '—'; }
+
+    function pcGetSession() {
+      try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (_) { return null; }
+    }
+
+    async function pcInit() {
+      const session = pcGetSession();
+      if (!session?.token) return;
+      // Confirma no servidor que a sessão ainda é válida (não expirou/foi revogada)
+      const { data: sess } = await sb.from('mkt_creator_sessions').select('*').eq('token', session.token).gt('expira_em', new Date().toISOString()).maybeSingle();
+      if (!sess) { localStorage.removeItem(SESSION_KEY); return; }
+      document.getElementById('pcLogin').style.display = 'none';
+      document.getElementById('pcApp').style.display = 'block';
+      document.getElementById('pcNomeCriador').textContent = `Olá, ${session.creator.nome.split(' ')[0]}!`;
+      pcCarregarDashboard(session.creator.id);
+    }
+
+    async function pcEnviarCodigo() {
+      const erroEl = document.getElementById('pcError');
+      erroEl.textContent = '';
+      const telefone = document.getElementById('pcTelefone').value.trim().replace(/\D/g, '');
+      if (telefone.length < 10) { erroEl.textContent = 'Informe um WhatsApp válido.'; return; }
+      const btn = document.getElementById('pcBtnEnviar');
+      btn.disabled = true; btn.textContent = 'Enviando...';
+      try {
+        await fetch(`${FN_BASE}/mkt-otp-enviar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: VTP_SUPABASE_KEY, Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+          body: JSON.stringify({ telefone }),
+        });
+      } catch (_e) {}
+      btn.disabled = false; btn.textContent = 'Enviar código →';
+      window._pcTelefone = telefone;
+      document.getElementById('pcStep1').style.display = 'none';
+      document.getElementById('pcStep2').style.display = 'block';
+    }
+
+    function pcVoltarStep1() {
+      document.getElementById('pcStep2').style.display = 'none';
+      document.getElementById('pcStep1').style.display = 'block';
+      document.getElementById('pcError').textContent = '';
+    }
+
+    async function pcVerificarCodigo() {
+      const erroEl = document.getElementById('pcError');
+      erroEl.textContent = '';
+      const codigo = document.getElementById('pcCodigo').value.trim();
+      if (codigo.length !== 6) { erroEl.textContent = 'Digite o código de 6 dígitos.'; return; }
+      const btn = document.getElementById('pcBtnVerificar');
+      btn.disabled = true; btn.textContent = 'Verificando...';
+      try {
+        const res = await fetch(`${FN_BASE}/mkt-otp-verificar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: VTP_SUPABASE_KEY, Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+          body: JSON.stringify({ telefone: window._pcTelefone, codigo }),
+        });
+        const data = await res.json();
+        if (!res.ok) { erroEl.textContent = data.error || 'Código inválido.'; btn.disabled = false; btn.textContent = 'Entrar →'; return; }
+        localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+        pcInit();
+      } catch (_e) {
+        erroEl.textContent = 'Erro de conexão. Tente novamente.';
+      }
+      btn.disabled = false; btn.textContent = 'Entrar →';
+    }
+
+    function pcLogout() {
+      localStorage.removeItem(SESSION_KEY);
+      location.reload();
+    }
+
+    async function pcCarregarDashboard(creatorId) {
+      const [{ data: perfAll }, { data: coupons }, { data: content }, { data: challenges }, { data: payouts }] = await Promise.all([
+        sb.from('mkt_creator_performance').select('*'),
+        sb.from('mkt_creator_coupons').select('*').eq('creator_id', creatorId).eq('ativo', true),
+        sb.from('mkt_creator_content').select('*').eq('creator_id', creatorId).order('criado_em', { ascending: false }),
+        sb.from('mkt_creator_challenge_progress').select('*, mkt_creator_challenges(*)').eq('creator_id', creatorId),
+        sb.from('mkt_creator_payouts').select('*').eq('creator_id', creatorId).order('criado_em', { ascending: false }),
+      ]);
+
+      const perf = (perfAll || []).find(p => p.creator_id === creatorId) || {};
+      const ativosOrdenados = (perfAll || []).filter(p => p.status === 'ativo').sort((a, b) => b.total_pontos - a.total_pontos);
+      const posicao = ativosOrdenados.findIndex(p => p.creator_id === creatorId) + 1;
+
+      // Cupom
+      const cupomBox = document.getElementById('pcCupomBox');
+      cupomBox.innerHTML = (coupons || []).length ? coupons.map(cp => `
+        <div class="pc-cupom-box" style="margin-bottom:8px">
+          <div>
+            <div class="pc-cupom-code">${cp.codigo}</div>
+            <div style="font-size:.78rem;opacity:.9">${cp.desconto_tipo === 'percentual' ? cp.desconto_valor + '% off' : 'R$ ' + pcFmt(cp.desconto_valor) + ' off'}${cp.valor_minimo_pedido ? ' · mín. R$ ' + pcFmt(cp.valor_minimo_pedido) : ''}</div>
+          </div>
+        </div>`).join('') : `<div style="color:var(--muted);font-size:.85rem">Nenhum cupom ativo no momento — fale com a equipe.</div>`;
+
+      // Vendas
+      document.getElementById('pcVendasKpi').innerHTML = `
+        <div class="pc-kpi"><div class="pc-kpi-v">${perf.pedidos_validos || 0}</div><div class="pc-kpi-l">Pedidos</div></div>
+        <div class="pc-kpi"><div class="pc-kpi-v">R$ ${pcFmt(perf.faturamento_gerado)}</div><div class="pc-kpi-l">Gerado</div></div>
+        <div class="pc-kpi"><div class="pc-kpi-v">R$ ${pcFmt(perf.comissao_a_pagar)}</div><div class="pc-kpi-l">A receber</div></div>
+        <div class="pc-kpi"><div class="pc-kpi-v">R$ ${pcFmt(perf.comissao_total - perf.comissao_a_pagar)}</div><div class="pc-kpi-l">Já pago</div></div>
+      `;
+
+      // Ranking
+      document.getElementById('pcRankingKpi').innerHTML = `
+        <div class="pc-kpi"><div class="pc-kpi-v">${posicao || '—'}º</div><div class="pc-kpi-l">Posição</div></div>
+        <div class="pc-kpi"><div class="pc-kpi-v">${perf.total_pontos || 0}</div><div class="pc-kpi-l">Pontos</div></div>
+        <div class="pc-kpi"><div class="pc-kpi-v">${perf.media_aderencia_marca ? Number(perf.media_aderencia_marca).toFixed(1) : '—'}</div><div class="pc-kpi-l">Nota marca</div></div>
+      `;
+
+      // Desafios
+      const desafiosEl = document.getElementById('pcDesafios');
+      const ativos = (challenges || []).filter(c => c.mkt_creator_challenges?.status === 'ativo');
+      desafiosEl.innerHTML = ativos.length ? ativos.map(p => {
+        const ch = p.mkt_creator_challenges;
+        const pct = ch.meta_valor ? Math.min(100, Math.round((p.progresso_atual / ch.meta_valor) * 100)) : (p.status === 'concluido' ? 100 : 0);
+        return `
+        <div class="pc-item">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <strong>${ch.titulo}</strong>
+            <span class="chip ${p.status === 'concluido' ? 'chip-green' : ''}">${p.status.replace('_', ' ')}</span>
+          </div>
+          <div style="font-size:.8rem;color:var(--muted)">${ch.descricao || ''}</div>
+          <div class="pc-progress-bar"><div class="pc-progress-fill" style="width:${pct}%"></div></div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:4px">${p.progresso_atual || 0}${ch.meta_valor ? ' / ' + ch.meta_valor : ''} · ${ch.pontos_recompensa} pontos${ch.premio_tipo !== 'nenhum' ? ' + ' + (ch.premio_descricao || ch.premio_tipo) : ''}</div>
+        </div>`;
+      }).join('') : `<div style="color:var(--muted);font-size:.85rem">Nenhum desafio ativo no momento.</div>`;
+
+      // Conteúdo
+      const statusChip = { pendente: '', aprovado: 'chip-green', aprovado_com_ajuste: 'chip-green', reprovado: 'chip-red' };
+      document.getElementById('pcConteudo').innerHTML = (content || []).length ? content.map(c => `
+        <div class="pc-item">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="chip">${c.tipo}</span>
+            <span class="chip ${statusChip[c.aprovacao_status]}">${c.aprovacao_status.replace(/_/g, ' ')}</span>
+          </div>
+          <div style="font-size:.8rem;color:var(--muted);margin-top:6px;white-space:pre-wrap">${(c.roteiro_texto || '').replace(/</g, '&lt;')}</div>
+          ${c.motivo_reprovacao ? `<div style="font-size:.75rem;color:var(--red);margin-top:4px">Motivo: ${c.motivo_reprovacao}</div>` : ''}
+        </div>`).join('') : `<div style="color:var(--muted);font-size:.85rem">Você ainda não enviou nenhum conteúdo.</div>`;
+
+      // Pagamentos
+      const statusPagChip = { pendente: '', aprovado: '', pago: 'chip-green', cancelado: 'chip-red' };
+      document.getElementById('pcPagamentos').innerHTML = (payouts || []).length ? payouts.map(p => `
+        <div class="pc-item" style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:.85rem">${pcFmtD(p.periodo_inicio)} — ${pcFmtD(p.periodo_fim)}</div>
+            <div style="font-size:.72rem;color:var(--muted)">${p.qtd_pedidos} pedido(s) · ${p.forma_pagamento || '—'}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:800">R$ ${pcFmt(p.valor_total)}</div>
+            <span class="chip ${statusPagChip[p.status]}">${p.status}</span>
+          </div>
+        </div>`).join('') : `<div style="color:var(--muted);font-size:.85rem">Nenhum pagamento fechado ainda.</div>`;
+    }
+
+    function pcNovoRoteiro() {
+      const session = pcGetSession();
+      const wrap = document.createElement('div');
+      wrap.className = 'overlay open';
+      wrap.innerHTML = `
+        <div class="modal" style="width:480px;padding:0;overflow:hidden" onclick="event.stopPropagation()">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);font-weight:700">Enviar novo roteiro</div>
+          <div style="padding:20px">
+            <div class="field"><label>Tipo</label>
+              <select class="inp" id="pcNrTipo"><option value="post">Post</option><option value="story">Story</option><option value="reels">Reels</option><option value="video_tiktok">Vídeo TikTok</option></select>
+            </div>
+            <div class="field"><label>Roteiro / legenda</label><textarea class="inp" id="pcNrTexto" rows="5" placeholder="Escreva o que pretende falar/postar..."></textarea></div>
+          </div>
+          <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn btn-outline" onclick="this.closest('.overlay').remove()">Cancelar</button>
+            <button class="btn btn-primary" onclick="pcSalvarRoteiro('${session.creator.id}')">Enviar pra aprovação</button>
+          </div>
+        </div>`;
+      wrap.onclick = e => { if (e.target === wrap) wrap.remove(); };
+      document.body.appendChild(wrap);
+    }
+
+    async function pcSalvarRoteiro(creatorId) {
+      const tipo = document.getElementById('pcNrTipo').value;
+      const roteiro_texto = document.getElementById('pcNrTexto').value.trim();
+      if (!roteiro_texto) return;
+      await sb.from('mkt_creator_content').insert({ creator_id: creatorId, tipo, roteiro_texto, aprovacao_status: 'pendente' });
+      document.querySelector('.overlay')?.remove();
+      pcCarregarDashboard(creatorId);
+    }
+
+    pcInit();
+  </script>
+</body>
+</html>
