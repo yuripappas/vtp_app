@@ -62,6 +62,8 @@
       <button class="btn btn-outline btn-sm" onclick="pcLogout()">Sair</button>
     </div>
 
+    <div id="pcKitBanner"></div>
+
     <div class="pc-section">
       <h3>Meu cupom</h3>
       <div id="pcCupomBox"></div>
@@ -75,6 +77,12 @@
     <div class="pc-section">
       <h3>Ranking & Pontos</h3>
       <div class="pc-kpi-row" id="pcRankingKpi"></div>
+      <div id="pcPontosBox"></div>
+    </div>
+
+    <div class="pc-section">
+      <h3>Meus resgates</h3>
+      <div id="pcResgates"></div>
     </div>
 
     <div class="pc-section">
@@ -175,27 +183,41 @@
     }
 
     async function pcCarregarDashboard(creatorId) {
-      const [{ data: perfAll }, { data: coupons }, { data: content }, { data: challenges }, { data: payouts }] = await Promise.all([
+      const [{ data: perfAll }, { data: coupons }, { data: content }, { data: challenges }, { data: payouts }, { data: creatorRow }, { data: resgates }] = await Promise.all([
         sb.from('mkt_creator_performance').select('*'),
         sb.from('mkt_creator_coupons').select('*').eq('creator_id', creatorId).eq('ativo', true),
         sb.from('mkt_creator_content').select('*').eq('creator_id', creatorId).order('criado_em', { ascending: false }),
         sb.from('mkt_creator_challenge_progress').select('*, mkt_creator_challenges(*)').eq('creator_id', creatorId),
         sb.from('mkt_creator_payouts').select('*').eq('creator_id', creatorId).order('criado_em', { ascending: false }),
+        sb.from('mkt_creators').select('*').eq('id', creatorId).single(),
+        sb.from('mkt_creator_resgates').select('*').eq('creator_id', creatorId).order('solicitado_em', { ascending: false }),
       ]);
+      window._pcCreator = creatorRow;
 
       const perf = (perfAll || []).find(p => p.creator_id === creatorId) || {};
       const ativosOrdenados = (perfAll || []).filter(p => p.status === 'ativo').sort((a, b) => b.total_pontos - a.total_pontos);
       const posicao = ativosOrdenados.findIndex(p => p.creator_id === creatorId) + 1;
 
-      // Cupom
+      // Nome + badge de embaixador
+      document.getElementById('pcNomeCriador').innerHTML = `Olá, ${creatorRow?.nome?.split(' ')[0] || ''}!`
+        + (creatorRow?.nivel === 'embaixador' ? ' <span class="chip" style="background:var(--orange-light);color:var(--orange-dark)">★ Embaixador</span>' : '');
+
+      // Kit de boas-vindas
+      document.getElementById('pcKitBanner').innerHTML = creatorRow?.kit_boas_vindas_enviado
+        ? `<div style="background:var(--surface2);border-radius:var(--r8);padding:10px 14px;font-size:.82rem;margin-bottom:20px">🎁 Seu kit de boas-vindas já foi enviado!</div>`
+        : `<div style="background:var(--surface2);border-radius:var(--r8);padding:10px 14px;font-size:.82rem;margin-bottom:20px;color:var(--muted)">🎁 Seu kit de boas-vindas está a caminho.</div>`;
+
+      // Cupom (separa indicação de uso pessoal / preço de clube)
       const cupomBox = document.getElementById('pcCupomBox');
-      cupomBox.innerHTML = (coupons || []).length ? coupons.map(cp => `
+      const cupomHtml = cp => `
         <div class="pc-cupom-box" style="margin-bottom:8px">
           <div>
+            <div style="font-size:.7rem;opacity:.85;text-transform:uppercase;letter-spacing:.4px">${cp.tipo === 'uso_pessoal' ? 'Preço de clube — uso pessoal' : 'Cupom de indicação'}</div>
             <div class="pc-cupom-code">${cp.codigo}</div>
             <div style="font-size:.78rem;opacity:.9">${cp.desconto_tipo === 'percentual' ? cp.desconto_valor + '% off' : 'R$ ' + pcFmt(cp.desconto_valor) + ' off'}${cp.valor_minimo_pedido ? ' · mín. R$ ' + pcFmt(cp.valor_minimo_pedido) : ''}</div>
           </div>
-        </div>`).join('') : `<div style="color:var(--muted);font-size:.85rem">Nenhum cupom ativo no momento — fale com a equipe.</div>`;
+        </div>`;
+      cupomBox.innerHTML = (coupons || []).length ? coupons.map(cupomHtml).join('') : `<div style="color:var(--muted);font-size:.85rem">Nenhum cupom ativo no momento — fale com a equipe.</div>`;
 
       // Vendas
       document.getElementById('pcVendasKpi').innerHTML = `
@@ -206,10 +228,16 @@
       `;
 
       // Ranking
+      const saldoPontos = (perf.total_pontos || 0) - (perf.pontos_resgatados || 0);
       document.getElementById('pcRankingKpi').innerHTML = `
         <div class="pc-kpi"><div class="pc-kpi-v">${posicao || '—'}º</div><div class="pc-kpi-l">Posição</div></div>
-        <div class="pc-kpi"><div class="pc-kpi-v">${perf.total_pontos || 0}</div><div class="pc-kpi-l">Pontos</div></div>
+        <div class="pc-kpi"><div class="pc-kpi-v">${perf.total_pontos || 0}</div><div class="pc-kpi-l">Pontos ganhos</div></div>
+        <div class="pc-kpi"><div class="pc-kpi-v">${saldoPontos}</div><div class="pc-kpi-l">Saldo disponível</div></div>
         <div class="pc-kpi"><div class="pc-kpi-v">${perf.media_aderencia_marca ? Number(perf.media_aderencia_marca).toFixed(1) : '—'}</div><div class="pc-kpi-l">Nota marca</div></div>
+      `;
+      document.getElementById('pcPontosBox').innerHTML = `
+        <div style="font-size:.78rem;color:var(--muted);margin:6px 0 10px">1 ponto = R$1 · resgate em PIX ou produto, quando quiser</div>
+        <button class="btn btn-primary btn-sm" onclick="pcAbrirResgateModal(${saldoPontos})" ${saldoPontos <= 0 ? 'disabled' : ''}>Resgatar pontos</button>
       `;
 
       // Desafios
@@ -255,6 +283,63 @@
             <span class="chip ${statusPagChip[p.status]}">${p.status}</span>
           </div>
         </div>`).join('') : `<div style="color:var(--muted);font-size:.85rem">Nenhum pagamento fechado ainda.</div>`;
+
+      // Resgates
+      const statusResgateChip = { solicitado: '', aprovado: '', pago: 'chip-green', recusado: 'chip-red' };
+      document.getElementById('pcResgates').innerHTML = (resgates || []).length ? resgates.map(r => `
+        <div class="pc-item" style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:.85rem">${r.pontos_utilizados} pontos · ${r.tipo === 'pix' ? 'PIX (R$ ' + pcFmt(r.valor_pix) + ')' : r.produto_descricao}</div>
+            <div style="font-size:.72rem;color:var(--muted)">${pcFmtD(r.solicitado_em)}${r.observacoes ? ' · ' + r.observacoes : ''}</div>
+          </div>
+          <span class="chip ${statusResgateChip[r.status]}">${r.status}</span>
+        </div>`).join('') : `<div style="color:var(--muted);font-size:.85rem">Você ainda não resgatou pontos.</div>`;
+    }
+
+    function pcAbrirResgateModal(saldoDisponivel) {
+      const wrap = document.createElement('div');
+      wrap.className = 'overlay open';
+      wrap.innerHTML = `
+        <div class="modal" style="width:440px;padding:0;overflow:hidden" onclick="event.stopPropagation()">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);font-weight:700">Resgatar pontos</div>
+          <div style="padding:20px">
+            <div style="font-size:.8rem;color:var(--muted);margin-bottom:14px">Você tem <strong style="color:var(--text)">${saldoDisponivel} pontos</strong> disponíveis (1 ponto = R$1).</div>
+            <div class="field"><label>Quantidade de pontos</label><input class="inp" type="number" id="pcRgPontos" max="${saldoDisponivel}" min="1" placeholder="ex: 50"></div>
+            <div class="field"><label>Como quer resgatar?</label>
+              <select class="inp" id="pcRgTipo" onchange="document.getElementById('pcRgProdutoWrap').style.display = this.value==='produto' ? 'block' : 'none'">
+                <option value="pix">PIX</option>
+                <option value="produto">Produto</option>
+              </select>
+            </div>
+            <div class="field" id="pcRgProdutoWrap" style="display:none"><label>O que você quer trocar?</label><input class="inp" id="pcRgProduto" placeholder="ex: 1 pizza grande"></div>
+          </div>
+          <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn btn-outline" onclick="this.closest('.overlay').remove()">Cancelar</button>
+            <button class="btn btn-primary" onclick="pcSalvarResgate(${saldoDisponivel})">Solicitar resgate</button>
+          </div>
+        </div>`;
+      wrap.onclick = e => { if (e.target === wrap) wrap.remove(); };
+      document.body.appendChild(wrap);
+    }
+
+    async function pcSalvarResgate(saldoDisponivel) {
+      const pontos = parseInt(document.getElementById('pcRgPontos').value);
+      const tipo = document.getElementById('pcRgTipo').value;
+      const produto = document.getElementById('pcRgProduto').value.trim();
+      if (!pontos || pontos <= 0) { alert('Informe a quantidade de pontos.'); return; }
+      if (pontos > saldoDisponivel) { alert('Você não tem pontos suficientes.'); return; }
+      if (tipo === 'produto' && !produto) { alert('Descreva o produto que você quer.'); return; }
+
+      const session = pcGetSession();
+      await sb.from('mkt_creator_resgates').insert({
+        creator_id: session.creator.id,
+        pontos_utilizados: pontos,
+        tipo,
+        valor_pix: tipo === 'pix' ? pontos : null,
+        produto_descricao: tipo === 'produto' ? produto : null,
+      });
+      document.querySelector('.overlay')?.remove();
+      pcCarregarDashboard(session.creator.id);
     }
 
     function pcNovoRoteiro() {

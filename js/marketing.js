@@ -111,6 +111,7 @@ function renderMarketing() {
     case 'compliance': _mktRenderCompliance(); break;
     case 'mencoes':    _mktRenderMencoes();    break;
     case 'pagamentos': _mktRenderPagamentos(); break;
+    case 'resgates':   _mktRenderResgates();   break;
     case 'ranking':    _mktRenderRanking();    break;
     default:           _mktRenderCriadores();
   }
@@ -171,7 +172,11 @@ function _mktCriadorCard(c, perf) {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-weight:700">${c.nome}</span>
           ${_mktStatusChip(c.status)}
+          ${c.nivel === 'embaixador' ? '<span class="chip" style="background:var(--orange-light);color:var(--orange-dark)">★ Embaixador</span>' : ''}
           ${c.origem === 'cadastro_manual' ? '<span class="chip">Manual</span>' : ''}
+          ${c.status === 'ativo' ? (c.kit_boas_vindas_enviado
+            ? '<span class="chip chip-green">Kit enviado</span>'
+            : `<button class="chip" style="cursor:pointer;border:1px dashed var(--border-strong)" onclick="_mktMarcarKitEnviado('${c.id}')">${lc('gift', 10, 'currentColor')} Marcar kit enviado</button>`) : ''}
         </div>
         <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">
           ${c.telefone || '—'} ${c.instagram_handle ? '· @' + c.instagram_handle.replace(/^@/, '') : ''} ${c.nicho ? '· ' + c.nicho : ''}
@@ -189,12 +194,13 @@ function _mktCriadorCard(c, perf) {
         <div style="font-weight:800;color:var(--orange)">${pontos}</div>
         <div style="font-size:var(--text-2xs);color:var(--muted)">pontos</div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${c.status === 'em_aprovacao' ? `
           <button class="btn btn-primary btn-sm" onclick="_mktAprovarCriadorModal('${c.id}')">${lc('check-circle', 12, '#fff')} Aprovar</button>
           <button class="btn btn-red btn-sm" onclick="_mktReprovarCriador('${c.id}')">Reprovar</button>
         ` : c.status === 'ativo' ? `
           <button class="btn btn-outline btn-sm" onclick="_mktEditarCriadorModal('${c.id}')">Editar</button>
+          ${c.nivel !== 'embaixador' ? `<button class="btn btn-outline btn-sm" onclick="_mktPromoverEmbaixador('${c.id}')">★ Promover</button>` : `<button class="btn btn-outline btn-sm" onclick="_mktCampanhasEmbaixadorModal('${c.id}')">Campanhas</button>`}
           <button class="btn btn-outline btn-sm" onclick="_mktPausarCriador('${c.id}')">Pausar</button>
         ` : c.status === 'pausado' ? `
           <button class="btn btn-outline btn-sm" onclick="_mktEditarCriadorModal('${c.id}')">Editar</button>
@@ -204,6 +210,81 @@ function _mktCriadorCard(c, perf) {
         `}
       </div>
     </div>`;
+}
+
+async function _mktMarcarKitEnviado(id) {
+  const { error } = await _mktGetSbClient().from('mkt_creators').update({ kit_boas_vindas_enviado: true, kit_boas_vindas_enviado_em: new Date().toISOString() }).eq('id', id);
+  if (error) { toast('Erro: ' + error.message, 'err'); return; }
+  toast('Kit marcado como enviado!', 'ok');
+  await _mktGetCreators(true);
+  _mktRenderCriadores();
+}
+
+function _mktPromoverEmbaixador(id) {
+  const c = _mktCache.creators.find(x => x.id === id);
+  if (!c) return;
+  vtpConfirm({
+    title: 'Promover a embaixador',
+    message: `${c.nome} vira embaixador da marca — participa de campanhas oficiais com cachê diferenciado e exclusividade no segmento.`,
+    confirmLabel: 'Promover',
+    danger: false,
+    onConfirm: async () => {
+      const { error } = await _mktGetSbClient().from('mkt_creators').update({
+        nivel: 'embaixador', promovido_embaixador_em: new Date().toISOString(), promovido_embaixador_por: _mktStaffNome(),
+      }).eq('id', id);
+      if (error) { toast('Erro: ' + error.message, 'err'); return; }
+      toast(`${c.nome} agora é embaixador!`, 'ok');
+      if (c.telefone) _mktNotificarCriador(c.telefone, `Parabéns, ${c.nome.split(' ')[0]}! Você foi promovido a Embaixador da marca Vai Ter Pizza 🌟 Agora você participa das nossas campanhas oficiais com cachê diferenciado.`);
+      await _mktGetCreators(true);
+      _mktRenderCriadores();
+    }
+  });
+}
+
+async function _mktCampanhasEmbaixadorModal(id) {
+  const c = _mktCache.creators.find(x => x.id === id);
+  const { data: campanhas } = await _mktGetSbClient().from('mkt_creator_campanhas_embaixador').select('*').eq('creator_id', id).order('criado_em', { ascending: false });
+  const statusMap = { planejada: '', em_andamento: 'chip-yellow', concluida: 'chip-green', cancelada: 'chip-red' };
+  _mktModal(`Campanhas de embaixador — ${c?.nome || ''}`, `
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      ${(campanhas || []).length ? campanhas.map(cp => `
+        <div style="border:1px solid var(--border);border-radius:var(--r8);padding:10px 12px">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <strong>${cp.titulo}</strong><span class="chip ${statusMap[cp.status]}">${cp.status.replace('_', ' ')}</span>
+          </div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px">${cp.periodo_inicio ? fmtD(cp.periodo_inicio) + ' — ' + fmtD(cp.periodo_fim) : ''} ${cp.cache_valor ? '· Cachê R$ ' + fmt(cp.cache_valor) : ''}</div>
+          ${cp.descricao ? `<div style="font-size:var(--text-xs);margin-top:4px">${cp.descricao}</div>` : ''}
+        </div>`).join('') : _mktEmpty('Nenhuma campanha registrada ainda')}
+    </div>
+    <div class="field"><label>Nova campanha — título</label><input class="inp" id="mktCampTitulo" placeholder="ex: Campanha Dia da Pizza"></div>
+    <div class="field"><label>Descrição</label><textarea class="inp" id="mktCampDesc" rows="2"></textarea></div>
+    <div class="sc-row" style="display:flex;gap:10px">
+      <div class="field" style="flex:1"><label>Início</label><input class="inp" type="date" id="mktCampInicio"></div>
+      <div class="field" style="flex:1"><label>Fim</label><input class="inp" type="date" id="mktCampFim"></div>
+    </div>
+    <div class="field"><label>Cachê (R$)</label><input class="inp" type="number" step="0.01" id="mktCampCache" placeholder="ex: 300"></div>
+  `, `
+    <button class="btn btn-outline" onclick="_mktCloseModal()">Fechar</button>
+    <button class="btn btn-primary" onclick="_mktSalvarCampanhaEmbaixador('${id}')">Criar campanha</button>
+  `, 560);
+}
+
+async function _mktSalvarCampanhaEmbaixador(creatorId) {
+  const titulo = document.getElementById('mktCampTitulo').value.trim();
+  if (!titulo) { toast('Informe o título da campanha', 'err'); return; }
+  const row = {
+    creator_id: creatorId,
+    titulo,
+    descricao: document.getElementById('mktCampDesc').value.trim() || null,
+    periodo_inicio: document.getElementById('mktCampInicio').value || null,
+    periodo_fim: document.getElementById('mktCampFim').value || null,
+    cache_valor: parseFloat(document.getElementById('mktCampCache').value) || null,
+    criado_por: _mktStaffNome(),
+  };
+  const { error } = await _mktGetSbClient().from('mkt_creator_campanhas_embaixador').insert(row);
+  if (error) { toast('Erro: ' + error.message, 'err'); return; }
+  toast('Campanha criada!', 'ok');
+  _mktCampanhasEmbaixadorModal(creatorId);
 }
 
 function _mktRemuneracaoFields(c = {}) {
@@ -387,6 +468,7 @@ async function _mktRenderCupons() {
   _mktBody(`
     ${_mktHeader('Cupons', `
       <button class="btn btn-outline btn-sm" onclick="_mktRegistrarVendaManualModal()">${lc('plus', 12, 'currentColor')} Registrar venda manual</button>
+      <button class="btn btn-outline btn-sm" onclick="_mktNovoCupomModal(undefined, 'uso_pessoal')">${lc('tag', 12, 'currentColor')} Cupom pessoal (clube)</button>
       <button class="btn btn-primary btn-sm" onclick="_mktNovoCupomModal()">${lc('plus', 12, '#fff')} Novo cupom</button>
     `)}
     <div style="display:flex;flex-direction:column;gap:8px">
@@ -396,21 +478,23 @@ async function _mktRenderCupons() {
 }
 
 function _mktCupomCard(cp, creator) {
-  const regras = [
-    cp.desconto_tipo === 'percentual' ? `${cp.desconto_valor}% off` : `R$ ${fmt(cp.desconto_valor)} off`,
+  const regras = cp.tipo === 'uso_pessoal' ? ['uso do próprio criador'] : [
     cp.valor_minimo_pedido ? `mín. R$ ${fmt(cp.valor_minimo_pedido)}` : null,
     cp.apenas_cliente_novo ? 'só cliente novo' : null,
     `limite ${cp.limite_usos_por_cliente || 1}/cliente`,
     cp.limite_usos_total ? `máx ${cp.limite_usos_total} usos` : null,
-  ].filter(Boolean).join(' · ');
+  ];
+  const descontoTxt = cp.desconto_tipo === 'percentual' ? `${cp.desconto_valor}% off` : `R$ ${fmt(cp.desconto_valor)} off`;
+  const regrasTxt = [descontoTxt, ...regras].filter(Boolean).join(' · ');
   return `
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
       <div style="flex:1;min-width:180px">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-weight:800;font-family:monospace;color:var(--purple)">${cp.codigo}</span>
           <span class="chip ${cp.ativo ? 'chip-green' : 'chip-red'}">${cp.ativo ? 'Ativo' : 'Inativo'}</span>
+          ${cp.tipo === 'uso_pessoal' ? '<span class="chip" style="background:var(--orange-light);color:var(--orange-dark)">Preço de clube</span>' : ''}
         </div>
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${creator?.nome || '—'} · ${regras}</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${creator?.nome || '—'} · ${regrasTxt}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
         ${cp.ativo
@@ -420,51 +504,76 @@ function _mktCupomCard(cp, creator) {
     </div>`;
 }
 
-function _mktNovoCupomModal(preSelectCreatorId) {
+const MKT_DESCONTO_CLUBE_PCT = 15; // preço de clube — percentual fixo pra todos (decisão fechada, fácil de ajustar aqui)
+
+function _mktNovoCupomModal(preSelectCreatorId, tipoInicial) {
   const creators = _mktCache.creators.filter(c => c.status === 'ativo');
-  _mktModal('Novo cupom', `
+  const tipo = tipoInicial || 'indicacao';
+  _mktModal(tipo === 'uso_pessoal' ? 'Novo cupom pessoal (clube)' : 'Novo cupom', `
     <div class="field">
       <label>Criador</label>
       <select class="inp" id="mktCpCreator">
         ${creators.map(c => `<option value="${c.id}" ${c.id === preSelectCreatorId ? 'selected' : ''}>${c.nome}</option>`).join('')}
       </select>
     </div>
+    <div class="field">
+      <label>Tipo de cupom</label>
+      <select class="inp" id="mktCpTipoCupom" onchange="_mktToggleTipoCupom()">
+        <option value="indicacao" ${tipo === 'indicacao' ? 'selected' : ''}>Indicação (cliente usa, gera comissão)</option>
+        <option value="uso_pessoal" ${tipo === 'uso_pessoal' ? 'selected' : ''}>Preço de clube (uso do próprio criador)</option>
+      </select>
+    </div>
     <div class="field"><label>Código do cupom</label><input class="inp" id="mktCpCodigo" style="text-transform:uppercase" placeholder="ex: MARIA10" value="${genToken().slice(0, 8)}"></div>
     <div style="display:flex;gap:10px">
       <div class="field" style="flex:1">
         <label>Tipo de desconto</label>
-        <select class="inp" id="mktCpTipo"><option value="percentual">Percentual</option><option value="valor_fixo">Valor fixo</option></select>
+        <select class="inp" id="mktCpTipo"><option value="percentual" ${tipo === 'uso_pessoal' ? 'selected' : ''}>Percentual</option><option value="valor_fixo">Valor fixo</option></select>
       </div>
-      <div class="field" style="flex:1"><label>Valor</label><input class="inp" type="number" step="0.01" id="mktCpValor" placeholder="ex: 10"></div>
+      <div class="field" style="flex:1"><label>Valor</label><input class="inp" type="number" step="0.01" id="mktCpValor" placeholder="ex: 10" value="${tipo === 'uso_pessoal' ? MKT_DESCONTO_CLUBE_PCT : ''}"></div>
     </div>
-    <div style="display:flex;gap:10px">
-      <div class="field" style="flex:1"><label>Pedido mínimo (R$)</label><input class="inp" type="number" step="0.01" id="mktCpMinimo" placeholder="opcional"></div>
-      <div class="field" style="flex:1"><label>Limite de usos por cliente</label><input class="inp" type="number" id="mktCpLimiteCliente" value="1"></div>
+    <div id="mktCpRegrasIndicacao" style="display:${tipo === 'uso_pessoal' ? 'none' : 'block'}">
+      <div style="display:flex;gap:10px">
+        <div class="field" style="flex:1"><label>Pedido mínimo (R$)</label><input class="inp" type="number" step="0.01" id="mktCpMinimo" placeholder="opcional"></div>
+        <div class="field" style="flex:1"><label>Limite de usos por cliente</label><input class="inp" type="number" id="mktCpLimiteCliente" value="1"></div>
+      </div>
+      <div class="field"><label>Limite total de usos (opcional)</label><input class="inp" type="number" id="mktCpLimiteTotal" placeholder="deixe em branco = ilimitado"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);margin-top:6px">
+        <input type="checkbox" id="mktCpClienteNovo" style="width:16px;height:16px"> Apenas cliente novo (evita comissionar cliente recorrente)
+      </label>
     </div>
-    <div class="field"><label>Limite total de usos (opcional)</label><input class="inp" type="number" id="mktCpLimiteTotal" placeholder="deixe em branco = ilimitado"></div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);margin-top:6px">
-      <input type="checkbox" id="mktCpClienteNovo" style="width:16px;height:16px"> Apenas cliente novo (evita comissionar cliente recorrente)
-    </label>
+    <div id="mktCpAvisoPessoal" style="display:${tipo === 'uso_pessoal' ? 'block' : 'none'};font-size:var(--text-xs);color:var(--muted);background:var(--surface2);border-radius:var(--r8);padding:10px 12px;margin-top:4px">
+      Cupom de uso pessoal: sem limite de cliente, não gera comissão, é o único tipo que o próprio criador pode usar em si mesmo.
+    </div>
   `, `
     <button class="btn btn-outline" onclick="_mktCloseModal()">Cancelar</button>
     <button class="btn btn-primary" onclick="_mktSalvarNovoCupom()">Criar cupom</button>
   `);
 }
 
+function _mktToggleTipoCupom() {
+  const pessoal = document.getElementById('mktCpTipoCupom').value === 'uso_pessoal';
+  document.getElementById('mktCpRegrasIndicacao').style.display = pessoal ? 'none' : 'block';
+  document.getElementById('mktCpAvisoPessoal').style.display = pessoal ? 'block' : 'none';
+  const valorEl = document.getElementById('mktCpValor');
+  if (pessoal && !valorEl.value) valorEl.value = MKT_DESCONTO_CLUBE_PCT;
+}
+
 async function _mktSalvarNovoCupom() {
   const codigo = document.getElementById('mktCpCodigo').value.trim().toUpperCase();
   const desconto_valor = parseFloat(document.getElementById('mktCpValor').value);
+  const tipoCupom = document.getElementById('mktCpTipoCupom').value;
   if (!codigo) { toast('Informe o código do cupom', 'err'); return; }
   if (!desconto_valor) { toast('Informe o valor do desconto', 'err'); return; }
   const row = {
     creator_id: document.getElementById('mktCpCreator').value,
     codigo,
+    tipo: tipoCupom,
     desconto_tipo: document.getElementById('mktCpTipo').value,
     desconto_valor,
-    valor_minimo_pedido: parseFloat(document.getElementById('mktCpMinimo').value) || null,
-    limite_usos_por_cliente: parseInt(document.getElementById('mktCpLimiteCliente').value) || 1,
-    limite_usos_total: parseInt(document.getElementById('mktCpLimiteTotal').value) || null,
-    apenas_cliente_novo: document.getElementById('mktCpClienteNovo').checked,
+    valor_minimo_pedido: tipoCupom === 'uso_pessoal' ? null : parseFloat(document.getElementById('mktCpMinimo').value) || null,
+    limite_usos_por_cliente: tipoCupom === 'uso_pessoal' ? null : parseInt(document.getElementById('mktCpLimiteCliente').value) || 1,
+    limite_usos_total: tipoCupom === 'uso_pessoal' ? null : parseInt(document.getElementById('mktCpLimiteTotal').value) || null,
+    apenas_cliente_novo: tipoCupom === 'uso_pessoal' ? false : document.getElementById('mktCpClienteNovo').checked,
   };
   const { error } = await _mktGetSbClient().from('mkt_creator_coupons').insert(row);
   if (error) { toast('Erro ao criar cupom: ' + error.message, 'err'); return; }
@@ -1081,6 +1190,98 @@ async function _mktMarcarPago(payoutId) {
   if (creator?.telefone) {
     _mktNotificarCriador(creator.telefone,
       `Seu pagamento de R$ ${fmt(payout.valor_total)} referente ao período ${fmtD(payout.periodo_inicio)}–${fmtD(payout.periodo_fim)} foi confirmado 💰`);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// 6.5 RESGATES — pontos trocados por PIX ou produto (1 ponto = R$1)
+// ══════════════════════════════════════════════════════════════
+
+async function _mktRenderResgates() {
+  const sb = _mktGetSbClient();
+  const creators = await _mktGetCreators();
+  const cMap = new Map(creators.map(c => [c.id, c]));
+  const { data: resgates, error } = await sb.from('mkt_creator_resgates').select('*').order('solicitado_em', { ascending: false }).limit(150);
+  if (error) { _mktBody(_mktEmpty('Erro: ' + error.message)); return; }
+
+  const pendentes = resgates.filter(r => r.status === 'solicitado');
+  const outros = resgates.filter(r => r.status !== 'solicitado');
+
+  _mktBody(`
+    ${_mktHeader('Resgates', '')}
+    <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:14px">1 ponto = R$1 · resgate em PIX ou produto</div>
+    <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Aguardando aprovação</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
+      ${pendentes.length ? pendentes.map(r => _mktResgateCard(r, cMap.get(r.creator_id))).join('') : _mktEmpty('Nenhum resgate pendente')}
+    </div>
+    <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Histórico</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${outros.length ? outros.map(r => _mktResgateCard(r, cMap.get(r.creator_id))).join('') : _mktEmpty('Sem histórico ainda')}
+    </div>
+  `);
+}
+
+function _mktResgateCard(r, creator) {
+  const statusMap = { solicitado: 'chip-yellow', aprovado: 'chip-yellow', pago: 'chip-green', recusado: 'chip-red' };
+  const detalhe = r.tipo === 'pix' ? `PIX · R$ ${fmt(r.valor_pix)}` : `Produto: ${r.produto_descricao || '—'}`;
+  return `
+    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:180px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-weight:700">${creator?.nome || '—'}</span>
+          <span class="chip ${statusMap[r.status]}">${r.status}</span>
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${r.pontos_utilizados} pontos · ${detalhe} · ${fmtDT(r.solicitado_em)}</div>
+      </div>
+      ${r.status === 'solicitado' ? `
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="_mktProcessarResgate('${r.id}','aprovado')">Aprovar</button>
+          <button class="btn btn-red btn-sm" onclick="_mktRecusarResgateModal('${r.id}')">Recusar</button>
+        </div>` : r.status === 'aprovado' ? `
+        <button class="btn btn-primary btn-sm" onclick="_mktProcessarResgate('${r.id}','pago')">Marcar pago</button>` : ''}
+    </div>`;
+}
+
+async function _mktProcessarResgate(id, status) {
+  const sb = _mktGetSbClient();
+  const { data: resgate, error } = await sb.from('mkt_creator_resgates').update({
+    status, processado_em: new Date().toISOString(), processado_por: _mktStaffNome(),
+  }).eq('id', id).select().single();
+  if (error) { toast('Erro: ' + error.message, 'err'); return; }
+  toast(status === 'pago' ? 'Resgate marcado como pago!' : 'Resgate aprovado!', 'ok');
+  _mktRenderResgates();
+
+  const creator = _mktCache.creators.find(c => c.id === resgate.creator_id);
+  if (creator?.telefone && status === 'pago') {
+    const msg = resgate.tipo === 'pix'
+      ? `Seu resgate de ${resgate.pontos_utilizados} pontos (R$ ${fmt(resgate.valor_pix)}) foi pago via PIX! 💰`
+      : `Seu resgate de ${resgate.pontos_utilizados} pontos por "${resgate.produto_descricao}" foi confirmado! 🎁`;
+    _mktNotificarCriador(creator.telefone, msg);
+  }
+}
+
+function _mktRecusarResgateModal(id) {
+  _mktModal('Recusar resgate', `
+    <div class="field"><label>Motivo</label><textarea class="inp" id="mktResgateMotivo" rows="3" placeholder="explique o motivo pro criador"></textarea></div>
+  `, `
+    <button class="btn btn-outline" onclick="_mktCloseModal()">Cancelar</button>
+    <button class="btn btn-red" onclick="_mktConfirmarRecusaResgate('${id}')">Recusar</button>
+  `);
+}
+
+async function _mktConfirmarRecusaResgate(id) {
+  const motivo = document.getElementById('mktResgateMotivo').value.trim();
+  const sb = _mktGetSbClient();
+  const { data: resgate, error } = await sb.from('mkt_creator_resgates').update({
+    status: 'recusado', observacoes: motivo, processado_em: new Date().toISOString(), processado_por: _mktStaffNome(),
+  }).eq('id', id).select().single();
+  if (error) { toast('Erro: ' + error.message, 'err'); return; }
+  _mktCloseModal();
+  toast('Resgate recusado', 'ok');
+  _mktRenderResgates();
+  const creator = _mktCache.creators.find(c => c.id === resgate.creator_id);
+  if (creator?.telefone) {
+    _mktNotificarCriador(creator.telefone, `Seu pedido de resgate de ${resgate.pontos_utilizados} pontos não foi aprovado: ${motivo || 'fale com a equipe'}.`);
   }
 }
 

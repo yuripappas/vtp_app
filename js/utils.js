@@ -269,6 +269,7 @@ const _MKT_SUBMENU_ITEMS = [
   { id: 'compliance',   icon: 'shield-check',   label: 'Auditoria de Marca'    },
   { id: 'mencoes',      icon: 'bell',           label: 'Menções'               },
   { id: 'pagamentos',   icon: 'dollar-sign',    label: 'Pagamentos'            },
+  { id: 'resgates',     icon: 'gift',           label: 'Resgates'              },
   { id: 'ranking',      icon: 'award',          label: 'Ranking & Desafios'    },
 ];
 

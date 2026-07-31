@@ -90,7 +90,14 @@
     .trust-list li { display:flex; align-items:flex-start; gap:10px; font-size:.9rem; }
     .trust-check { width:20px; height:20px; border-radius:50%; background:var(--purple); color:#fff; flex-shrink:0; display:flex; align-items:center; justify-content:center; margin-top:1px; }
 
-    /* ── BENEFÍCIOS ── */
+    /* ── VANTAGENS DO CLUBE DE CRIADORES ── */
+    .benefit-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:16px; margin-top:32px; }
+    .benefit-card { border:1.5px solid var(--border); border-radius:var(--r16); padding:26px 22px; }
+    .benefit-icon { width:44px; height:44px; border-radius:var(--r10); background:var(--accent-subtle); color:var(--purple); display:flex; align-items:center; justify-content:center; margin-bottom:16px; }
+    .benefit-card h3 { font-size:1.05rem; font-weight:800; margin:0 0 6px; }
+    .benefit-card p { font-size:.85rem; color:var(--text2); line-height:1.55; margin:0; }
+
+    /* ── BENEFÍCIOS (grid de números) ── */
     .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px; margin:36px 0 32px; }
     .stat-card { border:1.5px solid var(--border); border-radius:var(--r12); padding:22px 20px; }
     .stat-card .v { font-size:1.9rem; font-weight:800; color:var(--purple); }
@@ -158,6 +165,41 @@
     </div>
   </section>
 
+  <!-- ═══ VANTAGENS DO CLUBE DE CRIADORES ═══ -->
+  <section class="container center">
+    <h2 style="font-size:1.9rem;font-weight:800;margin:0 0 8px">Ser criador aqui vale muito mais que o cupom.</h2>
+    <p style="color:var(--muted);font-size:.92rem;max-width:480px;margin:0 auto">Conheça as vantagens de fazer parte do Clube de Criadores Vai Ter Pizza.</p>
+
+    <div class="benefit-grid" style="text-align:left">
+      <div class="benefit-card">
+        <div class="benefit-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>
+        <h3>Kit de Boas-Vindas</h3>
+        <p>Ao ser aprovado, você recebe um kit com nossos combos e sabores mais vendidos — pra já gravar seu primeiro conteúdo com o pé direito.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="benefit-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg></div>
+        <h3>Desafios Semanais</h3>
+        <p>Toda semana tem desafio novo. Você ganha pontos por participar, pela qualidade do conteúdo e pelas vendas geradas com seu cupom.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="benefit-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg></div>
+        <h3>Pontos que Viram Dinheiro</h3>
+        <p>Resgate seus pontos em PIX ou em produtos, quando quiser. No fechamento de cada mês, você decide o que fazer com eles.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="benefit-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></div>
+        <h3>Preço de Clube</h3>
+        <p>Criador ativo compra pra si com preço especial, sempre — não é só quem usa seu cupom que ganha desconto.</p>
+      </div>
+      <div class="benefit-card">
+        <div class="benefit-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+        <h3>Vira Embaixador da Marca</h3>
+        <p>Se destacou? Você pode virar embaixador: campanhas oficiais periódicas, cachê diferenciado e exclusividade no seu segmento.</p>
+      </div>
+    </div>
+    <a href="#inscricao" class="btn-pill btn-pill-dark" style="margin-top:32px">Quero essas vantagens →</a>
+  </section>
+
   <!-- ═══ COMO FUNCIONA — 4 passos alternados ═══ -->
   <section class="container">
     <div class="steps-head">
@@ -180,7 +222,7 @@
       <div class="step-col-text">
         <div class="step-eyebrow"><span class="num">02</span> · APROVAÇÃO + CUPOM</div>
         <h3>Nossa equipe aprova e libera seu cupom.</h3>
-        <p>Depois de aprovado, você recebe um cupom de desconto exclusivo com o seu nome — é ele que rastreia cada venda gerada por você.</p>
+        <p>Depois de aprovado, você recebe seu cupom exclusivo com o seu nome — e um kit de boas-vindas com nossos combos e sabores mais vendidos, pra já gravar o primeiro conteúdo.</p>
         <a href="#inscricao" class="btn-pill btn-pill-outline">Quero meu cupom →</a>
       </div>
       <div class="step-col-media">
