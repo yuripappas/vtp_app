@@ -8,7 +8,9 @@
   <link rel="stylesheet" href="css/tokens.css?v=117">
   <link rel="stylesheet" href="css/style.css?v=121">
   <style>
-    body { margin:0; background:var(--bg); font-family:var(--font-sans); color:var(--text); }
+    /* css/style.css define body como flex (layout do app com sidebar) — essa é uma
+       página solta sem sidebar, então precisa voltar pro fluxo normal de bloco. */
+    body { display:block; margin:0; background:var(--bg); font-family:var(--font-sans); color:var(--text); }
     .pc-wrap { max-width:720px; margin:0 auto; padding:20px 20px 60px; }
     .pc-login-box { max-width:380px; margin:60px auto; text-align:center; }
     .pc-logo { width:64px; height:64px; border-radius:var(--r12); overflow:hidden; margin:0 auto 14px; }

@@ -9,87 +9,310 @@
   <link rel="stylesheet" href="css/tokens.css?v=117">
   <link rel="stylesheet" href="css/style.css?v=121">
   <style>
-    body { margin:0; background:var(--bg); font-family:var(--font-sans); color:var(--text); }
-    .sc-wrap { max-width:640px; margin:0 auto; padding:0 20px 60px; }
-    .sc-hero {
-      background:var(--gradient-brand); color:#fff; text-align:center;
-      padding:48px 20px 64px; border-radius:0 0 var(--r16) var(--r16); margin-bottom:-32px;
+    * { box-sizing: border-box; }
+    /* css/style.css define body como flex (layout do app com sidebar) — essa é uma
+       página solta sem sidebar, então precisa voltar pro fluxo normal de bloco. */
+    body { display:block; margin:0; background:#fff; font-family:var(--font-sans); color:var(--text); overflow-x:hidden; }
+    a { text-decoration:none; }
+    .container { max-width:1080px; margin:0 auto; padding:0 24px; }
+    section { padding:72px 0; }
+    .center { text-align:center; }
+
+    /* ── NAV ── */
+    .cr-nav { display:flex; align-items:center; justify-content:space-between; padding:18px 24px; border-bottom:1px solid var(--border); position:sticky; top:0; background:rgba(255,255,255,.9); backdrop-filter:blur(8px); z-index:50; }
+    .cr-nav-brand { display:flex; align-items:center; gap:10px; }
+    .cr-nav-brand img { width:34px; height:34px; border-radius:9px; object-fit:cover; }
+    .cr-nav-brand span { font-weight:800; font-size:1.02rem; }
+
+    /* ── HERO ── */
+    .hero { padding:76px 0 56px; text-align:center; }
+    .hero h1 { font-size:clamp(2.1rem, 5vw, 3.4rem); font-weight:800; line-height:1.08; letter-spacing:-.02em; margin:0 0 20px; }
+    .hero h1 .muted-line { color:var(--fg-subtle); }
+    .hero p { font-size:1.05rem; color:var(--text2); max-width:520px; margin:0 auto 28px; line-height:1.6; }
+
+    /* ── BOTÕES ── */
+    .btn-pill { display:inline-flex; align-items:center; gap:8px; padding:14px 26px; border-radius:999px; font-weight:700; font-size:.92rem; border:none; cursor:pointer; font-family:inherit; }
+    .btn-pill-dark { background:var(--fg); color:#fff; }
+    .btn-pill-dark:hover { background:var(--bg-inverse); }
+    .btn-pill-outline { background:#fff; color:var(--fg); border:1.5px solid var(--border-strong); }
+
+    /* ── PLACEHOLDER DE MÍDIA (banner/vídeo a ser substituído) ── */
+    .ph-box {
+      background: repeating-linear-gradient(135deg, var(--surface2), var(--surface2) 10px, var(--bg-subtle) 10px, var(--bg-subtle) 20px);
+      border:2px dashed var(--border-strong); border-radius:var(--r12);
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+      color:var(--fg-subtle); text-align:center; padding:16px; width:100%; height:100%;
     }
-    .sc-logo { width:72px; height:72px; border-radius:var(--r16); overflow:hidden; margin:0 auto 16px; box-shadow:0 8px 24px rgba(0,0,0,.2); }
-    .sc-logo img { width:100%; height:100%; object-fit:cover; }
-    .sc-hero h1 { font-size:1.6rem; font-weight:800; margin:0 0 8px; }
-    .sc-hero p { font-size:.95rem; opacity:.92; margin:0; max-width:440px; margin:0 auto; line-height:1.5; }
-    .sc-card { background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r16); padding:24px; position:relative; z-index:1; box-shadow:0 12px 32px rgba(26,10,46,.08); }
-    .sc-steps { display:flex; flex-direction:column; gap:10px; margin:28px 0; }
-    .sc-step { display:flex; align-items:center; gap:12px; background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r10); padding:12px 16px; }
-    .sc-step-n { width:28px; height:28px; border-radius:50%; background:var(--purple); color:#fff; font-weight:800; font-size:.8rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-    .sc-step-txt { font-size:.85rem; color:var(--text2); }
-    .sc-section-title { font-size:1rem; font-weight:800; margin:0 0 4px; }
+    .ph-box span { font-size:.7rem; font-weight:700; max-width:170px; line-height:1.4; text-transform:uppercase; letter-spacing:.03em; }
+
+    /* ── GALERIA DE PROVA SOCIAL ── */
+    .gal-head { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:28px; flex-wrap:wrap; gap:16px; }
+    .gal-head h2 { font-size:1.9rem; font-weight:800; margin:0 0 6px; }
+    .gal-head p { color:var(--muted); font-size:.92rem; margin:0; max-width:440px; }
+    .gal-nav { display:flex; gap:8px; flex-shrink:0; }
+    .gal-nav button { width:36px; height:36px; border-radius:50%; border:1.5px solid var(--border-strong); background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text); }
+    .gal-scroll { display:flex; gap:14px; overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:6px; }
+    .gal-scroll::-webkit-scrollbar { display:none; }
+    .gal-card { flex:0 0 190px; aspect-ratio:9/16; scroll-snap-align:start; border-radius:var(--r16); overflow:hidden; position:relative; }
+    .gal-badge { position:absolute; top:10px; left:10px; background:#fff; border-radius:999px; padding:4px 10px; font-size:.68rem; font-weight:800; display:flex; align-items:center; gap:4px; z-index:2; }
+    .gal-badge img { width:14px; height:14px; border-radius:4px; }
+
+    /* ── COMO FUNCIONA (steps alternados) ── */
+    .steps-head { text-align:center; margin-bottom:40px; }
+    .steps-head h2 { font-size:2rem; font-weight:800; margin:0; line-height:1.2; }
+    .steps-head .muted-line { color:var(--fg-subtle); }
+    .step-row { display:flex; align-items:center; gap:56px; padding:36px 0; border-top:1px solid var(--border); }
+    .step-row:nth-child(even) { flex-direction:row-reverse; }
+    .step-col-text { flex:1; min-width:260px; }
+    .step-col-media { flex:0 0 auto; display:flex; justify-content:center; }
+    .step-eyebrow { display:flex; align-items:center; gap:8px; font-size:.72rem; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px; }
+    .step-eyebrow .num { color:var(--purple); }
+    .step-col-text h3 { font-size:1.5rem; font-weight:800; margin:0 0 10px; }
+    .step-col-text p { color:var(--text2); font-size:.92rem; line-height:1.6; margin:0 0 18px; max-width:400px; }
+
+    /* mockup de "celular" — moldura fixa, conteúdo é placeholder */
+    .phone-frame { width:220px; height:440px; border:10px solid var(--bg-inverse); border-radius:34px; background:var(--bg-inverse); box-shadow:0 24px 48px rgba(26,10,46,.18); position:relative; flex-shrink:0; }
+    .phone-frame::before { content:''; position:absolute; top:0; left:50%; transform:translateX(-50%); width:70px; height:20px; background:var(--bg-inverse); border-radius:0 0 14px 14px; z-index:2; }
+    .phone-frame .ph-box { border-radius:24px; border-style:dashed; }
+
+    @media (max-width:760px) {
+      .step-row, .step-row:nth-child(even) { flex-direction:column; text-align:center; gap:24px; }
+      .step-col-text p { margin-left:auto; margin-right:auto; }
+      .step-eyebrow { justify-content:center; }
+    }
+
+    /* ── CARD DE CONFIANÇA ── */
+    .trust-card { background:var(--gradient-brand-subtle); border-radius:var(--r16); padding:44px; display:flex; gap:40px; flex-wrap:wrap; }
+    .trust-card > div { flex:1; min-width:260px; }
+    .trust-card h2 { font-size:1.7rem; font-weight:800; margin:0 0 10px; }
+    .trust-card > div:first-child p { color:var(--text2); font-size:.92rem; line-height:1.6; }
+    .trust-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px; }
+    .trust-list li { display:flex; align-items:flex-start; gap:10px; font-size:.9rem; }
+    .trust-check { width:20px; height:20px; border-radius:50%; background:var(--purple); color:#fff; flex-shrink:0; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+
+    /* ── BENEFÍCIOS ── */
+    .stat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:14px; margin:36px 0 32px; }
+    .stat-card { border:1.5px solid var(--border); border-radius:var(--r12); padding:22px 20px; }
+    .stat-card .v { font-size:1.9rem; font-weight:800; color:var(--purple); }
+    .stat-card .l { font-size:.8rem; color:var(--muted); margin-top:4px; }
+
+    /* ── CTA FINAL ── */
+    .final-cta { background:var(--gradient-brand); border-radius:var(--r16); padding:64px 32px; text-align:center; color:#fff; }
+    .final-cta h2 { font-size:clamp(1.8rem,4vw,2.6rem); font-weight:800; margin:0 0 14px; }
+    .final-cta p { color:rgba(255,255,255,.88); font-size:1rem; max-width:460px; margin:0 auto 24px; }
+    .final-cta .req-label { font-size:.78rem; text-transform:uppercase; letter-spacing:.06em; color:rgba(255,255,255,.7); margin-bottom:12px; }
+    .req-pills { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:30px; }
+    .req-pill { background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.3); border-radius:999px; padding:8px 16px; font-size:.82rem; font-weight:700; display:flex; align-items:center; gap:6px; }
+    .final-cta .btn-pill-dark { background:#fff; color:var(--purple); }
+    .final-cta small { display:block; margin-top:14px; color:rgba(255,255,255,.7); font-size:.75rem; }
+
+    /* ── INSCRIÇÃO (form) ── */
+    #inscricao { background:var(--bg-subtle); }
+    .sc-formwrap { max-width:520px; margin:0 auto; }
+    .sc-card { background:#fff; border:1.5px solid var(--border); border-radius:var(--r16); padding:28px; box-shadow:0 12px 32px rgba(26,10,46,.06); }
     .sc-row { display:flex; gap:10px; }
     .sc-row .field { flex:1; }
     #scSucesso { display:none; text-align:center; padding:40px 20px; }
     @media (max-width:520px) { .sc-row { flex-direction:column; gap:0; } }
+
+    /* ── FOOTER ── */
+    .cr-footer { border-top:1px solid var(--border); padding:28px 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; font-size:.8rem; color:var(--muted); }
+    .cr-footer a { color:var(--muted); margin-left:16px; }
   </style>
 </head>
 <body>
 
-  <div class="sc-hero">
-    <div class="sc-logo"><img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!"></div>
-    <h1>Seja um Criador Vai Ter Pizza!</h1>
-    <p>Ganhe comissão por venda divulgando a pizzaria com seu cupom exclusivo. Sem pegadinha, sem letra miúda.</p>
-  </div>
+  <nav class="cr-nav">
+    <div class="cr-nav-brand">
+      <img src="assets/logo-bg.jpg" alt="Vai Ter Pizza!">
+      <span>Vai Ter Pizza! · Criadores</span>
+    </div>
+    <a href="#inscricao" class="btn-pill btn-pill-dark">Inscreva-se grátis →</a>
+  </nav>
 
-  <div class="sc-wrap">
-    <div class="sc-steps">
-      <div class="sc-step"><span class="sc-step-n">1</span><span class="sc-step-txt">Você se inscreve aqui e nossa equipe aprova o cadastro</span></div>
-      <div class="sc-step"><span class="sc-step-n">2</span><span class="sc-step-txt">Recebe um cupom de desconto exclusivo com o seu nome</span></div>
-      <div class="sc-step"><span class="sc-step-n">3</span><span class="sc-step-txt">Publica conteúdo (aprovado antes por nós) marcando @vaiterpizza</span></div>
-      <div class="sc-step"><span class="sc-step-n">4</span><span class="sc-step-txt">Cada pedido feito com o seu cupom gera comissão pra você</span></div>
-      <div class="sc-step"><span class="sc-step-n">5</span><span class="sc-step-txt">Recebe o pagamento (PIX ou permuta) no fechamento do período</span></div>
+  <!-- ═══ HERO ═══ -->
+  <section class="hero container">
+    <h1>Ganhe comissão<br>divulgando a pizza<br><span class="muted-line">que todo mundo ama.</span></h1>
+    <p>Você recebe um cupom exclusivo com o seu nome. Cada pedido feito com ele vira comissão pra você — sem precisar ser "influenciador" de milhões de seguidores.</p>
+    <a href="#inscricao" class="btn-pill btn-pill-dark">Quero ser um criador →</a>
+  </section>
+
+  <!-- ═══ PROVA SOCIAL (placeholders de vídeo) ═══ -->
+  <section class="container">
+    <div class="gal-head">
+      <div>
+        <h2>Criadores reais. <span style="color:var(--purple)">Pizza de verdade.</span></h2>
+        <p>Em breve, o conteúdo dos nossos criadores parceiros aparece aqui.</p>
+      </div>
+      <div class="gal-nav">
+        <button onclick="document.getElementById('galScroll').scrollBy({left:-220,behavior:'smooth'})" aria-label="Anterior">‹</button>
+        <button onclick="document.getElementById('galScroll').scrollBy({left:220,behavior:'smooth'})" aria-label="Próximo">›</button>
+      </div>
+    </div>
+    <div class="gal-scroll" id="galScroll">
+      <div class="gal-card"><span class="gal-badge"><img src="assets/logo-bg.jpg" alt=""> Vai Ter Pizza!</span><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg><span>Vídeo vertical do criador — 9:16</span></div></div>
+      <div class="gal-card"><span class="gal-badge"><img src="assets/logo-bg.jpg" alt=""> Vai Ter Pizza!</span><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg><span>Vídeo vertical do criador — 9:16</span></div></div>
+      <div class="gal-card"><span class="gal-badge"><img src="assets/logo-bg.jpg" alt=""> Vai Ter Pizza!</span><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg><span>Vídeo vertical do criador — 9:16</span></div></div>
+      <div class="gal-card"><span class="gal-badge"><img src="assets/logo-bg.jpg" alt=""> Vai Ter Pizza!</span><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg><span>Vídeo vertical do criador — 9:16</span></div></div>
+      <div class="gal-card"><span class="gal-badge"><img src="assets/logo-bg.jpg" alt=""> Vai Ter Pizza!</span><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg><span>Vídeo vertical do criador — 9:16</span></div></div>
+    </div>
+  </section>
+
+  <!-- ═══ COMO FUNCIONA — 4 passos alternados ═══ -->
+  <section class="container">
+    <div class="steps-head">
+      <h2>Do cadastro ao pagamento,<br><span class="muted-line">claro em cada etapa.</span></h2>
     </div>
 
-    <div class="sc-card" id="scFormCard">
-      <div class="sc-section-title">Inscrição</div>
-      <div style="font-size:.78rem;color:var(--muted);margin-bottom:16px">Leva menos de 2 minutos</div>
-
-      <div class="field"><label>Nome completo</label><input class="inp" id="scNome" placeholder="Seu nome"></div>
-      <div class="field"><label>WhatsApp</label><input class="inp" id="scTelefone" type="tel" placeholder="82999999999"></div>
-
-      <div class="sc-row">
-        <div class="field"><label>Instagram</label><input class="inp" id="scInstagram" placeholder="@seuusuario"></div>
-        <div class="field"><label>TikTok (opcional)</label><input class="inp" id="scTiktok" placeholder="@seuusuario"></div>
+    <div class="step-row">
+      <div class="step-col-text">
+        <div class="step-eyebrow"><span class="num">01</span> · INSCREVA-SE</div>
+        <h3>Preencha o formulário em 2 minutos.</h3>
+        <p>Conta um pouco sobre você — nome, WhatsApp, Instagram e/ou TikTok e seu nicho de conteúdo. Sem precisar conectar nada via login social.</p>
+        <a href="#inscricao" class="btn-pill btn-pill-outline">Inscrever-se agora →</a>
       </div>
-
-      <div class="sc-row">
-        <div class="field"><label>Seguidores no Instagram</label><input class="inp" id="scSeguidoresIg" type="number" placeholder="ex: 5000"></div>
-        <div class="field"><label>Seguidores no TikTok</label><input class="inp" id="scSeguidoresTk" type="number" placeholder="opcional"></div>
+      <div class="step-col-media">
+        <div class="phone-frame"><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Print da tela de cadastro</span></div></div>
       </div>
+    </div>
 
-      <div class="field"><label>Seu nicho de conteúdo</label><input class="inp" id="scNicho" placeholder="ex: comida, humor local, lifestyle"></div>
+    <div class="step-row">
+      <div class="step-col-text">
+        <div class="step-eyebrow"><span class="num">02</span> · APROVAÇÃO + CUPOM</div>
+        <h3>Nossa equipe aprova e libera seu cupom.</h3>
+        <p>Depois de aprovado, você recebe um cupom de desconto exclusivo com o seu nome — é ele que rastreia cada venda gerada por você.</p>
+        <a href="#inscricao" class="btn-pill btn-pill-outline">Quero meu cupom →</a>
+      </div>
+      <div class="step-col-media">
+        <div class="phone-frame"><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Print do cupom no painel</span></div></div>
+      </div>
+    </div>
 
-      <div class="field">
-        <label>Diretrizes da parceria</label>
-        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 14px;font-size:.78rem;color:var(--text2);line-height:1.6;max-height:120px;overflow-y:auto">
-          Ao participar, você concorda em: mencionar a marca corretamente e sem promessas que a pizzaria não pode cumprir;
-          respeitar a tabela de preços divulgada; enviar o roteiro/legenda do conteúdo para aprovação antes de publicar;
-          não usar o cupom para pedidos próprios ou de forma fraudulenta. O descumprimento pode levar à suspensão do cupom
-          ou encerramento da parceria.
+    <div class="step-row">
+      <div class="step-col-text">
+        <div class="step-eyebrow"><span class="num">03</span> · CRIE</div>
+        <h3>Envie o roteiro, aprovamos antes de postar.</h3>
+        <p>Manda o roteiro ou legenda pelo seu painel. A gente confirma rapidinho — sem burocracia — pra você já publicar marcando @vaiterpizza.</p>
+        <a href="#inscricao" class="btn-pill btn-pill-outline">Ver como funciona →</a>
+      </div>
+      <div class="step-col-media">
+        <div class="phone-frame"><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span>Print da aprovação de conteúdo</span></div></div>
+      </div>
+    </div>
+
+    <div class="step-row">
+      <div class="step-col-text">
+        <div class="step-eyebrow"><span class="num">04</span> · RECEBA</div>
+        <h3>Cada venda com seu cupom vira comissão.</h3>
+        <p>Acompanhe pedidos e comissão em tempo real no seu painel. No fechamento do período, o pagamento cai via PIX (ou permuta, se preferir).</p>
+        <a href="#inscricao" class="btn-pill btn-pill-outline">Quero começar →</a>
+      </div>
+      <div class="step-col-media">
+        <div class="phone-frame"><div class="ph-box"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg><span>Print do extrato de comissão</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CARD DE CONFIANÇA ═══ -->
+  <section class="container">
+    <div class="trust-card">
+      <div>
+        <h2>Você no controle, sempre.</h2>
+        <p>Sem contrato de exclusividade, sem letra miúda. Você decide o que posta — a gente só confirma antes de ir ao ar, e você pausa quando quiser.</p>
+      </div>
+      <div>
+        <ul class="trust-list">
+          <li><span class="trust-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Comissão sobre cada venda feita com seu cupom</li>
+          <li><span class="trust-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Aprovação de conteúdo simples, sem burocracia</li>
+          <li><span class="trust-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Pagamento via PIX ou permuta, no fechamento do período</li>
+          <li><span class="trust-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Você escolhe continuar ou pausar quando quiser</li>
+          <li><span class="trust-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Sem taxa nenhuma pra participar</li>
+          <li><span class="trust-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Suporte direto pelo WhatsApp</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ BENEFÍCIOS ═══ -->
+  <section class="container center">
+    <h2 style="font-size:1.9rem;font-weight:800;margin:0 0 8px">Sem pegadinha. Sem letra miúda.</h2>
+    <p style="color:var(--muted);font-size:.92rem;max-width:440px;margin:0 auto">O que você ganha entrando pra rede de criadores Vai Ter Pizza.</p>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="v">R$0</div><div class="l">Custo pra participar</div></div>
+      <div class="stat-card"><div class="v">100%</div><div class="l">Comissão sobre venda real</div></div>
+      <div class="stat-card"><div class="v">PIX</div><div class="l">Forma de pagamento</div></div>
+      <div class="stat-card"><div class="v">48h</div><div class="l">Prazo médio de aprovação</div></div>
+    </div>
+    <a href="#inscricao" class="btn-pill btn-pill-dark">Quero participar →</a>
+  </section>
+
+  <!-- ═══ CTA FINAL ═══ -->
+  <section class="container">
+    <div class="final-cta">
+      <h2>Se você cria,<br>você se qualifica.</h2>
+      <p>Não precisa ter milhares de seguidores — precisa topar mostrar a pizza que você já ama.</p>
+      <div class="req-label">Tudo que você precisa:</div>
+      <div class="req-pills">
+        <span class="req-pill"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg> Instagram — perfil ativo</span>
+        <span class="req-pill"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c.3 2.4 1.9 4.1 4.5 4.3v3.1c-1.6.1-3-.4-4.5-1.4v6.6c0 3.4-2.7 5.9-5.9 5.9S4.7 18.9 4.7 15.5c0-3.2 2.4-5.7 5.5-5.9v3.2c-1.3.2-2.3 1.3-2.3 2.7 0 1.5 1.2 2.8 2.8 2.8s2.8-1.2 2.8-2.8V3h3z"/></svg> TikTok — perfil ativo</span>
+        <span class="req-pill">🍕 Vontade de aparecer</span>
+      </div>
+      <a href="#inscricao" class="btn-pill btn-pill-dark">Inscrever-se agora →</a>
+      <small>Cadastro gratuito · aprovação em até 48h</small>
+    </div>
+  </section>
+
+  <!-- ═══ INSCRIÇÃO (formulário real) ═══ -->
+  <section id="inscricao">
+    <div class="container sc-formwrap">
+      <div class="sc-card" id="scFormCard">
+        <div style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Inscrição</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-bottom:20px">Leva menos de 2 minutos</div>
+
+        <div class="field"><label>Nome completo</label><input class="inp" id="scNome" placeholder="Seu nome"></div>
+        <div class="field"><label>WhatsApp</label><input class="inp" id="scTelefone" type="tel" placeholder="82999999999"></div>
+
+        <div class="sc-row">
+          <div class="field"><label>Instagram</label><input class="inp" id="scInstagram" placeholder="@seuusuario"></div>
+          <div class="field"><label>TikTok (opcional)</label><input class="inp" id="scTiktok" placeholder="@seuusuario"></div>
         </div>
+
+        <div class="sc-row">
+          <div class="field"><label>Seguidores no Instagram</label><input class="inp" id="scSeguidoresIg" type="number" placeholder="ex: 5000"></div>
+          <div class="field"><label>Seguidores no TikTok</label><input class="inp" id="scSeguidoresTk" type="number" placeholder="opcional"></div>
+        </div>
+
+        <div class="field"><label>Seu nicho de conteúdo</label><input class="inp" id="scNicho" placeholder="ex: comida, humor local, lifestyle"></div>
+
+        <div class="field">
+          <label>Diretrizes da parceria</label>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r8);padding:12px 14px;font-size:.78rem;color:var(--text2);line-height:1.6;max-height:120px;overflow-y:auto">
+            Ao participar, você concorda em: mencionar a marca corretamente e sem promessas que a pizzaria não pode cumprir;
+            respeitar a tabela de preços divulgada; enviar o roteiro/legenda do conteúdo para aprovação antes de publicar;
+            não usar o cupom para pedidos próprios ou de forma fraudulenta. O descumprimento pode levar à suspensão do cupom
+            ou encerramento da parceria.
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 18px">
+          <input type="checkbox" id="scGuideline" style="width:16px;height:16px"> Li e aceito as diretrizes acima
+        </label>
+
+        <button class="btn btn-primary" id="scSubmitBtn" style="width:100%;justify-content:center" onclick="scEnviarInscricao()">Quero ser um criador →</button>
+        <div id="scErro" style="color:var(--red);font-size:.8rem;margin-top:8px;text-align:center"></div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 18px">
-        <input type="checkbox" id="scGuideline" style="width:16px;height:16px"> Li e aceito as diretrizes acima
-      </label>
 
-      <button class="btn btn-primary" id="scSubmitBtn" style="width:100%;justify-content:center" onclick="scEnviarInscricao()">Quero ser um criador →</button>
-      <div id="scErro" style="color:var(--red);font-size:.8rem;margin-top:8px;text-align:center"></div>
+      <div class="sc-card" id="scSucesso">
+        <div style="font-size:2.4rem;margin-bottom:8px">🎉</div>
+        <div style="font-weight:800;font-size:1.1rem;margin-bottom:6px">Inscrição recebida!</div>
+        <div style="color:var(--muted);font-size:.85rem">Nossa equipe vai analisar seu perfil e te chama no WhatsApp em breve. Fique de olho!</div>
+      </div>
     </div>
+  </section>
 
-    <div class="sc-card" id="scSucesso">
-      <div style="font-size:2.4rem;margin-bottom:8px">🎉</div>
-      <div style="font-weight:800;font-size:1.1rem;margin-bottom:6px">Inscrição recebida!</div>
-      <div style="color:var(--muted);font-size:.85rem">Nossa equipe vai analisar seu perfil e te chama no WhatsApp em breve. Fique de olho!</div>
-    </div>
-  </div>
+  <footer class="cr-footer container">
+    <span>© 2026 Vai Ter Pizza! Todos os direitos reservados.</span>
+    <span><a href="privacidade.html">Política de Privacidade</a></span>
+  </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="js/config.js"></script>
