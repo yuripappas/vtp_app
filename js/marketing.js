@@ -26,7 +26,7 @@ function _mktStaffNome() {
 }
 
 async function _mktGetCreators(force = false) {
-  if (_mktCache.creators && !force) return _mktCache.creators;
+  if (_mktCache.creators !== null && !force) return _mktCache.creators;
   const { data, error } = await _mktGetSbClient().from('mkt_creators').select('*').order('nome');
   if (error) { toast('Erro ao carregar criadores: ' + error.message, 'err'); return []; }
   _mktCache.creators = data || [];
@@ -246,14 +246,18 @@ async function _mktAprovarCriador(id) {
   const tipo_remuneracao   = document.getElementById('mktCTipoRem').value;
   const comissao_percentual = parseFloat(document.getElementById('mktCComissaoPct').value) || null;
   const fee_fixo_mensal     = parseFloat(document.getElementById('mktCFeeFixo').value) || null;
-  const { error } = await _mktGetSbClient().from('mkt_creators').update({
+  const { data: creator, error } = await _mktGetSbClient().from('mkt_creators').update({
     status: 'ativo', tipo_remuneracao, comissao_percentual, fee_fixo_mensal,
     aprovado_por: _mktStaffNome(), aprovado_em: new Date().toISOString(),
-  }).eq('id', id);
+  }).eq('id', id).select().single();
   if (error) { toast('Erro ao aprovar: ' + error.message, 'err'); return; }
   _mktCloseModal();
   toast('Criador aprovado! Vamos criar o cupom dele.', 'ok');
   await _mktGetCreators(true);
+  if (creator?.telefone) {
+    _mktNotificarCriador(creator.telefone,
+      `Parabéns, ${creator.nome.split(' ')[0]}! Seu cadastro na rede de criadores Vai Ter Pizza foi aprovado 🎉 Acesse seu painel: ${location.origin}/painel-criador.html`);
+  }
   _mktNovoCupomModal(id);
 }
 
@@ -584,79 +588,173 @@ async function _mktSalvarVendaManual() {
 
 // ══════════════════════════════════════════════════════════════
 // 3. APROVAÇÃO DE CONTEÚDO
+// Abas de filtro com contagem sempre visível + revisão em modal lado a lado
+// (preview à esquerda, checklist/decisão + observações com timestamp à
+// direita) — padrão visto na CreatorAds, adaptado sem IA pro nosso volume.
 // ══════════════════════════════════════════════════════════════
+
+let _mktContentFiltro = 'pendente';
 
 async function _mktRenderConteudo() {
   const sb = _mktGetSbClient();
   const creators = await _mktGetCreators();
   const cMap = new Map(creators.map(c => [c.id, c]));
-  const { data: itens, error } = await sb.from('mkt_creator_content').select('*').order('criado_em', { ascending: false }).limit(80);
+  const { data: itens, error } = await sb.from('mkt_creator_content').select('*').order('criado_em', { ascending: false }).limit(150);
   if (error) { _mktBody(_mktEmpty('Erro: ' + error.message)); return; }
+  window._mktContentCache = itens;
 
-  const pendentes = itens.filter(i => i.aprovacao_status === 'pendente');
-  const outros    = itens.filter(i => i.aprovacao_status !== 'pendente');
+  const isAprovado = i => i.aprovacao_status === 'aprovado' || i.aprovacao_status === 'aprovado_com_ajuste';
+  const counts = {
+    pendente:  itens.filter(i => i.aprovacao_status === 'pendente').length,
+    aprovado:  itens.filter(isAprovado).length,
+    reprovado: itens.filter(i => i.aprovacao_status === 'reprovado').length,
+    todos:     itens.length,
+  };
+  const filtrados = itens.filter(i => {
+    if (_mktContentFiltro === 'todos') return true;
+    if (_mktContentFiltro === 'aprovado') return isAprovado(i);
+    return i.aprovacao_status === _mktContentFiltro;
+  });
 
   _mktBody(`
     ${_mktHeader('Aprovação de Conteúdo')}
-    <div class="kpi-row" style="margin-bottom:16px">
-      ${_mktKpi(pendentes.length, 'Aguardando aprovação', 'var(--yellow)', 'clock')}
-      ${_mktKpi(outros.filter(i => i.aprovacao_status.startsWith('aprovado')).length, 'Aprovados (últimos 80)', 'var(--green)', 'check-circle')}
+    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+      ${[['pendente', 'Pendentes'], ['aprovado', 'Aprovados'], ['reprovado', 'Reprovados'], ['todos', 'Todos']].map(([id, label]) => `
+        <button class="filter-btn ${_mktContentFiltro === id ? 'active' : ''}" onclick="_mktContentFiltro='${id}';_mktRenderConteudo()">
+          ${label} <span style="opacity:.65;margin-left:3px">${counts[id]}</span>
+        </button>`).join('')}
     </div>
-    <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Fila de aprovação — criador aguarda pra publicar</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
-      ${pendentes.length ? pendentes.map(i => _mktContentCard(i, cMap.get(i.creator_id), true)).join('') : _mktEmpty('Nenhum conteúdo aguardando aprovação')}
-    </div>
-    <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Histórico recente</div>
     <div style="display:flex;flex-direction:column;gap:8px">
-      ${outros.length ? outros.map(i => _mktContentCard(i, cMap.get(i.creator_id), false)).join('') : _mktEmpty('Sem histórico ainda')}
+      ${filtrados.length ? filtrados.map(i => _mktContentCard(i, cMap.get(i.creator_id))).join('') : _mktEmpty('Nenhum conteúdo nesse filtro')}
     </div>
   `);
 }
 
-function _mktContentCard(item, creator, pendente) {
+function _mktContentCard(item, creator) {
   const statusMap = { pendente: 'chip-yellow', aprovado: 'chip-green', aprovado_com_ajuste: 'chip-green', reprovado: 'chip-red' };
   return `
-    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-        <span style="font-weight:700">${creator?.nome || '—'}</span>
-        <span class="chip">${item.tipo}</span>
-        <span class="chip ${statusMap[item.aprovacao_status]}">${item.aprovacao_status.replace(/_/g, ' ')}</span>
-        <span style="font-size:var(--text-2xs);color:var(--muted);margin-left:auto">${fmtDT(item.criado_em)}</span>
+    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      ${item.print_url ? `<img src="${item.print_url}" style="width:44px;height:44px;object-fit:cover;border-radius:var(--r8);flex-shrink:0">` : ''}
+      <div style="flex:1;min-width:180px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-weight:700">${creator?.nome || '—'}</span>
+          <span class="chip">${item.tipo}</span>
+          <span class="chip ${statusMap[item.aprovacao_status]}">${item.aprovacao_status.replace(/_/g, ' ')}</span>
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:460px">${(item.roteiro_texto || '').replace(/</g, '&lt;')}</div>
       </div>
-      ${item.roteiro_texto ? `<div style="font-size:var(--text-sm);white-space:pre-wrap;background:var(--surface2);border-radius:var(--r8);padding:8px 10px;margin-bottom:8px">${item.roteiro_texto.replace(/</g, '&lt;')}</div>` : ''}
-      ${item.motivo_reprovacao ? `<div style="font-size:var(--text-xs);color:var(--red)">Motivo: ${item.motivo_reprovacao}</div>` : ''}
-      ${pendente ? `
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-primary btn-sm" onclick="_mktAprovarConteudo('${item.id}','aprovado')">${lc('check-circle', 12, '#fff')} Aprovar</button>
-          <button class="btn btn-outline btn-sm" onclick="_mktAprovarConteudo('${item.id}','aprovado_com_ajuste')">Aprovar c/ ajuste</button>
-          <button class="btn btn-red btn-sm" onclick="_mktReprovarConteudoModal('${item.id}')">Reprovar</button>
-        </div>` : ''}
+      <span style="font-size:var(--text-2xs);color:var(--muted)">${fmtDT(item.criado_em)}</span>
+      <button class="btn btn-outline btn-sm" onclick="_mktAbrirRevisaoConteudo('${item.id}')">Revisar</button>
     </div>`;
 }
 
-async function _mktAprovarConteudo(id, status) {
-  const { error } = await _mktGetSbClient().from('mkt_creator_content').update({ aprovacao_status: status, aprovado_por: _mktStaffNome(), aprovado_em: new Date().toISOString() }).eq('id', id);
+async function _mktAbrirRevisaoConteudo(id) {
+  const item = (window._mktContentCache || []).find(c => c.id === id);
+  if (!item) return;
+  const creator = _mktCache.creators.find(c => c.id === item.creator_id);
+  const { data: notas } = await _mktGetSbClient().from('mkt_creator_content_notas').select('*').eq('content_id', id).order('criado_em', { ascending: true });
+
+  const statusMap = { pendente: 'chip-yellow', aprovado: 'chip-green', aprovado_com_ajuste: 'chip-green', reprovado: 'chip-red' };
+  const previewHtml = item.print_url
+    ? `<img src="${item.print_url}" style="width:100%;border-radius:var(--r8);border:1px solid var(--border)">`
+    : `<div style="background:var(--surface2);border:1px dashed var(--border);border-radius:var(--r8);padding:36px 16px;text-align:center;color:var(--muted)">
+         ${lc(item.tipo === 'reels' || item.tipo === 'video_tiktok' ? 'video' : 'image', 28, 'var(--muted)')}
+         <div style="font-size:var(--text-xs);margin-top:8px">Sem prévia visual ainda${item.link_publicado ? '' : ' — roteiro aguardando publicação'}</div>
+       </div>`;
+
+  _mktModal(`Revisar conteúdo — ${creator?.nome || ''}`, `
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px">
+        ${previewHtml}
+        ${item.link_publicado ? `<a href="${item.link_publicado}" target="_blank" style="display:block;margin-top:8px;font-size:var(--text-xs);color:var(--purple)">Ver publicação →</a>` : ''}
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span class="chip">${item.tipo}</span>
+          <span class="chip ${statusMap[item.aprovacao_status]}">${item.aprovacao_status.replace(/_/g, ' ')}</span>
+        </div>
+        <div style="font-size:var(--text-sm);white-space:pre-wrap;background:var(--surface2);border-radius:var(--r8);padding:10px 12px;margin-bottom:14px">${(item.roteiro_texto || '—').replace(/</g, '&lt;')}</div>
+
+        ${item.aprovacao_status === 'pendente' ? `
+        <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="_mktDecidirConteudo('${id}','aprovado')">${lc('check-circle', 12, '#fff')} Aprovar</button>
+          <button class="btn btn-outline btn-sm" onclick="_mktDecidirConteudo('${id}','aprovado_com_ajuste')">Aprovar c/ ajuste</button>
+          <button class="btn btn-red btn-sm" onclick="_mktDecidirConteudo('${id}','reprovado')">Reprovar</button>
+        </div>` : ''}
+
+        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:6px">Observações</div>
+        <div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;margin-bottom:10px">
+          ${(notas || []).length ? notas.map(n => `
+            <div style="background:var(--surface2);border-radius:var(--r8);padding:8px 10px;font-size:var(--text-xs)">
+              <div style="display:flex;justify-content:space-between;gap:8px;color:var(--muted);margin-bottom:2px">
+                <strong style="color:var(--text)">${n.autor || 'Sistema'}</strong><span style="flex-shrink:0">${fmtDT(n.criado_em)}</span>
+              </div>
+              ${n.texto.replace(/</g, '&lt;')}
+            </div>`).join('') : `<div style="color:var(--muted);font-size:var(--text-xs)">Nenhuma observação ainda</div>`}
+        </div>
+        <div style="display:flex;gap:6px">
+          <input class="inp" id="mktNovaNota" placeholder="${item.aprovacao_status === 'pendente' ? 'Motivo da reprovação ou observação...' : 'Adicionar observação...'}" style="flex:1">
+          <button class="btn btn-outline btn-sm" onclick="_mktAdicionarNota('${id}')">Enviar</button>
+        </div>
+      </div>
+    </div>
+  `, `<button class="btn btn-outline" onclick="_mktCloseModal()">Fechar</button>`, 720);
+}
+
+async function _mktDecidirConteudo(id, status) {
+  const notaEl = document.getElementById('mktNovaNota');
+  const notaTexto = notaEl?.value?.trim() || '';
+  if (status === 'reprovado' && !notaTexto) {
+    toast('Escreva o motivo da reprovação no campo de observação antes.', 'err');
+    return;
+  }
+  const sb = _mktGetSbClient();
+  const item = (window._mktContentCache || []).find(c => c.id === id);
+  const creator = item ? _mktCache.creators.find(c => c.id === item.creator_id) : null;
+  const staff = _mktStaffNome();
+
+  const upd = { aprovacao_status: status, aprovado_por: staff, aprovado_em: new Date().toISOString() };
+  if (status === 'reprovado') upd.motivo_reprovacao = notaTexto;
+  const { error } = await sb.from('mkt_creator_content').update(upd).eq('id', id);
   if (error) { toast('Erro: ' + error.message, 'err'); return; }
+
+  const labelMap = { aprovado: 'aprovou', aprovado_com_ajuste: 'aprovou com ajuste', reprovado: 'reprovou' };
+  await sb.from('mkt_creator_content_notas').insert({
+    content_id: id, autor: staff,
+    texto: `${staff} ${labelMap[status]} este conteúdo.${notaTexto ? ' ' + notaTexto : ''}`,
+  });
+
   toast('Conteúdo atualizado', 'ok');
-  _mktRenderConteudo();
-}
-
-function _mktReprovarConteudoModal(id) {
-  _mktModal('Reprovar conteúdo', `
-    <div class="field"><label>Motivo</label><textarea class="inp" id="mktConteudoMotivo" rows="3" placeholder="explique o que precisa mudar"></textarea></div>
-  `, `
-    <button class="btn btn-outline" onclick="_mktCloseModal()">Cancelar</button>
-    <button class="btn btn-red" onclick="_mktConfirmarReprovacaoConteudo('${id}')">Reprovar</button>
-  `);
-}
-
-async function _mktConfirmarReprovacaoConteudo(id) {
-  const motivo = document.getElementById('mktConteudoMotivo').value.trim();
-  const { error } = await _mktGetSbClient().from('mkt_creator_content').update({ aprovacao_status: 'reprovado', motivo_reprovacao: motivo, aprovado_por: _mktStaffNome(), aprovado_em: new Date().toISOString() }).eq('id', id);
-  if (error) { toast('Erro: ' + error.message, 'err'); return; }
   _mktCloseModal();
-  toast('Conteúdo reprovado', 'ok');
   _mktRenderConteudo();
+
+  if (creator?.telefone) {
+    const msgMap = {
+      aprovado: 'Boa notícia! Seu conteúdo foi aprovado ✅ Pode publicar marcando @vaiterpizza.',
+      aprovado_com_ajuste: `Seu conteúdo foi aprovado com um ajuste: ${notaTexto || 'confira o painel'}.`,
+      reprovado: `Seu conteúdo precisou de revisão: ${notaTexto}. Dá uma olhada no seu painel e reenvia quando ajustar 🙏`,
+    };
+    _mktNotificarCriador(creator.telefone, msgMap[status]);
+  }
+}
+
+async function _mktAdicionarNota(id) {
+  const el = document.getElementById('mktNovaNota');
+  const texto = el?.value?.trim();
+  if (!texto) return;
+  await _mktGetSbClient().from('mkt_creator_content_notas').insert({ content_id: id, autor: _mktStaffNome(), texto });
+  _mktAbrirRevisaoConteudo(id);
+}
+
+// Notificação best-effort via WhatsApp — nunca bloqueia o fluxo da Gestão se falhar.
+async function _mktNotificarCriador(telefone, texto) {
+  try {
+    await fetch(`${VTP_SUPABASE_URL}/functions/v1/mkt-notificar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: VTP_SUPABASE_KEY, Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      body: JSON.stringify({ telefone, texto }),
+    });
+  } catch (_e) { /* best-effort */ }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -970,7 +1068,7 @@ function _mktPayoutCard(p, creator) {
 
 async function _mktMarcarPago(payoutId) {
   const sb = _mktGetSbClient();
-  const { error } = await sb.from('mkt_creator_payouts').update({ status: 'pago', pago_em: new Date().toISOString(), pago_por: _mktStaffNome() }).eq('id', payoutId);
+  const { data: payout, error } = await sb.from('mkt_creator_payouts').update({ status: 'pago', pago_em: new Date().toISOString(), pago_por: _mktStaffNome() }).eq('id', payoutId).select().single();
   if (error) { toast('Erro: ' + error.message, 'err'); return; }
   const { data: items } = await sb.from('mkt_creator_payout_items').select('redemption_id').eq('payout_id', payoutId);
   if (items?.length) {
@@ -978,6 +1076,12 @@ async function _mktMarcarPago(payoutId) {
   }
   toast('Pagamento marcado como pago', 'ok');
   _mktRenderPagamentos();
+
+  const creator = _mktCache.creators.find(c => c.id === payout.creator_id);
+  if (creator?.telefone) {
+    _mktNotificarCriador(creator.telefone,
+      `Seu pagamento de R$ ${fmt(payout.valor_total)} referente ao período ${fmtD(payout.periodo_inicio)}–${fmtD(payout.periodo_fim)} foi confirmado 💰`);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
