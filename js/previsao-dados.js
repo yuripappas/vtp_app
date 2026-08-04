@@ -88,14 +88,21 @@ function _prevAgregarPedido(p) {
   return { hora, isDelivery, tEntrega, pizzas, meiasPorSabor };
 }
 
-// Carrega e agrega, por DATA, todas as ocorrências de `diaSemana`
-// (0=Dom…6=Sáb) dentro da janela de `nSemanas`. Devolve array ordenado do
-// mais antigo pro mais recente — pronto pra ponderar por recência.
-async function prevCarregarSemanas(diaSemana, nSemanas = 8) {
+// Busca crua dos pedidos da janela de lookback (uma vez só) — quem chama
+// decide como bucketizar. Separado de prevCarregarSemanas pra permitir
+// reaproveitar o mesmo fetch pra vários dias da semana de uma vez (visão
+// de período: uma semana inteira tem até 7 dias-da-semana diferentes, e
+// sem isso cada um exigiria sua própria ida ao Supabase).
+async function _prevFetchLookback(nSemanas) {
   const dias   = nSemanas * 7 + 7; // margem de 1 semana pra garantir n ocorrências
   const inicio = new Date(Date.now() - dias * 864e5).toISOString();
-  const pedidos = await _prevFetchPeriodo(inicio, null);
+  return _prevFetchPeriodo(inicio, null);
+}
 
+// Bucketiza pedidos crus (já buscados) por DATA, filtrando só as
+// ocorrências de `diaSemana` (0=Dom…6=Sáb). Devolve array ordenado do mais
+// antigo pro mais recente, limitado às últimas `nSemanas` ocorrências.
+function _prevBucketizarPorDiaSemana(pedidos, diaSemana, nSemanas) {
   const porData = {};
   for (const p of pedidos) {
     const dataLocal = new Date(p.cw_created_at);
@@ -125,10 +132,27 @@ async function prevCarregarSemanas(diaSemana, nSemanas = 8) {
       dia.meiasPorSabor[k].pequena += m.pequena;
     }
   }
-
   return Object.values(porData)
     .sort((a, b) => a.data.localeCompare(b.data))
     .slice(-nSemanas);
+}
+
+// Carrega e agrega, por DATA, todas as ocorrências de `diaSemana`
+// (0=Dom…6=Sáb) dentro da janela de `nSemanas`. Devolve array ordenado do
+// mais antigo pro mais recente — pronto pra ponderar por recência.
+async function prevCarregarSemanas(diaSemana, nSemanas = 8) {
+  const pedidos = await _prevFetchLookback(nSemanas);
+  return _prevBucketizarPorDiaSemana(pedidos, diaSemana, nSemanas);
+}
+
+// Visão de período: busca os pedidos UMA vez e bucketiza pra cada dia da
+// semana presente em `diasSemana` (array de 0-6, sem repetir). Devolve
+// { [diaSemana]: validosArray } — uma "base" por dia da semana envolvido.
+async function prevCarregarSemanasMultiplas(diasSemana, nSemanas = 8) {
+  const pedidos = await _prevFetchLookback(nSemanas);
+  const resultado = {};
+  for (const ds of diasSemana) resultado[ds] = _prevBucketizarPorDiaSemana(pedidos, ds, nSemanas);
+  return resultado;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -172,19 +196,55 @@ function prevPctDeliveryPonderado(validos) {
   return somaPed > 0 ? somaDel / somaPed : 0;
 }
 
-// Mix por sabor (média ponderada de meias grande/pequena por sabor) —
-// baseline "hoje" antes de aplicar os fatores do dia.
-function prevMixSabores(validos) {
+// Participação percentual de cada sabor sobre o total de meias históricas
+// (ponderado por recência, por tamanho — soma ~1 dentro de cada tamanho).
+// Baseline "hoje" antes de fatores/promoções. Devolve SHARE (%), não
+// volume absoluto: previsao.js distribui esse % em cima do total FINAL de
+// pizzas (masGrFin/masPqFin, já com margem/sobra/ajuste manual aplicados)
+// — assim a soma das meias por sabor sempre bate com a massa/embalagem,
+// em vez de vir de um cálculo paralelo que podia divergir.
+function prevShareSabores(validos) {
   const chaves = new Set();
   validos.forEach(d => Object.keys(d.meiasPorSabor).forEach(k => chaves.add(k)));
-  const resultado = {};
+  const mediaPorSabor = {};
+  let totalGrande = 0, totalPequena = 0;
   chaves.forEach(k => {
-    resultado[k] = {
-      grande:  prevMediaPonderada(validos, d => d.meiasPorSabor[k]?.grande  || 0),
-      pequena: prevMediaPonderada(validos, d => d.meiasPorSabor[k]?.pequena || 0),
+    const g = prevMediaPonderada(validos, d => d.meiasPorSabor[k]?.grande  || 0);
+    const p = prevMediaPonderada(validos, d => d.meiasPorSabor[k]?.pequena || 0);
+    mediaPorSabor[k] = { grande: g, pequena: p };
+    totalGrande += g; totalPequena += p;
+  });
+  const shares = {};
+  chaves.forEach(k => {
+    shares[k] = {
+      grande:  totalGrande  > 0 ? mediaPorSabor[k].grande  / totalGrande  : 0,
+      pequena: totalPequena > 0 ? mediaPorSabor[k].pequena / totalPequena : 0,
     };
   });
-  return resultado;
+  return shares;
+}
+
+// Desloca a participação de 1+ sabores promovidos (boostPct%, ex:
+// Calabresa +50%) e renormaliza TODOS os shares daquele tamanho pra somar
+// 1 de novo — a promoção muda o MIX, não o volume total do dia (volume
+// total já tem seu próprio ajuste via fator "Evento", em previsao.js).
+function prevAplicarPromocoes(shares, promocoes) {
+  if (!promocoes?.length) return shares;
+  const ajustado = {};
+  for (const [k, v] of Object.entries(shares)) ajustado[k] = { ...v };
+
+  for (const tam of ['grande', 'pequena']) {
+    for (const promo of promocoes) {
+      const mult = 1 + (promo.boostPct || 0) / 100;
+      for (const k of Object.keys(ajustado)) {
+        const opc = typeof vendasOpcaoDeSabor === 'function' ? vendasOpcaoDeSabor(k) : null;
+        if (opc?.id === promo.opcaoId) ajustado[k][tam] *= mult;
+      }
+    }
+    const soma = Object.values(ajustado).reduce((s, v) => s + v[tam], 0);
+    if (soma > 0) for (const k of Object.keys(ajustado)) ajustado[k][tam] /= soma;
+  }
+  return ajustado;
 }
 
 // Curva horária real (substitui _CURVA_HORARIA fixa) — média ponderada de
