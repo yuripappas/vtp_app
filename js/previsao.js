@@ -435,7 +435,10 @@ function _montarLayout(hoje, diaSem) {
     <!-- Modal Histórico real -->
     <div class="overlay" id="ovHistorico" onclick="if(event.target===this)closeModal('ovHistorico')">
       <div class="mbox" style="max-width:680px" id="historicoBox"></div>
-    </div>`;
+    </div>
+
+    <!-- Modal Promoção de sabor -->
+    <div class="overlay" id="ovPromocoesPrev" onclick="if(event.target===this)closeModal('ovPromocoesPrev')"></div>`;
 }
 
 // ── Seção 1: Contexto do dia ──────────────────────────────────
@@ -631,50 +634,72 @@ function _renderPainelFatores() {
             oninput="_fatores.obs=this.value;saveFatoresPorData()">
         </div>
 
-        <!-- Promoção de sabor -->
+        <!-- Promoção de sabor: só resumo aqui (somente leitura) — editar é
+             apertado demais nos 300px da sidebar, então vira modal. -->
         <div style="border-top:1.5px solid var(--border);padding-top:13px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
             <div style="font-size:var(--text-sm);font-weight:600">${lc('tag',14,'var(--purple)')} Promoção de sabor</div>
-            <button onclick="_prevAbrirBuscaSabor()" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:var(--text-xs);font-weight:700">+ Adicionar</button>
+            <button onclick="_prevAbrirModalPromocoes()" style="background:none;border:none;color:var(--purple);cursor:pointer;font-size:var(--text-xs);font-weight:700">Gerenciar</button>
           </div>
           <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:8px">Sobe a participação de 1 ou mais sabores específicos na projeção (não afeta o total geral)</div>
-          ${_prevSaborBuscaAberto ? `
-            <div class="ft-ac-wrap" style="margin-bottom:10px">
-              <input class="inp" id="prevSaborInput" placeholder="Buscar sabor..." style="font-size:var(--text-sm)"
-                oninput="_prevBuscarSabor(this.value)" onfocus="_prevBuscarSabor(this.value)"
-                onblur="setTimeout(()=>_prevFecharBuscaSabor(),150)">
-              <div class="ft-ac-list" id="prevSaborDrop" style="display:none"></div>
-            </div>` : ''}
           <div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${(_fatores.promocoes||[]).length === 0 && !_prevSaborBuscaAberto
+            ${(_fatores.promocoes||[]).length === 0
               ? `<div style="font-size:var(--text-xs);color:var(--muted)">Nenhuma promoção ${ehHoje ? 'hoje' : 'nesse dia'}</div>`
-              : (_fatores.promocoes||[]).map(p => `
-                <span class="chip chip-purple" style="display:inline-flex;align-items:center;gap:5px">
-                  ${p.nome}
-                  <input type="number" value="${p.boostPct}" onchange="_prevAjustarPromocao(${p.opcaoId},+this.value)"
-                    style="width:34px;border:none;background:transparent;font-weight:700;color:inherit;text-align:right;padding:0">%
-                  <button onclick="_prevRemoverPromocao(${p.opcaoId})" style="background:none;border:none;color:inherit;cursor:pointer;padding:0 0 0 2px;font-weight:800;line-height:1">✕</button>
-                </span>`).join('')}
+              : (_fatores.promocoes||[]).map(p => `<span class="chip chip-purple">${p.nome} +${p.boostPct}%</span>`).join('')}
           </div>
         </div>
       </div>
     </div>`;
 }
 
-let _prevSaborBuscaAberto = false;
-
-function _prevAbrirBuscaSabor() {
-  _prevSaborBuscaAberto = true;
-  _prevAtualizarPainelFatores();
-  setTimeout(() => document.getElementById('prevSaborInput')?.focus(), 30);
-}
-function _prevFecharBuscaSabor() {
-  _prevSaborBuscaAberto = false;
-  _prevAtualizarPainelFatores();
-}
 function _prevAtualizarPainelFatores() {
   const el = document.getElementById('painelFatoresWrap');
   if (el) el.innerHTML = _renderPainelFatores();
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODAL: PROMOÇÃO DE SABOR (busca + lista editável, com espaço de sobra)
+// ══════════════════════════════════════════════════════════════
+function _prevAbrirModalPromocoes() {
+  const ov = document.getElementById('ovPromocoesPrev');
+  if (!ov) return;
+  ov.innerHTML = _renderModalPromocoes();
+  ov.classList.add('open');
+}
+
+function _renderModalPromocoes() {
+  return `
+    <div class="mbox" style="max-width:460px">
+      <div class="mh">
+        <div class="mt">${lc('tag',15,'var(--purple)')} Promoção de sabor</div>
+        <button class="mc" onclick="closeModal('ovPromocoesPrev')">${lc('x',13,'currentColor')}</button>
+      </div>
+      <div class="mb">
+        <div style="font-size:var(--text-sm);color:var(--muted);margin-bottom:12px">Sobe a participação de 1 ou mais sabores na projeção de hoje — não muda o total geral de pedidos.</div>
+        <div class="ft-ac-wrap" style="margin-bottom:14px">
+          <input class="inp" id="prevSaborInputModal" placeholder="Buscar sabor..."
+            oninput="_prevBuscarSabor(this.value)" onfocus="_prevBuscarSabor(this.value)">
+          <div class="ft-ac-list" id="prevSaborDrop" style="display:none"></div>
+        </div>
+        <div id="prevPromocoesLista" style="display:flex;flex-direction:column;gap:8px">
+          ${_renderListaPromocoes()}
+        </div>
+      </div>
+      <div class="mf"><button class="btn btn-outline" onclick="closeModal('ovPromocoesPrev')">Fechar</button></div>
+    </div>`;
+}
+
+function _renderListaPromocoes() {
+  const promos = _fatores.promocoes || [];
+  if (!promos.length) return `<div style="font-size:var(--text-sm);color:var(--muted);text-align:center;padding:14px">Nenhuma promoção adicionada ainda</div>`;
+  return promos.map(p => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--r8)">
+      <span style="flex:1;font-size:var(--text-sm);font-weight:600">${p.nome}</span>
+      <input type="number" value="${p.boostPct}" onchange="_prevAjustarPromocao(${p.opcaoId},+this.value)"
+        style="width:60px;padding:5px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:var(--text-sm);font-weight:700;text-align:center">
+      <span style="font-size:var(--text-xs);color:var(--muted)">%</span>
+      <button onclick="_prevRemoverPromocao(${p.opcaoId})" style="background:none;border:none;color:var(--red);cursor:pointer;display:flex;padding:2px">${lc('trash',15,'currentColor')}</button>
+    </div>`).join('');
 }
 
 // Busca de sabor por nome — mesmo padrão de _cwSearchAlvo('sabor')
@@ -703,14 +728,17 @@ function _prevAdicionarPromocao(opcaoId, nome) {
   if (_fatores.promocoes.some(p => p.opcaoId === opcaoId)) { toast('Esse sabor já tem promoção ativa', 'info'); return; }
   _fatores.promocoes.push({ opcaoId, nome, boostPct: 30 });
   saveFatoresPorData();
-  _prevSaborBuscaAberto = false;
-  _prevAtualizarPainelFatores();
+  const input = document.getElementById('prevSaborInputModal');
+  if (input) input.value = '';
+  const drop = document.getElementById('prevSaborDrop');
+  if (drop) { drop.style.display = 'none'; drop.innerHTML = ''; }
+  _prevAtualizarPromocoesUI();
   recalcularPrevisao();
 }
 function _prevRemoverPromocao(opcaoId) {
   _fatores.promocoes = (_fatores.promocoes || []).filter(p => p.opcaoId !== opcaoId);
   saveFatoresPorData();
-  _prevAtualizarPainelFatores();
+  _prevAtualizarPromocoesUI();
   recalcularPrevisao();
 }
 function _prevAjustarPromocao(opcaoId, boostPct) {
@@ -719,6 +747,11 @@ function _prevAjustarPromocao(opcaoId, boostPct) {
   p.boostPct = boostPct;
   saveFatoresPorData();
   recalcularPrevisao();
+}
+function _prevAtualizarPromocoesUI() {
+  const lista = document.getElementById('prevPromocoesLista');
+  if (lista) lista.innerHTML = _renderListaPromocoes();
+  _prevAtualizarPainelFatores();
 }
 
 // ── Painel lateral: histórico (resumo) ─────────────────────────
@@ -878,6 +911,7 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
   const pedDel = Math.ceil(pedidos * b.pctDelivery);
   const capacidadeHora = 60 / cfgPrev.tempoMedioEntregaMin;
   const motoboysHora = {};
+  const pedidosHora  = {};
   // Em dias de pouco movimento, várias horas empatam no mesmo nº necessário
   // — entre empates, prefere a hora mais central da operação (pico "de
   // verdade"), não a primeira hora que bateu o empate.
@@ -888,6 +922,7 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
     const pedHora = Math.ceil(pedDel * b.curva.pct[hStr]);
     const nec = Math.ceil(pedHora / capacidadeHora);
     motoboysHora[h] = nec;
+    pedidosHora[h]  = pedHora;
     if (nec > picoVal || (nec === picoVal && Math.abs(h - meioOperacao) < Math.abs(picoH - meioOperacao))) {
       picoVal = nec; picoH = h;
     }
@@ -920,7 +955,7 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
     grSal, pqSal, grDoc, pqDoc, totGr, totPq, totPz,
     masGrFin, masPqFin, masGrBruto, masPqBruto, lotes, dividir, pizzasAte20h,
     planoMassa, insumosProj,
-    pedDel, motoboysHora, picoH, motTotalDia, nAbertura, nFechamento,
+    pedDel, motoboysHora, pedidosHora, picoH, motTotalDia, nAbertura, nFechamento,
     motFinal: motTotalDia, // alias legado — js/dashboard.js (widget "Previsão do dia") ainda lê esse nome
     horasAbertura, horasFechamento, valorHora, custoGarantido, custoCorrida,
     tempoEntregaMedio: b.tempoEntregaMedio,
@@ -1321,15 +1356,24 @@ function _renderResultado4(r) {
     <!-- Curva horária real -->
     <div style="border-top:1.5px solid var(--border);padding-top:14px">
       <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">
-        ${lc('bar-chart-2',12,'var(--purple)')} Motoboys necessários por hora (curva real)
+        ${lc('bar-chart-2',12,'var(--purple)')} Pedidos e motoboys necessários por hora (curva real)
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:0 0 4px;font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">
+        <span style="min-width:46px">Hora</span>
+        <span style="min-width:56px;text-align:right">Pedidos</span>
+        <span style="flex:1"></span>
+        <span style="min-width:28px;text-align:right">Motob.</span>
+        <span style="min-width:36px"></span>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px">
         ${horas.map(h => {
+          const ped = r.pedidosHora[h];
           const nec = r.motoboysHora[h];
           const barPct = maxNec > 0 ? Math.round(nec / maxNec * 100) : 0;
           const isPico = h === r.picoH;
           return `<div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:var(--text-xs);font-weight:700;color:var(--muted);min-width:46px">${h}h–${h+1}h</span>
+            <span style="font-size:var(--text-sm);font-weight:700;color:var(--text2);min-width:56px;text-align:right">${ped}</span>
             <div style="flex:1;height:20px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative">
               <div style="height:100%;width:${barPct}%;background:${isPico?'var(--purple)':'var(--purple-light)'};border-radius:4px;transition:width .4s"></div>
             </div>
@@ -1378,6 +1422,7 @@ function confirmarPlanejamento() {
     previsaoPizzas:   { grSal: r.grSal, pqSal: r.pqSal, grDoc: r.grDoc, pqDoc: r.pqDoc, totGr: r.totGr, totPq: r.totPq, total: r.totPz },
     massas:           { grandesFinal: r.masGrFin, pequenasFinal: r.masPqFin, margemPct: cfgPrev.margemSeguranca, kgTotal: r.planoMassa.kgMassaTotal },
     lotes:            r.lotes,
+    insumosMassa:     r.planoMassa.ingredientes,
     insumos:          r.insumosProj.insumos.filter(i => i.qtd > 0.001),
     motoboys:         { pedidosDelivery: r.pedDel, total: r.motTotalDia, abertura: r.nAbertura, fechamento: r.nFechamento, custoGarantido: r.custoGarantido, custoCorrida: r.custoCorrida },
     ajustesManualAplicados: Object.values(_ajustes).some(v => v !== null),
@@ -1432,10 +1477,30 @@ function _montaMsgWA(r) {
     `Temperatura: ${r.fatores.temperatura}°C`,
   ].join('\n');
   const lotesLinha = r.lotes.map(l =>
-    `  ${l.label}: ${fmt(l.kgMassa)}kg de massa (${l.grande} grandes + ${l.pequena} pequenas) | ${l.kgFar}kg farinha | ${l.fermG}g fermento`
+    `  ${l.label}: ${fmt(l.kgMassa)}kg de massa (${l.grande} grandes + ${l.pequena} pequenas)`
   ).join('\n');
-  const insumosLinha = (r.insumos || []).slice(0, 10).map(i =>
+  const insumosMassaLinha = (r.insumosMassa || []).map(i =>
     `  ${i.nome}: ${_prevFmtQtd(i.qtd, i.unidade)}`
+  ).join('\n');
+  // Agrupado por categoria (mesma ordem de Cadastros → Insumos) e SEM
+  // corte de quantidade — a versão anterior limitava a 10 itens ordenados
+  // por quantidade bruta, o que também misturava unidades diferentes
+  // (un vs kg) de forma arbitrária e escondia a maior parte da lista.
+  const ordemCat = typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : [];
+  const porCategoriaWA = {};
+  (r.insumos || []).forEach(i => {
+    const cat = i.cat || 'Sem categoria';
+    (porCategoriaWA[cat] = porCategoriaWA[cat] || []).push(i);
+  });
+  const categoriasWA = Object.keys(porCategoriaWA).sort((a, b) => {
+    const ia = ordemCat.indexOf(a), ib = ordemCat.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  const insumosLinha = categoriasWA.map(cat =>
+    `  ${cat}:\n` + porCategoriaWA[cat].map(i => `    ${i.nome}: ${_prevFmtQtd(i.qtd, i.unidade)}`).join('\n')
   ).join('\n');
   const promoLinha = (r.fatores.promocoes || []).length
     ? '\n🏷️ Promoções: ' + r.fatores.promocoes.map(p => `${p.nome} +${p.boostPct}%`).join(', ')
@@ -1451,6 +1516,9 @@ function _montaMsgWA(r) {
 
 ⚙️ Lotes de produção (${r.lotes.length}):
 ${lotesLinha}
+
+🧂 Insumos pra bater a massa:
+${insumosMassaLinha || '  —'}
 
 📦 Insumos pra pré-produção:
 ${insumosLinha || '  —'}
@@ -1475,6 +1543,7 @@ function enviarWATime() {
     previsaoPedidos: _resultado.pedidos,
     massas: { grandesFinal: _resultado.masGrFin, pequenasFinal: _resultado.masPqFin, kgTotal: _resultado.planoMassa.kgMassaTotal },
     lotes: _resultado.lotes,
+    insumosMassa: _resultado.planoMassa.ingredientes,
     insumos: _resultado.insumosProj.insumos.filter(i => i.qtd > 0.001),
     motoboys: { abertura: _resultado.nAbertura, fechamento: _resultado.nFechamento, total: _resultado.motTotalDia, custoGarantido: _resultado.custoGarantido, custoCorrida: _resultado.custoCorrida },
   };
