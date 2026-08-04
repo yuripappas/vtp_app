@@ -468,24 +468,28 @@ function recalcularPrevisao() {
   const totPq = pqSal + pqDoc;
   const totPz = totGr + totPq;
 
-  // ── Mix por sabor projetado (pro card de insumos) ──
-  const meiasPorSaborHoje = {};
-  for (const [k, m] of Object.entries(b.mixSabores)) {
-    meiasPorSaborHoje[k] = { grande: m.grande * fatorFinal, pequena: m.pequena * fatorFinal };
-  }
-
   // ── Massas (margem + sobra de ontem) ──
+  // A margem é aplicada UMA vez, aqui, no nº de pizzas a produzir — tudo
+  // que deriva daí (kg de massa, meias por sabor, insumos, embalagem) usa
+  // esses totais já margeados, sem aplicar margem de novo depois.
   const marg      = cfgPrev.margemSeguranca / 100;
   const masGrBruto = Math.ceil(totGr * (1 + marg));
   const masPqBruto = Math.ceil(totPq * (1 + marg));
   const masGrFin  = _ajustes.grandesFinal  ?? Math.max(0, masGrBruto - _sobraOntem.gr);
   const masPqFin  = _ajustes.pequenasFinal ?? Math.max(0, masPqBruto - _sobraOntem.pq);
 
+  // ── Mix por sabor projetado (pro card de insumos), já com a mesma
+  // margem das pizzas — quem produz mais pizza por segurança precisa de
+  // mais cobertura/sabor também, não só mais massa. ──
+  const meiasPorSaborHoje = {};
+  for (const [k, m] of Object.entries(b.mixSabores)) {
+    meiasPorSaborHoje[k] = { grande: m.grande * fatorFinal * (1 + marg), pequena: m.pequena * fatorFinal * (1 + marg) };
+  }
+
   // ── Janelas horárias reais → lotes de produção ──
   const janelas     = prevProjecaoPorJanela(masGrFin, masPqFin, b.curva.pct);
   const pizzasAte20h = janelas.janela1.grande + janelas.janela1.pequena;
   const dividir      = pizzasAte20h > cfgPrev.limiteBatidaDividida;
-  const totalMassas  = masGrFin + masPqFin || 1;
 
   const lotes = dividir
     ? [
@@ -494,15 +498,20 @@ function recalcularPrevisao() {
       ]
     : [ { num: 1, label: 'Lote único', grande: masGrFin, pequena: masPqFin } ];
 
+  // ── Plano de massas: kg a produzir (não mais só contagem de bolas) ──
+  const pesoMassa  = prevPesoMassaPorPizza();
+  const planoMassa = prevPlanoMassa({ grande: masGrFin, pequena: masPqFin });
+  const farinhaTotal = planoMassa.ingredientes.find(i => /farinha/i.test(i.nome))?.qtd || 0;
   lotes.forEach(l => {
-    const pct   = (l.grande + l.pequena) / totalMassas;
-    const kgFar = +(cfgPrev.kgFarinhaBatida * pct).toFixed(1);
-    l.kgFar = kgFar;
-    l.fermG = +(kgFar * ferAj).toFixed(0);
+    l.kgMassa = +(l.grande * pesoMassa.grande + l.pequena * pesoMassa.pequena).toFixed(2);
+    const pctLote  = planoMassa.kgMassaTotal > 0 ? l.kgMassa / planoMassa.kgMassaTotal : 0;
+    l.kgFar = +(farinhaTotal * pctLote).toFixed(2);
+    l.fermG = +(l.kgFar * ferAj).toFixed(0);
   });
 
-  // ── Insumos projetados (item 3) ──
-  const insumosProj = prevInsumosProjetados(meiasPorSaborHoje, { grande: masGrFin, pequena: masPqFin }, cfgPrev.margemSeguranca);
+  // ── Insumos projetados (item 3) — exclui a massa, que já tem card próprio ──
+  const idsExcluirMassa = new Set([planoMassa.itemIdGr, planoMassa.itemIdPq].filter(Boolean));
+  const insumosProj = prevInsumosProjetados(meiasPorSaborHoje, { grande: masGrFin, pequena: masPqFin }, idsExcluirMassa);
 
   // ── Motoboys ──
   const pedDel = Math.ceil(pedidos * b.pctDelivery);
@@ -549,7 +558,7 @@ function recalcularPrevisao() {
     pedidos, pedidosCalc, media: b.mediaPedidos, coef, fatorFinal,
     grSal, pqSal, grDoc, pqDoc, totGr, totPq, totPz,
     masGrFin, masPqFin, masGrBruto, masPqBruto, lotes, dividir, pizzasAte20h,
-    insumosProj,
+    planoMassa, insumosProj,
     pedDel, motoboysHora, picoH, motTotalDia, nAbertura, nFechamento,
     motFinal: motTotalDia, // alias legado — js/dashboard.js (widget "Previsão do dia") ainda lê esse nome
     horasAbertura, horasFechamento, valorHora, custoGarantido, custoCorrida,
@@ -642,15 +651,17 @@ function _renderResultado3(r) {
       ${lc('package',13,'var(--green)')} <strong>Sobra de ontem:</strong> ${_sobraOntem.gr > 0 ? _sobraOntem.gr+' grandes' : ''} ${_sobraOntem.pq > 0 ? _sobraOntem.pq+' pequenas' : ''} — já descontado da produção de hoje.
       <button onclick="_sobraOntem={gr:0,pq:0};recalcularPrevisao()" style="margin-left:auto;font-size:var(--text-xs);color:var(--muted);background:none;border:none;cursor:pointer">Ignorar</button>
     </div>` : ''}
-    <!-- Massas -->
+    <!-- Massa: kg é a informação principal -->
     <div style="margin-bottom:18px">
-      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Massas recomendadas (com ${cfgPrev.margemSeguranca}% de margem)</div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Massa a produzir hoje (com ${cfgPrev.margemSeguranca}% de margem)</div>
+      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r12);padding:16px 22px;text-align:center;margin-bottom:12px">
+        <div style="font-size:2.4rem;font-weight:800;color:var(--purple);line-height:1">${fmt(r.planoMassa.kgMassaTotal)}kg</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px;text-transform:uppercase">${r.planoMassa.kgMassaGr.toFixed(2)}kg grande + ${r.planoMassa.kgMassaPq.toFixed(2)}kg pequena</div>
+      </div>
+      <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:8px">Quantidade de massas a boleiar</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         ${_kpiMassa('Massas grandes', r.masGrFin, r.totGr, 'var(--purple)', 'grandesFinal')}
         ${_kpiMassa('Massas pequenas', r.masPqFin, r.totPq, '#D97706', 'pequenasFinal')}
-      </div>
-      <div style="background:var(--green-light);border:1px solid var(--green);border-radius:var(--r8);padding:9px 12px;font-size:var(--text-xs);color:#166534;display:flex;align-items:center;gap:8px">
-        ${lc('info',14,'#166534')} Margem de ${cfgPrev.margemSeguranca}% incluída. Total recomendado: <strong>${r.masGrFin + r.masPqFin} massas</strong>
       </div>
     </div>
 
@@ -668,6 +679,10 @@ function _renderResultado3(r) {
               <div style="width:40px;height:40px;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-size:var(--text-sm);font-weight:800;flex-shrink:0">${l.num}</div>
               <div style="flex:1;padding:0 12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
                 <div style="font-size:var(--text-sm);font-weight:700;color:var(--purple);padding:8px 0">${l.label}</div>
+                <div style="text-align:center;background:var(--purple-xlight);border-radius:var(--r6);padding:6px 10px;margin:6px 0">
+                  <div style="font-size:var(--text-2xs);color:var(--purple);text-transform:uppercase">Massa</div>
+                  <div style="font-size:1rem;font-weight:800;color:var(--purple)">${l.kgMassa}kg</div>
+                </div>
                 <div style="text-align:center;padding:8px 0">
                   <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Grandes</div>
                   <div style="font-size:1rem;font-weight:800;color:var(--purple)">${l.grande}</div>
@@ -692,6 +707,26 @@ function _renderResultado3(r) {
         ${lc('thermometer',13,'var(--muted)')} ${r.temp}°C → ${r.ferAj}g de fermento fresco por kg de farinha (ajustado pela temperatura). Tempo de fermentação de cada lote: ver ficha técnica da cozinha.
       </div>
     </div>
+
+    <!-- Insumos da própria receita da massa (farinha, sal, fermento...) -->
+    ${r.planoMassa.ingredientes.length ? `
+    <div style="border-top:1.5px solid var(--border);padding-top:16px;margin-top:16px">
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">
+        ${lc('beaker',13,'var(--muted)')} Insumos pra bater a massa (ficha técnica)
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${r.planoMassa.ingredientes.map(i => `
+          <div style="border:1.5px solid var(--border);border-radius:var(--r8);padding:8px 12px;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:var(--text-sm)">${i.nome}</span>
+            <span style="font-size:var(--text-sm);font-weight:800;color:var(--text2)">${_prevFmtQtd(i.qtd, i.unidade)}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : ''}
+    ${r.planoMassa.semFicha.length ? `
+    <div style="margin-top:10px;background:var(--yellow-light);border:1px solid var(--yellow);border-radius:var(--r8);padding:9px 12px;font-size:var(--text-xs);color:#92400e">
+      ${lc('alert-triangle',13,'#92400e')} Sem ficha técnica cadastrada: ${r.planoMassa.semFicha.join(', ')}
+    </div>` : ''}
+
     <div style="margin-top:14px;border-top:1.5px solid var(--border);padding-top:12px;display:flex;align-items:center;justify-content:space-between">
       <div style="font-size:var(--text-xs);color:var(--muted)">${lc('moon',12,'currentColor')} Ao final do dia, registre a sobra pra calibrar amanhã</div>
       <button onclick="_abrirFechamentoDia()" style="padding:6px 12px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r8);font-size:var(--text-sm);font-weight:600;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:5px">
@@ -771,25 +806,47 @@ function _renderResultado35(r) {
   const { insumos, semFicha } = r.insumosProj;
   const relevantes = insumos.filter(i => i.qtd > 0.001);
 
+  // Agrupa pela mesma categoria de Cadastros → Insumos (CATEGORIAS_INSUMO),
+  // na mesma ordem cadastrada lá — preparados entram na categoria real do
+  // item (ex: um preparado de proteína cai em "Proteínas"), não numa
+  // categoria "Preparados" à parte.
+  const ordem = typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : [];
+  const porCategoria = {};
+  relevantes.forEach(i => {
+    const cat = i.cat || 'Sem categoria';
+    (porCategoria[cat] = porCategoria[cat] || []).push(i);
+  });
+  const categorias = Object.keys(porCategoria).sort((a, b) => {
+    const ia = ordem.indexOf(a), ib = ordem.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
   el.innerHTML = `
     ${relevantes.length === 0
       ? `<div style="text-align:center;padding:20px;color:var(--muted);font-size:var(--text-sm)">${lc('info',15,'var(--muted)')} Nenhum insumo projetado — verifique se os sabores mais vendidos têm ficha técnica cadastrada.</div>`
-      : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${relevantes.map(i => `
-            <div style="border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-              <div style="display:flex;align-items:center;gap:6px;min-width:0">
-                <span style="font-size:var(--text-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.nome}</span>
-                ${i.isProd ? `<span style="flex-shrink:0;font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:8px;background:var(--purple-xlight);color:var(--purple)">preparado</span>` : ''}
-              </div>
-              <span style="flex-shrink:0;font-size:1rem;font-weight:800;color:var(--purple)">${_prevFmtQtd(i.qtd, i.unidade)}</span>
-            </div>`).join('')}
-        </div>`}
+      : categorias.map(cat => `
+          <div style="margin-bottom:16px">
+            <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">${cat}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              ${porCategoria[cat].map(i => `
+                <div style="border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <div style="display:flex;align-items:center;gap:6px;min-width:0">
+                    <span style="font-size:var(--text-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.nome}</span>
+                    ${i.isProd ? `<span style="flex-shrink:0;font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:8px;background:var(--purple-xlight);color:var(--purple)">preparado</span>` : ''}
+                  </div>
+                  <span style="flex-shrink:0;font-size:1rem;font-weight:800;color:var(--purple)">${_prevFmtQtd(i.qtd, i.unidade)}</span>
+                </div>`).join('')}
+            </div>
+          </div>`).join('')}
     ${semFicha.length ? `
       <div style="margin-top:12px;background:var(--yellow-light);border:1px solid var(--yellow);border-radius:var(--r8);padding:9px 12px;font-size:var(--text-xs);color:#92400e">
         ${lc('alert-triangle',13,'#92400e')} Sem ficha técnica cadastrada, não entra no cálculo: ${semFicha.join(', ')}
       </div>` : ''}
     <div style="margin-top:12px;font-size:var(--text-xs);color:var(--muted)">
-      ${lc('info',13,'var(--muted)')} Inclui margem de ${cfgPrev.margemSeguranca}% (mesma da produção de massas). Fichas técnicas em Cadastros → Produtos/Opções.
+      ${lc('info',13,'var(--muted)')} Inclui margem de ${cfgPrev.margemSeguranca}% (mesma da produção de massas). A massa em si está no card acima. Fichas técnicas em Cadastros → Produtos/Opções.
     </div>`;
 }
 
@@ -803,18 +860,6 @@ function _prevFmtQtd(qtd, unidade) {
 function _renderResultado4(r) {
   const el = document.getElementById('resultado4');
   if (!el) return;
-
-  if (!window._motoboySelecionados) window._motoboySelecionados = [];
-
-  const fixosDisp = (typeof funcionarios !== 'undefined' ? funcionarios : [])
-    .filter(f => f.ativo !== false && f.cargo === 'entregador');
-  const diaristasDisp = (typeof terceirizados !== 'undefined' ? terceirizados : [])
-    .filter(t => t.funcao === 'motoboy' && t.status === 'ativo');
-  const todosDisp = [
-    ...fixosDisp.map(f => ({ ...f, _tipo: 'fixo' })),
-    ...diaristasDisp.map(t => ({ ...t, nome: t.nome, _tipo: 'diarista' })),
-  ];
-  const selecionados = window._motoboySelecionados;
 
   const horas = Object.keys(r.motoboysHora).map(Number).sort((a,b) => a-b);
   const maxNec = Math.max(...horas.map(h => r.motoboysHora[h]), 1);
@@ -891,39 +936,6 @@ function _renderResultado4(r) {
       </div>
     </div>
 
-    <!-- Lista de motoboys -->
-    <div style="margin-bottom:16px">
-      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">
-        ${lc('users',12,'var(--orange-dark)')} Motoboys para hoje
-      </div>
-      ${todosDisp.length === 0
-        ? `<div style="font-size:var(--text-sm);color:var(--muted);padding:10px 12px;background:var(--surface2);border-radius:var(--r8);display:flex;flex-direction:column;gap:4px">
-            <div>${lc('info',12,'currentColor')} Nenhum motoboy cadastrado.</div>
-            <div style="font-size:var(--text-xs)">Fixos: cadastre em <strong>Cadastros → Funcionários</strong> com cargo <strong>Entregador</strong></div>
-            <div style="font-size:var(--text-xs)">Terceirizados: cadastre em <strong>Cadastros → Terceirizados</strong> com função <strong>Motoboy</strong></div>
-           </div>`
-        : `<div style="display:flex;flex-direction:column;gap:5px">
-            ${todosDisp.map(mb => {
-              const sel = selecionados.includes(mb.id);
-              const isFixo = mb._tipo === 'fixo';
-              return `<label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r8);cursor:pointer;
-                border:1.5px solid ${sel ? 'var(--orange-dark)' : 'var(--border)'};
-                background:${sel ? 'var(--orange-light)' : 'var(--surface)'};transition:all .15s"
-                onclick="_toggleMotoboyPrev('${mb.id}');event.preventDefault()">
-                <input type="checkbox" ${sel?'checked':''} style="accent-color:var(--orange-dark)" onclick="event.stopPropagation();_toggleMotoboyPrev('${mb.id}')">
-                <span style="font-size:var(--text-sm);font-weight:${sel?'700':'500'}">${mb.nome}</span>
-                <span style="font-size:var(--text-2xs);padding:1px 6px;border-radius:8px;background:${isFixo?'var(--green-light)':'var(--orange-light)'};color:${isFixo?'var(--green)':'var(--orange-dark)'};">${isFixo?'Fixo':'Diarista'}</span>
-                ${mb.valorHora ? `<span style="font-size:var(--text-xs);color:var(--muted);margin-left:auto">R$${fmt(mb.valorHora)}/h</span>` : ''}
-                ${mb.phone ? `<span style="font-size:var(--text-xs);color:var(--muted)">${lc('phone',9,'currentColor')} ${mb.phone}</span>` : ''}
-              </label>`;
-            }).join('')}
-           </div>
-           ${selecionados.length ? `
-             <div style="margin-top:8px;font-size:var(--text-xs);color:var(--orange-dark);font-weight:600">
-               ${lc('check-circle',11,'currentColor')} ${selecionados.length} motoboy${selecionados.length>1?'s':''} selecionado${selecionados.length>1?'s':''} para hoje
-             </div>` : ''}`}
-    </div>
-
     <!-- Curva horária real -->
     <div style="border-top:1.5px solid var(--border);padding-top:14px">
       <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">
@@ -945,14 +957,6 @@ function _renderResultado4(r) {
         }).join('')}
       </div>
     </div>`;
-}
-
-function _toggleMotoboyPrev(id) {
-  if (!window._motoboySelecionados) window._motoboySelecionados = [];
-  const idx = window._motoboySelecionados.indexOf(id);
-  if (idx >= 0) window._motoboySelecionados.splice(idx, 1);
-  else window._motoboySelecionados.push(id);
-  if (_resultado) _renderResultado4(_resultado);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -990,7 +994,7 @@ function confirmarPlanejamento() {
     coeficienteAplicado: r.coef,
     previsaoPedidos:  r.pedidos,
     previsaoPizzas:   { grSal: r.grSal, pqSal: r.pqSal, grDoc: r.grDoc, pqDoc: r.pqDoc, totGr: r.totGr, totPq: r.totPq, total: r.totPz },
-    massas:           { grandesFinal: r.masGrFin, pequenasFinal: r.masPqFin, margemPct: cfgPrev.margemSeguranca },
+    massas:           { grandesFinal: r.masGrFin, pequenasFinal: r.masPqFin, margemPct: cfgPrev.margemSeguranca, kgTotal: r.planoMassa.kgMassaTotal },
     lotes:            r.lotes,
     insumos:          r.insumosProj.insumos.filter(i => i.qtd > 0.001),
     motoboys:         { pedidosDelivery: r.pedDel, total: r.motTotalDia, abertura: r.nAbertura, fechamento: r.nFechamento, custoGarantido: r.custoGarantido, custoCorrida: r.custoCorrida },
@@ -1046,7 +1050,7 @@ function _montaMsgWA(r) {
     `Temperatura: ${r.fatores.temperatura}°C`,
   ].join('\n');
   const lotesLinha = r.lotes.map(l =>
-    `  ${l.label}: ${l.grande} grandes + ${l.pequena} pequenas | ${l.fermG}g fermento`
+    `  ${l.label}: ${fmt(l.kgMassa)}kg de massa (${l.grande} grandes + ${l.pequena} pequenas) | ${l.kgFar}kg farinha | ${l.fermG}g fermento`
   ).join('\n');
   const insumosLinha = (r.insumos || []).slice(0, 10).map(i =>
     `  ${i.nome}: ${_prevFmtQtd(i.qtd, i.unidade)}`
@@ -1057,9 +1061,8 @@ function _montaMsgWA(r) {
 📊 Previsão de pedidos: ${r.previsaoPedidos}
 
 🫓 Produção recomendada:
-  Massas grandes: ${r.massas.grandesFinal}
-  Massas pequenas: ${r.massas.pequenasFinal}
-  Total: ${r.massas.grandesFinal + r.massas.pequenasFinal} massas
+  Massa total: ${fmt(r.massas.kgTotal)}kg
+  Massas grandes: ${r.massas.grandesFinal} · Massas pequenas: ${r.massas.pequenasFinal}
 
 ⚙️ Lotes de produção (${r.lotes.length}):
 ${lotesLinha}
@@ -1086,7 +1089,7 @@ function enviarWATime() {
     data: hoje.toISOString().slice(0,10),
     fatores: { ..._fatores },
     previsaoPedidos: _resultado.pedidos,
-    massas: { grandesFinal: _resultado.masGrFin, pequenasFinal: _resultado.masPqFin },
+    massas: { grandesFinal: _resultado.masGrFin, pequenasFinal: _resultado.masPqFin, kgTotal: _resultado.planoMassa.kgMassaTotal },
     lotes: _resultado.lotes,
     insumos: _resultado.insumosProj.insumos.filter(i => i.qtd > 0.001),
     motoboys: { abertura: _resultado.nAbertura, fechamento: _resultado.nFechamento, total: _resultado.motTotalDia, custoGarantido: _resultado.custoGarantido, custoCorrida: _resultado.custoCorrida },

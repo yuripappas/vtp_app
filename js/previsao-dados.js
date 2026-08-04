@@ -227,11 +227,89 @@ function prevTempoEntregaMedio(validos) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// MASSA — kg a produzir + insumos da própria receita da massa
+// ══════════════════════════════════════════════════════════════
+
+// Acha o ingrediente "massa" dentro da ficha técnica base de um tamanho —
+// o único ingrediente isProd com nome contendo "massa" (molho e embalagem
+// são itens comuns, não preparados). Detectar por nome em vez de fixar um
+// ID: se o cadastro trocar de item, a Previsão acompanha sozinha.
+function prevItemMassa(produtoPizza) {
+  const ing = produtoPizza?.fichaTecnica?.ingredientes?.find(g => {
+    const it = items.find(i => i.id === g.item_id);
+    return it?.isProd && /massa/i.test(it.name);
+  });
+  if (!ing) return null;
+  const it = items.find(i => i.id === ing.item_id);
+  return { itemId: it.id, nome: it.name, pesoPorPizzaKg: ing.peso_g, ficha: it.fichaTecnica };
+}
+
+// Peso de massa (kg) por pizza grande/pequena, direto da ficha técnica —
+// usado pra calcular o kg de cada lote individualmente (prevPlanoMassa dá
+// só o total do dia).
+function prevPesoMassaPorPizza() {
+  const baseGr = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /grande/i.test(p.nome));
+  const basePq = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /pequena/i.test(p.nome));
+  const infoGr = prevItemMassa(baseGr);
+  const infoPq = prevItemMassa(basePq);
+  return {
+    grande: infoGr?.pesoPorPizzaKg || 0,
+    pequena: infoPq?.pesoPorPizzaKg || 0,
+    nome: infoGr?.nome || infoPq?.nome || 'Massa',
+  };
+}
+
+// kg de massa a produzir hoje (grande/pequena, já com margem embutida em
+// pizzasHojeTotais) + expansão da receita própria da massa (farinha, sal,
+// fermento, orégano...) na proporção do rendimento_kg cadastrado —
+// mesma mecânica de "fração do lote" que o CMV usa pra preparados
+// (js/vendas.js:_vExpandeItem), aplicada só a este item.
+function prevPlanoMassa(pizzasHojeTotais) {
+  const baseGr = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /grande/i.test(p.nome));
+  const basePq = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /pequena/i.test(p.nome));
+  const infoGr = prevItemMassa(baseGr);
+  const infoPq = prevItemMassa(basePq);
+  const acc = {};
+  const semFicha = new Set();
+
+  function expandeMassa(info, nPizzas, rotulo) {
+    if (!info || !(nPizzas > 0)) return 0;
+    const kg = info.pesoPorPizzaKg * nPizzas;
+    const rend = info.ficha?.rendimento_kg;
+    if (!(rend > 0) || !info.ficha?.ingredientes?.length) {
+      semFicha.add(`${info.nome} (${rotulo})`);
+      return kg;
+    }
+    const fracao = kg / rend;
+    for (const ing of info.ficha.ingredientes) {
+      const it = items.find(i => i.id === ing.item_id);
+      if (!it) continue;
+      const qtd = (ing.peso_g || 0) / 1000 * fracao;
+      if (!acc[it.id]) acc[it.id] = { id: it.id, nome: it.name, unidade: it.unit, qtd: 0 };
+      acc[it.id].qtd += qtd;
+    }
+    return kg;
+  }
+
+  const kgMassaGr = expandeMassa(infoGr, pizzasHojeTotais.grande, 'grande');
+  const kgMassaPq = expandeMassa(infoPq, pizzasHojeTotais.pequena, 'pequena');
+
+  return {
+    itemIdGr: infoGr?.itemId ?? null,
+    itemIdPq: infoPq?.itemId ?? null,
+    kgMassaGr, kgMassaPq, kgMassaTotal: kgMassaGr + kgMassaPq,
+    ingredientes: Object.values(acc).sort((a, b) => b.qtd - a.qtd),
+    semFicha: Array.from(semFicha),
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
 // INSUMOS PROJETADOS (item 3 — porcionamento pra pré-produção)
 // ══════════════════════════════════════════════════════════════
 
 // Projeta o consumo de insumos/preparados do dia a partir de contagens JÁ
-// PROJETADAS (não de vendas reais) de pizzas e meias por sabor.
+// PROJETADAS (não de vendas reais, e já com margem de segurança embutida
+// em pizzasHojeTotais/meiasPorSaborHoje — não aplica margem de novo aqui).
 //
 // Diferente de vendasInsumosConsumidos (js/vendas.js), que cascateia todo
 // preparado (isProd) até o insumo cru pra dar custo de CMV, aqui a
@@ -241,17 +319,18 @@ function prevTempoEntregaMedio(validos) {
 // ficha técnica (base da pizza + sabor) é creditado como está, sem
 // recursão — a ficha técnica (js/cadastros.js) já guarda peso_g na
 // unidade nativa do item referenciado nesse nível (modo "flat"), sem
-// conversão.
-function prevInsumosProjetados(meiasPorSaborHoje, pizzasHojeTotais, margemPct = 0) {
+// conversão. A massa (ver prevPlanoMassa) é excluída daqui — ela já tem
+// card próprio.
+function prevInsumosProjetados(meiasPorSaborHoje, pizzasHojeTotais, idsExcluir) {
   const acc = {};
   const semFicha = new Set();
-  const mult = 1 + (margemPct || 0) / 100;
+  const pular = idsExcluir || new Set();
 
   function credita(itemId, qtd) {
-    if (!(qtd > 0)) return;
+    if (!(qtd > 0) || pular.has(itemId)) return;
     const it = items.find(i => i.id === itemId);
     if (!it) return;
-    if (!acc[it.id]) acc[it.id] = { id: it.id, nome: it.name, unidade: it.unit, isProd: !!it.isProd, qtd: 0 };
+    if (!acc[it.id]) acc[it.id] = { id: it.id, nome: it.name, unidade: it.unit, cat: it.cat || '', isProd: !!it.isProd, qtd: 0 };
     acc[it.id].qtd += qtd;
   }
 
@@ -263,11 +342,11 @@ function prevInsumosProjetados(meiasPorSaborHoje, pizzasHojeTotais, margemPct = 
   const baseGr = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /grande/i.test(p.nome));
   const basePq = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /pequena/i.test(p.nome));
   if (pizzasHojeTotais.grande > 0) {
-    if (baseGr) expandeFicha(baseGr.fichaTecnica, pizzasHojeTotais.grande * mult, baseGr.nome);
+    if (baseGr) expandeFicha(baseGr.fichaTecnica, pizzasHojeTotais.grande, baseGr.nome);
     else semFicha.add('Base da pizza grande');
   }
   if (pizzasHojeTotais.pequena > 0) {
-    if (basePq) expandeFicha(basePq.fichaTecnica, pizzasHojeTotais.pequena * mult, basePq.nome);
+    if (basePq) expandeFicha(basePq.fichaTecnica, pizzasHojeTotais.pequena, basePq.nome);
     else semFicha.add('Base da pizza pequena');
   }
 
@@ -276,7 +355,7 @@ function prevInsumosProjetados(meiasPorSaborHoje, pizzasHojeTotais, margemPct = 
     if (!(totalMeias > 0)) continue;
     const opc = typeof vendasOpcaoDeSabor === 'function' ? vendasOpcaoDeSabor(saborKey) : null;
     if (!opc) { semFicha.add(typeof _cwTitulo === 'function' ? _cwTitulo(saborKey) : saborKey); continue; }
-    expandeFicha(opc.fichaTecnica, totalMeias * mult, opc.nome);
+    expandeFicha(opc.fichaTecnica, totalMeias, opc.nome);
   }
 
   const insumos = Object.values(acc).sort((a, b) => b.qtd - a.qtd);
