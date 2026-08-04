@@ -61,14 +61,14 @@
   // Load all app scripts in order (data.js reads localStorage already populated above)
   const APP_SCRIPTS = [
     'js/data.js', 'js/utils.js', 'js/cw-api.js', 'js/dashboard.js', 'js/estoque.js',
-    'js/compras.js', 'js/relatorios.js', 'js/modules.js', 'js/previsao.js',
+    'js/compras.js', 'js/relatorios.js', 'js/modules.js', 'js/previsao-dados.js', 'js/previsao.js',
     'js/cadastros.js', 'js/vendas.js', 'js/vendas-ui.js', 'js/configuracoes.js', 'js/desperdicio.js',
     'js/checklist.js', 'js/manutencao.js', 'js/inventario.js',
     'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/etiquetagem.js',
     'js/atendimento.js', 'js/marketing.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=193');
+    await loadScript(src + '?v=197');
   }
 
   // First run: push all initialized data to Supabase
