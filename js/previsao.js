@@ -575,10 +575,10 @@ function _prevGerarImpressao() {
     return ia - ib;
   });
   const insumosHtml = categorias.map(cat => `
-    <div style="break-inside:avoid;margin-bottom:6px">
+    <div class="blk">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#9B91B8;margin-bottom:2px">${cat}</div>
       ${porCategoria[cat].map(i => `
-        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #E5DEFF;font-size:11px">
+        <div class="row">
           <span>${i.nome}${i.isProd ? ' <span style=\"color:#6B21D4;font-size:9px\">(preparado)</span>' : ''}</span>
           <strong>${_prevFmtQtd(i.qtd, i.unidade)}</strong>
         </div>`).join('')}
@@ -586,41 +586,48 @@ function _prevGerarImpressao() {
 
   const horas = Object.keys(r.motoboysHora).map(Number).sort((a, b) => a - b);
   const curvaHtml = horas.map(h => `
-    <span style="display:inline-flex;flex-direction:column;align-items:center;padding:2px 5px;border-radius:4px;background:${h===r.picoH?'#EDE9FE':'transparent'};min-width:30px">
-      <span style="font-size:8px;color:#9B91B8">${h}h</span>
-      <span style="font-size:11px;font-weight:800;color:${h===r.picoH?'#6B21D4':'#1a0a2e'}">${r.motoboysHora[h]}</span>
+    <span style="display:inline-flex;flex-direction:column;align-items:center;padding:2px 4px;border-radius:4px;background:${h===r.picoH?'#EDE9FE':'transparent'};min-width:24px">
+      <span style="font-size:7.5px;color:#9B91B8">${h}h</span>
+      <span style="font-size:10px;font-weight:800;color:${h===r.picoH?'#6B21D4':'#1a0a2e'}">${r.motoboysHora[h]}</span>
     </span>`).join('');
 
+  // Layout em coluna única de fluxo CSS multi-coluna (column-count), não CSS
+  // grid: grid quebra mal entre páginas de impressão (colunas desalinham ou
+  // cortam conteúdo no meio); multi-coluna reflui igual jornal, mantendo o
+  // layout limpo em retrato mesmo quando o conteúdo não cabe numa página só.
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
   <title>Previsão ${dataFmt} — Vai Ter Pizza!</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;color:#1a0a2e;background:#fff;padding:16px;font-size:12px}
-    .header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #6B21D4;padding-bottom:10px;margin-bottom:12px}
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    html,body{width:100%}
+    body{font-family:Arial,sans-serif;color:#1a0a2e;background:#fff;padding:14px;font-size:11px;line-height:1.4}
+    .header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #6B21D4;padding-bottom:8px;margin-bottom:10px}
     .logo-text{font-size:1.1rem;font-weight:800;color:#6B21D4}
-    .logo-sub{font-size:11px;color:#9B91B8;margin-top:2px}
-    .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
-    .kpi{background:#F5F3FF;border:1.5px solid #E5DEFF;border-radius:8px;padding:8px;text-align:center}
-    .kpi-v{font-size:1.15rem;font-weight:800;color:#6B21D4}
-    .kpi-l{font-size:8px;color:#9B91B8;text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
-    .sec-t{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#6B21D4;border-bottom:1.5px solid #E5DEFF;padding-bottom:3px;margin-bottom:6px}
-    .cols{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-bottom:12px}
-    table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px}
-    thead th{background:#6B21D4;color:#fff;padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+    .logo-sub{font-size:10.5px;color:#9B91B8;margin-top:2px}
+    .kpis{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+    .kpi{flex:1 1 110px;min-width:100px;background:#F5F3FF;border:1.5px solid #E5DEFF;border-radius:8px;padding:7px;text-align:center;break-inside:avoid}
+    .kpi-v{font-size:1.05rem;font-weight:800;color:#6B21D4}
+    .kpi-l{font-size:7.5px;color:#9B91B8;text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
+    .sec-t{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#6B21D4;border-bottom:1.5px solid #E5DEFF;padding-bottom:3px;margin-bottom:5px}
+    .content{column-count:2;column-gap:16px;column-rule:1px solid #E5DEFF}
+    .blk{break-inside:avoid;page-break-inside:avoid;margin-bottom:10px}
+    table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:6px}
+    thead th{background:#6B21D4;color:#fff;padding:4px 6px;text-align:left;font-size:8.5px;text-transform:uppercase}
     thead th:nth-child(n+2){text-align:center}
     tbody tr:nth-child(even){background:#F5F3FF}
-    .insumos-grid{column-count:2;column-gap:14px}
-    .bottom{border-top:1.5px solid #E5DEFF;padding-top:10px;display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:16px;align-items:start}
-    .footer{margin-top:14px;border-top:1px solid #E5DEFF;padding-top:6px;font-size:9px;color:#9B91B8;display:flex;justify-content:space-between}
-    .warn{background:#FEF3C7;border:1px solid #F0B429;border-radius:6px;padding:6px 8px;font-size:10px;color:#92400e;margin-top:6px}
-    @media print{body{padding:8px}@page{size:A4;margin:12mm}}
+    tr{break-inside:avoid;page-break-inside:avoid}
+    .row{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #E5DEFF;font-size:10px}
+    .footer{margin-top:12px;border-top:1px solid #E5DEFF;padding-top:5px;font-size:8.5px;color:#9B91B8;display:flex;justify-content:space-between}
+    .warn{background:#FEF3C7;border:1px solid #F0B429;border-radius:6px;padding:5px 7px;font-size:9.5px;color:#92400e;margin-bottom:8px}
+    @page{size:A4 portrait;margin:10mm}
+    @media print{body{padding:6px}}
   </style></head><body>
   <div class="header">
     <div>
       <div class="logo-text">Vai Ter Pizza!</div>
       <div class="logo-sub">Previsão Operacional · ${DIAS[diaSemana]}, ${dataFmt}</div>
     </div>
-    <div style="text-align:right;font-size:10px;color:#9B91B8">Gerado em ${nowStr}</div>
+    <div style="text-align:right;font-size:9.5px;color:#9B91B8">Gerado em ${nowStr}</div>
   </div>
 
   <div class="kpis">
@@ -631,37 +638,38 @@ function _prevGerarImpressao() {
     <div class="kpi"><div class="kpi-v">${r.motTotalDia}</div><div class="kpi-l">Motoboys no pico (${r.picoH}h)</div></div>
   </div>
 
-  <div class="cols">
-    <div>
+  <div class="content">
+    <div class="blk">
       <div class="sec-t">Massas e lotes (+${cfgPrev.margemSeguranca}% margem)</div>
       <table>
         <thead><tr><th>Lote</th><th>Kg massa</th><th>Grandes</th><th>Pequenas</th><th>Farinha</th></tr></thead>
         <tbody>${lotesRows}</tbody>
       </table>
-      ${ingredMassaRows ? `<div class="sec-t" style="margin-top:10px">Insumos da massa (ficha técnica)</div>${ingredMassaRows}` : ''}
-      ${r.planoMassa.semFicha.length ? `<div class="warn">Sem ficha técnica: ${r.planoMassa.semFicha.join(', ')}</div>` : ''}
     </div>
-    <div>
-      <div class="sec-t">Insumos porcionados p/ pré-produção</div>
-      <div class="insumos-grid">${insumosHtml || '<div style="font-size:10px;color:#9B91B8">Nenhum insumo projetado.</div>'}</div>
-      ${semFicha.length ? `<div class="warn">Sem ficha técnica: ${semFicha.join(', ')}</div>` : ''}
-    </div>
-  </div>
+    ${ingredMassaRows ? `<div class="blk"><div class="sec-t">Insumos da massa (ficha técnica)</div>${ingredMassaRows}</div>` : ''}
+    ${r.planoMassa.semFicha.length ? `<div class="warn">Sem ficha técnica: ${r.planoMassa.semFicha.join(', ')}</div>` : ''}
 
-  <div class="bottom">
-    <div>
+    <div class="blk">
+      <div class="sec-t">Insumos porcionados p/ pré-produção</div>
+    </div>
+    ${insumosHtml || '<div class="blk" style="font-size:10px;color:#9B91B8">Nenhum insumo projetado.</div>'}
+    ${semFicha.length ? `<div class="warn">Sem ficha técnica: ${semFicha.join(', ')}</div>` : ''}
+
+    <div class="blk">
       <div class="sec-t">Escala de motoboys</div>
-      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>${r.nFechamento > 0 ? `Abertura (${cfgPrev.horarioAbertura}h→~${cfgPrev.horarioAbertura + r.horasAbertura}h)` : `Dia inteiro`}</span><strong>${r.nAbertura} motoboy${r.nAbertura !== 1 ? 's' : ''}</strong></div>
-      ${r.nFechamento > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Fechamento (~${cfgPrev.horarioFechamento - r.horasFechamento}h→${cfgPrev.horarioFechamento}h)</span><strong>${r.nFechamento} motoboy${r.nFechamento !== 1 ? 's' : ''}</strong></div>` : ''}
+      <div class="row"><span>${r.nFechamento > 0 ? `Abertura (${cfgPrev.horarioAbertura}h→~${cfgPrev.horarioAbertura + r.horasAbertura}h)` : `Dia inteiro`}</span><strong>${r.nAbertura} motoboy${r.nAbertura !== 1 ? 's' : ''}</strong></div>
+      ${r.nFechamento > 0 ? `<div class="row"><span>Fechamento (~${cfgPrev.horarioFechamento - r.horasFechamento}h→${cfgPrev.horarioFechamento}h)</span><strong>${r.nFechamento} motoboy${r.nFechamento !== 1 ? 's' : ''}</strong></div>` : ''}
     </div>
-    <div>
+
+    <div class="blk">
       <div class="sec-t">Custo estimado do dia</div>
-      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Garantido (R$${r.valorHora}/h)</span><strong>R$ ${fmt(r.custoGarantido)}</strong></div>
-      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Por corrida (R$${cfgPrev.valorCorridaMedio}/entrega)</span><strong>R$ ${fmt(r.custoCorrida)}</strong></div>
+      <div class="row"><span>Garantido (R$${r.valorHora}/h)</span><strong>R$ ${fmt(r.custoGarantido)}</strong></div>
+      <div class="row"><span>Por corrida (R$${cfgPrev.valorCorridaMedio}/entrega)</span><strong>R$ ${fmt(r.custoCorrida)}</strong></div>
     </div>
-    <div>
+
+    <div class="blk">
       <div class="sec-t">Pedidos/motoboys por hora</div>
-      <div style="display:flex;flex-wrap:wrap;gap:3px">${curvaHtml}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:2px">${curvaHtml}</div>
     </div>
   </div>
 
