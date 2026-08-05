@@ -656,9 +656,8 @@ function _prevGerarImpressao() {
     ${semFicha.length ? `<div class="warn">Sem ficha técnica: ${semFicha.join(', ')}</div>` : ''}
 
     <div class="blk">
-      <div class="sec-t">Escala de motoboys</div>
-      <div class="row"><span>${r.nFechamento > 0 ? `Abertura (${cfgPrev.horarioAbertura}h→~${cfgPrev.horarioAbertura + r.horasAbertura}h)` : `Dia inteiro`}</span><strong>${r.nAbertura} motoboy${r.nAbertura !== 1 ? 's' : ''}</strong></div>
-      ${r.nFechamento > 0 ? `<div class="row"><span>Fechamento (~${cfgPrev.horarioFechamento - r.horasFechamento}h→${cfgPrev.horarioFechamento}h)</span><strong>${r.nFechamento} motoboy${r.nFechamento !== 1 ? 's' : ''}</strong></div>` : ''}
+      <div class="sec-t">Escala de motoboys (${r.motTotalDia})</div>
+      ${r.motoboys.map(m => `<div class="row"><span>Motoboy ${m.id}: ${m.inicio}h–${m.fim}h (${m.horas}h)</span><strong>R$ ${fmt(m.custo)}</strong></div>`).join('') || '<div class="row"><span>Nenhum motoboy necessário</span></div>'}
     </div>
 
     <div class="blk">
@@ -1056,41 +1055,36 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
       picoVal = nec; picoH = h;
     }
   });
-  const motTotalDia = ajustes.motoboys ?? picoVal;
-  const janelaTotal  = Math.max(1, cfgPrev.horarioFechamento - cfgPrev.horarioAbertura);
-
-  // Com 0 ou 1 motoboy no pico não faz sentido dividir em 2 turnos — cobre
-  // o dia inteiro com 1 turno só. Turnos sempre dentro da janela de
-  // operação (nunca antes de abrir nem depois de fechar).
-  let nAbertura, nFechamento, horasAbertura, horasFechamento;
-  if (motTotalDia <= 1) {
-    nAbertura = motTotalDia; nFechamento = 0;
-    horasAbertura = janelaTotal; horasFechamento = 0;
-  } else {
-    nAbertura   = Math.ceil(motTotalDia / 2);
-    nFechamento = motTotalDia - nAbertura;
-    horasAbertura   = Math.min(janelaTotal, Math.max(4, picoH - cfgPrev.horarioAbertura + 1));
-    horasFechamento = Math.min(janelaTotal, Math.max(4, cfgPrev.horarioFechamento - picoH + 1));
-  }
-
   const ehDomFer   = diaSemana === 0 || fatores.feriado;
   const valorHora  = ehDomFer ? cfgPrev.valorHoraDomFer : cfgPrev.valorHoraNormal;
 
-  // ── Custo real da Moovery: o garantido é um PISO por motoboy (mín. 4h),
-  // não uma escolha entre "pagar tudo garantido" ou "pagar tudo por
-  // corrida" pro dia inteiro. Cada motoboy chamado — tenha corrida ou não —
-  // custa o MAIOR entre o garantido dele (suas horas × valor/h) e suas
-  // próprias corridas × valor médio. Sem rastrear a corrida exata de cada
-  // motoboy, distribui pedDel igualmente entre os motTotalDia chamados
-  // (mesma premissa de uniformidade já usada no resto da tela) e aplica o
-  // piso por turno (horas diferentes entre abertura/fechamento). ──
-  const custoGarantido = Math.round(nAbertura * horasAbertura * valorHora + nFechamento * horasFechamento * valorHora);
+  // ── Escala escalonada (ver prevEscalarMotoboys): cada motoboy recebe a
+  // janela exata da curva que só ele cobre, em vez de 2 turnos fixos de
+  // tamanho igual — elimina tanto hora sem cobertura quanto gente parada
+  // à toa. Custo real da Moovery: o garantido é um PISO por motoboy
+  // (mín. 4h), nunca uma escolha entre "pagar tudo garantido" ou "pagar
+  // tudo por corrida" pro dia inteiro — cada motoboy custa o MAIOR entre
+  // seu piso (horas × valor/h) e suas próprias corridas × valor médio. As
+  // corridas de cada hora são divididas entre quem está de plantão nela
+  // (várias janelas se sobrepõem de propósito, pra cobrir o pico). ──
+  const motoboys = prevEscalarMotoboys(motoboysHora, cfgPrev.horarioAbertura, cfgPrev.horarioFechamento, ajustes.motoboys);
+  const motTotalDia = motoboys.length;
+  const ativosPorHora = {};
+  motoboys.forEach(m => { for (let h = m.inicio; h < m.fim; h++) ativosPorHora[h] = (ativosPorHora[h] || 0) + 1; });
+  motoboys.forEach((m, i) => {
+    let corridas = 0;
+    for (let h = m.inicio; h < m.fim; h++) corridas += (pedidosHora[h] || 0) / (ativosPorHora[h] || 1);
+    m.id = i + 1;
+    m.horas = m.fim - m.inicio;
+    m.corridas = corridas;
+    m.piso = m.horas * valorHora;
+    m.custo = Math.max(m.piso, corridas * cfgPrev.valorCorridaMedio);
+    m.acimaPiso = m.custo > m.piso + 0.01;
+    m.breakEven = cfgPrev.valorCorridaMedio > 0 ? Math.ceil(m.piso / cfgPrev.valorCorridaMedio) : 0;
+  });
+  const custoGarantido     = Math.round(motoboys.reduce((s, m) => s + m.piso, 0));
+  const custoEstimado      = Math.round(motoboys.reduce((s, m) => s + m.custo, 0));
   const corridasPorMotoboy = motTotalDia > 0 ? pedDel / motTotalDia : 0;
-  const custoPorMotoboyAbertura   = Math.max(horasAbertura   * valorHora, corridasPorMotoboy * cfgPrev.valorCorridaMedio);
-  const custoPorMotoboyFechamento = Math.max(horasFechamento * valorHora, corridasPorMotoboy * cfgPrev.valorCorridaMedio);
-  const custoEstimado = Math.round(nAbertura * custoPorMotoboyAbertura + nFechamento * custoPorMotoboyFechamento);
-  const corridasBreakEvenAbertura   = cfgPrev.valorCorridaMedio > 0 ? Math.ceil(horasAbertura   * valorHora / cfgPrev.valorCorridaMedio) : 0;
-  const corridasBreakEvenFechamento = cfgPrev.valorCorridaMedio > 0 ? Math.ceil(horasFechamento * valorHora / cfgPrev.valorCorridaMedio) : 0;
 
   return {
     dataISO, diaSemana, semDados: false,
@@ -1098,10 +1092,9 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
     grSal, pqSal, grDoc, pqDoc, totGr, totPq, totPz,
     masGrFin, masPqFin, masGrBruto, masPqBruto, lotes, dividir, pizzasAte20h,
     planoMassa, insumosProj,
-    pedDel, motoboysHora, pedidosHora, picoH, motTotalDia, nAbertura, nFechamento,
+    pedDel, motoboysHora, pedidosHora, picoH, motTotalDia, motoboys,
     motFinal: motTotalDia, // alias legado — js/dashboard.js (widget "Previsão do dia") ainda lê esse nome
-    horasAbertura, horasFechamento, valorHora, custoGarantido, custoEstimado,
-    corridasPorMotoboy, corridasBreakEvenAbertura, corridasBreakEvenFechamento,
+    valorHora, custoGarantido, custoEstimado, corridasPorMotoboy,
     tempoEntregaMedio: b.tempoEntregaMedio,
     fatores: { ...fatores },
   };
@@ -1463,23 +1456,28 @@ function _renderResultado4(r) {
       </div>
     </div>
 
-    <!-- Escala em 2 turnos -->
+    <!-- Escala escalonada: janela individual por motoboy, não 2 turnos
+         fixos — cada um cobre exatamente a fatia da curva que só ele
+         precisa cobrir (ver prevEscalarMotoboys) -->
     <div style="margin-bottom:16px">
       <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">
-        ${lc('bike',12,'var(--orange-dark)')} Escala sugerida — cobre o pico
+        ${lc('bike',12,'var(--orange-dark)')} Escala sugerida — janela individual
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div style="border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 14px">
-          <div style="font-size:var(--text-xs);color:var(--muted)">${r.nFechamento > 0 ? `Turno abertura (${cfgPrev.horarioAbertura}h → ~${cfgPrev.horarioAbertura+r.horasAbertura}h)` : `Dia inteiro (${cfgPrev.horarioAbertura}h → ${cfgPrev.horarioFechamento}h)`}</div>
-          <div style="font-size:1.4rem;font-weight:800;color:var(--purple)">${r.nAbertura} motoboy${r.nAbertura!==1?'s':''}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted)">${r.nAbertura > 0 ? r.horasAbertura+'h contratadas cada' : '—'}</div>
-        </div>
-        <div style="border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 14px${r.nFechamento === 0 ? ';opacity:.5' : ''}">
-          <div style="font-size:var(--text-xs);color:var(--muted)">${r.nFechamento > 0 ? `Turno fechamento (~${cfgPrev.horarioFechamento-r.horasFechamento}h → ${cfgPrev.horarioFechamento}h)` : 'Turno fechamento'}</div>
-          <div style="font-size:1.4rem;font-weight:800;color:var(--purple)">${r.nFechamento} motoboy${r.nFechamento!==1?'s':''}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted)">${r.nFechamento > 0 ? r.horasFechamento+'h contratadas cada' : 'não precisa nesse dia'}</div>
-        </div>
-      </div>
+      ${!r.motoboys.length ? `<div style="font-size:var(--text-sm);color:var(--muted);text-align:center;padding:10px">Nenhum motoboy necessário nesse dia.</div>` : `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${r.motoboys.map(m => `
+          <div style="display:flex;align-items:center;gap:12px;border:1.5px solid var(--border);border-radius:var(--r10);padding:10px 14px">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:var(--text-sm);flex-shrink:0">${m.id}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--text-sm);font-weight:700">${m.inicio}h – ${m.fim}h <span style="color:var(--muted);font-weight:600">(${m.horas}h)</span></div>
+              <div style="font-size:var(--text-2xs);color:var(--muted)">~${fmt(m.corridas)} corridas previstas · passa do piso a partir de ${m.breakEven}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:var(--text-sm);font-weight:800;color:${m.acimaPiso?'var(--green)':'var(--text2)'}">R$ ${fmt(m.custo)}</div>
+              <div style="font-size:var(--text-2xs);color:var(--muted)">${m.acimaPiso ? 'passou do piso' : 'ficou no piso'}</div>
+            </div>
+          </div>`).join('')}
+      </div>`}
     </div>
 
     <!-- Simulação de custo — Moovery: garantido é PISO por motoboy (mín.
@@ -1499,8 +1497,7 @@ function _renderResultado4(r) {
         </div>
       </div>
       <div style="margin-top:8px;font-size:var(--text-xs);color:var(--muted)">
-        ${lc('info',12,'currentColor')} Cada motoboy chamado custa o piso garantido (mín. 4h × R$${r.valorHora}) OU suas corridas × R$${cfgPrev.valorCorridaMedio}, o que for maior.
-        Nessa previsão, cada um faria em média ~${fmt(r.corridasPorMotoboy)} corridas — o turno abertura passa do piso a partir de ${r.corridasBreakEvenAbertura} corridas${r.nFechamento > 0 ? `, o de fechamento a partir de ${r.corridasBreakEvenFechamento}` : ''}.
+        ${lc('info',12,'currentColor')} Cada motoboy chamado custa o piso garantido (mín. 4h × R$${r.valorHora}) OU suas corridas × R$${cfgPrev.valorCorridaMedio}, o que for maior — detalhe de cada um na escala acima.
       </div>
     </div>
 
@@ -1575,7 +1572,7 @@ function confirmarPlanejamento() {
     lotes:            r.lotes,
     insumosMassa:     r.planoMassa.ingredientes,
     insumos:          r.insumosProj.insumos.filter(i => i.qtd > 0.001),
-    motoboys:         { pedidosDelivery: r.pedDel, total: r.motTotalDia, abertura: r.nAbertura, fechamento: r.nFechamento, custoGarantido: r.custoGarantido, custoEstimado: r.custoEstimado },
+    motoboys:         { pedidosDelivery: r.pedDel, total: r.motTotalDia, escala: r.motoboys, custoGarantido: r.custoGarantido, custoEstimado: r.custoEstimado },
     ajustesManualAplicados: Object.values(_ajustes).some(v => v !== null),
     sobraGr: 0,
     sobraPq: 0,
@@ -1673,10 +1670,8 @@ ${insumosMassaLinha || '  —'}
 📦 Insumos pra pré-produção:
 ${insumosLinha || '  —'}
 
-🏍️ Motoboys:
-  Turno abertura: ${r.motoboys.abertura}
-  Turno fechamento: ${r.motoboys.fechamento}
-  Total: ${r.motoboys.total}
+🏍️ Motoboys (${r.motoboys.total}):
+${(r.motoboys.escala || []).map(m => `  Motoboy ${m.id}: ${m.inicio}h–${m.fim}h (${m.horas}h)`).join('\n') || '  —'}
   Custo estimado: R$${fmt(r.motoboys.custoEstimado)} (piso garantido R$${fmt(r.motoboys.custoGarantido)})
 
 ⚡ Fatores considerados:
@@ -1695,7 +1690,7 @@ function enviarWATime() {
     lotes: _resultado.lotes,
     insumosMassa: _resultado.planoMassa.ingredientes,
     insumos: _resultado.insumosProj.insumos.filter(i => i.qtd > 0.001),
-    motoboys: { abertura: _resultado.nAbertura, fechamento: _resultado.nFechamento, total: _resultado.motTotalDia, custoGarantido: _resultado.custoGarantido, custoEstimado: _resultado.custoEstimado },
+    motoboys: { escala: _resultado.motoboys, total: _resultado.motTotalDia, custoGarantido: _resultado.custoGarantido, custoEstimado: _resultado.custoEstimado },
   };
   const msg = _montaMsgWA(reg);
   if (cfgPrev.waGrupo) {

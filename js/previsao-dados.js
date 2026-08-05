@@ -278,6 +278,61 @@ function prevProjecaoPorJanela(pizzasHojeGr, pizzasHojePq, curvaPct) {
   };
 }
 
+// Escala de motoboys "escalonada": em vez de dividir o pico em 2 turnos
+// fixos de tamanho igual (que tanto deixa hora sem cobertura quanto gente
+// parada à toa, dependendo do formato da curva), cada motoboy recebe a
+// janela exata da curva que só ele cobre — quem entra primeiro cobre quase
+// o dia todo, quem é chamado só pro pico fica o mínimo de 4h. É o mesmo
+// princípio de "camadas de histograma": motoboy da camada K trabalha em
+// toda hora em que a necessidade é >= K.
+function prevEscalarMotoboys(necessidadePorHora, horarioAbertura, horarioFechamento, nAlvo) {
+  const horas = [];
+  for (let h = horarioAbertura; h < horarioFechamento; h++) horas.push(h);
+  if (!horas.length) return [];
+
+  const necMax = horas.reduce((m, h) => Math.max(m, necessidadePorHora[h] || 0), 0);
+  const N = nAlvo != null ? Math.max(0, nAlvo) : necMax;
+  const BRIDGE_GAP = 2; // vale de até 2h não separa em 2 motoboys — mais barato manter o mesmo turno com uma folga no meio do que chamar outra pessoa e pagar outro piso de 4h
+
+  let picoH = horas[0], picoVal = -1;
+  horas.forEach(h => { const v = necessidadePorHora[h] || 0; if (v > picoVal) { picoVal = v; picoH = h; } });
+
+  const estenderPara4h = (ini, fim) => {
+    let duracao = fim - ini;
+    if (duracao >= 4) return [ini, fim];
+    const faltam = 4 - duracao;
+    const extEsq = Math.min(Math.ceil(faltam / 2), ini - horarioAbertura);
+    ini -= extEsq;
+    fim = Math.min(horarioFechamento, fim + (faltam - extEsq));
+    if (fim - ini < 4) ini = Math.max(horarioAbertura, fim - 4);
+    return [ini, fim];
+  };
+
+  const turnos = [];
+  for (let camada = 1; camada <= N; camada++) {
+    const horasCamada = horas.filter(h => (necessidadePorHora[h] || 0) >= camada);
+    if (!horasCamada.length) {
+      // pedido manual acima do que a curva indica — ainda garante uma
+      // janela mínima cobrindo a hora de maior movimento
+      const [ini, fim] = estenderPara4h(picoH, picoH + 1);
+      turnos.push({ inicio: ini, fim });
+      continue;
+    }
+    const blocos = [];
+    let bIni = horasCamada[0], bFim = horasCamada[0];
+    for (let i = 1; i < horasCamada.length; i++) {
+      if (horasCamada[i] - bFim <= BRIDGE_GAP + 1) { bFim = horasCamada[i]; }
+      else { blocos.push([bIni, bFim]); bIni = bFim = horasCamada[i]; }
+    }
+    blocos.push([bIni, bFim]);
+    blocos.forEach(([ini, fim]) => {
+      const [i2, f2] = estenderPara4h(ini, fim + 1);
+      turnos.push({ inicio: i2, fim: f2 });
+    });
+  }
+  return turnos.sort((a, b) => a.inicio - b.inicio || (b.fim - b.inicio) - (a.fim - a.inicio));
+}
+
 // Tempo médio real de entrega (referência informativa ao lado do
 // parâmetro configurável de capacidade do motoboy).
 function prevTempoEntregaMedio(validos) {
