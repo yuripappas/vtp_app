@@ -305,8 +305,8 @@ function prevItemMassa(produtoPizza) {
 }
 
 // Peso de massa (kg) por pizza grande/pequena, direto da ficha técnica —
-// usado pra calcular o kg de cada lote individualmente (prevPlanoMassa dá
-// só o total do dia).
+// usado pra calcular o kg padrão de cada lote a partir da contagem de
+// bolas (grande/pequena).
 function prevPesoMassaPorPizza() {
   const baseGr = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /grande/i.test(p.nome));
   const basePq = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /pequena/i.test(p.nome));
@@ -319,48 +319,37 @@ function prevPesoMassaPorPizza() {
   };
 }
 
-// kg de massa a produzir hoje (grande/pequena, já com margem embutida em
-// pizzasHojeTotais) + expansão da receita própria da massa (farinha, sal,
-// fermento, orégano...) na proporção do rendimento_kg cadastrado —
-// mesma mecânica de "fração do lote" que o CMV usa pra preparados
-// (js/vendas.js:_vExpandeItem), aplicada só a este item.
-function prevPlanoMassa(pizzasHojeTotais) {
+// Info da receita da própria massa (ficha técnica: farinha, sal,
+// fermento...), resolvida uma vez a partir da base grande (ou pequena, se
+// a grande não tiver) — assume que os dois tamanhos usam o MESMO item de
+// massa, que é o caso hoje no cadastro.
+function prevInfoMassa() {
   const baseGr = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /grande/i.test(p.nome));
   const basePq = (typeof produtosPizza !== 'undefined' ? produtosPizza : []).find(p => /pequena/i.test(p.nome));
-  const infoGr = prevItemMassa(baseGr);
-  const infoPq = prevItemMassa(basePq);
-  const acc = {};
-  const semFicha = new Set();
+  return prevItemMassa(baseGr) || prevItemMassa(basePq);
+}
 
-  function expandeMassa(info, nPizzas, rotulo) {
-    if (!info || !(nPizzas > 0)) return 0;
-    const kg = info.pesoPorPizzaKg * nPizzas;
-    const rend = info.ficha?.rendimento_kg;
-    if (!(rend > 0) || !info.ficha?.ingredientes?.length) {
-      semFicha.add(`${info.nome} (${rotulo})`);
-      return kg;
-    }
-    const fracao = kg / rend;
-    for (const ing of info.ficha.ingredientes) {
-      const it = items.find(i => i.id === ing.item_id);
-      if (!it) continue;
-      const qtd = (ing.peso_g || 0) / 1000 * fracao;
-      if (!acc[it.id]) acc[it.id] = { id: it.id, nome: it.name, unidade: it.unit, qtd: 0 };
-      acc[it.id].qtd += qtd;
-    }
-    return kg;
+// Expande a receita da massa (rendimento_kg-based) pra uma quantidade de
+// kg QUALQUER — pensada pra ser chamada por lote, não só pro total do
+// dia. Isso permite um ajuste manual de kg (pra fechar uma conta redonda
+// de receita, ex.: bater 22kg em vez de 21,1kg) recalcular a farinha/sal/
+// fermento daquele lote especificamente, sem tocar no resto da previsão.
+function prevExpandeMassaPorKg(kg, infoMassa) {
+  if (!infoMassa || !(kg > 0)) return { ingredientes: [], semFicha: false };
+  const rend = infoMassa.ficha?.rendimento_kg;
+  if (!(rend > 0) || !infoMassa.ficha?.ingredientes?.length) {
+    return { ingredientes: [], semFicha: true };
   }
-
-  const kgMassaGr = expandeMassa(infoGr, pizzasHojeTotais.grande, 'grande');
-  const kgMassaPq = expandeMassa(infoPq, pizzasHojeTotais.pequena, 'pequena');
-
-  return {
-    itemIdGr: infoGr?.itemId ?? null,
-    itemIdPq: infoPq?.itemId ?? null,
-    kgMassaGr, kgMassaPq, kgMassaTotal: kgMassaGr + kgMassaPq,
-    ingredientes: Object.values(acc).sort((a, b) => b.qtd - a.qtd),
-    semFicha: Array.from(semFicha),
-  };
+  const acc = {};
+  const fracao = kg / rend;
+  for (const ing of infoMassa.ficha.ingredientes) {
+    const it = items.find(i => i.id === ing.item_id);
+    if (!it) continue;
+    const qtd = (ing.peso_g || 0) / 1000 * fracao;
+    if (!acc[it.id]) acc[it.id] = { id: it.id, nome: it.name, unidade: it.unit, qtd: 0 };
+    acc[it.id].qtd += qtd;
+  }
+  return { ingredientes: Object.values(acc).sort((a, b) => b.qtd - a.qtd), semFicha: false };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -379,7 +368,7 @@ function prevPlanoMassa(pizzasHojeTotais) {
 // ficha técnica (base da pizza + sabor) é creditado como está, sem
 // recursão — a ficha técnica (js/cadastros.js) já guarda peso_g na
 // unidade nativa do item referenciado nesse nível (modo "flat"), sem
-// conversão. A massa (ver prevPlanoMassa) é excluída daqui — ela já tem
+// conversão. A massa (ver prevExpandeMassaPorKg) é excluída daqui — ela já tem
 // card próprio.
 function prevInsumosProjetados(meiasPorSaborHoje, pizzasHojeTotais, idsExcluir) {
   const acc = {};

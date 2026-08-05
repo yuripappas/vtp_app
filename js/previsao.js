@@ -14,10 +14,6 @@ const CFG_PREV_DEFAULT = {
   // Massas
   margemSeguranca:      10,   // %
   limiteBatidaDividida: 40,   // pizzas até as 20h → acima disso, divide em 2 lotes
-  kgFarinhaBatida:      10,   // kg por lote (referência p/ cálculo de fermento)
-  // Fermento
-  fermentoBasePorKg:    10,   // g/kg a temp de referência
-  tempReferencia:       22,   // °C
   // Motoboys
   tempoMedioEntregaMin: 12.5, // minutos por entrega (10–15min informado pelo usuário)
   entregasPorMotoboyDia:20,   // referência/sanity check
@@ -92,10 +88,10 @@ function _prevDiaSeguinte(dataISO) {
 }
 
 function _prevFatoresDefault() {
-  return { chuva: false, feriado: false, evento: false, temperatura: 28, obs: '', promocoes: [] };
+  return { chuva: false, feriado: false, evento: false, obs: '', promocoes: [] };
 }
 function _prevAjustesDefault() {
-  return { pedidos: null, grandesFinal: null, pequenasFinal: null, motoboys: null };
+  return { pedidos: null, grandesFinal: null, pequenasFinal: null, motoboys: null, kgMassaPorLote: {} };
 }
 
 // Aponta _fatores/_ajustes pros objetos persistidos da data em questão,
@@ -443,50 +439,25 @@ function _montarLayout(hoje, diaSem) {
 
 // ── Seção 1: Contexto do dia ──────────────────────────────────
 function _renderSecao1(hoje, diaSem) {
-  const n     = _dadosSemana.length;
-  const media = _base.mediaPedidos;
-  const tend  = _base.tendencia;
+  const n    = _dadosSemana.length;
+  const tend = _base.tendencia;
   const hojeISO   = _prevHojeISO();
   const amanhaISO = _prevDiaSeguinte(hojeISO);
   const rotuloDia = _dataRef === hojeISO ? 'Planejamento de hoje'
     : _dataRef === amanhaISO ? 'Planejamento de amanhã' : 'Planejamento do dia';
   return `
-    <div style="background:linear-gradient(135deg,#6B21D4,#9333EA);border-radius:var(--r12);padding:20px 22px;color:#fff">
-      <div style="font-size:var(--text-xs);opacity:.7;text-transform:uppercase;letter-spacing:.9px;margin-bottom:6px">
-        ${rotuloDia} · dados reais da operação
-      </div>
-      <div style="font-size:1.5rem;font-weight:800;margin-bottom:4px">
-        ${DIAS[diaSem]}, ${hoje.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}
-      </div>
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:10px">
-        <div style="background:rgba(255,255,255,.15);border-radius:var(--r8);padding:8px 14px;text-align:center">
-          <div style="font-size:1.4rem;font-weight:800">${n}</div>
-          <div style="font-size:var(--text-2xs);opacity:.8;text-transform:uppercase">${DIAS[diaSem]}s encontradas</div>
-        </div>
-        <div style="background:rgba(255,255,255,.15);border-radius:var(--r8);padding:8px 14px;text-align:center">
-          <div style="font-size:1.4rem;font-weight:800">${n ? Math.round(media) : '—'}</div>
-          <div style="font-size:var(--text-2xs);opacity:.8;text-transform:uppercase">Pedidos (ponderado)</div>
-        </div>
-        ${tend !== null ? `
-        <div style="background:rgba(255,255,255,.15);border-radius:var(--r8);padding:8px 14px;text-align:center">
-          <div style="font-size:1.4rem;font-weight:800;color:${tend>=0?'#B9F6CA':'#FFCDD2'}">${tend>0?'+':''}${tend}%</div>
-          <div style="font-size:var(--text-2xs);opacity:.8;text-transform:uppercase">Tendência recente</div>
-        </div>` : ''}
-        <div style="margin-left:auto;display:flex;gap:8px">
-          ${n ? `<button onclick="_abrirHistoricoReal()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 12px;border-radius:var(--r8);font-size:var(--text-xs);cursor:pointer;font-weight:600">
-                Ver histórico real
-               </button>` : ''}
-          <button onclick="renderPrevisao()" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:6px 12px;border-radius:var(--r8);font-size:var(--text-xs);cursor:pointer;font-weight:600">
-            ${lc('refresh-cw',13,'#fff')} Sincronizar agora
-          </button>
-        </div>
+    <div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <div style="font-size:1.3rem;font-weight:800;color:var(--text)">${DIAS[diaSem]}, ${hoje.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div>
+        <div style="font-size:var(--text-xs);color:var(--muted)">${rotuloDia} · dados reais da operação</div>
+        ${tend !== null ? `<span style="font-size:var(--text-sm);font-weight:700;color:${tend>=0?'var(--green)':'var(--red)'}">${tend>0?'+':''}${tend}% tendência</span>` : ''}
       </div>
       ${!n ? `
-        <div style="margin-top:12px;background:rgba(255,200,50,.2);border:1px solid rgba(255,200,50,.4);border-radius:var(--r8);padding:8px 12px;font-size:var(--text-xs);opacity:.9">
-          ${lc('alert-triangle',13,'#FFD700')} Nenhum pedido de ${DIAS[diaSem]} encontrado em cw_pedidos ainda. A previsão aparece automaticamente assim que houver histórico real.
+        <div style="margin-top:10px;background:var(--yellow-light);border:1px solid var(--yellow);border-radius:var(--r8);padding:8px 12px;font-size:var(--text-xs);color:#92400e">
+          ${lc('alert-triangle',13,'#92400e')} Nenhum pedido de ${DIAS[diaSem]} encontrado em cw_pedidos ainda. A previsão aparece automaticamente assim que houver histórico real.
         </div>` : n < cfgPrev.semanasHistorico ? `
-        <div style="margin-top:12px;background:rgba(255,200,50,.15);border:1px solid rgba(255,200,50,.4);border-radius:var(--r8);padding:8px 12px;font-size:var(--text-xs);opacity:.9">
-          ${lc('alert-triangle',13,'#FFD700')} Só ${n} de ${cfgPrev.semanasHistorico} ${DIAS[diaSem]}s desejadas — operação ainda recente. Usando o que existe.
+        <div style="margin-top:10px;background:var(--yellow-light);border:1px solid var(--yellow);border-radius:var(--r8);padding:8px 12px;font-size:var(--text-xs);color:#92400e">
+          ${lc('alert-triangle',13,'#92400e')} Só ${n} de ${cfgPrev.semanasHistorico} ${DIAS[diaSem]}s encontradas — operação ainda recente. Usando o que existe.
         </div>` : ''}
     </div>`;
 }
@@ -561,7 +532,149 @@ function _renderRodape() {
         style="padding:13px 18px;background:#25D366;color:#fff;border:none;border-radius:var(--r10);font-size:var(--text-md);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
         ${lc('message-circle',16,'#fff')} Enviar WA
       </button>
+      <button onclick="_prevGerarImpressao()"
+        style="padding:13px 18px;background:var(--surface);color:var(--purple);border:1.5px solid var(--purple);border-radius:var(--r10);font-size:var(--text-md);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        ${lc('printer',16,'var(--purple)')} Imprimir
+      </button>
     </div>`;
+}
+
+// ── Impressão: 1 página A4 com os números operacionais do dia ─
+function _prevGerarImpressao() {
+  const r = _resultado;
+  if (!r || r.semDados) { toast('Sem previsão calculada pra imprimir ainda.', 'warn'); return; }
+
+  const diaSemana  = new Date(_dataRef + 'T12:00:00').getDay();
+  const dataFmt    = new Date(_dataRef + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const nowStr     = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+
+  const lotesRows = r.lotes.map(l => `
+    <tr>
+      <td style="padding:5px 8px;font-weight:700">${l.label}</td>
+      <td style="padding:5px 8px;text-align:center;font-weight:800;color:#6B21D4">${l.kgMassa}kg</td>
+      <td style="padding:5px 8px;text-align:center">${l.grande}</td>
+      <td style="padding:5px 8px;text-align:center">${l.pequena}</td>
+      <td style="padding:5px 8px;text-align:center">${l.kgFar}kg</td>
+    </tr>`).join('');
+
+  const ingredMassaRows = r.planoMassa.ingredientes.map(i => `
+    <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #E5DEFF">
+      <span>${i.nome}</span><strong>${_prevFmtQtd(i.qtd, i.unidade)}</strong>
+    </div>`).join('');
+
+  const { insumos, semFicha } = r.insumosProj;
+  const relevantes = insumos.filter(i => i.qtd > 0.001);
+  const ordem = typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : [];
+  const porCategoria = {};
+  relevantes.forEach(i => { const cat = i.cat || 'Sem categoria'; (porCategoria[cat] = porCategoria[cat] || []).push(i); });
+  const categorias = Object.keys(porCategoria).sort((a, b) => {
+    const ia = ordem.indexOf(a), ib = ordem.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  const insumosHtml = categorias.map(cat => `
+    <div style="break-inside:avoid;margin-bottom:6px">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#9B91B8;margin-bottom:2px">${cat}</div>
+      ${porCategoria[cat].map(i => `
+        <div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #E5DEFF;font-size:11px">
+          <span>${i.nome}${i.isProd ? ' <span style=\"color:#6B21D4;font-size:9px\">(preparado)</span>' : ''}</span>
+          <strong>${_prevFmtQtd(i.qtd, i.unidade)}</strong>
+        </div>`).join('')}
+    </div>`).join('');
+
+  const horas = Object.keys(r.motoboysHora).map(Number).sort((a, b) => a - b);
+  const curvaHtml = horas.map(h => `
+    <span style="display:inline-flex;flex-direction:column;align-items:center;padding:2px 5px;border-radius:4px;background:${h===r.picoH?'#EDE9FE':'transparent'};min-width:30px">
+      <span style="font-size:8px;color:#9B91B8">${h}h</span>
+      <span style="font-size:11px;font-weight:800;color:${h===r.picoH?'#6B21D4':'#1a0a2e'}">${r.motoboysHora[h]}</span>
+    </span>`).join('');
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Previsão ${dataFmt} — Vai Ter Pizza!</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#1a0a2e;background:#fff;padding:16px;font-size:12px}
+    .header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #6B21D4;padding-bottom:10px;margin-bottom:12px}
+    .logo-text{font-size:1.1rem;font-weight:800;color:#6B21D4}
+    .logo-sub{font-size:11px;color:#9B91B8;margin-top:2px}
+    .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+    .kpi{background:#F5F3FF;border:1.5px solid #E5DEFF;border-radius:8px;padding:8px;text-align:center}
+    .kpi-v{font-size:1.15rem;font-weight:800;color:#6B21D4}
+    .kpi-l{font-size:8px;color:#9B91B8;text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
+    .sec-t{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#6B21D4;border-bottom:1.5px solid #E5DEFF;padding-bottom:3px;margin-bottom:6px}
+    .cols{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-bottom:12px}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px}
+    thead th{background:#6B21D4;color:#fff;padding:5px 8px;text-align:left;font-size:9px;text-transform:uppercase}
+    thead th:nth-child(n+2){text-align:center}
+    tbody tr:nth-child(even){background:#F5F3FF}
+    .insumos-grid{column-count:2;column-gap:14px}
+    .bottom{border-top:1.5px solid #E5DEFF;padding-top:10px;display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:16px;align-items:start}
+    .footer{margin-top:14px;border-top:1px solid #E5DEFF;padding-top:6px;font-size:9px;color:#9B91B8;display:flex;justify-content:space-between}
+    .warn{background:#FEF3C7;border:1px solid #F0B429;border-radius:6px;padding:6px 8px;font-size:10px;color:#92400e;margin-top:6px}
+    @media print{body{padding:8px}@page{size:A4;margin:12mm}}
+  </style></head><body>
+  <div class="header">
+    <div>
+      <div class="logo-text">Vai Ter Pizza!</div>
+      <div class="logo-sub">Previsão Operacional · ${DIAS[diaSemana]}, ${dataFmt}</div>
+    </div>
+    <div style="text-align:right;font-size:10px;color:#9B91B8">Gerado em ${nowStr}</div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-v">${r.pedidos}</div><div class="kpi-l">Pedidos previstos</div></div>
+    <div class="kpi"><div class="kpi-v">${r.totPz}</div><div class="kpi-l">Pizzas (${r.totGr}G+${r.totPq}P)</div></div>
+    <div class="kpi"><div class="kpi-v">${fmt(r.planoMassa.kgMassaTotal)}kg</div><div class="kpi-l">Massa total</div></div>
+    <div class="kpi"><div class="kpi-v">${r.pedDel}</div><div class="kpi-l">Pedidos delivery</div></div>
+    <div class="kpi"><div class="kpi-v">${r.motTotalDia}</div><div class="kpi-l">Motoboys no pico (${r.picoH}h)</div></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="sec-t">Massas e lotes (+${cfgPrev.margemSeguranca}% margem)</div>
+      <table>
+        <thead><tr><th>Lote</th><th>Kg massa</th><th>Grandes</th><th>Pequenas</th><th>Farinha</th></tr></thead>
+        <tbody>${lotesRows}</tbody>
+      </table>
+      ${ingredMassaRows ? `<div class="sec-t" style="margin-top:10px">Insumos da massa (ficha técnica)</div>${ingredMassaRows}` : ''}
+      ${r.planoMassa.semFicha.length ? `<div class="warn">Sem ficha técnica: ${r.planoMassa.semFicha.join(', ')}</div>` : ''}
+    </div>
+    <div>
+      <div class="sec-t">Insumos porcionados p/ pré-produção</div>
+      <div class="insumos-grid">${insumosHtml || '<div style="font-size:10px;color:#9B91B8">Nenhum insumo projetado.</div>'}</div>
+      ${semFicha.length ? `<div class="warn">Sem ficha técnica: ${semFicha.join(', ')}</div>` : ''}
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div>
+      <div class="sec-t">Escala de motoboys</div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>${r.nFechamento > 0 ? `Abertura (${cfgPrev.horarioAbertura}h→~${cfgPrev.horarioAbertura + r.horasAbertura}h)` : `Dia inteiro`}</span><strong>${r.nAbertura} motoboy${r.nAbertura !== 1 ? 's' : ''}</strong></div>
+      ${r.nFechamento > 0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>Fechamento (~${cfgPrev.horarioFechamento - r.horasFechamento}h→${cfgPrev.horarioFechamento}h)</span><strong>${r.nFechamento} motoboy${r.nFechamento !== 1 ? 's' : ''}</strong></div>` : ''}
+    </div>
+    <div>
+      <div class="sec-t">Custo estimado do dia</div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Garantido (R$${r.valorHora}/h)</span><strong>R$ ${fmt(r.custoGarantido)}</strong></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>Por corrida (R$${cfgPrev.valorCorridaMedio}/entrega)</span><strong>R$ ${fmt(r.custoCorrida)}</strong></div>
+    </div>
+    <div>
+      <div class="sec-t">Pedidos/motoboys por hora</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px">${curvaHtml}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Vai Ter Pizza! · Previsão Operacional</span>
+    <span>Impresso em ${nowStr}</span>
+  </div>
+  <script>window.onload = () => { window.print(); }<\/script>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('Permita popups para gerar o PDF', 'warn');
 }
 
 // ── Painel lateral: fatores ───────────────────────────────────
@@ -577,20 +690,6 @@ function _renderPainelFatores() {
         <div style="font-size:var(--text-xs);color:var(--muted)">${ehHoje ? 'Ajustam a previsão em cima dos dados reais' : `Salvos pra ${new Date(_dataRef+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} — não afetam outros dias`}</div>
       </div>
       <div style="padding:13px 15px;display:flex;flex-direction:column;gap:13px">
-
-        <!-- Temperatura -->
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-            <div style="font-size:var(--text-sm);font-weight:600">${lc('thermometer',14,'var(--purple)')} Temperatura da cozinha</div>
-            <div style="display:flex;align-items:center;gap:5px">
-              <input type="number" id="fTemp" value="${_fatores.temperatura}" min="15" max="45"
-                style="width:52px;padding:4px 6px;border:1.5px solid var(--purple);border-radius:var(--r6);font-size:var(--text-md);font-weight:700;text-align:center;color:var(--purple)"
-                oninput="_fatores.temperatura=+this.value;saveFatoresPorData();recalcularPrevisao()">
-              <span style="font-size:var(--text-sm);color:var(--muted)">°C</span>
-            </div>
-          </div>
-          <div id="tempHint" style="font-size:var(--text-xs);color:var(--muted);background:var(--surface2);border-radius:var(--r6);padding:4px 8px"></div>
-        </div>
 
         <!-- Chuva -->
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -827,12 +926,9 @@ function _renderPainelAcoes() {
 // diferentes, com histórico e fatores próprios).
 function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem) {
   const b = base;
-  const temp  = fatores.temperatura;
-  const coefF = Math.pow(2, (cfgPrev.tempReferencia - temp) / 5);
-  const ferAj = +(cfgPrev.fermentoBasePorKg * coefF).toFixed(1);
 
   if (!b.validos.length) {
-    return { dataISO, diaSemana, semDados: true, ferAj, temp, fatores: { ...fatores } };
+    return { dataISO, diaSemana, semDados: true, fatores: { ...fatores } };
   }
 
   // ── Coeficiente dos fatores do dia ──
@@ -893,18 +989,43 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
     : [ { num: 1, label: 'Lote único', grande: masGrFin, pequena: masPqFin } ];
 
   // ── Plano de massas: kg a produzir (não mais só contagem de bolas) ──
-  const pesoMassa  = prevPesoMassaPorPizza();
-  const planoMassa = prevPlanoMassa({ grande: masGrFin, pequena: masPqFin });
-  const farinhaTotal = planoMassa.ingredientes.find(i => /farinha/i.test(i.nome))?.qtd || 0;
+  // Cada lote é uma batida separada, então tem seu próprio kg ajustável —
+  // dá pra arredondar pra bater uma conta redonda de receita (ex.: 22kg
+  // em vez de 21,1kg) sem afetar pizzas/insumos de sabor/embalagem, que
+  // continuam vindo de masGrFin/masPqFin normalmente. O ajuste só muda a
+  // farinha/sal/fermento DAQUELE lote (recalculados pra bater com o novo
+  // kg), nunca a demanda projetada.
+  const pesoMassa = prevPesoMassaPorPizza();
+  const infoMassa = prevInfoMassa();
+  const semFichaMassaSet = new Set();
   lotes.forEach(l => {
-    l.kgMassa = +(l.grande * pesoMassa.grande + l.pequena * pesoMassa.pequena).toFixed(2);
-    const pctLote = planoMassa.kgMassaTotal > 0 ? l.kgMassa / planoMassa.kgMassaTotal : 0;
-    l.kgFar = +(farinhaTotal * pctLote).toFixed(2);
-    l.fermG = +(l.kgFar * ferAj).toFixed(0);
+    const kgPadrao = +(l.grande * pesoMassa.grande + l.pequena * pesoMassa.pequena).toFixed(2);
+    const override = ajustes.kgMassaPorLote?.[l.num];
+    l.kgMassaPadrao = kgPadrao;
+    l.kgMassa = override != null ? override : kgPadrao;
+    l.kgAjustado = override != null;
+    const expandido = prevExpandeMassaPorKg(l.kgMassa, infoMassa);
+    l.ingredientesMassa = expandido.ingredientes;
+    if (expandido.semFicha) semFichaMassaSet.add(infoMassa?.nome || 'Massa');
+    l.kgFar = +(expandido.ingredientes.find(i => /farinha/i.test(i.nome))?.qtd || 0).toFixed(2);
   });
 
+  const ingredientesMassaAcc = {};
+  lotes.forEach(l => l.ingredientesMassa.forEach(i => {
+    if (!ingredientesMassaAcc[i.id]) ingredientesMassaAcc[i.id] = { ...i, qtd: 0 };
+    ingredientesMassaAcc[i.id].qtd += i.qtd;
+  }));
+  const planoMassa = {
+    itemId: infoMassa?.itemId ?? null,
+    kgMassaGr: +(masGrFin * pesoMassa.grande).toFixed(2),
+    kgMassaPq: +(masPqFin * pesoMassa.pequena).toFixed(2),
+    kgMassaTotal: +lotes.reduce((s, l) => s + l.kgMassa, 0).toFixed(2),
+    ingredientes: Object.values(ingredientesMassaAcc).sort((a, b) => b.qtd - a.qtd),
+    semFicha: Array.from(semFichaMassaSet),
+  };
+
   // ── Insumos projetados (item 3) — exclui a massa, que já tem card próprio ──
-  const idsExcluirMassa = new Set([planoMassa.itemIdGr, planoMassa.itemIdPq].filter(Boolean));
+  const idsExcluirMassa = new Set([planoMassa.itemId].filter(Boolean));
   const insumosProj = prevInsumosProjetados(meiasPorSaborHoje, { grande: masGrFin, pequena: masPqFin }, idsExcluirMassa);
 
   // ── Motoboys ──
@@ -959,7 +1080,6 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
     motFinal: motTotalDia, // alias legado — js/dashboard.js (widget "Previsão do dia") ainda lê esse nome
     horasAbertura, horasFechamento, valorHora, custoGarantido, custoCorrida,
     tempoEntregaMedio: b.tempoEntregaMedio,
-    ferAj, temp,
     fatores: { ...fatores },
   };
 }
@@ -970,12 +1090,6 @@ function recalcularPrevisao() {
   if (_carregando || !_base) return;
   const diaSemana = new Date(_dataRef + 'T12:00:00').getDay();
   _resultado = _prevCalcularDia(_dataRef, diaSemana, _base, _fatores, _ajustes, _sobraOntem);
-
-  const hintEl = document.getElementById('tempHint');
-  if (hintEl) {
-    const diff = +(_resultado.ferAj - cfgPrev.fermentoBasePorKg).toFixed(1);
-    hintEl.innerHTML = `Base: <strong>${cfgPrev.fermentoBasePorKg}g/kg</strong> → A ${_resultado.temp}°C: <strong style="color:var(--purple)">${_resultado.ferAj}g/kg</strong> <span>(${diff > 0 ? '+' : ''}${diff}g — ${_resultado.temp > cfgPrev.tempReferencia ? 'mais quente, menos fermento' : 'mais frio, mais fermento'})</span>`;
-  }
 
   if (_resultado.semDados) {
     ['resultado2','resultado3','resultado35','resultado4'].forEach(id => {
@@ -1101,6 +1215,12 @@ function _renderResultado3(r) {
                 <div style="text-align:center;background:var(--purple-xlight);border-radius:var(--r6);padding:6px 10px;margin:6px 0">
                   <div style="font-size:var(--text-2xs);color:var(--purple);text-transform:uppercase">Massa</div>
                   <div style="font-size:1rem;font-weight:800;color:var(--purple)">${l.kgMassa}kg</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:3px;margin-top:3px">
+                    <input type="number" step="0.1" min="0" value="${l.kgMassa}"
+                      onchange="_prevAjustarKgLote(${l.num},+this.value)"
+                      style="width:46px;padding:1px 3px;border:1px solid var(--purple-light);border-radius:4px;font-size:9px;text-align:center;color:var(--purple);font-weight:700">
+                    ${l.kgAjustado ? `<button onclick="_prevResetarKgLote(${l.num})" title="Voltar pro padrão (${l.kgMassaPadrao}kg)" style="font-size:9px;color:var(--purple);background:none;border:none;cursor:pointer;padding:0;line-height:1">↺</button>` : ''}
+                  </div>
                 </div>
                 <div style="text-align:center;padding:8px 0">
                   <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Grandes</div>
@@ -1114,16 +1234,12 @@ function _renderResultado3(r) {
                   <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Farinha</div>
                   <div style="font-size:1rem;font-weight:800">${l.kgFar}kg</div>
                 </div>
-                <div style="text-align:center;background:var(--yellow-light);border-radius:var(--r6);padding:6px 10px;margin:6px 0">
-                  <div style="font-size:var(--text-2xs);color:#92400e;text-transform:uppercase">Fermento</div>
-                  <div style="font-size:1rem;font-weight:800;color:#92400e">${l.fermG}g</div>
-                </div>
               </div>
             </div>
           </div>`).join('')}
       </div>
-      <div style="margin-top:10px;background:var(--surface2);border-radius:var(--r8);padding:9px 12px;font-size:var(--text-xs);color:var(--muted)">
-        ${lc('thermometer',13,'var(--muted)')} ${r.temp}°C → ${r.ferAj}g de fermento fresco por kg de farinha (ajustado pela temperatura). Tempo de fermentação de cada lote: ver ficha técnica da cozinha.
+      <div style="margin-top:10px;font-size:var(--text-xs);color:var(--muted)">
+        ${lc('info',13,'var(--muted)')} Ajuste o kg de cada lote pra fechar uma conta redonda de receita — farinha/sal/fermento recalculam sozinhos, sem mudar a previsão de pizzas.
       </div>
     </div>
 
@@ -1152,6 +1268,18 @@ function _renderResultado3(r) {
         ${lc('clipboard-check',13,'currentColor')} Fechar dia
       </button>
     </div>`;
+}
+
+function _prevAjustarKgLote(num, kg) {
+  if (!_ajustes.kgMassaPorLote) _ajustes.kgMassaPorLote = {};
+  _ajustes.kgMassaPorLote[num] = kg;
+  saveAjustesPorData();
+  recalcularPrevisao();
+}
+function _prevResetarKgLote(num) {
+  if (_ajustes.kgMassaPorLote) delete _ajustes.kgMassaPorLote[num];
+  saveAjustesPorData();
+  recalcularPrevisao();
 }
 
 function _kpiMassa(label, valFin, valBase, cor, campo) {
@@ -1474,7 +1602,6 @@ function _montaMsgWA(r) {
     `Chuva: ${r.fatores.chuva   ? 'Sim' : 'Não'}`,
     `Feriado: ${r.fatores.feriado ? 'Sim' : 'Não'}`,
     `Evento: ${r.fatores.evento  ? 'Sim' : 'Não'}`,
-    `Temperatura: ${r.fatores.temperatura}°C`,
   ].join('\n');
   const lotesLinha = r.lotes.map(l =>
     `  ${l.label}: ${fmt(l.kgMassa)}kg de massa (${l.grande} grandes + ${l.pequena} pequenas)`
@@ -1652,13 +1779,6 @@ function _renderModalCfg() {
           <div class="field"><label>Margem de segurança (%)</label><input class="inp" type="number" id="cMargem" value="${c.margemSeguranca}" min="0" max="50"></div>
           <div class="field"><label>Limite p/ dividir em 2 lotes (pizzas até 20h)</label><input class="inp" type="number" id="cLimite" value="${c.limiteBatidaDividida}" min="1"></div>
         </div>
-        <div class="field"><label>Kg farinha por lote cheio (referência)</label><input class="inp" type="number" id="cKgFar" value="${c.kgFarinhaBatida}" step="0.5" min="1"></div>
-
-        <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("beaker",14,"currentColor")} Fermento</div>
-        <div class="f2">
-          <div class="field"><label>Fermento base (g/kg de farinha)</label><input class="inp" type="number" id="cFermBase" value="${c.fermentoBasePorKg}" step="0.5" min="1"><span style="font-size:var(--text-xs);color:var(--muted)">na temp. de referência</span></div>
-          <div class="field"><label>Temperatura de referência (°C)</label><input class="inp" type="number" id="cTempRef" value="${c.tempReferencia}" min="10" max="40"></div>
-        </div>
 
         <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);padding:14px 0 10px">${lc("truck",14,"currentColor")} Motoboys</div>
         <div class="f2">
@@ -1697,9 +1817,6 @@ function _salvarCfgPrev() {
     semanasHistorico:      +document.getElementById('cSemanas').value    || 8,
     margemSeguranca:       +document.getElementById('cMargem').value     || 10,
     limiteBatidaDividida:  +document.getElementById('cLimite').value     || 40,
-    kgFarinhaBatida:       +document.getElementById('cKgFar').value      || 10,
-    fermentoBasePorKg:     +document.getElementById('cFermBase').value   || 10,
-    tempReferencia:        +document.getElementById('cTempRef').value    || 22,
     tempoMedioEntregaMin:  +document.getElementById('cTempoEnt').value   || 12.5,
     entregasPorMotoboyDia: +document.getElementById('cEntDia').value     || 20,
     horarioAbertura:       +document.getElementById('cHorAbre').value    || 17,
