@@ -91,7 +91,7 @@ function _prevFatoresDefault() {
   return { chuva: false, feriado: false, evento: false, obs: '', promocoes: [] };
 }
 function _prevAjustesDefault() {
-  return { pedidos: null, grandesFinal: null, pequenasFinal: null, motoboys: null, kgMassaPorLote: {} };
+  return { pedidos: null, grandesFinal: null, pequenasFinal: null, motoboys: null, kgMassaPorLote: {}, margemExtraPct: 0, insumosOverride: {} };
 }
 
 // Aponta _fatores/_ajustes pros objetos persistidos da data em questão,
@@ -402,6 +402,7 @@ function _montarLayout(hoje, diaSem) {
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px">
 
         <div id="secao1Wrap">${_renderSecao1(hoje, diaSem)}</div>
+        <div id="margemExtraWrap">${_renderMargemExtraCard()}</div>
         ${_renderSecao2()}
         ${_renderSecao3()}
         ${_renderSecao35()}
@@ -460,6 +461,40 @@ function _renderSecao1(hoje, diaSem) {
           ${lc('alert-triangle',13,'#92400e')} Só ${n} de ${cfgPrev.semanasHistorico} ${DIAS[diaSem]}s encontradas — operação ainda recente. Usando o que existe.
         </div>` : ''}
     </div>`;
+}
+
+// ── Margem extra de segurança (manual, só pra produção — não mexe na
+// previsão de pedidos/pizzas). Sempre visível, com destaque quando ativa. ──
+function _renderMargemExtraCard() {
+  const pct    = _ajustes.margemExtraPct || 0;
+  const ativo  = pct > 0;
+  const presets = [0, 10, 20, 30];
+  return `
+    <div class="card" style="border:1.5px solid ${ativo ? 'var(--orange-dark)' : 'var(--border)'};background:${ativo ? 'var(--orange-light)' : 'var(--surface)'}">
+      <div style="padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div style="font-size:var(--text-sm);font-weight:800;display:flex;align-items:center;gap:6px;color:${ativo ? '#7C2D12' : 'var(--text)'}">
+            ${lc('shield-alert',15,ativo ? '#C2410C' : 'var(--muted)')} Margem extra de segurança${ativo ? ` — +${pct}% ativa` : ''}
+          </div>
+          <div style="font-size:var(--text-xs);color:${ativo ? '#9A3412' : 'var(--muted)'};margin-top:2px">Aumenta só massa e insumos pra hoje — não muda a previsão de pedidos/pizzas</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${presets.map(p => `
+            <button onclick="_prevSetMargemExtra(${p})" style="padding:6px 13px;border-radius:20px;font-size:var(--text-sm);font-weight:700;cursor:pointer;border:1.5px solid ${pct===p?'var(--orange-dark)':'var(--border)'};background:${pct===p?'var(--orange-dark)':'var(--surface)'};color:${pct===p?'#fff':'var(--muted)'}">
+              ${p === 0 ? 'Nenhuma' : '+' + p + '%'}
+            </button>`).join('')}
+          <input type="number" min="0" max="100" value="${pct}" title="Percentual personalizado"
+            style="width:56px;padding:6px;border:1.5px solid var(--border);border-radius:var(--r8);font-weight:700;text-align:center;font-size:var(--text-sm)"
+            onchange="_prevSetMargemExtra(+this.value)">
+        </div>
+      </div>
+    </div>`;
+}
+
+function _prevSetMargemExtra(pct) {
+  _ajustes.margemExtraPct = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  saveAjustesPorData();
+  recalcularPrevisao();
 }
 
 // ── Seção 2: Previsão de pedidos e pizzas ─────────────────────
@@ -640,7 +675,7 @@ function _prevGerarImpressao() {
 
   <div class="content">
     <div class="blk">
-      <div class="sec-t">Massas e lotes (+${cfgPrev.margemSeguranca}% margem)</div>
+      <div class="sec-t">Massas e lotes (+${cfgPrev.margemSeguranca}% margem${_ajustes.margemExtraPct > 0 ? ` +${_ajustes.margemExtraPct}% extra` : ''})</div>
       <table>
         <thead><tr><th>Lote</th><th>Kg massa</th><th>Grandes</th><th>Pequenas</th><th>Farinha</th></tr></thead>
         <tbody>${lotesRows}</tbody>
@@ -961,13 +996,17 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
   const totPq = pqSal + pqDoc;
   const totPz = totGr + totPq;
 
-  // ── Massas (margem + sobra de ontem + ajuste manual) ──
-  // A margem é aplicada UMA vez, aqui, no nº de pizzas a produzir — é a
-  // ÚNICA fonte de verdade pro resto do cálculo (kg de massa, sabores/
-  // insumos, embalagem). Nada mais aplica margem separadamente.
+  // ── Massas (margem + margem extra manual + sobra de ontem + ajuste
+  // manual) ── A margem é aplicada UMA vez, aqui, no nº de pizzas a
+  // produzir — é a ÚNICA fonte de verdade pro resto do cálculo (kg de
+  // massa, sabores/insumos, embalagem). Nada mais aplica margem
+  // separadamente. `margemExtraPct` é um reforço manual "pra essa noite"
+  // (ex.: achar que a previsão pode errar) — infla só a PRODUÇÃO (massa e
+  // insumos), nunca a previsão de pedidos/pizzas mostrada na Seção 2.
   const marg       = cfgPrev.margemSeguranca / 100;
-  const masGrBruto = Math.ceil(totGr * (1 + marg));
-  const masPqBruto = Math.ceil(totPq * (1 + marg));
+  const margExtra  = 1 + (ajustes.margemExtraPct || 0) / 100;
+  const masGrBruto = Math.ceil(totGr * (1 + marg) * margExtra);
+  const masPqBruto = Math.ceil(totPq * (1 + marg) * margExtra);
   const masGrFin   = ajustes.grandesFinal  ?? Math.max(0, masGrBruto - sobraOntem.gr);
   const masPqFin   = ajustes.pequenasFinal ?? Math.max(0, masPqBruto - sobraOntem.pq);
 
@@ -1034,6 +1073,17 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
   // ── Insumos projetados (item 3) — exclui a massa, que já tem card próprio ──
   const idsExcluirMassa = new Set([planoMassa.itemId].filter(Boolean));
   const insumosProj = prevInsumosProjetados(meiasPorSaborHoje, { grande: masGrFin, pequena: masPqFin }, idsExcluirMassa);
+  // Ajuste manual por item (arredondar cada insumo pra uma quantidade
+  // redonda, ex. de compra/porcionamento) — não recalcula nada a jusante,
+  // é só o valor final exibido/enviado pra esse insumo nesse dia.
+  const overrideInsumos = ajustes.insumosOverride || {};
+  insumosProj.insumos.forEach(i => {
+    if (overrideInsumos[i.id] != null) {
+      i.qtdCalc  = i.qtd;
+      i.qtd      = overrideInsumos[i.id];
+      i.ajustado = true;
+    }
+  });
 
   // ── Motoboys ──
   const pedDel = Math.ceil(pedidos * b.pctDelivery);
@@ -1106,6 +1156,9 @@ function recalcularPrevisao() {
   if (_carregando || !_base) return;
   const diaSemana = new Date(_dataRef + 'T12:00:00').getDay();
   _resultado = _prevCalcularDia(_dataRef, diaSemana, _base, _fatores, _ajustes, _sobraOntem);
+
+  const margemExtraEl = document.getElementById('margemExtraWrap');
+  if (margemExtraEl) margemExtraEl.innerHTML = _renderMargemExtraCard();
 
   if (_resultado.semDados) {
     ['resultado2','resultado3','resultado35','resultado4'].forEach(id => {
@@ -1298,6 +1351,18 @@ function _prevResetarKgLote(num) {
   recalcularPrevisao();
 }
 
+function _prevAjustarInsumo(itemId, qtd) {
+  if (!_ajustes.insumosOverride) _ajustes.insumosOverride = {};
+  _ajustes.insumosOverride[itemId] = qtd;
+  saveAjustesPorData();
+  recalcularPrevisao();
+}
+function _prevResetarInsumo(itemId) {
+  if (_ajustes.insumosOverride) delete _ajustes.insumosOverride[itemId];
+  saveAjustesPorData();
+  recalcularPrevisao();
+}
+
 function _kpiMassa(label, valFin, valBase, cor, campo) {
   return `<div style="border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 14px">
     <div style="font-size:var(--text-xs);color:var(--text2);margin-bottom:6px">${label}</div>
@@ -1365,7 +1430,10 @@ function _renderResultado35(r) {
   const el = document.getElementById('resultado35');
   if (!el) return;
   const { insumos, semFicha } = r.insumosProj;
-  const relevantes = insumos.filter(i => i.qtd > 0.001);
+  // Usa o valor CALCULADO (antes de qualquer ajuste manual) pra decidir o
+  // que é relevante — senão um insumo ajustado manualmente pra 0 (ex.:
+  // "não precisa hoje") some da lista e não dá mais pra resetar.
+  const relevantes = insumos.filter(i => (i.qtdCalc ?? i.qtd) > 0.001);
 
   // Agrupa pela mesma categoria de Cadastros → Insumos (CATEGORIAS_INSUMO),
   // na mesma ordem cadastrada lá — preparados entram na categoria real do
@@ -1392,14 +1460,25 @@ function _renderResultado35(r) {
           <div style="margin-bottom:16px">
             <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">${cat}</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              ${porCategoria[cat].map(i => `
-                <div style="border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+              ${porCategoria[cat].map(i => {
+                const isKgL    = /^(kg|l)$/i.test(i.unidade || '');
+                const step     = isKgL ? 0.1 : 1;
+                const inputVal = isKgL ? Math.round(i.qtd * 100) / 100 : Math.ceil(i.qtd);
+                return `
+                <div style="border:1.5px solid ${i.ajustado ? 'var(--purple-light)' : 'var(--border)'};background:${i.ajustado ? 'var(--purple-xlight)' : 'transparent'};border-radius:var(--r8);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
                   <div style="display:flex;align-items:center;gap:6px;min-width:0">
                     <span style="font-size:var(--text-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.nome}</span>
                     ${i.isProd ? `<span style="flex-shrink:0;font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:8px;background:var(--purple-xlight);color:var(--purple)">preparado</span>` : ''}
                   </div>
-                  <span style="flex-shrink:0;font-size:1rem;font-weight:800;color:var(--purple)">${_prevFmtQtd(i.qtd, i.unidade)}</span>
-                </div>`).join('')}
+                  <div style="flex-shrink:0;display:flex;align-items:center;gap:4px">
+                    <input type="number" step="${step}" min="0" value="${inputVal}"
+                      onchange="_prevAjustarInsumo('${i.id}',+this.value)"
+                      style="width:62px;padding:3px 5px;border:1.5px solid ${i.ajustado ? 'var(--purple-light)' : 'var(--border)'};border-radius:4px;font-size:var(--text-sm);font-weight:800;text-align:right;color:var(--purple)">
+                    <span style="font-size:var(--text-2xs);color:var(--muted)">${i.unidade || 'un'}</span>
+                    ${i.ajustado ? `<button onclick="_prevResetarInsumo('${i.id}')" title="Voltar pro calculado (${_prevFmtQtd(i.qtdCalc, i.unidade)})" style="font-size:11px;color:var(--purple);background:none;border:none;cursor:pointer;padding:0;line-height:1">↺</button>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
             </div>
           </div>`).join('')}
     ${semFicha.length ? `
@@ -1568,7 +1647,7 @@ function confirmarPlanejamento() {
     coeficienteAplicado: r.coef,
     previsaoPedidos:  r.pedidos,
     previsaoPizzas:   { grSal: r.grSal, pqSal: r.pqSal, grDoc: r.grDoc, pqDoc: r.pqDoc, totGr: r.totGr, totPq: r.totPq, total: r.totPz },
-    massas:           { grandesFinal: r.masGrFin, pequenasFinal: r.masPqFin, margemPct: cfgPrev.margemSeguranca, kgTotal: r.planoMassa.kgMassaTotal },
+    massas:           { grandesFinal: r.masGrFin, pequenasFinal: r.masPqFin, margemPct: cfgPrev.margemSeguranca, margemExtraPct: _ajustes.margemExtraPct || 0, kgTotal: r.planoMassa.kgMassaTotal },
     lotes:            r.lotes,
     insumosMassa:     r.planoMassa.ingredientes,
     insumos:          r.insumosProj.insumos.filter(i => i.qtd > 0.001),
@@ -1657,7 +1736,7 @@ function _montaMsgWA(r) {
 
 📊 Previsão de pedidos: ${r.previsaoPedidos}
 
-🫓 Produção recomendada:
+🫓 Produção recomendada:${r.massas.margemExtraPct > 0 ? ` (com +${r.massas.margemExtraPct}% de margem extra pra hoje)` : ''}
   Massa total: ${fmt(r.massas.kgTotal)}kg
   Massas grandes: ${r.massas.grandesFinal} · Massas pequenas: ${r.massas.pequenasFinal}
 
@@ -1686,7 +1765,7 @@ function enviarWATime() {
     data: _dataRef,
     fatores: _resultado.fatores,
     previsaoPedidos: _resultado.pedidos,
-    massas: { grandesFinal: _resultado.masGrFin, pequenasFinal: _resultado.masPqFin, kgTotal: _resultado.planoMassa.kgMassaTotal },
+    massas: { grandesFinal: _resultado.masGrFin, pequenasFinal: _resultado.masPqFin, margemExtraPct: _ajustes.margemExtraPct || 0, kgTotal: _resultado.planoMassa.kgMassaTotal },
     lotes: _resultado.lotes,
     insumosMassa: _resultado.planoMassa.ingredientes,
     insumos: _resultado.insumosProj.insumos.filter(i => i.qtd > 0.001),
