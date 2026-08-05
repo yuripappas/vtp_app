@@ -473,16 +473,24 @@ function _renderMargemExtraCard() {
     <div class="card" style="border:1.5px solid ${ativo ? 'var(--orange-dark)' : 'var(--border)'};background:${ativo ? 'var(--orange-light)' : 'var(--surface)'}">
       <div style="padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
-          <div style="font-size:var(--text-sm);font-weight:800;display:flex;align-items:center;gap:6px;color:${ativo ? '#7C2D12' : 'var(--text)'}">
-            ${lc('shield-alert',15,ativo ? '#C2410C' : 'var(--muted)')} Margem extra de segurança${ativo ? ` — +${pct}% ativa` : ''}
+          <div style="font-size:var(--text-sm);font-weight:800;display:flex;align-items:center;gap:6px;color:${ativo ? 'var(--orange-fg)' : 'var(--text)'}">
+            ${lc('shield-alert',15,ativo ? 'var(--orange-dark)' : 'var(--muted)')} Margem extra de segurança${ativo ? ` — +${pct}% ativa` : ''}
           </div>
-          <div style="font-size:var(--text-xs);color:${ativo ? '#9A3412' : 'var(--muted)'};margin-top:2px">Aumenta só massa e insumos pra hoje — não muda a previsão de pedidos/pizzas</div>
+          <div style="font-size:var(--text-xs);color:${ativo ? 'var(--orange-fg)' : 'var(--muted)'};margin-top:2px">Aumenta só massa e insumos pra hoje — não muda a previsão de pedidos/pizzas</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          ${presets.map(p => `
-            <button onclick="_prevSetMargemExtra(${p})" style="padding:6px 13px;border-radius:20px;font-size:var(--text-sm);font-weight:700;cursor:pointer;border:1.5px solid ${pct===p?'var(--orange-dark)':'var(--border)'};background:${pct===p?'var(--orange-dark)':'var(--surface)'};color:${pct===p?'#fff':'var(--muted)'}">
+          ${presets.map(p => {
+            // "Nenhuma" selecionada é o estado neutro/padrão (roxo, igual
+            // outros toggles da tela) — só os presets >0% usam laranja,
+            // que sinaliza "margem extra ativa" de verdade. Um "Nenhuma"
+            // pintado de laranja passaria a falsa impressão de alerta.
+            const sel  = pct === p;
+            const cor  = p === 0 ? 'var(--purple)' : 'var(--orange-dark)';
+            return `
+            <button onclick="_prevSetMargemExtra(${p})" style="padding:6px 13px;border-radius:20px;font-size:var(--text-sm);font-weight:700;cursor:pointer;border:1.5px solid ${sel?cor:'var(--border)'};background:${sel?cor:'var(--surface)'};color:${sel?'#fff':'var(--muted)'}">
               ${p === 0 ? 'Nenhuma' : '+' + p + '%'}
-            </button>`).join('')}
+            </button>`;
+          }).join('')}
           <input type="number" min="0" max="100" value="${pct}" title="Percentual personalizado"
             style="width:56px;padding:6px;border:1.5px solid var(--border);border-radius:var(--r8);font-weight:700;text-align:center;font-size:var(--text-sm)"
             onchange="_prevSetMargemExtra(+this.value)">
@@ -1459,7 +1467,7 @@ function _renderResultado35(r) {
       : categorias.map(cat => `
           <div style="margin-bottom:16px">
             <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">${cat}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px">
               ${porCategoria[cat].map(i => {
                 const isKgL    = /^(kg|l)$/i.test(i.unidade || '');
                 const step     = isKgL ? 0.1 : 1;
