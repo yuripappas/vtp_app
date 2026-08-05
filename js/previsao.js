@@ -269,7 +269,7 @@ function _prevAgregarResultados(validos) {
     totalKgMassa:     soma(r => r.planoMassa.kgMassaTotal),
     totalMotoboyDias: soma(r => r.motTotalDia),
     custoGarantido:   soma(r => r.custoGarantido),
-    custoCorrida:     soma(r => r.custoCorrida),
+    custoEstimado:    soma(r => r.custoEstimado),
     insumos: Object.values(insumosAgg).sort((a, b) => b.qtd - a.qtd),
   };
 }
@@ -321,8 +321,8 @@ function _renderAgregadoPeriodo(ag) {
             <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Motoboy-dias</div>
           </div>
           <div style="background:var(--surface2);border-radius:var(--r10);padding:12px;text-align:center">
-            <div style="font-size:1.2rem;font-weight:800;color:var(--text2)">R$${fmt(ag.custoGarantido)}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Custo motoboy (garantido)</div>
+            <div style="font-size:1.2rem;font-weight:800;color:var(--text2)">R$${fmt(ag.custoEstimado)}</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase">Custo motoboy estimado</div>
           </div>
         </div>
         ${topInsumos.length ? `
@@ -662,9 +662,9 @@ function _prevGerarImpressao() {
     </div>
 
     <div class="blk">
-      <div class="sec-t">Custo estimado do dia</div>
-      <div class="row"><span>Garantido (R$${r.valorHora}/h)</span><strong>R$ ${fmt(r.custoGarantido)}</strong></div>
-      <div class="row"><span>Por corrida (R$${cfgPrev.valorCorridaMedio}/entrega)</span><strong>R$ ${fmt(r.custoCorrida)}</strong></div>
+      <div class="sec-t">Custo estimado do dia (Moovery)</div>
+      <div class="row"><span>Estimado (piso + corridas)</span><strong>R$ ${fmt(r.custoEstimado)}</strong></div>
+      <div class="row"><span>Piso garantido (R$${r.valorHora}/h · mín. 4h)</span><strong>R$ ${fmt(r.custoGarantido)}</strong></div>
     </div>
 
     <div class="blk">
@@ -1075,8 +1075,22 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
 
   const ehDomFer   = diaSemana === 0 || fatores.feriado;
   const valorHora  = ehDomFer ? cfgPrev.valorHoraDomFer : cfgPrev.valorHoraNormal;
+
+  // ── Custo real da Moovery: o garantido é um PISO por motoboy (mín. 4h),
+  // não uma escolha entre "pagar tudo garantido" ou "pagar tudo por
+  // corrida" pro dia inteiro. Cada motoboy chamado — tenha corrida ou não —
+  // custa o MAIOR entre o garantido dele (suas horas × valor/h) e suas
+  // próprias corridas × valor médio. Sem rastrear a corrida exata de cada
+  // motoboy, distribui pedDel igualmente entre os motTotalDia chamados
+  // (mesma premissa de uniformidade já usada no resto da tela) e aplica o
+  // piso por turno (horas diferentes entre abertura/fechamento). ──
   const custoGarantido = Math.round(nAbertura * horasAbertura * valorHora + nFechamento * horasFechamento * valorHora);
-  const custoCorrida   = Math.round(pedDel * cfgPrev.valorCorridaMedio);
+  const corridasPorMotoboy = motTotalDia > 0 ? pedDel / motTotalDia : 0;
+  const custoPorMotoboyAbertura   = Math.max(horasAbertura   * valorHora, corridasPorMotoboy * cfgPrev.valorCorridaMedio);
+  const custoPorMotoboyFechamento = Math.max(horasFechamento * valorHora, corridasPorMotoboy * cfgPrev.valorCorridaMedio);
+  const custoEstimado = Math.round(nAbertura * custoPorMotoboyAbertura + nFechamento * custoPorMotoboyFechamento);
+  const corridasBreakEvenAbertura   = cfgPrev.valorCorridaMedio > 0 ? Math.ceil(horasAbertura   * valorHora / cfgPrev.valorCorridaMedio) : 0;
+  const corridasBreakEvenFechamento = cfgPrev.valorCorridaMedio > 0 ? Math.ceil(horasFechamento * valorHora / cfgPrev.valorCorridaMedio) : 0;
 
   return {
     dataISO, diaSemana, semDados: false,
@@ -1086,7 +1100,8 @@ function _prevCalcularDia(dataISO, diaSemana, base, fatores, ajustes, sobraOntem
     planoMassa, insumosProj,
     pedDel, motoboysHora, pedidosHora, picoH, motTotalDia, nAbertura, nFechamento,
     motFinal: motTotalDia, // alias legado — js/dashboard.js (widget "Previsão do dia") ainda lê esse nome
-    horasAbertura, horasFechamento, valorHora, custoGarantido, custoCorrida,
+    horasAbertura, horasFechamento, valorHora, custoGarantido, custoEstimado,
+    corridasPorMotoboy, corridasBreakEvenAbertura, corridasBreakEvenFechamento,
     tempoEntregaMedio: b.tempoEntregaMedio,
     fatores: { ...fatores },
   };
@@ -1467,25 +1482,25 @@ function _renderResultado4(r) {
       </div>
     </div>
 
-    <!-- Simulação de custo -->
+    <!-- Simulação de custo — Moovery: garantido é PISO por motoboy (mín.
+         4h), corrida só é cobrada quando passa do próprio piso dele -->
     <div style="margin-bottom:16px">
       <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">
-        ${lc('dollar-sign',12,'var(--green)')} Simulação de custo do dia
+        ${lc('dollar-sign',12,'var(--green)')} Custo estimado do dia (Moovery)
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div style="background:var(--surface2);border-radius:var(--r10);padding:12px 14px;text-align:center">
-          <div style="font-size:1.3rem;font-weight:800;color:var(--text2)">R$ ${fmt(r.custoGarantido)}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:2px">Garantido (R$${r.valorHora}/h${r.diaSemana===0||r.fatores.feriado?' · dom/feriado':''})</div>
+        <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r10);padding:12px 14px;text-align:center">
+          <div style="font-size:1.3rem;font-weight:800;color:var(--purple)">R$ ${fmt(r.custoEstimado)}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:2px">Estimado (piso + corridas que passam do piso)</div>
         </div>
         <div style="background:var(--surface2);border-radius:var(--r10);padding:12px 14px;text-align:center">
-          <div style="font-size:1.3rem;font-weight:800;color:var(--text2)">R$ ${fmt(r.custoCorrida)}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:2px">Por corrida (R$${cfgPrev.valorCorridaMedio}/entrega)</div>
+          <div style="font-size:1.3rem;font-weight:800;color:var(--text2)">R$ ${fmt(r.custoGarantido)}</div>
+          <div style="font-size:var(--text-2xs);color:var(--muted);text-transform:uppercase;margin-top:2px">Piso garantido (R$${r.valorHora}/h · mín. 4h${r.diaSemana===0||r.fatores.feriado?' · dom/feriado':''})</div>
         </div>
       </div>
       <div style="margin-top:8px;font-size:var(--text-xs);color:var(--muted)">
-        ${r.custoGarantido <= r.custoCorrida
-          ? `${lc('info',12,'currentColor')} Garantido sai mais barato hoje (R$${fmt(r.custoCorrida-r.custoGarantido)} de diferença) — mas se não bater o garantido, a plataforma cobra por corrida mesmo assim.`
-          : `${lc('info',12,'currentColor')} Por corrida sai mais barato hoje (R$${fmt(r.custoGarantido-r.custoCorrida)} de diferença) — só compensa fixo se quiser garantir presença.`}
+        ${lc('info',12,'currentColor')} Cada motoboy chamado custa o piso garantido (mín. 4h × R$${r.valorHora}) OU suas corridas × R$${cfgPrev.valorCorridaMedio}, o que for maior.
+        Nessa previsão, cada um faria em média ~${fmt(r.corridasPorMotoboy)} corridas — o turno abertura passa do piso a partir de ${r.corridasBreakEvenAbertura} corridas${r.nFechamento > 0 ? `, o de fechamento a partir de ${r.corridasBreakEvenFechamento}` : ''}.
       </div>
     </div>
 
@@ -1560,7 +1575,7 @@ function confirmarPlanejamento() {
     lotes:            r.lotes,
     insumosMassa:     r.planoMassa.ingredientes,
     insumos:          r.insumosProj.insumos.filter(i => i.qtd > 0.001),
-    motoboys:         { pedidosDelivery: r.pedDel, total: r.motTotalDia, abertura: r.nAbertura, fechamento: r.nFechamento, custoGarantido: r.custoGarantido, custoCorrida: r.custoCorrida },
+    motoboys:         { pedidosDelivery: r.pedDel, total: r.motTotalDia, abertura: r.nAbertura, fechamento: r.nFechamento, custoGarantido: r.custoGarantido, custoEstimado: r.custoEstimado },
     ajustesManualAplicados: Object.values(_ajustes).some(v => v !== null),
     sobraGr: 0,
     sobraPq: 0,
@@ -1662,7 +1677,7 @@ ${insumosLinha || '  —'}
   Turno abertura: ${r.motoboys.abertura}
   Turno fechamento: ${r.motoboys.fechamento}
   Total: ${r.motoboys.total}
-  Custo estimado: garantido R$${fmt(r.motoboys.custoGarantido)} · por corrida R$${fmt(r.motoboys.custoCorrida)}
+  Custo estimado: R$${fmt(r.motoboys.custoEstimado)} (piso garantido R$${fmt(r.motoboys.custoGarantido)})
 
 ⚡ Fatores considerados:
 ${fatoresLinha}${promoLinha}${r.fatores.obs ? '\n📝 Obs: ' + r.fatores.obs : ''}
@@ -1680,7 +1695,7 @@ function enviarWATime() {
     lotes: _resultado.lotes,
     insumosMassa: _resultado.planoMassa.ingredientes,
     insumos: _resultado.insumosProj.insumos.filter(i => i.qtd > 0.001),
-    motoboys: { abertura: _resultado.nAbertura, fechamento: _resultado.nFechamento, total: _resultado.motTotalDia, custoGarantido: _resultado.custoGarantido, custoCorrida: _resultado.custoCorrida },
+    motoboys: { abertura: _resultado.nAbertura, fechamento: _resultado.nFechamento, total: _resultado.motTotalDia, custoGarantido: _resultado.custoGarantido, custoEstimado: _resultado.custoEstimado },
   };
   const msg = _montaMsgWA(reg);
   if (cfgPrev.waGrupo) {
