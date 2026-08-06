@@ -830,15 +830,41 @@ function _pcConfig() {
   return db._get('vtp_precificacao_config', {
     metaCmvSite: 30,
     plataformas: [
-      { id: 'ifood',  nome: 'iFood',  entregaPropria: 12, retirado: 9, pagtoOnline: 3.5, promocoes: 4, antecipacao: 3.8 },
-      { id: '99food', nome: '99Food', entregaPropria: 10, retirado: 7, pagtoOnline: 3,   promocoes: 4, antecipacao: 3 },
+      { id: 'ifood',  nome: 'iFood',  total: 32.3 },
+      { id: '99food', nome: '99Food', total: 27 },
     ],
   });
 }
 function _pcSalvarConfig(cfg) { db._set('vtp_precificacao_config', cfg); }
-function _pcTotalPlataforma(p) { return (p.entregaPropria || 0) + (p.retirado || 0) + (p.pagtoOnline || 0) + (p.promocoes || 0) + (p.antecipacao || 0); }
+// Config antiga guardava 5 campos (entrega própria, retirado, pagto. online,
+// promoções, antecipação) e o total era a soma deles — agora é 1 campo
+// direto. Mantém compatibilidade com o que já tinha sido salvo: se não tem
+// "total", soma os campos antigos (sem migrar o storage, só na leitura).
+function _pcTotalPlataforma(p) {
+  if (p.total != null) return p.total;
+  return (p.entregaPropria || 0) + (p.retirado || 0) + (p.pagtoOnline || 0) + (p.promocoes || 0) + (p.antecipacao || 0);
+}
 
-function _pcProdutosSalvos() { return db._get('vtp_precificacao_produtos', []); }
+// Preço do site não é mais calculado a partir da Meta de CMV (que virou só
+// indicador de referência) — é sempre um valor manual por produto. Migração
+// (2026-07-23): produto salvo sem precoManual.site ainda não tinha um valor
+// próprio — congela o que a fórmula antiga geraria (custo/meta) como ponto
+// de partida, uma única vez, pra não sumir o preço de produtos já cadastrados.
+function _pcProdutosSalvos() {
+  const arr = db._get('vtp_precificacao_produtos', []);
+  const cfg = _pcConfig();
+  let mudou = false;
+  for (const p of arr) {
+    p.precoManual = p.precoManual || {};
+    if (p.precoManual.site == null) {
+      const custo = _pcCustoProduto(p);
+      p.precoManual.site = cfg.metaCmvSite > 0 ? +(custo / (cfg.metaCmvSite / 100)).toFixed(2) : 0;
+      mudou = true;
+    }
+  }
+  if (mudou) _pcSalvarProdutos(arr);
+  return arr;
+}
 function _pcSalvarProdutos(arr) { db._set('vtp_precificacao_produtos', arr); }
 
 // A Opção já é cadastrada com o prefixo "1/2 " embutido no nome (reflete o
@@ -879,18 +905,23 @@ function _pcCustoProduto(p) {
   return base + c1 * _vUnidadesInteira(p.tamanho);
 }
 
+// Preço do site: sempre manual (nunca calculado — a Meta de CMV vira só
+// referência pra colorir o CMV% exibido, não gera mais o preço sozinha).
+// Preço de cada plataforma: continua calculado automaticamente inflando o
+// preço do site pelo Total% dela, mas pode ser ajustado manualmente — nesse
+// caso "diferenca" mostra o quanto o preço praticado se afasta do que a
+// fórmula sugeriria (negativo = cobrando menos que o necessário pra igualar
+// a margem do site).
 function _pcPrecos(p, cfg) {
   const custo = _pcCustoProduto(p);
-  const precoSiteCalc = cfg.metaCmvSite > 0 ? custo / (cfg.metaCmvSite / 100) : 0;
-  const siteManual = p.precoManual?.site;
-  const precoSite = siteManual != null ? siteManual : precoSiteCalc;
-  const out = { custo, site: { preco: precoSite, manual: siteManual != null, cmv: precoSite > 0 ? custo / precoSite * 100 : 0 } };
+  const precoSite = p.precoManual?.site ?? 0;
+  const out = { custo, site: { preco: precoSite, cmv: precoSite > 0 ? custo / precoSite * 100 : 0 } };
   for (const plat of cfg.plataformas) {
     const total = _pcTotalPlataforma(plat);
     const calc = total < 100 ? precoSite / (1 - total / 100) : 0;
     const manual = p.precoManual?.[plat.id];
     const preco = manual != null ? manual : calc;
-    out[plat.id] = { preco, manual: manual != null, cmv: preco > 0 ? custo / preco * 100 : 0, total };
+    out[plat.id] = { preco, manual: manual != null, diferenca: preco - calc, total };
   }
   return out;
 }
@@ -919,10 +950,11 @@ function _pcSetMetaCmvSite(v) {
   _pcSalvarConfig(cfg);
   renderVendasPrecos();
 }
-function _pcSetCampoPlataforma(id, campo, v) {
+function _pcSetTotalPlataforma(id, v) {
   const cfg = _pcConfig();
   const p = cfg.plataformas.find(x => x.id === id); if (!p) return;
-  p[campo] = parseFloat((v + '').replace(',', '.')) || 0;
+  p.total = parseFloat((v + '').replace(',', '.')) || 0;
+  delete p.entregaPropria; delete p.retirado; delete p.pagtoOnline; delete p.promocoes; delete p.antecipacao;
   _pcSalvarConfig(cfg);
   renderVendasPrecos();
 }
@@ -950,7 +982,7 @@ function _pcSalvarNovaPlataforma(btn) {
   const nome = document.getElementById('npNome')?.value.trim();
   if (!nome) { toast('Nome não pode ser vazio', 'err'); return; }
   const cfg = _pcConfig();
-  cfg.plataformas.push({ id: 'plat_' + Date.now(), nome, entregaPropria: 0, retirado: 0, pagtoOnline: 0, promocoes: 0, antecipacao: 0 });
+  cfg.plataformas.push({ id: 'plat_' + Date.now(), nome, total: 0 });
   _pcSalvarConfig(cfg);
   btn.closest('.overlay').remove();
   renderVendasPrecos();
@@ -1099,46 +1131,52 @@ function renderVendasPrecos() {
 
   const platCard = (p) => {
     const total = _pcTotalPlataforma(p);
-    const campo = (lbl, chave) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;font-size:.76rem">
-      <label style="color:var(--muted);flex:1">${lbl}</label>
-      <input type="number" class="inp" value="${p[chave]}" step="0.5" onchange="_pcSetCampoPlataforma('${p.id}','${chave}',this.value)" style="width:64px;text-align:right;font-size:.8rem;padding:4px 6px">
-      <span style="font-size:.78rem;color:var(--muted)">%</span>
-    </div>`;
     return `<div class="card" style="padding:14px 16px;flex:1;min-width:230px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-weight:700;font-size:.88rem">${p.nome}</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="font-size:1.2rem;font-weight:800;color:var(--purple)">${fmt(total)}%</div>
-          <button class="btn btn-ghost btn-xs" onclick="_pcRemoverPlataforma('${p.id}')" title="Remover plataforma">${lc('trash-2', 12, 'currentColor')}</button>
-        </div>
+        <button class="btn btn-ghost btn-xs" onclick="_pcRemoverPlataforma('${p.id}')" title="Remover plataforma">${lc('trash-2', 12, 'currentColor')}</button>
       </div>
-      ${campo('Comissão — entrega própria', 'entregaPropria')}
-      ${campo('Comissão — retirado', 'retirado')}
-      ${campo('Comissão — pagto. online', 'pagtoOnline')}
-      ${campo('Taxa de promoções', 'promocoes')}
-      ${campo('Taxa de antecipação', 'antecipacao')}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px;font-size:.82rem">
+        <label style="color:var(--muted)">Percentual total</label>
+        <div style="display:flex;align-items:center;gap:6px"><input type="number" class="inp" value="${total}" step="0.01" onchange="_pcSetTotalPlataforma('${p.id}',this.value)" style="width:80px;text-align:right;font-size:.9rem;font-weight:700;padding:6px 8px">%</div>
+      </div>
     </div>`;
   };
 
   const linhaProduto = (p) => {
     const precos = _pcPrecos(p, cfg);
     const corCmv = pc => pc <= 0 ? 'var(--muted)' : pc > cfg.metaCmvSite ? 'var(--red)' : 'var(--green)';
-    const celulaPreco = (canalId, dado) => `<td style="text-align:right;padding:8px 12px;border-bottom:1px solid var(--border)">
+
+    const celulaSite = (dado) => `<td style="text-align:right;padding:8px 12px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
         <span style="font-size:.7rem;color:var(--muted)">R$</span>
         <input type="number" class="inp" value="${dado.preco.toFixed(2)}" step="0.5"
-          onchange="_pcSetPrecoManual(${p.id},'${canalId}',this.value)"
-          style="width:78px;text-align:right;font-size:.84rem;font-weight:700;padding:4px 6px${dado.manual ? ';border-color:var(--orange-dark)' : ''}">
-        ${dado.manual ? `<button class="btn btn-ghost btn-xs" onclick="_pcSetPrecoManual(${p.id},'${canalId}','')" title="Voltar ao calculado">${lc('refresh-cw', 11, 'currentColor')}</button>` : ''}
+          onchange="_pcSetPrecoManual(${p.id},'site',this.value)"
+          style="width:78px;text-align:right;font-size:.84rem;font-weight:700;padding:4px 6px">
       </div>
-      <div style="font-size:.66rem;color:${corCmv(dado.cmv)};text-align:right;margin-top:2px">CMV ${fmt(dado.cmv)}%${dado.manual ? ' · ajustado' : ''}</div>
+      <div style="font-size:.66rem;color:${corCmv(dado.cmv)};text-align:right;margin-top:2px">${dado.preco > 0 ? `CMV ${fmt(dado.cmv)}%` : '—'}</div>
     </td>`;
+
+    const celulaPlataforma = (canalId, dado) => {
+      const corDif = dado.diferenca < 0 ? 'var(--red)' : 'var(--green)';
+      const sinal = dado.diferenca >= 0 ? '+' : '−';
+      return `<td style="text-align:right;padding:8px 12px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:4px">
+          <span style="font-size:.7rem;color:var(--muted)">R$</span>
+          <input type="number" class="inp" value="${dado.preco.toFixed(2)}" step="0.5"
+            onchange="_pcSetPrecoManual(${p.id},'${canalId}',this.value)"
+            style="width:78px;text-align:right;font-size:.84rem;font-weight:700;padding:4px 6px${dado.manual ? ';border-color:var(--orange-dark)' : ''}">
+          ${dado.manual ? `<button class="btn btn-ghost btn-xs" onclick="_pcSetPrecoManual(${p.id},'${canalId}','')" title="Voltar ao calculado">${lc('refresh-cw', 11, 'currentColor')}</button>` : ''}
+        </div>
+        <div style="font-size:.66rem;color:${corDif};text-align:right;margin-top:2px">${sinal}R$ ${fmt(Math.abs(dado.diferenca))} vs. site</div>
+      </td>`;
+    };
 
     return `<tr>
       <td style="padding:10px 12px;border-bottom:1px solid var(--border)"><b>${_pcNomeProduto(p)}</b></td>
       <td style="text-align:right;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">R$ ${fmt(precos.custo)}</td>
-      ${celulaPreco('site', precos.site)}
-      ${cfg.plataformas.map(plat => celulaPreco(plat.id, precos[plat.id])).join('')}
+      ${celulaSite(precos.site)}
+      ${cfg.plataformas.map(plat => celulaPlataforma(plat.id, precos[plat.id])).join('')}
       <td style="text-align:center;padding:10px 12px;border-bottom:1px solid var(--border);white-space:nowrap">
         <button class="btn btn-ghost btn-xs" onclick="_pcAbrirModalProduto(${p.id})" title="Editar">${lc('edit-2', 13, 'currentColor')}</button>
         <button class="btn btn-ghost btn-xs" onclick="_pcRemoverProduto(${p.id})" title="Remover">${lc('trash-2', 13, 'currentColor')}</button>

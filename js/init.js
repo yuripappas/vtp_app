@@ -68,7 +68,7 @@
     'js/atendimento.js', 'js/marketing.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=206');
+    await loadScript(src + '?v=207');
   }
 
   // First run: push all initialized data to Supabase
