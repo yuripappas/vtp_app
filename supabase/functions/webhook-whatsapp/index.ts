@@ -199,12 +199,13 @@ Deno.serve(async (req) => {
   let conversaId = conversaAberta?.id;
 
   if (!conversaId) {
-    // Busca a conversa mais recente (qualquer status) para reabrir
+    // Busca a conversa mais recente COM mensagens para reabrir (ignora órfãs sem mensagem)
     const { data: conversaRecente } = await sb
       .from('atd_conversas')
-      .select('id')
+      .select('id, ultima_mensagem')
       .eq('contato_id', contato.id)
       .eq('canal_tipo', 'whatsapp')
+      .not('ultima_mensagem', 'is', null)
       .order('atualizado_em', { ascending: false })
       .limit(1)
       .maybeSingle();

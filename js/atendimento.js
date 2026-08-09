@@ -2228,24 +2228,11 @@ function _atdAssinarRealtime() {
         });
       }
 
-      // Recarrega lista + verifica se é uma nova conversa do mesmo contato que está aberto
-      _atdCarregarConversas().then(() => {
-        // Só troca automaticamente se o atendente não está no meio de uma digitação
-        const rascunho = document.getElementById('atdCampoTexto')?.value?.trim();
-        if (rascunho) return;
-
-        if (convId && convId !== _atdState.conversaAtivaId) {
-          const convAtiva = _atdState.conversas.find(c => c.id === _atdState.conversaAtivaId);
-          const convNova  = _atdState.conversas.find(c => c.id === convId);
-          if (convAtiva && convNova &&
-              convAtiva.atd_contatos?.telefone === convNova.atd_contatos?.telefone) {
-            console.log('[atd-rt] mesma pessoa, nova conversa — abrindo:', convId);
-            _atdAbrirConversa(convId);
-          }
-        }
-      });
+      // Recarrega lista sem trocar a conversa ativa
+      _atdCarregarConversas();
     })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'atd_conversas' }, () => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'atd_conversas' }, () => {
+      // Só recarrega em novas conversas, não em updates (evita re-render a cada mensagem enviada)
       _atdCarregarConversas();
     })
     .subscribe();
