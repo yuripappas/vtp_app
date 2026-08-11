@@ -2202,18 +2202,18 @@ function _atdAssinarRealtime() {
         if (conv) {
           conv.mensagens_nao_lidas = (conv.mensagens_nao_lidas || 0) + 1;
           if (msg.conteudo?.texto) conv.ultima_mensagem = { texto: msg.conteudo.texto, origem: 'cliente' };
-
+          _atdRenderLista();
+          const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
+          if (totalNaoLidas > 0) document.title = `(${totalNaoLidas}) VTP Atendimento`;
           // F1: bot global ativo — auto-responde sem interação do atendente
           if (_atdState.botGlobalAtivo && !conv.precisa_humano) {
             _atdBotAutoResponder(convId);
           } else {
-            // F2: se já precisa_humano, toca som de alerta urgente; senão, som normal
             if (conv.precisa_humano) _atdTocarSomAlerta(); else _atdTocarSom();
           }
-
-          _atdRenderLista();
-          const totalNaoLidas = _atdState.conversas.reduce((s, c) => s + (c.mensagens_nao_lidas || 0), 0);
-          if (totalNaoLidas > 0) document.title = `(${totalNaoLidas}) VTP Atendimento`;
+        } else {
+          // Conversa não estava na lista (nova ou recém-criada) — toca som e recarrega
+          _atdTocarSom();
         }
       }
 
