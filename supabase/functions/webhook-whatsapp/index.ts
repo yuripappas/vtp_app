@@ -185,49 +185,14 @@ Deno.serve(async (req) => {
   // 2. Busca canal whatsapp
   const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'whatsapp').eq('ativo', true).limit(1).single();
 
-  // 3. Busca conversa aberta; se concluída, reabre a mais recente em vez de criar nova
-  const { data: conversaAberta } = await sb
-    .from('atd_conversas')
-    .select('id')
-    .eq('contato_id', contato.id)
-    .eq('canal_tipo', 'whatsapp')
-    .in('status', ['aberta', 'em_atendimento', 'aguardando_cliente'])
-    .order('atualizado_em', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  let conversaId = conversaAberta?.id;
-
-  if (!conversaId) {
-    // Busca a conversa mais recente COM mensagens para reabrir (ignora órfãs sem mensagem)
-    const { data: conversaRecente } = await sb
-      .from('atd_conversas')
-      .select('id, ultima_mensagem')
-      .eq('contato_id', contato.id)
-      .eq('canal_tipo', 'whatsapp')
-      .not('ultima_mensagem', 'is', null)
-      .order('atualizado_em', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (conversaRecente?.id) {
-      // Reabre conversa concluída em vez de criar uma nova
-      await sb.from('atd_conversas')
-        .update({ status: 'aberta', atendente_id: null, precisa_humano: false })
-        .eq('id', conversaRecente.id);
-      conversaId = conversaRecente.id;
-    } else {
-      // Sem histórico — cria conversa nova
-      const { data: novaConversa, error: convErr } = await sb
-        .from('atd_conversas')
-        .insert({ contato_id: contato.id, canal_id: canal?.id ?? null, canal_tipo: 'whatsapp', status: 'aberta' })
-        .select('id')
-        .single();
-      if (convErr || !novaConversa) {
-        return new Response(JSON.stringify({ error: 'falha ao criar conversa', detalhe: convErr }), { status: 500 });
-      }
-      conversaId = novaConversa.id;
-    }
+  // 3. Obtém ou cria conversa de forma atômica (evita race condition com múltiplos webhooks simultâneos)
+  const { data: conversaId, error: convErr } = await sb.rpc('atd_obter_ou_criar_conversa', {
+    p_contato_id: contato.id,
+    p_canal_id:   canal?.id ?? null,
+    p_canal_tipo: 'whatsapp',
+  });
+  if (convErr || !conversaId) {
+    return new Response(JSON.stringify({ error: 'falha ao obter/criar conversa', detalhe: convErr }), { status: 500 });
   }
 
   // 4. Monta conteúdo
