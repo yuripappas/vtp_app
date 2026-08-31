@@ -247,7 +247,6 @@ function _handleNavOperacao() {
 const _OMNI_SUBMENU_ITEMS = [
   { id: 'inbox',            icon: 'inbox',       label: 'Inbox'             },
   { id: 'respostas',        icon: 'zap',         label: 'Respostas'         },
-  { id: 'avaliacoes-ifood', icon: 'star',        label: 'Avaliações iFood'  },
   { id: 'estatisticas',     icon: 'bar-chart-2', label: 'Estatísticas'      },
   { id: 'integracoes',      icon: 'link',        label: 'Integrações'       },
   { id: 'configuracoes',    icon: 'settings',    label: 'Configurações'     },
