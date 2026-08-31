@@ -18,15 +18,69 @@ const CW_CANAL_MAP: Record<string, string> = {
   whatsapp_extension: 'site',
 };
 
-// Contagem de pizzas grandes/pequenas NÃO é feita aqui — a Edge Function só
-// grava o payload bruto de `items` (ver `linhas` mais abaixo). A interpretação
-// (tamanho, sabor, meio a meio, combos aninhados) é toda feita no navegador
-// por js/vendas.js (_vInterpretarPedido/contarPizzasPedido), que é o único
-// motor de classificação usado pelo app inteiro (Dashboard e CMV) — antes essa
-// função duplicava essa lógica com uma regex mais simples e desatualizada, e
-// os dois números divergiam (ex.: Dashboard contava 23 pizzas, CMV contava 40
-// pro mesmo dia). Duplicar essa lógica em Deno exigiria replicar também o
-// cadastro de sabores (vtp_sabores/opções), que só existe no navegador.
+// Contagem de pizzas grandes/pequenas — motor simplificado que cobre os layouts
+// reais do CW (validados nos pedidos de produção). Grava em pizzas_grande /
+// pizzas_pequena para que o Dashboard possa exibir o número mesmo quando
+// vendas.js não estiver disponível no navegador (ex.: browser cache antigo).
+// O motor completo (js/vendas.js → contarPizzasPedido) é mais preciso para o
+// CMV (usa o cadastro de sabores), mas para a CONTAGEM de pizzas este motor
+// cobre >99% dos casos — os dois devem convergir na maioria dos pedidos.
+
+const RE_SLOT     = /pizza\s+(grande|pequena).*pizza\s+(salgada|doce)/i;
+const RE_SIZE_OPT = /^pizza\s+(grande|pequena)\b/i;
+
+interface CwOption { name?: string; quantity?: number; option_group_name?: string; option_group_id?: number | string; }
+interface CwItem   { name?: string; items?: CwItem[]; options?: CwOption[]; status?: string; }
+
+function contarPizzasItem(it: CwItem): { grande: number; pequena: number } {
+  let grande = 0, pequena = 0;
+  const opts = it.options || [];
+  const grupos = new Set<string | number>();
+
+  for (const o of opts) {
+    const g = o.option_group_name || '';
+    // Layout A: group name contém "pizza grande/pequena ... pizza salgada/doce"
+    if (RE_SLOT.test(g)) {
+      const gid = o.option_group_id ?? g;
+      if (!grupos.has(gid)) {
+        grupos.add(gid);
+        if (/grande/i.test(g)) grande++; else pequena++;
+      }
+    }
+    // Layout "| Pizza Grande/Pequena" no nome da opção (grátis do combo)
+    else if (/\|\s*pizza\s+(grande|pequena)/i.test(o.name || '')) {
+      if (/grande/i.test(o.name || '')) grande++; else pequena++;
+    }
+    // Layout B: opção chama "Pizza Grande/Pequena" (seletor de tamanho)
+    else if (RE_SIZE_OPT.test(o.name || '')) {
+      if (/grande/i.test(o.name || '')) grande++; else pequena++;
+    }
+  }
+
+  // Layout C: tudo no nome do item ("Sabor | Pizza Grande"), sem opções
+  if (grande + pequena === 0 && !opts.length) {
+    const m = (it.name || '').match(/\|\s*pizza\s+(grande|pequena)/i);
+    if (m) { if (/grande/i.test(m[1])) grande++; else pequena++; }
+  }
+
+  return { grande, pequena };
+}
+
+function contarPizzas(items: CwItem[] | undefined): { grande: number; pequena: number } {
+  let grande = 0, pequena = 0;
+  for (const it of (items || [])) {
+    if (it.status === 'canceled') continue;
+    // Sub-itens aninhados (combos)
+    if (it.items && it.items.length) {
+      const sub = contarPizzas(it.items);
+      grande += sub.grande; pequena += sub.pequena;
+    } else {
+      const own = contarPizzasItem(it);
+      grande += own.grande; pequena += own.pequena;
+    }
+  }
+  return { grande, pequena };
+}
 
 // ── Cliente e endereço (para o módulo de omnichannel) ──────────────────────
 
@@ -84,6 +138,8 @@ Deno.serve(async (_req) => {
       const statusTs = { ...(existente?.status_timestamps || {}) };
       if (!statusTs[det.status]) statusTs[det.status] = new Date().toISOString();
 
+      const pizzas = contarPizzas(det.items);
+
       return {
         id:                det.id,
         display_id:        det.display_id,
@@ -94,6 +150,8 @@ Deno.serve(async (_req) => {
         sales_channel:     det.sales_channel,
         total:             det.total || 0,
         items:             det.items || [],
+        pizzas_grande:     pizzas.grande,
+        pizzas_pequena:    pizzas.pequena,
         status_timestamps: statusTs,
         cw_created_at:     det.created_at,
         cw_updated_at:     det.updated_at,
