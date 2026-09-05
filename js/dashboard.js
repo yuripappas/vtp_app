@@ -804,16 +804,21 @@ async function _renderDashPerf() {
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
                     <span style="font-size:var(--text-sm);font-weight:600">${canalLabel(c.c)}</span>
-                    <span style="font-size:var(--text-2xs);color:var(--muted)">${pct}%</span>
+                    <span style="font-size:var(--text-2xs);color:var(--muted)">${pct}% · R$${fmt(c.fat)}</span>
                   </div>
                   <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
                     <div style="height:100%;width:${pct}%;background:${canalCor(c.c)};border-radius:2px"></div>
                   </div>
                 </div>
-                <div style="text-align:right;flex-shrink:0;min-width:78px">
-                  <div style="font-size:var(--text-sm);font-weight:700">${c.n} ped.</div>
-                  <div style="font-size:var(--text-2xs);color:var(--muted)">R$${fmt(c.fat)}</div>
-                  <div style="font-size:var(--text-2xs);color:var(--muted)">R$${fmt(c.ticket)} méd.</div>
+                <div style="display:flex;gap:12px;flex-shrink:0">
+                  <div style="text-align:right;min-width:38px">
+                    <div style="font-size:var(--text-sm);font-weight:800">${c.n}</div>
+                    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em">ped.</div>
+                  </div>
+                  <div style="text-align:right;min-width:56px">
+                    <div style="font-size:var(--text-sm);font-weight:800;color:${canalCor(c.c)}">R$${fmt(c.ticket)}</div>
+                    <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em">méd.</div>
+                  </div>
                 </div>
               </div>`;
           }).join('')}
