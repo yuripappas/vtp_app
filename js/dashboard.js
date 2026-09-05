@@ -588,10 +588,11 @@ async function _renderDashPerf() {
     entregue:   pedidos.filter(p=>p.status==='entregue').length,
   };
 
-  const canaisData = [...new Set(pedidos.map(p=>p.canal))].map(c => ({
-    c, n: pedidos.filter(p=>p.canal===c).length,
-    fat: pedidos.filter(p=>p.canal===c).reduce((s,p)=>s+p.valor,0),
-  })).sort((a,b)=>b.n-a.n);
+  const canaisData = [...new Set(pedidos.map(p=>p.canal))].map(c => {
+    const n   = pedidos.filter(p=>p.canal===c).length;
+    const fat = pedidos.filter(p=>p.canal===c).reduce((s,p)=>s+p.valor,0);
+    return { c, n, fat, ticket: n ? fat/n : 0 };
+  }).sort((a,b)=>b.n-a.n);
 
   const _media = (arr, key) => {
     const vals = arr.map(p=>p[key]).filter(v => v != null);
@@ -809,9 +810,10 @@ async function _renderDashPerf() {
                     <div style="height:100%;width:${pct}%;background:${canalCor(c.c)};border-radius:2px"></div>
                   </div>
                 </div>
-                <div style="text-align:right;flex-shrink:0;min-width:70px">
+                <div style="text-align:right;flex-shrink:0;min-width:78px">
                   <div style="font-size:var(--text-sm);font-weight:700">${c.n} ped.</div>
                   <div style="font-size:var(--text-2xs);color:var(--muted)">R$${fmt(c.fat)}</div>
+                  <div style="font-size:var(--text-2xs);color:var(--muted)">R$${fmt(c.ticket)} méd.</div>
                 </div>
               </div>`;
           }).join('')}
