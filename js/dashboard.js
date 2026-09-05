@@ -454,51 +454,57 @@ function _renderDashRotina() {
 let _perfLoading = false;
 let _perfError    = null;
 let _perfPedidos  = [];
-let _perfRangeDias = 0; // 0 = hoje, ou 7/30/60 dias atrás até hoje, ou 'custom'
-let _perfCustomInicio = null; // 'YYYY-MM-DD'
-let _perfCustomFim    = null; // 'YYYY-MM-DD'
-let _perfCustomAberto = false; // mostra os campos de data
 
+// Filtro de período: mesmo componente compartilhado (_per*, js/vendas-ui.js)
+// usado em todo o módulo Vendas (Hoje/Ontem/.../meses + calendário duplo) —
+// namespace 'perf' próprio, não interfere no período das outras páginas.
 function _dashRefreshPerf() { _perfCountdown = 60; _renderDashPerf(); }
 
-function _dashSetRange(dias) {
-  _perfRangeDias = dias;
-  _perfCustomAberto = false;
-  _perfPedidos = [];
-  _perfError = null;
-  _renderDashPerf();
-}
+// Clientes novos x recorrentes no período: "recorrente" é quem já tem pedido
+// registrado ANTES do início do período (por customer_id, ou telefone quando
+// o pedido não tem customer_id). Pedido sem customer_id NEM telefone conta
+// sempre como "novo" — decisão do Yuri: sem dado nenhum não dá pra confirmar
+// que já é da base cadastrada, e a pergunta que esse card responde é
+// justamente "estou vendendo pra minha base cadastrada?" (2026-09-05).
+async function _dashClientesNovosRecorrentes(pedidos, range) {
+  const idsUnicos   = [...new Set(pedidos.filter(p => p.customerId).map(p => p.customerId))];
+  const fonesUnicos = [...new Set(pedidos.filter(p => !p.customerId && p.customerPhone).map(p => p.customerPhone))];
 
-function _dashToggleCustomRange() {
-  _perfCustomAberto = !_perfCustomAberto;
-  _renderDashPerf();
-}
+  const sb = _cwGetSbClient();
+  const idsRecorrentes = new Set();
+  const fonesRecorrentes = new Set();
 
-function _dashAplicarCustomRange() {
-  const i = document.getElementById('perfCustomInicio')?.value;
-  const f = document.getElementById('perfCustomFim')?.value;
-  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
-  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
-  _perfCustomInicio = i;
-  _perfCustomFim    = f;
-  _perfRangeDias    = 'custom';
-  _perfCustomAberto = false;
-  _perfPedidos = [];
-  _perfError = null;
-  _renderDashPerf();
-}
-
-function _perfGetRange() {
-  if (_perfRangeDias === 'custom' && _perfCustomInicio && _perfCustomFim) {
-    const inicio = new Date(_perfCustomInicio + 'T00:00:00');
-    const fim    = new Date(_perfCustomFim    + 'T23:59:59');
-    return { inicio, fim };
+  if (idsUnicos.length) {
+    const { data } = await sb.from('cw_pedidos').select('customer_id')
+      .lt('cw_created_at', range.inicioISO).in('customer_id', idsUnicos);
+    (data || []).forEach(r => idsRecorrentes.add(r.customer_id));
   }
-  const fim = new Date();
-  const inicio = _perfRangeDias > 0
-    ? new Date(new Date(fim.getTime() - _perfRangeDias * 86400000).setHours(0,0,0,0))
-    : new Date(new Date().setHours(0,0,0,0));
-  return { inicio, fim };
+  if (fonesUnicos.length) {
+    const { data } = await sb.from('cw_pedidos').select('customer_phone')
+      .lt('cw_created_at', range.inicioISO).in('customer_phone', fonesUnicos);
+    (data || []).forEach(r => fonesRecorrentes.add(r.customer_phone));
+  }
+
+  const porCliente = {};
+  for (const p of pedidos) {
+    const chave = p.customerId ? 'id:' + p.customerId
+                : p.customerPhone ? 'tel:' + p.customerPhone
+                : 'anon:' + p.id;
+    const recorrente = p.customerId ? idsRecorrentes.has(p.customerId)
+                      : p.customerPhone ? fonesRecorrentes.has(p.customerPhone)
+                      : false;
+    if (!porCliente[chave]) porCliente[chave] = { recorrente, receita: 0 };
+    porCliente[chave].receita += p.valor;
+  }
+
+  const todos = Object.values(porCliente);
+  const novos = todos.filter(c => !c.recorrente);
+  const recorrentes = todos.filter(c => c.recorrente);
+  return {
+    total: todos.length,
+    novos:       { qtd: novos.length,       receita: novos.reduce((s, c) => s + c.receita, 0) },
+    recorrentes: { qtd: recorrentes.length, receita: recorrentes.reduce((s, c) => s + c.receita, 0) },
+  };
 }
 
 function _dashPedAtrasado(p) {
@@ -521,12 +527,26 @@ async function _renderDashPerf() {
   }
 
   _perfLoading = true;
+  const range = _perRange('perf');
+  let custoTotal = 0;
+  let clientesInfo = { total: 0, novos: { qtd: 0, receita: 0 }, recorrentes: { qtd: 0, receita: 0 } };
   try {
-    const { inicio, fim } = _perfGetRange();
-    _perfPedidos = await _getPedidosCW(inicio, fim);
+    _perfPedidos = await _getPedidosCW(new Date(range.inicioISO), new Date(range.fimISO));
     _perfError = null;
   } catch (e) {
     _perfError = e;
+  }
+  if (!_perfError) {
+    // CMV e Clientes são cálculos extras — se falharem, não derruba a página
+    // inteira, só o card correspondente mostra "—".
+    try {
+      const linhasCMV = await vendasCarregarPeriodo(range.inicioISO, range.fimISO);
+      const cat = vendasPorCategoria(linhasCMV);
+      custoTotal = Object.values(cat).reduce((s, c) => s + c.custo, 0);
+    } catch (e) { console.warn('[dashboard] falha ao calcular CMV:', e?.message); }
+    try {
+      clientesInfo = await _dashClientesNovosRecorrentes(_perfPedidos, range);
+    } catch (e) { console.warn('[dashboard] falha ao calcular clientes novos/recorrentes:', e?.message); }
   }
   _perfLoading = false;
 
@@ -597,36 +617,10 @@ async function _renderDashPerf() {
   // Total previsto do dia (vem da Previsão, quando calculada) — usado só na coluna "Estimativa"
   const totalDia = _resultado?.pedDel || 0;
 
-  // Status bar + filtro de período
-  const RANGES = [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']];
-  const isCustom = _perfRangeDias === 'custom';
-  const customLabel = isCustom
-    ? `${_perfCustomInicio?.split('-').reverse().join('/')} – ${_perfCustomFim?.split('-').reverse().join('/')}`
-    : 'Personalizado';
+  // Status bar + filtro de período (componente compartilhado _per*)
   const statusBarHtml = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
-        <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
-          ${RANGES.map(([d,l]) => `
-            <button onclick="_dashSetRange(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${_perfRangeDias===d?'700':'500'};background:${_perfRangeDias===d?'var(--bg)':'transparent'};color:${_perfRangeDias===d?'var(--purple)':'var(--text2)'};box-shadow:${_perfRangeDias===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
-          `).join('')}
-          <button onclick="_dashToggleCustomRange()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
-            ${lc('calendar',11,'currentColor')} ${customLabel}
-          </button>
-        </div>
-        ${_perfCustomAberto ? `
-          <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
-            <div>
-              <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
-              <input type="date" id="perfCustomInicio" value="${_perfCustomInicio||''}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-            </div>
-            <div>
-              <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
-              <input type="date" id="perfCustomFim" value="${_perfCustomFim||''}" max="${new Date().toISOString().slice(0,10)}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-            </div>
-            <button class="btn btn-primary btn-xs" onclick="_dashAplicarCustomRange()">Aplicar</button>
-          </div>` : ''}
-      </div>
+      ${_perRenderBar('perf', '_renderDashPerf')}
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px">
           <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;flex-shrink:0"></span>
@@ -637,8 +631,12 @@ async function _renderDashPerf() {
     </div>`;
 
   // KPIs
+  const cmvPct = fat > 0 ? custoTotal / fat * 100 : 0;
+  const corCmv = fat <= 0 ? 'var(--muted)' : cmvPct > 30 ? 'var(--red)' : 'var(--green)';
+  const pctRecorrente = clientesInfo.total > 0 ? clientesInfo.recorrentes.qtd / clientesInfo.total * 100 : 0;
+
   const kpiHtml = `
-    <div style="display:grid;grid-template-columns:repeat(${isMobile()?2:4},1fr);gap:10px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:repeat(${isMobile()?2:3},1fr);gap:10px;margin-bottom:14px">
       <div style="background:var(--brand-purple);border-radius:var(--r14);padding:16px 18px;position:relative;overflow:hidden">
         <div style="position:absolute;right:-10px;top:-10px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.08)"></div>
         <div style="margin-bottom:6px">${lc('dollar-sign',14,'rgba(255,255,255,.7)')}</div>
@@ -662,6 +660,18 @@ async function _renderDashPerf() {
         <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Pizzas vendidas</div>
         <div style="font-size:var(--text-2xs);color:var(--orange-dark);margin-top:3px;font-weight:600">${fmtPz(pizzasGrande)} grandes · ${fmtPz(pizzasPequena)} pequenas</div>
       </div>
+      <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r14);padding:16px 18px">
+        <div style="margin-bottom:6px">${lc('bar-chart-2',14,corCmv)}</div>
+        <div style="font-size:1.5rem;font-weight:900;color:${corCmv};line-height:1;letter-spacing:-.02em">${fat>0?fmt(cmvPct)+'%':'—'}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">CMV</div>
+        <div style="font-size:var(--text-2xs);color:${corCmv};margin-top:3px;font-weight:600">${fat>0?'R$'+fmt(custoTotal)+' de custo':'sem dados no período'}</div>
+      </div>
+      <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r14);padding:16px 18px">
+        <div style="margin-bottom:6px">${lc('user-check',14,'var(--green)')}</div>
+        <div style="font-size:1.5rem;font-weight:900;color:var(--green);line-height:1;letter-spacing:-.02em">${clientesInfo.total>0?fmt(pctRecorrente)+'%':'—'}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Clientes recorrentes</div>
+        <div style="font-size:var(--text-2xs);color:var(--green);margin-top:3px;font-weight:600">${clientesInfo.total>0?`${clientesInfo.novos.qtd} novos (R$${fmt(clientesInfo.novos.receita)}) · ${clientesInfo.recorrentes.qtd} recor. (R$${fmt(clientesInfo.recorrentes.receita)})`:'sem dados no período'}</div>
+      </div>
     </div>`;
 
   // Pipeline
@@ -682,7 +692,7 @@ async function _renderDashPerf() {
     </div>`;
 
   // ── Tabela pedidos por hora
-  const isHoje = _perfRangeDias === 0;
+  const isHoje = _per('perf').modo === 'hoje';
   const tabelaHoraHtml = `
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r16);overflow:hidden">
       <div style="padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
@@ -701,7 +711,7 @@ async function _renderDashPerf() {
           <thead>
             <tr style="background:var(--surface2)">
               <th style="padding:9px 16px;text-align:left;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Hora</th>
-              ${(_resultado && _perfRangeDias===0) ? `<th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Estimativa</th>` : ''}
+              ${(_resultado && isHoje) ? `<th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Estimativa</th>` : ''}
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Pedidos</th>
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Pizzas</th>
               <th style="padding:9px 12px;text-align:center;font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap">Preparo</th>
@@ -741,7 +751,7 @@ async function _renderDashPerf() {
                       ${isNow  ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--purple);background:rgba(107,33,212,.1);padding:1px 5px;border-radius:3px">AGORA</span>` : ''}
                     </div>
                   </td>
-                  ${(_resultado && _perfRangeDias===0) ? `<td style="padding:10px 12px;text-align:center">
+                  ${(_resultado && isHoje) ? `<td style="padding:10px 12px;text-align:center">
                     <span style="font-size:var(--text-sm);font-weight:600;color:${textCol}">${est}</span>
                   </td>` : ''}
                   <td style="padding:10px 12px;text-align:center">
@@ -768,7 +778,7 @@ async function _renderDashPerf() {
           <tfoot>
             <tr style="border-top:2px solid var(--border);background:var(--surface2)">
               <td style="padding:9px 16px;font-size:var(--text-sm);font-weight:800">${isHoje ? 'Total do dia' : 'Total do período'}</td>
-              ${(_resultado && _perfRangeDias===0) ? `<td></td>` : ''}
+              ${(_resultado && isHoje) ? `<td></td>` : ''}
               <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800">${total}</td>
               <td style="padding:9px 12px;text-align:center;font-size:var(--text-sm);font-weight:800;color:var(--orange-dark)">${fmtPz(pizzas)}</td>
               <td colspan="2"></td>

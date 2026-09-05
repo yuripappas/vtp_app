@@ -134,6 +134,8 @@ async function _getPedidosCW(dataInicio, dataFim) {
         tempoEntrega:  tempos.tempoEntrega,
         tempoTotal:    tempos.tempoTotal,
         items:  d.items || [],
+        customerId:    d.customer_id || null,
+        customerPhone: d.customer_phone || null,
       };
     })
     .sort((a, b) => b.ts - a.ts);
