@@ -11,6 +11,76 @@ const _saveCkTemplates = t  => db._set('vtp_ck_templates', t);
 const _getCkSessoes    = () => db._get('vtp_ck_sessoes', []);
 const _saveCkSessoes   = s  => db._set('vtp_ck_sessoes', s);
 
+// Data local YYYY-MM-DD — toISOString() usa UTC e "vira o dia" às 21h em Brasília
+function _ckHoje(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function _ckIsGestor() {
+  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  return u?.role === 'gerente' || u?.role === 'supervisor';
+}
+
+// ── Janela de horário do item ─────────────────────────────────
+// tipo: 'livre' (qualquer hora do dia) | 'ate' (até horaFim) | 'entre' (horaIni–horaFim)
+// Itens antigos só têm `horario` em texto livre: "HH:MM" vira "até HH:MM", o resto vira livre.
+function _ckJanela(item) {
+  if (item.janela) return { tipo: item.janela, ini: item.horaIni || '', fim: item.horaFim || '' };
+  const h = String(item.horario || '').trim();
+  if (/^\d{1,2}:\d{2}$/.test(h)) return { tipo: 'ate', ini: '', fim: h.padStart(5, '0') };
+  return { tipo: 'livre', ini: '', fim: '' };
+}
+
+function _ckJanelaLabel(j) {
+  if (j.tipo === 'entre') return `${j.ini}–${j.fim}`;
+  if (j.tipo === 'ate')   return `até ${j.fim}`;
+  return '';
+}
+
+// Minutos do dia; "00:00" como fim significa meia-noite (fim do dia)
+function _ckMin(hhmm, isFim) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const v = h * 60 + m;
+  return isFim && v === 0 ? 1440 : v;
+}
+
+// 'livre' | 'aguardando' | 'aberto' | 'encerrado' — só avalia a hora no dia da instância;
+// instâncias de dias passados já são bloqueadas inteiras em _ckGuardMarcacao
+function _ckEstadoJanela(item, dataInst, now = new Date()) {
+  const j = _ckJanela(item);
+  if (j.tipo === 'livre' || dataInst !== _ckHoje(now)) return { estado: 'livre', j };
+  const agora = now.getHours() * 60 + now.getMinutes();
+  if (j.tipo === 'entre' && j.ini && agora < _ckMin(j.ini)) return { estado: 'aguardando', j };
+  if (j.fim && agora > _ckMin(j.fim, true))                 return { estado: 'encerrado', j };
+  return { estado: 'aberto', j };
+}
+
+// Valida se o item pode ser registrado agora. Funcionário fica bloqueado fora do prazo;
+// gestor registra com justificativa. `marcando` = false quando está só desmarcando.
+function _ckGuardMarcacao(inst, item, marcando) {
+  const isGestor = _ckIsGestor();
+  if (inst.data && inst.data < _ckHoje()) {
+    if (!isGestor) { toast('Prazo encerrado — checklist bloqueado. Contate seu supervisor.', 'err'); return false; }
+    if (!inst._justificativaAtraso) {
+      const just = window.prompt('Este checklist está atrasado. Informe a justificativa para registrá-lo fora do prazo:');
+      if (!just || !just.trim()) { toast('Justificativa obrigatória para registrar fora do prazo.', 'err'); return false; }
+      inst._justificativaAtraso = just.trim();
+      inst._atualizadoForaDoPrazo = new Date().toISOString();
+    }
+    return true;
+  }
+  if (!marcando || !item) return true;
+  const { estado, j } = _ckEstadoJanela(item, inst.data);
+  if (estado !== 'aguardando' && estado !== 'encerrado') return true;
+  const msg = estado === 'aguardando' ? `Item disponível a partir das ${j.ini}` : `Horário encerrado (${_ckJanelaLabel(j)})`;
+  if (!isGestor) { toast(`${msg}. Contate seu supervisor.`, 'err'); return false; }
+  const just = window.prompt(`${msg}. Informe a justificativa para registrar fora do horário:`);
+  if (!just || !just.trim()) { toast('Justificativa obrigatória para registrar fora do horário.', 'err'); return false; }
+  if (!inst.justificativasItens) inst.justificativasItens = {};
+  inst.justificativasItens[item.id] = { texto: just.trim(), em: new Date().toISOString() };
+  return true;
+}
+
 let _ckTab = 'meu'; // 'meu' | 'equipe' | 'templates'
 window._vtpGetTab_checklist = () => _ckTab;
 window._vtpSetTab_checklist = (v) => { _ckTab = v; };
@@ -198,7 +268,7 @@ function _renderCkTab() {
 function _renderCkMeu() {
   const u        = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
   const el       = document.getElementById('ckPanelContent');
-  const hoje     = new Date().toISOString().slice(0,10);
+  const hoje     = _ckHoje();
   const all      = _getCkSessoes();
   const isGestor = u?.role === 'gerente' || u?.role === 'supervisor';
 
@@ -357,8 +427,10 @@ function _cardInstanciaFuncionario(inst) {
           const hasInstr = !!(item.instrucoes || item.videoUrl);
           if (hasInstr) window._ckInstrucoes[item.id] = { instrucoes: item.instrucoes||'', videoUrl: item.videoUrl||'' };
           const itemCor  = tmpl.cor || 'var(--purple)';
+          const janela   = _ckEstadoJanela(item, inst.data);
+          const foraJanela = !feito && (janela.estado === 'encerrado' || janela.estado === 'aguardando');
           return `
-          <div style="border-bottom:1px solid var(--border);background:${feito ? 'var(--green-light)' : 'var(--surface)'}">
+          <div style="border-bottom:1px solid var(--border);background:${feito ? 'var(--green-light)' : 'var(--surface)'};${foraJanela ? 'opacity:.6' : ''}">
             <div style="display:flex;align-items:center;min-height:${tipo==='check'?58:46}px;padding:10px 14px;gap:14px;${tipo==='check'?'cursor:pointer':''}"
               ${tipo==='check' ? `onclick="marcarItemCkClick('${inst.id}',${item.id})"` : ''}>
               <div style="width:26px;height:26px;min-width:26px;border-radius:7px;
@@ -372,16 +444,13 @@ function _cardInstanciaFuncionario(inst) {
                   text-decoration:${feito ? 'line-through' : 'none'};line-height:1.4">${item.texto}</div>
                 <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap">
                   ${(() => {
-                    if (!item.horario) return '';
-                    let atrasado = false;
-                    if (!feito) {
-                      const [hh, mm] = item.horario.split(':').map(Number);
-                      const ref = new Date(inst.data + 'T' + item.horario + ':00');
-                      atrasado = !isNaN(ref) && new Date() > ref;
-                    }
-                    return atrasado
-                      ? `<span style="font-size:var(--text-xs);color:var(--red);display:flex;align-items:center;gap:3px;font-weight:700">${lc('alert-circle',10,'var(--red)')} ${item.horario} atrasado</span>`
-                      : `<span style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:3px">${lc('clock',10,'currentColor')} ${item.horario}</span>`;
+                    const lbl = _ckJanelaLabel(janela.j);
+                    if (!lbl) return '';
+                    if (!feito && janela.estado === 'encerrado')
+                      return `<span style="font-size:var(--text-xs);color:var(--red);display:flex;align-items:center;gap:3px;font-weight:700">${lc('lock',10,'var(--red)')} ${lbl} · encerrado</span>`;
+                    if (!feito && janela.estado === 'aguardando')
+                      return `<span style="font-size:var(--text-xs);color:var(--orange-dark);display:flex;align-items:center;gap:3px;font-weight:700">${lc('clock',10,'currentColor')} ${lbl} · abre às ${janela.j.ini}</span>`;
+                    return `<span style="font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:3px">${lc('clock',10,'currentColor')} ${lbl}</span>`;
                   })()}
                   ${item.obrigatorio ? `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--red)">obrigatório</span>` : ''}
                   ${item.exigeEvidencia ? `<span style="font-size:var(--text-2xs);font-weight:600;color:var(--orange-dark);display:flex;align-items:center;gap:3px">${lc('camera',10,'currentColor')} evidência</span>` : ''}
@@ -447,28 +516,13 @@ function _ckGravarVideo(instId, itemId) {
 function marcarItemCkClick(instId, itemId) {
   const sessoes = _getCkSessoes();
   const inst    = sessoes.find(s => s.id === instId);
-  if (!inst) return;
+  if (!inst) return false;
 
-  // Bloqueia se checklist é de data passada
-  const hoje     = new Date().toISOString().slice(0,10);
-  const isGestor = (() => { const u = typeof getCurrentUser==='function'?getCurrentUser():null; return u?.role==='gerente'||u?.role==='supervisor'; })();
-  if (inst.data && inst.data < hoje) {
-    if (!isGestor) {
-      toast('Prazo encerrado — checklist bloqueado. Contate seu supervisor.', 'err');
-      return;
-    }
-    // Gestor pode concluir com justificativa
-    if (!inst._justificativaAtraso) {
-      const just = window.prompt('Este checklist está atrasado. Informe a justificativa para registrá-lo fora do prazo:');
-      if (!just || !just.trim()) { toast('Justificativa obrigatória para registrar fora do prazo.', 'err'); return; }
-      inst._justificativaAtraso = just.trim();
-      inst._atualizadoForaDoPrazo = new Date().toISOString();
-    }
-  }
   const _itmTipo = _getCkTemplates().find(t => t.id === inst.templateId)?.itens.find(i => i.id === itemId);
-  if (_itmTipo?.tipo && _itmTipo.tipo !== 'check') return;
+  if (_itmTipo?.tipo && _itmTipo.tipo !== 'check') return false;
   if (!inst.respostas) inst.respostas = {};
   const novoEstado = !inst.respostas[itemId];
+  if (!_ckGuardMarcacao(inst, _itmTipo, novoEstado)) return false;
   if (novoEstado) {
     inst.respostas[itemId] = { feito:true, hora: new Date().toISOString() };
   } else {
@@ -499,6 +553,7 @@ function marcarItemCkClick(instId, itemId) {
   }
   _renderCkMeu();
   _atualizarBadgeEquipe();
+  return true;
 }
 
 function marcarItemCk(instId, itemId, checked) {
@@ -513,13 +568,14 @@ function _ckSalvarValorItem(instId, itemId, valorOverride) {
     const input = document.getElementById(`ck-val-${instId}-${itemId}`);
     valor = input?.value?.trim();
   }
-  if (!valor) { toast('Informe um valor', 'err'); return; }
+  if (!valor) { toast('Informe um valor', 'err'); return false; }
   const sessoes = _getCkSessoes();
   const inst    = sessoes.find(s => s.id === instId);
-  if (!inst) return;
+  if (!inst) return false;
+  const tmpl = _getCkTemplates().find(t => t.id === inst.templateId);
+  if (!_ckGuardMarcacao(inst, tmpl?.itens.find(i => i.id === itemId), true)) return false;
   if (!inst.respostas) inst.respostas = {};
   inst.respostas[itemId] = { feito: true, valor, hora: new Date().toISOString() };
-  const tmpl = _getCkTemplates().find(t => t.id === inst.templateId);
   if (tmpl) {
     const obrigs   = tmpl.itens.filter(i => i.obrigatorio);
     const todosOb  = obrigs.every(i => inst.respostas[i.id]);
@@ -537,6 +593,7 @@ function _ckSalvarValorItem(instId, itemId, valorOverride) {
   _saveCkSessoes(sessoes);
   _renderCkMeu();
   _atualizarBadgeEquipe();
+  return true;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -544,7 +601,7 @@ function _ckSalvarValorItem(instId, itemId, valorOverride) {
 // ══════════════════════════════════════════════════════════════
 function _renderCkEquipe() {
   const el   = document.getElementById('ckPanelContent');
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = _ckHoje();
   const sessoes = _getCkSessoes();
 
   // Filtros
@@ -655,7 +712,7 @@ function _renderCkEquipe() {
 }
 
 function _atualizarBadgeEquipe() {
-  const hoje    = new Date().toISOString().slice(0,10);
+  const hoje    = _ckHoje();
   const pend    = _getCkSessoes().filter(s => s.data === hoje && s.status === 'pendente').length;
   const badge   = document.getElementById('ckBadgeEquipe');
   if (badge) { badge.textContent = pend > 0 ? pend : ''; badge.style.display = pend > 0 ? 'inline' : 'none'; }
@@ -701,6 +758,7 @@ function _renderCkTemplates() {
             </div>
             <div style="padding:10px 16px">
               <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:7px">${t.itens.length} itens · ${t.itens.filter(i=>i.obrigatorio).length} obrigatórios</div>
+              ${_ckResumoRecorrencia(t)}
               <div style="display:flex;flex-direction:column;gap:4px">
                 ${t.itens.slice(0,3).map(i => `
                   <div style="display:flex;align-items:center;gap:7px;font-size:var(--text-xs);color:var(--muted)">
@@ -715,14 +773,32 @@ function _renderCkTemplates() {
     </div>`;
 }
 
+function _ckResumoRecorrencia(t) {
+  const r = t.recorrencia;
+  if (!r?.ativa) return '';
+  const nomesDia = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const dias = (r.dias||[]).slice().sort();
+  const nUsers = (r.usuarios||[]).length;
+  if (!dias.length || !nUsers) {
+    return `<div style="font-size:var(--text-xs);font-weight:700;color:var(--red);margin-bottom:7px;display:flex;align-items:center;gap:4px">
+      ${lc('alert-circle',11,'currentColor')} Recorrência incompleta — ${!dias.length ? 'sem dias' : 'sem funcionários'}</div>`;
+  }
+  const diasLbl = dias.length === 7 ? 'Todos os dias' : dias.map(d => nomesDia[d]).join(', ');
+  return `<div style="font-size:var(--text-xs);font-weight:600;color:var(--purple);margin-bottom:7px;display:flex;align-items:center;gap:4px">
+    ${lc('repeat',11,'currentColor')} ${diasLbl} · ${nUsers} funcionário${nUsers>1?'s':''}</div>`;
+}
+
 // ══════════════════════════════════════════════════════════════
 // RECORRÊNCIA — auto-assign diário
 // ══════════════════════════════════════════════════════════════
 
+// Roda para qualquer usuário que abrir o Checklist: gestor gera para todos,
+// funcionário gera só os próprios — assim não depende de um gestor abrir a tela no dia.
 function _ckAutoAssign() {
   const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-  if (!u || (u.role !== 'gerente' && u.role !== 'supervisor')) return;
-  const hoje      = new Date().toISOString().slice(0, 10);
+  if (!u) return;
+  const isGestor  = _ckIsGestor();
+  const hoje      = _ckHoje();
   const diaSemana = new Date().getDay();
   const sessoes   = _getCkSessoes();
   const tmpls     = _getCkTemplates().filter(t => t.ativo && t.recorrencia?.ativa);
@@ -731,6 +807,7 @@ function _ckAutoAssign() {
     if (!(tmpl.recorrencia.dias||[]).includes(diaSemana)) return;
     const turno   = tmpl.recorrencia.turno || 'diario';
     (tmpl.recorrencia.usuarios||[]).forEach(uid => {
+      if (!isGestor && uid !== u.id) return;
       if (!sessoes.some(s => s.templateId === tmpl.id && s.userId === uid && s.data === hoje)) {
         sessoes.push({
           id:          'ck-auto-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
@@ -748,7 +825,10 @@ function _ckAutoAssign() {
       }
     });
   });
-  if (criados > 0) { _saveCkSessoes(sessoes); toast(`${criados} checklist(s) atribuído(s) automaticamente`); }
+  if (criados > 0) {
+    _saveCkSessoes(sessoes);
+    if (isGestor) toast(`${criados} checklist(s) atribuído(s) automaticamente`);
+  }
 }
 
 function _ckChipStyle(cb) {
@@ -776,7 +856,7 @@ function abrirModalNovaInstanciaUser(userId) { _modalAtribuir(userId); }
 function _modalAtribuir(preUserId) {
   document.getElementById('popupCkAtribuir')?.remove();
   const tmpls = _getCkTemplates().filter(t => t.ativo);
-  const hoje  = new Date().toISOString().slice(0,10);
+  const hoje  = _ckHoje();
 
   const popup = document.createElement('div');
   popup.id = 'popupCkAtribuir';
@@ -893,7 +973,7 @@ function verDetalheInstancia(instId) {
             <div style="flex:1">
               <div style="font-size:var(--text-sm);font-weight:500;color:${feito?'var(--muted)':'var(--text)'};text-decoration:${feito?'line-through':'none'}">${item.texto}</div>
               <div style="display:flex;gap:8px;margin-top:2px;flex-wrap:wrap">
-                ${item.horario?`<span style="font-size:var(--text-2xs);color:var(--muted)">${item.horario}</span>`:''}
+                ${_ckJanelaLabel(_ckJanela(item))?`<span style="font-size:var(--text-2xs);color:var(--muted)">${_ckJanelaLabel(_ckJanela(item))}</span>`:''}
                 ${feito && resp.hora ? `<span style="font-size:var(--text-2xs);color:var(--green)">✓ ${new Date(resp.hora).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>` : ''}
               </div>
               ${resp?.valor ? `<div style="font-size:var(--text-xs);color:var(--purple);margin-top:4px;font-weight:600">${lc('edit-3',10,'currentColor')} ${String(resp.valor).replace(/</g,'&lt;')}</div>` : ''}
@@ -1026,7 +1106,7 @@ function _modalTemplate(id) {
             <button onclick="adicionarItemTemplate()" style="padding:4px 10px;border:1.5px solid var(--purple);border-radius:var(--r6);background:var(--surface);color:var(--purple);font-size:var(--text-xs);font-weight:600;cursor:pointer">+ Item</button>
           </div>
           <div id="tmplItens" style="display:flex;flex-direction:column;gap:6px">
-            ${(tmpl?.itens||[{id:1,texto:'',horario:'',obrigatorio:false}]).map((item,idx) => _rowItemTemplate(item,idx)).join('')}
+            ${(tmpl?.itens||[{id:1,texto:'',janela:'livre',obrigatorio:false}]).map((item,idx) => _rowItemTemplate(item,idx)).join('')}
           </div>
         </div>
       </div>
@@ -1048,6 +1128,8 @@ let _tmplItemCounter = 100;
 
 function _rowItemTemplate(item, idx) {
   const hasExtra = !!(item.instrucoes || item.videoUrl || item.exigeEvidencia);
+  const j = _ckJanela(item);
+  const timeStyle = 'width:92px;padding:4px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:var(--text-xs);font-family:Inter,sans-serif';
   return `
   <div id="tmplItem-${item.id}" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r8);padding:8px 10px">
     <div style="display:flex;align-items:center;gap:7px">
@@ -1060,22 +1142,33 @@ function _rowItemTemplate(item, idx) {
         <option value="numero" ${item.tipo==='numero'?'selected':''}>123 Número</option>
         <option value="texto" ${item.tipo==='texto'?'selected':''}>Aa Texto</option>
       </select>
-      <input type="text" placeholder="Horário" value="${item.horario||''}"
-        data-item-id="${item.id}" data-field="horario"
-        style="width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:var(--text-xs)">
       <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-xs);white-space:nowrap;cursor:pointer">
         <input type="checkbox" ${item.obrigatorio?'checked':''} data-item-id="${item.id}" data-field="obrigatorio" style="accent-color:var(--red)"> Obrig.
       </label>
       <button onclick="removerItemTemplate(${item.id})"
         style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px;flex-shrink:0">${lc('x',14,'currentColor')}</button>
     </div>
-    <button onclick="_toggleItemExtra(${item.id})"
-      style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;
-      padding:4px 2px 0;font-size:var(--text-xs);font-weight:600;font-family:Inter,sans-serif;
-      color:${hasExtra?'var(--purple)':'var(--muted)'}">
-      <span id="tmplItemExtraArrow-${item.id}">${hasExtra ? lc('chevron-up',12,'currentColor') : lc('chevron-down',12,'currentColor')}</span>
-      ${hasExtra ? 'Instruções / evidência configuradas' : '+ Adicionar instruções ou evidência'}
-    </button>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+      ${lc('clock',12,'var(--muted)')}
+      <select data-item-id="${item.id}" data-field="janela" onchange="_ckJanelaChange(${item.id})"
+        style="padding:4px 6px;border:1.5px solid var(--border);border-radius:var(--r6);font-size:var(--text-xs)">
+        <option value="livre" ${j.tipo==='livre'?'selected':''}>Sem horário (até o fim do dia)</option>
+        <option value="ate"   ${j.tipo==='ate'?'selected':''}>Até</option>
+        <option value="entre" ${j.tipo==='entre'?'selected':''}>Entre</option>
+      </select>
+      <input type="time" data-item-id="${item.id}" data-field="horaIni" value="${j.ini}"
+        style="${timeStyle};display:${j.tipo==='entre'?'inline-block':'none'}">
+      <span data-item-id="${item.id}" data-field="janelaSep" style="font-size:var(--text-xs);color:var(--muted);display:${j.tipo==='entre'?'inline':'none'}">e</span>
+      <input type="time" data-item-id="${item.id}" data-field="horaFim" value="${j.fim}"
+        style="${timeStyle};display:${j.tipo==='livre'?'none':'inline-block'}">
+      <button onclick="_toggleItemExtra(${item.id})"
+        style="display:flex;align-items:center;gap:4px;background:none;border:none;cursor:pointer;margin-left:auto;
+        padding:2px;font-size:var(--text-xs);font-weight:600;font-family:Inter,sans-serif;
+        color:${hasExtra?'var(--purple)':'var(--muted)'}">
+        <span id="tmplItemExtraArrow-${item.id}">${hasExtra ? lc('chevron-up',12,'currentColor') : lc('chevron-down',12,'currentColor')}</span>
+        ${hasExtra ? 'Instruções / evidência configuradas' : '+ Adicionar instruções ou evidência'}
+      </button>
+    </div>
     <div id="tmplItemExtra-${item.id}" style="display:${hasExtra?'flex':'none'};flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid var(--border);margin-top:6px">
       <textarea data-item-id="${item.id}" data-field="instrucoes"
         placeholder="Instruções detalhadas para o funcionário (opcional)..."
@@ -1092,11 +1185,19 @@ function _rowItemTemplate(item, idx) {
   </div>`;
 }
 
+function _ckJanelaChange(itemId) {
+  const q = f => document.querySelector(`#tmplItem-${itemId} [data-field="${f}"]`);
+  const tipo = q('janela').value;
+  q('horaIni').style.display   = tipo === 'entre' ? 'inline-block' : 'none';
+  q('janelaSep').style.display = tipo === 'entre' ? 'inline' : 'none';
+  q('horaFim').style.display   = tipo === 'livre' ? 'none' : 'inline-block';
+}
+
 function adicionarItemTemplate() {
   const wrap = document.getElementById('tmplItens');
   if (!wrap) return;
   _tmplItemCounter++;
-  const novoItem = { id: _tmplItemCounter, texto:'', horario:'', obrigatorio:false };
+  const novoItem = { id: _tmplItemCounter, texto:'', janela:'livre', obrigatorio:false };
   const div = document.createElement('div');
   div.innerHTML = _rowItemTemplate(novoItem, wrap.children.length);
   wrap.appendChild(div.firstElementChild);
@@ -1106,35 +1207,60 @@ function removerItemTemplate(itemId) {
   document.getElementById(`tmplItem-${itemId}`)?.remove();
 }
 
+// Retorna null (com toast) se algum horário estiver incompleto/inválido
 function _coletarItensTemplate() {
   const wrap = document.getElementById('tmplItens');
   if (!wrap) return [];
-  return [...wrap.querySelectorAll('[data-field="texto"]')].map(input => {
+  let erro = null;
+  const itens = [...wrap.querySelectorAll('[data-field="texto"]')].map(input => {
     const id = parseInt(input.dataset.itemId);
-    const horEl  = wrap.querySelector(`[data-item-id="${id}"][data-field="horario"]`);
+    const janEl  = wrap.querySelector(`[data-item-id="${id}"][data-field="janela"]`);
+    const iniEl  = wrap.querySelector(`[data-item-id="${id}"][data-field="horaIni"]`);
+    const fimEl  = wrap.querySelector(`[data-item-id="${id}"][data-field="horaFim"]`);
     const obrEl  = wrap.querySelector(`[data-item-id="${id}"][data-field="obrigatorio"]`);
     const instEl = wrap.querySelector(`[data-item-id="${id}"][data-field="instrucoes"]`);
     const vidEl  = wrap.querySelector(`[data-item-id="${id}"][data-field="videoUrl"]`);
     const evEl   = wrap.querySelector(`[data-item-id="${id}"][data-field="exigeEvidencia"]`);
     const tipoEl = wrap.querySelector(`[data-item-id="${id}"][data-field="tipo"]`);
+    const texto   = input.value.trim();
+    const janela  = janEl?.value || 'livre';
+    const horaIni = janela === 'entre' ? (iniEl?.value || '') : '';
+    const horaFim = janela !== 'livre' ? (fimEl?.value || '') : '';
+    if (texto && !erro) {
+      if (janela !== 'livre' && !horaFim)       erro = `"${texto}": informe o horário limite`;
+      else if (janela === 'entre' && !horaIni)  erro = `"${texto}": informe o horário de início`;
+      else if (janela === 'entre' && _ckMin(horaIni) >= _ckMin(horaFim, true)) erro = `"${texto}": o início deve ser antes do fim`;
+    }
     return {
       id,
-      texto:          input.value.trim(),
+      texto,
       tipo:           tipoEl?.value||'check',
-      horario:        horEl?.value.trim()||'',
+      janela, horaIni, horaFim,
       obrigatorio:    obrEl?.checked||false,
       instrucoes:     instEl?.value.trim()||'',
       videoUrl:       vidEl?.value.trim()||'',
       exigeEvidencia: evEl?.checked||false,
     };
   }).filter(i => i.texto);
+  if (erro) { toast(erro, 'err'); return null; }
+  return itens;
 }
 
 function salvarTemplate(id) {
   const nome   = document.getElementById('tmplNome')?.value.trim();
   if (!nome) { toast('Informe o nome','err'); return; }
   const itens = _coletarItensTemplate();
+  if (!itens) return;
   if (!itens.length) { toast('Adicione ao menos 1 item','err'); return; }
+
+  const recorrencia = {
+    ativa:    document.getElementById('tmplRecAtiva')?.checked||false,
+    dias:     [...(document.querySelectorAll('.tmpl-rec-dia:checked')||[])].map(el=>parseInt(el.value)),
+    usuarios: [...(document.querySelectorAll('.tmpl-rec-user:checked')||[])].map(el=>parseInt(el.value)),
+    turno:    document.getElementById('tmplRecTurno')?.value||'diario',
+  };
+  if (recorrencia.ativa && !recorrencia.dias.length)     { toast('Recorrência: selecione ao menos um dia da semana','err'); return; }
+  if (recorrencia.ativa && !recorrencia.usuarios.length) { toast('Recorrência: selecione ao menos um funcionário','err'); return; }
 
   const tmpls  = _getCkTemplates();
   const data   = {
@@ -1143,12 +1269,7 @@ function salvarTemplate(id) {
     bg:    document.getElementById('tmplBgSel')?.value||'var(--purple-xlight)',
     ativo: true,
     itens,
-    recorrencia: {
-      ativa:    document.getElementById('tmplRecAtiva')?.checked||false,
-      dias:     [...(document.querySelectorAll('.tmpl-rec-dia:checked')||[])].map(el=>parseInt(el.value)),
-      usuarios: [...(document.querySelectorAll('.tmpl-rec-user:checked')||[])].map(el=>parseInt(el.value)),
-      turno:    document.getElementById('tmplRecTurno')?.value||'diario',
-    },
+    recorrencia,
   };
 
   if (id && id !== 'null') {
@@ -1191,7 +1312,7 @@ function _toggleItemExtra(id) {
   const aberto = el.style.display === 'none';
   el.style.display = aberto ? 'flex' : 'none';
   if (arrow) arrow.innerHTML = aberto ? lc('chevron-up',12,'currentColor') : lc('chevron-down',12,'currentColor');
-  if (btn)   btn.childNodes[1].textContent = aberto ? ' Instruções / evidência configuradas' : ' + Adicionar instruções ou evidência';
+  if (btn)   btn.childNodes[2].textContent = aberto ? ' Instruções / evidência configuradas' : ' + Adicionar instruções ou evidência';
 }
 
 function _ckAbrirInstrucoes(itemId) {
@@ -1282,7 +1403,7 @@ function _renderCkDashboard() {
   if (per === 'semana')     { dInicio = new Date(hoje); dInicio.setDate(hoje.getDate() - 7); }
   else if (per === 'mes')   { dInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1); }
   else                      { dInicio = new Date(hoje); dInicio.setDate(hoje.getDate() - 30); }
-  const dStr = dInicio.toISOString().slice(0,10);
+  const dStr = _ckHoje(dInicio);
 
   const sf     = sessoes.filter(s => s.data >= dStr);
   const total  = sf.length;
@@ -1490,11 +1611,11 @@ function _ckRenderGuiado() {
             ${item.texto}
           </div>
           <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
-            ${item.horario ? `
+            ${_ckJanelaLabel(_ckJanela(item)) ? `
               <span style="display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);
                 color:var(--fg-subtle);background:var(--bg-subtle);padding:3px 8px;
                 border-radius:var(--radius-pill)">
-                ${lc('clock',11,'currentColor')} ${item.horario}
+                ${lc('clock',11,'currentColor')} ${_ckJanelaLabel(_ckJanela(item))}
               </span>` : ''}
             ${item.obrigatorio ? `
               <span style="font-size:var(--text-xs);font-weight:700;color:var(--danger-fg);
@@ -1543,7 +1664,7 @@ function _ckGuiadoMarcarFeito() {
     const input = document.getElementById(`ck-guided-val-${item.id}`);
     const valor = input?.value?.trim();
     if (!valor) { toast('Informe um valor', 'err'); return; }
-    _ckSalvarValorItem(_ckGuiadoInstId, item.id, valor);
+    if (!_ckSalvarValorItem(_ckGuiadoInstId, item.id, valor)) return;
     const instUpd = _getCkSessoes().find(s => s.id === _ckGuiadoInstId);
     const obrigs  = tmpl.itens.filter(i => i.obrigatorio);
     const podeConc= obrigs.length > 0 ? obrigs.every(i => (instUpd?.respostas||{})[i.id]) : tmpl.itens.every(i => (instUpd?.respostas||{})[i.id]);
@@ -1551,8 +1672,8 @@ function _ckGuiadoMarcarFeito() {
     return;
   }
 
-  // Marca o item usando a função existente
-  marcarItemCkClick(_ckGuiadoInstId, item.id);
+  // Marca o item usando a função existente (já feito → só avança, não desmarca)
+  if (!(inst.respostas||{})[item.id] && !marcarItemCkClick(_ckGuiadoInstId, item.id)) return;
 
   // Verifica se concluiu tudo após marcar
   const instAtualizada = _getCkSessoes().find(s => s.id === _ckGuiadoInstId);
