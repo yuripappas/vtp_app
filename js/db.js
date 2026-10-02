@@ -18,10 +18,21 @@ const db = (() => {
 
   // ── Primitivas seguras ─────────────────────────────────────────
 
+  // Cópia em memória do que veio do Supabase. Se o localStorage estourar a
+  // cota (Safari/iOS ~5MB), _get cai aqui em vez de devolver o default —
+  // senão data.js "semeia" a entidade vazia e sobrescreve o Supabase.
+  const _remoteCache = new Map();
+
   function _get(key, defaultVal) {
     try {
       const raw = localStorage.getItem(key);
-      if (raw === null || raw === undefined) return defaultVal;
+      if (raw === null || raw === undefined) {
+        if (_remoteCache.has(key)) {
+          const v = _remoteCache.get(key);
+          return (v === null || v === undefined) ? defaultVal : v;
+        }
+        return defaultVal;
+      }
       const parsed = JSON.parse(raw);
       return (parsed === null || parsed === undefined) ? defaultVal : parsed;
     } catch (e) {
@@ -55,7 +66,8 @@ const db = (() => {
         const key = payload.new?.key;
         const value = payload.new?.value;
         if (!key || value === undefined) return;
-        localStorage.setItem(key, JSON.stringify(value));
+        _remoteCache.set(key, value);
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
         window._vtpSetGlobal?.(key, value);
         window._vtpOnRealtimeUpdate?.(key);
       })
@@ -63,14 +75,17 @@ const db = (() => {
   }
 
   async function syncFromSupabase(client) {
-    _sbClient = client;
     window._vtpSb = client;
     try {
       const { data, error } = await client.from('kv_store').select('key, value');
+      // Sync falhou: NÃO habilita push. Sem os dados remotos, qualquer save
+      // (inclusive os seeds de data.js) sobrescreveria o Supabase com default.
       if (error) { console.warn('[db] sync error:', error.message); return false; }
+      _sbClient = client;
       const remoteKeys = new Set((data || []).map(r => r.key));
-      // Sincroniza dados do Supabase → localStorage
+      // Sincroniza dados do Supabase → memória + localStorage
       for (const row of (data || [])) {
+        _remoteCache.set(row.key, row.value);
         try { localStorage.setItem(row.key, JSON.stringify(row.value)); } catch (_) {}
       }
       // Remove do localStorage chaves vtp_ que não existem mais no Supabase
@@ -88,13 +103,16 @@ const db = (() => {
   }
 
   function _set(key, value) {
+    _remoteCache.set(key, value);
+    _pushToSupabase(key, value);
     try {
       localStorage.setItem(key, JSON.stringify(value));
-      _pushToSupabase(key, value);
       return true;
     } catch (e) {
       if (e.name === 'QuotaExceededError' || e.code === 22) {
         console.error('[db] localStorage cheio:', e);
+        // Já foi pro Supabase e está na memória — localStorage é só cache.
+        if (_sbClient) return true;
         if (typeof toast === 'function') {
           toast(
             'Armazenamento local cheio. Exporte os dados ou limpe o histórico em Configurações.',
