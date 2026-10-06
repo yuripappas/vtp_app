@@ -1,8 +1,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 Deno.serve(async (req) => {
-  const token = Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN') ?? '';
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  // Token vive em atd_tokens_oauth (renovado automaticamente por ig-token-refresh,
+  // via pg_cron) — o secret INSTAGRAM_USER_ACCESS_TOKEN fica só como fallback.
+  const { data: igTokenRow } = await sb.from('atd_tokens_oauth').select('access_token').eq('provider', 'instagram').maybeSingle();
+  const token = igTokenRow?.access_token ?? Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN') ?? '';
 
   // Busca todos contatos Instagram sem stats
   const { data: contatos } = await sb.from('atd_contatos')

@@ -131,7 +131,10 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'contato sem instagram_id vinculado' }), { status: 400, headers: CORS_HEADERS });
     }
 
-    const IG_USER_TOKEN = Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
+    // Token vive em atd_tokens_oauth (renovado automaticamente por ig-token-refresh,
+    // via pg_cron) — o secret INSTAGRAM_USER_ACCESS_TOKEN fica só como fallback.
+    const { data: igTokenRow } = await sb.from('atd_tokens_oauth').select('access_token').eq('provider', 'instagram').maybeSingle();
+    const IG_USER_TOKEN = igTokenRow?.access_token ?? Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
     if (!IG_USER_TOKEN) {
       return new Response(JSON.stringify({ error: 'INSTAGRAM_USER_ACCESS_TOKEN não configurado' }), { status: 500, headers: CORS_HEADERS });
     }

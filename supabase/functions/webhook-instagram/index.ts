@@ -80,7 +80,10 @@ Deno.serve(async (req) => {
   if (payload.object !== 'instagram') return new Response('ok', { status: 200 });
 
   const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'instagram').maybeSingle();
-  const IG_TOKEN   = Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
+  // Token vive em atd_tokens_oauth (renovado automaticamente por ig-token-refresh,
+  // via pg_cron) — o secret INSTAGRAM_USER_ACCESS_TOKEN fica só como fallback.
+  const { data: igTokenRow } = await sb.from('atd_tokens_oauth').select('access_token').eq('provider', 'instagram').maybeSingle();
+  const IG_TOKEN   = igTokenRow?.access_token ?? Deno.env.get('INSTAGRAM_USER_ACCESS_TOKEN');
   const PAGE_TOKEN = Deno.env.get('FACEBOOK_PAGE_ACCESS_TOKEN');
 
   // Auto-descobre o ID da própria conta IG Business a partir do token configurado
