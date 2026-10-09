@@ -1,0 +1,13 @@
+{
+  "name": "vtp-print-agent",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Agente Node que escuta a fila de impressão (Supabase Realtime) e manda ZPL pra Zebra ZD220 via CUPS",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0"
+  }
+}

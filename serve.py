@@ -6,6 +6,9 @@ here = os.path.dirname(os.path.abspath(__file__))
 class VTPHandler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, '.js': 'application/javascript'}
     def log_message(self, format, *args): pass
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store')
+        super().end_headers()
 
 Handler = functools.partial(VTPHandler, directory=here)
 socketserver.TCPServer.allow_reuse_address = True

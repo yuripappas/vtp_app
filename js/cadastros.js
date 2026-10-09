@@ -26,7 +26,12 @@ const PREST_CONFIANCA = {
 // NAVEGAÇÃO DAS ABAS DE CADASTRO
 // ══════════════════════════════════════════════════════════════
 
+let _cadTab = 'insumos';
+window._vtpGetTab_cadastros = () => _cadTab;
+window._vtpSetTab_cadastros = (v) => { _cadTab = v; };
+
 function setCadTab(tab) {
+  _cadTab = tab;
   ['insumos', 'fornecedores', 'servicos', 'preparo', 'produtos', 'terceirizados', 'funcionarios'].forEach(t => {
     const panel = document.getElementById(`cad-${t}`);
     if (panel) panel.style.display = t === tab ? 'block' : 'none';
@@ -36,7 +41,7 @@ function setCadTab(tab) {
   if (tab === 'fornecedores')  renderFornecedores();
   if (tab === 'servicos')      renderPrestadores();
   if (tab === 'preparo')       renderPreparoGrid();
-  if (tab === 'produtos')      { renderCadSabores(); setProdTab('sabores'); }
+  if (tab === 'produtos')      renderCadFichas();
   if (tab === 'terceirizados') renderTerceirizados();
   if (tab === 'funcionarios')  renderFuncionarios();
 }
@@ -71,7 +76,7 @@ function renderCadInsumos() {
     if (q && !i.name.toLowerCase().includes(q) && !i.cat.toLowerCase().includes(q)) return false;
     if (cat && i.cat !== cat) return false;
     if (window._cadFilEmb    && !(i.unidCompra && i.qtdEmb > 0)) return false;
-    if (window._cadFilDiaria && !i.contagemDiaria)                return false;
+    if (window._cadFilDiaria && !i.debitoAuto)                    return false;
     return true;
   }).sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
 
@@ -89,7 +94,7 @@ function renderCadInsumos() {
 
   if (inCfg) {
     const nEmb    = insumos.filter(i => i.unidCompra && i.qtdEmb > 0).length;
-    const nDiaria = insumos.filter(i => i.contagemDiaria).length;
+    const nDiaria = insumos.filter(i => i.debitoAuto).length;
     const filEmb  = !!window._cadFilEmb;
     const filDia  = !!window._cadFilDiaria;
 
@@ -105,7 +110,7 @@ function renderCadInsumos() {
   </button>
   <button onclick="window._cadFilDiaria=!window._cadFilDiaria;renderCadInsumos()"
     style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;border:1.5px solid ${filDia?'var(--orange-dark)':'var(--border)'};background:${filDia?'var(--orange-light)':'transparent'};color:${filDia?'var(--orange-dark)':'var(--muted)'};font-size:var(--text-xs);font-weight:700;cursor:pointer">
-    ${lc('sun',11,'currentColor')} Contagem Diária <span style="font-size:var(--text-2xs);opacity:.7">(${nDiaria})</span>
+    ${lc('zap',11,'currentColor')} Débito CW <span style="font-size:var(--text-2xs);opacity:.7">(${nDiaria})</span>
   </button>
   ${filEmb||filDia ? `<button onclick="window._cadFilEmb=false;window._cadFilDiaria=false;renderCadInsumos()"
     style="font-size:var(--text-xs);color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 6px">limpar</button>` : ''}
@@ -125,7 +130,8 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
         const supIds  = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
         const sups    = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
         const temEmb  = !!(item.unidCompra && item.qtdEmb > 0);
-        const temDia  = !!item.contagemDiaria;
+        const temDebito = !!item.debitoAuto;
+        const supExcCfg = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
         return `<div class="cfg-row" style="cursor:pointer" onclick="openEditItem(${item.id})"
             onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'">
           <div style="flex:1;min-width:0">
@@ -133,7 +139,8 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
               <span class="cfg-row-label">${item.name}</span>
               <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
               ${temEmb ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>` : ''}
-              ${temDia  ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);white-space:nowrap">${lc('sun',9,'currentColor')} Diária</span>` : ''}
+              ${temDebito ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito CW</span>` : ''}
+              ${supExcCfg ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('star',9,'currentColor')} Exclusivo · ${supExcCfg.name}</span>` : ''}
             </div>
             <div class="cfg-row-sub" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:2px">
               <span>Mín: <strong>${item.min}</strong> · Ideal: <strong>${item.ideal}</strong> · Custo: <strong style="color:var(--purple)">R$ ${fmt(item.cost)}</strong></span>
@@ -152,53 +159,49 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
 
   el.style.display = '';
 
+  el.style.display = 'flex';
+  el.style.flexDirection = 'column';
+  el.style.gap = '0';
   el.innerHTML = Object.entries(bycat).map(([cat, catItems]) => `
-    <div style="margin-bottom:24px">
-      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)">${cat} <span style="font-weight:400">(${catItems.length})</span></div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
-        ${catItems.map(item => {
-          const b   = (item.brands || []).filter(x => x);
-          const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
-          const sups   = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
-          const temEmb = !!(item.unidCompra && item.qtdEmb > 0);
-          const temDia = !!item.contagemDiaria;
-          return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px;transition:border-color .15s;cursor:pointer"
-            onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'"
-            onclick="openEditItem(${item.id})">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
-              <div>
-                <div style="font-size:var(--text-sm);font-weight:700">${item.name}</div>
-                <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${item.unit}${item.code ? ' · #' + item.code : ''}</div>
-              </div>
-              <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();openEditItem(${item.id})">${lc("edit-2",13,"currentColor")}</button>
-            </div>
-            ${(temEmb || temDia) ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
-              ${temEmb ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple)">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>` : ''}
-              ${temDia ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark)">${lc('sun',9,'currentColor')} Diária</span>` : ''}
-            </div>` : ''}
-            <div style="display:flex;flex-direction:column;gap:4px;font-size:var(--text-xs);color:var(--text2)">
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">Mínimo</span><span style="font-weight:600">${item.min} ${item.unit}</span>
-              </div>
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">Ideal</span><span style="font-weight:600">${item.ideal} ${item.unit}</span>
-              </div>
-              <div style="display:flex;justify-content:space-between">
-                <span style="color:var(--muted)">Custo ref.</span><span style="font-weight:600;color:var(--purple)">R$ ${fmt(item.cost)}</span>
-              </div>
-            </div>
-            ${sups.length ? `
-              <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-                <div style="font-size:var(--text-2xs);color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;font-weight:600">
-                  ${lc("building-2",10,"var(--muted)")} ${sups.length > 1 ? sups.length+' fornecedores' : 'Fornecedor'}
+    <div class="cfg-cat-group">
+      <button class="cfg-cat-toggle" onclick="toggleCfgCat(this)">
+        <span class="cfg-cat-label">${cat}</span>
+        <span class="cfg-cat-count">(${catItems.length})</span>
+        <span class="cfg-cat-chevron">${lc('chevron-down',14,'currentColor')}</span>
+      </button>
+      <div class="cfg-cat-body" style="padding:0;margin-bottom:8px">
+        <div class="card" style="padding:0;overflow:hidden">
+          ${catItems.map(item => {
+            const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
+            const sups   = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
+            const temEmb = !!(item.unidCompra && item.qtdEmb > 0);
+            const temDebito = !!item.debitoAuto;
+            const supExc = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
+            return `<div class="insumo-row" onclick="openEditItem(${item.id})">
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="font-size:var(--text-sm);font-weight:700">${item.name}</span>
+                  <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
+                  ${temEmb?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>`:''}
+                  ${temDebito?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito CW</span>`:''}
                 </div>
-                <div style="display:flex;flex-wrap:wrap;gap:3px">
-                  ${sups.map((s,idx) => `<span class="badge ${idx===0?'b-purple':'b-gray'}" style="font-size:var(--text-2xs)">${idx===0?'★ ':''}${s.name}</span>`).join('')}
-                </div>
-              </div>` : ''}
-            ${b.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:7px">${b[0] ? `<span class="badge b-purple" style="font-size:var(--text-2xs)">⭐ ${b[0]}</span>` : ''}${b.slice(1).map(x => `<span class="badge b-gray" style="font-size:var(--text-2xs)">${x}</span>`).join('')}</div>` : ''}
-          </div>`;
-        }).join('')}
+                ${sups.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                  ${sups.map(s => {
+                    const isExc = supExc && s.id === supExc.id;
+                    return isExc
+                      ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('lock',8,'currentColor')} Exclusivo · ${s.name}</span>`
+                      : `<span class="badge b-gray" style="font-size:var(--text-2xs)">${s.name}</span>`;
+                  }).join('')}
+                </div>`:''}
+              </div>
+              <div class="insumo-row-meta" style="text-align:right;font-size:var(--text-xs);color:var(--muted);line-height:1.7;flex-shrink:0">
+                <div>Mín <strong style="color:var(--text)">${item.min}</strong> · Ideal <strong style="color:var(--text)">${item.ideal}</strong></div>
+                <div>Custo <strong style="color:var(--purple)">R$ ${fmt(item.cost)}</strong></div>
+              </div>
+              <button class="btn btn-ghost btn-xs" style="flex-shrink:0" onclick="event.stopPropagation();openEditItem(${item.id})">${lc("edit-2",12,"currentColor")}</button>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
     </div>`).join('');
 }
@@ -247,8 +250,8 @@ function openEditItem(id) {
   atualizarLabelEmb();
   // Suporta supIds (array novo) e supId (legado)
   const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
-  populateSupChecks(supIds);
-  const cd = document.getElementById('fContagemDiaria'); if (cd) cd.checked = !!item.contagemDiaria;
+  populateSupChecks(supIds, item.supIdExclusivo ?? null);
+  const da = document.getElementById('fDebitoAuto');     if (da) da.checked = !!item.debitoAuto;
   document.getElementById('delItemBtn').style.display = 'inline-flex';
   document.getElementById('ovItem').classList.add('open');
 }
@@ -310,7 +313,7 @@ function atualizarLabelEmb() {
     ${embs !== null ? `· Ideal: ${fmt(ideal)} ${unit} = <strong>${embs} ${nome}(s)</strong>` : ''}`;
 }
 
-function populateSupChecks(selIds) {
+function populateSupChecks(selIds, supIdExclusivo) {
   const wrap = document.getElementById('fSupIds');
   if (!wrap) return;
   const searchEl = document.getElementById('fSupSearch');
@@ -320,17 +323,91 @@ function populateSupChecks(selIds) {
     return;
   }
   const sel = new Set((selIds||[]).map(Number));
-  wrap.innerHTML = suppliers.map(s => `
-    <label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:var(--r6);cursor:pointer;
-      background:${sel.has(s.id)?'var(--purple-xlight)':'transparent'};transition:background .1s"
-      onmouseover="this.style.background='var(--purple-xlight)'" onmouseout="this.style.background='${sel.has(s.id)?'var(--purple-xlight)':'transparent'}'">
-      <input type="checkbox" value="${s.id}" ${sel.has(s.id)?'checked':''}
-        style="accent-color:var(--purple);width:15px;height:15px;flex-shrink:0"
-        onchange="this.closest('label').style.background=this.checked?'var(--purple-xlight)':'transparent'">
-      <span style="font-size:var(--text-sm);font-weight:${sel.has(s.id)?'600':'400'}">${s.name}</span>
-      ${s.seller?`<span style="font-size:var(--text-xs);color:var(--muted);margin-left:auto">${s.seller}</span>`:''}
-    </label>
-  `).join('');
+  const excId = supIdExclusivo ? Number(supIdExclusivo) : null;
+
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr auto;font-size:var(--text-2xs);font-weight:700;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.5px;padding:0 6px 4px;border-bottom:1px solid var(--border);margin-bottom:4px">
+      <span>Fornecedor</span>
+      <span title="Marcar como exclusivo — item pula a cotação e vai direto com este fornecedor">Exclusivo</span>
+    </div>
+    ${suppliers.map(s => {
+      const isSel = sel.has(s.id);
+      const isExc = excId === s.id;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:var(--r6);
+        background:${isExc?'var(--orange-light)':isSel?'var(--purple-xlight)':'transparent'};transition:background .1s"
+        id="supRow_${s.id}">
+        <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer">
+          <input type="checkbox" name="supCheck" value="${s.id}" ${isSel||isExc?'checked':''}
+            style="accent-color:var(--purple);width:15px;height:15px;flex-shrink:0"
+            onchange="_onSupCheckChange(${s.id})">
+          <span style="font-size:var(--text-sm);font-weight:${isSel||isExc?'600':'400'}">${s.name}</span>
+          ${s.seller?`<span style="font-size:var(--text-xs);color:var(--muted)">${s.seller}</span>`:''}
+          ${isExc?`<span style="font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:99px;background:var(--orange-dark);color:#fff">exclusivo</span>`:''}
+        </label>
+        <input type="radio" name="supExclusivo" value="${s.id}" ${isExc?'checked':''}
+          title="Fornecedor exclusivo — pula cotação"
+          style="accent-color:var(--orange-dark);width:15px;height:15px;flex-shrink:0;cursor:pointer"
+          onchange="_onSupExclusivoChange(${s.id})">
+      </div>`;
+    }).join('')}
+    <button type="button" onclick="_limparExclusivo()"
+      style="margin-top:6px;font-size:var(--text-xs);color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 6px;text-decoration:underline">
+      Remover exclusivo
+    </button>`;
+}
+
+function _onSupCheckChange(supId) {
+  const cb = document.querySelector(`#supRow_${supId} input[type=checkbox]`);
+  const row = document.getElementById(`supRow_${supId}`);
+  const excRadio = document.querySelector(`#supRow_${supId} input[type=radio]`);
+  if (!cb || !row) return;
+  if (!cb.checked) {
+    // Desmarcou: limpa exclusivo também se era este
+    if (excRadio?.checked) { excRadio.checked = false; _atualizarCoresSupRows(); }
+  }
+  _atualizarCoresSupRows();
+}
+
+function _onSupExclusivoChange(supId) {
+  // Ao marcar exclusivo, garante que o checkbox também está marcado
+  const cb = document.querySelector(`#supRow_${supId} input[type=checkbox]`);
+  if (cb) cb.checked = true;
+  _atualizarCoresSupRows();
+}
+
+function _limparExclusivo() {
+  document.querySelectorAll('#fSupIds input[type=radio]').forEach(r => r.checked = false);
+  _atualizarCoresSupRows();
+}
+
+function _atualizarCoresSupRows() {
+  suppliers.forEach(s => {
+    const row = document.getElementById(`supRow_${s.id}`);
+    if (!row) return;
+    const cb  = row.querySelector('input[type=checkbox]');
+    const rad = row.querySelector('input[type=radio]');
+    const isExc = rad?.checked;
+    const isSel = cb?.checked;
+    row.style.background = isExc ? 'var(--orange-light)' : isSel ? 'var(--purple-xlight)' : 'transparent';
+    const nameEl = row.querySelector('span:first-of-type');
+    if (nameEl) nameEl.style.fontWeight = isSel || isExc ? '600' : '400';
+    // Badge exclusivo
+    const existingBadge = row.querySelector('.badge-exclusivo');
+    if (existingBadge) existingBadge.remove();
+    if (isExc) {
+      const badge = document.createElement('span');
+      badge.className = 'badge-exclusivo';
+      badge.style.cssText = 'font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:99px;background:var(--orange-dark);color:#fff';
+      badge.textContent = 'exclusivo';
+      row.querySelector('label')?.appendChild(badge);
+    }
+  });
+}
+
+function getSupExclusivoId() {
+  const rad = document.querySelector('#fSupIds input[type=radio]:checked');
+  return rad ? parseInt(rad.value) : null;
 }
 
 function _filtrarFornSupSearch() {
@@ -363,9 +440,42 @@ function getSupCheckedIds() {
 function saveItem() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
-  const supIds     = getSupCheckedIds();
-  const unidCompra = document.getElementById('fUnidCompra')?.value.trim() || '';
-  const qtdEmb     = parseFloat(document.getElementById('fQtdEmb')?.value) || 0;
+  const supIds    = getSupCheckedIds();
+  const newBrands = [
+    document.getElementById('fB0').value.trim(),
+    document.getElementById('fB1').value.trim(),
+    document.getElementById('fB2').value.trim(),
+  ].filter(Boolean);
+
+  // Proteção: avisa se dados importantes serão apagados
+  if (editItemId) {
+    const itemAntes = items.find(i => i.id === editItemId);
+    if (itemAntes) {
+      const alertas = [];
+      const supAntes = itemAntes.supIds?.length || (itemAntes.supId ? 1 : 0);
+      if (supAntes > 0 && supIds.length === 0)
+        alertas.push(supAntes + ' fornecedor(es) vinculado(s) serão removidos');
+      const brandsAntes = (itemAntes.brands || []).filter(Boolean);
+      if (brandsAntes.length > 0 && newBrands.length === 0)
+        alertas.push('marcas configuradas (' + brandsAntes.join(', ') + ') serão apagadas');
+      if (alertas.length > 0) {
+        vtpConfirm({
+          title: 'Atenção — dados serão perdidos',
+          message: 'Ao salvar:\n• ' + alertas.join('\n• ') + '\n\nDeseja continuar?',
+          confirmLabel: 'Salvar mesmo assim',
+          onConfirm: () => _saveItemConfirmado(name, supIds),
+        });
+        return;
+      }
+    }
+  }
+  _saveItemConfirmado(name, supIds);
+}
+
+function _saveItemConfirmado(name, supIds) {
+  const unidCompra    = document.getElementById('fUnidCompra')?.value.trim() || '';
+  const qtdEmb        = parseFloat(document.getElementById('fQtdEmb')?.value) || 0;
+  const supIdExclusivo = getSupExclusivoId();
   const data = {
     name,
     cat:        document.getElementById('fCat').value.trim() || 'Outros',
@@ -376,15 +486,16 @@ function saveItem() {
     code:       document.getElementById('fCode').value.trim(),
     supIds,
     supId:      supIds[0] ?? null,
-    unidCompra, // nome da embalagem (ex: "Barra", "Pacote")
-    qtdEmb,     // qtd da unidade base por embalagem (ex: 25 para barra de 25kg)
+    supIdExclusivo: supIdExclusivo,
+    unidCompra,
+    qtdEmb,
     brands: [
       document.getElementById('fB0').value.trim(),
       document.getElementById('fB1').value.trim(),
       document.getElementById('fB2').value.trim(),
     ],
     isProd:          false,
-    contagemDiaria:  document.getElementById('fContagemDiaria')?.checked || false,
+    debitoAuto:      document.getElementById('fDebitoAuto')?.checked || false,
   };
   if (editItemId) {
     const idx = items.findIndex(i => i.id === editItemId);
@@ -430,15 +541,26 @@ let editPreparoId = null;
 // FICHA TÉCNICA DE CUSTO — estado e funções
 // ══════════════════════════════════════════════════════════════
 
-// Rows em memória enquanto o modal está aberto
+// Rows em memória enquanto o editor está aberto
 // Cada row: { item_id: number, peso_g: number }
-let _ftRows = [];
+// Componente reaproveitado em 2 contextos, diferenciados por _ftMode/_ftPrefix:
+//  - 'preparo' (prefixo '', Pré-produção): só insumos, custo dividido por rendimento_kg
+//  - 'flat'    (prefixo 'x', Produto/Opção): insumos + preparados, custo = soma direta
+// _ftPrefix evita colisão de id no DOM quando os dois editores existem na página
+// ao mesmo tempo (modal de Preparo fica sempre no DOM, só escondido).
+let _ftRows   = [];
+let _ftMode   = 'preparo';
+let _ftPrefix = '';
 
-function _ftInit(fichaTecnica) {
+function _ftId(base) { return _ftPrefix + base; }
+
+function _ftInit(fichaTecnica, mode = 'preparo', prefix = '') {
+  _ftMode   = mode;
+  _ftPrefix = prefix;
   _ftRows = fichaTecnica?.ingredientes
     ? fichaTecnica.ingredientes.map(r => ({ ...r }))
     : [];
-  const rend = document.getElementById('ftRendimento');
+  const rend = document.getElementById(_ftId('ftRendimento'));
   if (rend) rend.value = fichaTecnica?.rendimento_kg || '';
   _ftRenderTable();
   _ftRecalc();
@@ -447,10 +569,15 @@ function _ftInit(fichaTecnica) {
 function _ftAddRow() {
   _ftRows.push({ item_id: null, peso_g: 0 });
   _ftRenderTable();
-  // Foca no select do novo row
-  const selects = document.querySelectorAll('#ftTable select[id^="ftItem-"]');
-  const last = selects[selects.length - 1];
-  if (last) setTimeout(() => last.focus(), 40);
+  if (_ftMode === 'flat') {
+    const inputs = document.querySelectorAll(`#${_ftId('ftTable')} input[id^="${_ftId('ftSearch')}-"]`);
+    const last = inputs[inputs.length - 1];
+    if (last) setTimeout(() => last.focus(), 40);
+  } else {
+    const selects = document.querySelectorAll(`#${_ftId('ftTable')} select[id^="${_ftId('ftItem')}-"]`);
+    const last = selects[selects.length - 1];
+    if (last) setTimeout(() => last.focus(), 40);
+  }
 }
 
 function _ftRemoveRow(idx) {
@@ -460,8 +587,8 @@ function _ftRemoveRow(idx) {
 }
 
 function _ftUpdateRow(idx) {
-  const sel  = document.getElementById(`ftItem-${idx}`);
-  const peso = document.getElementById(`ftPeso-${idx}`);
+  const sel  = document.getElementById(`${_ftId('ftItem')}-${idx}`);
+  const peso = document.getElementById(`${_ftId('ftPeso')}-${idx}`);
   if (!sel || !peso) return;
   _ftRows[idx] = {
     item_id: parseInt(sel.value) || null,
@@ -472,21 +599,107 @@ function _ftUpdateRow(idx) {
   const ins     = items.find(i => i.id === _ftRows[idx].item_id);
   const preco   = ins ? ins.cost : 0;
   const custo   = ins ? (_ftRows[idx].peso_g / 1000) * preco : 0;
-  const custoEl = document.getElementById(`ftCustoLn-${idx}`);
-  const precoEl = document.getElementById(`ftPrecoKg-${idx}`);
+  const custoEl = document.getElementById(`${_ftId('ftCustoLn')}-${idx}`);
+  const precoEl = document.getElementById(`${_ftId('ftPrecoKg')}-${idx}`);
   if (custoEl) custoEl.textContent = 'R$ ' + fmt(custo);
   if (precoEl) precoEl.textContent = 'R$ ' + fmt(preco);
   // Atualiza totais
-  const totCusto = document.getElementById('ftTotalCusto');
-  const totPeso  = document.getElementById('ftTotalPeso');
+  const totCusto = document.getElementById(_ftId('ftTotalCusto'));
+  const totPeso  = document.getElementById(_ftId('ftTotalPeso'));
   if (totCusto) totCusto.textContent = 'R$ ' + fmt(_ftCalcTotalCusto());
   if (totPeso)  totPeso.textContent  = _ftCalcTotalPeso() + ' g';
 }
 
+// ── Modo 'flat' (Produto/Opção): busca de insumo por texto + qtde na
+// unidade nativa do insumo (kg/un/L/g — o que estiver cadastrado), sem
+// assumir grama. Custo = quantidade digitada × custo unitário do insumo.
+function _ftPoolFlat() {
+  return items.filter(i => i.active !== false);
+}
+
+function _ftSearchInsumo(idx, query) {
+  const drop = document.getElementById(`${_ftId('ftDrop')}-${idx}`);
+  if (!drop) return;
+  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const q = norm(query);
+  if (!q) { drop.style.display = 'none'; drop.innerHTML = ''; return; }
+  const matches = _ftPoolFlat().filter(i => norm(i.name).includes(q)).slice(0, 8);
+  if (!matches.length) {
+    drop.innerHTML = `<div class="ft-ac-item" style="cursor:default;color:var(--muted)">Nenhum insumo encontrado</div>`;
+    drop.style.display = 'block';
+    return;
+  }
+  drop.innerHTML = matches.map(m => `
+    <div class="ft-ac-item" onmousedown="event.preventDefault();_ftPickInsumo(${idx},${m.id})">
+      <span>${m.name}</span>
+      <span class="ft-ac-cat">${m.cat || ''}</span>
+    </div>`).join('');
+  drop.style.display = 'block';
+}
+
+function _ftPickInsumo(idx, itemId) {
+  const ins = items.find(i => i.id === itemId);
+  if (!_ftRows[idx]) return;
+  _ftRows[idx].item_id = itemId;
+  const input = document.getElementById(`${_ftId('ftSearch')}-${idx}`);
+  if (input) input.value = ins?.name || '';
+  _ftCloseDropdown(idx);
+  _ftRenderFlatRowCusto(idx);
+  _ftRecalc();
+  // Foca a qtde em seguida — próximo passo natural
+  const qtdInput = document.getElementById(`${_ftId('ftPeso')}-${idx}`);
+  if (qtdInput) setTimeout(() => qtdInput.focus(), 20);
+}
+
+function _ftCloseDropdown(idx) {
+  const drop = document.getElementById(`${_ftId('ftDrop')}-${idx}`);
+  if (drop) { drop.style.display = 'none'; drop.innerHTML = ''; }
+}
+
+function _ftUpdateQtdFlat(idx) {
+  const inp = document.getElementById(`${_ftId('ftPeso')}-${idx}`);
+  if (!inp || !_ftRows[idx]) return;
+  _ftRows[idx].peso_g = parseFloat(inp.value) || 0;
+  _ftRenderFlatRowCusto(idx);
+  _ftRecalc();
+}
+
+function _ftRenderFlatRowCusto(idx) {
+  const row     = _ftRows[idx];
+  const ins     = row ? items.find(i => i.id === row.item_id) : null;
+  const custo   = ins ? (row.peso_g || 0) * ins.cost : 0;
+  const total   = _ftCalcTotalCusto();
+  const pct     = total > 0 ? (custo / total) * 100 : 0;
+  const custoEl = document.getElementById(`${_ftId('ftCustoLn')}-${idx}`);
+  const pctEl   = document.getElementById(`${_ftId('ftCustoPct')}-${idx}`);
+  const unitEl  = document.getElementById(`${_ftId('ftUnit')}-${idx}`);
+  if (custoEl) custoEl.textContent = 'R$ ' + fmt(custo);
+  if (pctEl)   pctEl.textContent   = custo > 0 ? fmt(pct) + '%' : '';
+  if (unitEl)  unitEl.textContent  = ins?.unit || '';
+  const totCusto = document.getElementById(_ftId('ftTotalCusto'));
+  if (totCusto) totCusto.textContent = 'R$ ' + fmt(total);
+}
+
 function _ftCalcTotalCusto() {
+  if (_ftMode === 'flat') {
+    return _ftRows.reduce((sum, row) => {
+      const ins = items.find(i => i.id === row.item_id);
+      return sum + (ins ? (row.peso_g || 0) * ins.cost : 0);
+    }, 0);
+  }
   return _ftRows.reduce((sum, row) => {
     const ins = items.find(i => i.id === row.item_id);
     return sum + (ins ? (row.peso_g / 1000) * ins.cost : 0);
+  }, 0);
+}
+
+// Calcula o custo de uma ficha técnica já salva, sem depender do estado
+// global _ftRows — usado pelos cards da lista (Produtos/Opções).
+function _calcCustoFicha(fichaTecnica) {
+  if (!fichaTecnica?.ingredientes?.length) return 0;
+  return fichaTecnica.ingredientes.reduce((sum, r) => {
+    const ins = items.find(i => i.id === r.item_id);
+    return sum + (ins ? (r.peso_g || 0) * ins.cost : 0);
   }, 0);
 }
 
@@ -496,14 +709,33 @@ function _ftCalcTotalPeso() {
 
 function _ftRecalc() {
   const totalCusto = _ftCalcTotalCusto();
-  const rendimento = parseFloat(document.getElementById('ftRendimento')?.value) || 0;
-  const custoKg    = (rendimento > 0) ? totalCusto / rendimento : 0;
-
-  const display = document.getElementById('ftCustoDisplay');
-  const sub     = document.getElementById('ftCustoSub');
-  const hidden  = document.getElementById('fpCost');
+  const display = document.getElementById(_ftId('ftCustoDisplay'));
+  const sub     = document.getElementById(_ftId('ftCustoSub'));
+  const hidden  = document.getElementById(_ftId('fpCost'));
 
   if (!display) return;
+
+  if (_ftMode === 'flat') {
+    // Produto/Opção: cada cadastro já É uma unidade (não um lote) — custo é soma direta
+    if (_ftRows.length === 0) {
+      display.textContent = 'R$ 0,00';
+      display.style.color = 'var(--muted)';
+      display.style.background = 'var(--surface2)';
+      display.style.borderColor = 'var(--border)';
+      if (sub) sub.textContent = 'Adicione insumos ou preparados';
+    } else {
+      display.textContent = `R$ ${fmt(totalCusto)}`;
+      display.style.color = 'var(--brand-purple,#6B21D4)';
+      display.style.background = 'var(--purple-xlight,#EDE9FE)';
+      display.style.borderColor = 'var(--brand-purple,#6B21D4)';
+      if (sub) sub.textContent = `${_ftRows.length} item(ns) somado(s)`;
+    }
+    if (hidden) hidden.value = totalCusto.toFixed(4);
+    return;
+  }
+
+  const rendimento = parseFloat(document.getElementById(_ftId('ftRendimento'))?.value) || 0;
+  const custoKg    = (rendimento > 0) ? totalCusto / rendimento : 0;
 
   if (_ftRows.length === 0) {
     display.textContent = 'R$ 0,00/kg';
@@ -534,27 +766,23 @@ function _ftRecalc() {
 }
 
 function _ftRenderTable() {
-  const el = document.getElementById('ftTable');
+  const el = document.getElementById(_ftId('ftTable'));
   if (!el) return;
 
-  const insumos = items.filter(i => !i.isProd);
-
   if (_ftRows.length === 0) {
-    el.innerHTML = `<div style="text-align:center;padding:18px 12px;font-size:.76rem;color:var(--muted)">
-      Nenhum ingrediente adicionado — clique em "+ Adicionar insumo"
+    el.innerHTML = `<div style="text-align:center;padding:24px 12px;font-size:.86rem;color:var(--muted);border:1.5px dashed var(--border);border-radius:var(--r8)">
+      Nenhum insumo adicionado — clique em "+ Adicionar insumo"
     </div>`;
     return;
   }
 
-  // Agrupa insumos por categoria para optgroup
-  const cats = [...new Set(insumos.map(i => i.cat || 'Outros'))].sort();
-  const optGroupsHtml = cats.map(cat => `
-    <optgroup label="${cat}">
-      ${insumos.filter(i => (i.cat || 'Outros') === cat).map(ins =>
-        `<option value="${ins.id}">${ins.name}</option>`
-      ).join('')}
-    </optgroup>
-  `).join('');
+  if (_ftMode === 'flat') { _ftRenderTableFlat(el); return; }
+
+  // Modo 'preparo' (Pré-produção) — só insumo, custo/kg dividido por rendimento
+  const pool = items.filter(i => !i.isProd);
+
+  // Agrupa por categoria para optgroup
+  const cats = [...new Set(pool.map(i => i.cat || 'Outros'))].sort();
 
   el.innerHTML = `
     <!-- Header -->
@@ -568,14 +796,13 @@ function _ftRenderTable() {
 
     <!-- Rows -->
     ${_ftRows.map((row, i) => {
-      const ins   = insumos.find(x => x.id === row.item_id);
+      const ins   = pool.find(x => x.id === row.item_id);
       const preco = ins ? ins.cost : 0;
       const custo = ins ? (row.peso_g / 1000) * preco : 0;
 
-      // Rebuild select com selected
       const opts = cats.map(cat => `
         <optgroup label="${cat}">
-          ${insumos.filter(x => (x.cat || 'Outros') === cat).map(x =>
+          ${pool.filter(x => (x.cat || 'Outros') === cat).map(x =>
             `<option value="${x.id}"${x.id === row.item_id ? ' selected' : ''}>${x.name}</option>`
           ).join('')}
         </optgroup>
@@ -583,19 +810,19 @@ function _ftRenderTable() {
 
       return `
         <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 28px;gap:6px;padding:6px 10px;border-bottom:1px solid var(--border);align-items:center;background:var(--surface)">
-          <select id="ftItem-${i}" class="inp" style="font-size:.74rem;padding:5px 8px"
+          <select id="${_ftId('ftItem')}-${i}" class="inp" style="font-size:.74rem;padding:5px 8px"
             onchange="_ftUpdateRow(${i})">
             <option value="">Selecione...</option>
             ${opts}
           </select>
-          <input type="number" id="ftPeso-${i}" class="inp" value="${row.peso_g || ''}"
+          <input type="number" id="${_ftId('ftPeso')}-${i}" class="inp" value="${row.peso_g || ''}"
             min="0" step="1" placeholder="0"
             style="font-size:.74rem;padding:5px 8px;text-align:right"
             oninput="_ftUpdateRow(${i})">
-          <div id="ftPrecoKg-${i}" style="font-size:.74rem;text-align:right;color:var(--muted);padding:0 4px">
+          <div id="${_ftId('ftPrecoKg')}-${i}" style="font-size:.74rem;text-align:right;color:var(--muted);padding:0 4px">
             ${preco > 0 ? 'R$ ' + fmt(preco) : '—'}
           </div>
-          <div id="ftCustoLn-${i}" style="font-size:.74rem;font-weight:700;text-align:right;padding:0 4px;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">
+          <div id="${_ftId('ftCustoLn')}-${i}" style="font-size:.74rem;font-weight:700;text-align:right;padding:0 4px;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">
             ${custo > 0 ? 'R$ ' + fmt(custo) : '—'}
           </div>
           <button onclick="_ftRemoveRow(${i})"
@@ -608,10 +835,57 @@ function _ftRenderTable() {
     <!-- Totals -->
     <div style="display:grid;grid-template-columns:1fr 90px 80px 80px 28px;gap:6px;padding:7px 10px;background:var(--surface2);align-items:center">
       <span style="font-size:.72rem;font-weight:700;color:var(--muted)">TOTAL</span>
-      <div id="ftTotalPeso" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--muted)">${_ftCalcTotalPeso()} g</div>
+      <div id="${_ftId('ftTotalPeso')}" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--muted)">${_ftCalcTotalPeso()} g</div>
       <div></div>
-      <div id="ftTotalCusto" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--purple)">R$ ${fmt(_ftCalcTotalCusto())}</div>
+      <div id="${_ftId('ftTotalCusto')}" style="font-size:.72rem;font-weight:700;text-align:right;color:var(--purple)">R$ ${fmt(_ftCalcTotalCusto())}</div>
       <div></div>
+    </div>
+  `;
+}
+
+// Tabela do modo 'flat' (Produto/Opção) — 3 colunas (Insumo, Qtde, Custo),
+// busca por texto em vez de dropdown, sem assumir unidade de medida.
+function _ftRenderTableFlat(el) {
+  const total = _ftCalcTotalCusto();
+
+  el.innerHTML = `
+    <div class="ft-table-head">
+      <span>Insumo</span><span style="text-align:right">Qtde</span><span style="text-align:right">Custo</span><span></span>
+    </div>
+    ${_ftRows.map((row, i) => {
+      const ins   = items.find(x => x.id === row.item_id);
+      const custo = ins ? (row.peso_g || 0) * ins.cost : 0;
+      const pct   = total > 0 ? (custo / total) * 100 : 0;
+      return `
+        <div class="ft-table-row">
+          <div class="ft-ac-wrap">
+            <input type="text" id="${_ftId('ftSearch')}-${i}" class="inp" placeholder="Pesquise um insumo ou preparado..."
+              value="${ins?.name ? ins.name.replace(/"/g,'&quot;') : ''}"
+              oninput="_ftSearchInsumo(${i}, this.value)"
+              onfocus="_ftSearchInsumo(${i}, this.value)"
+              onblur="setTimeout(()=>_ftCloseDropdown(${i}),150)">
+            <div class="ft-ac-list" id="${_ftId('ftDrop')}-${i}" style="display:none"></div>
+          </div>
+          <div class="ft-qtd-cell">
+            <input type="number" id="${_ftId('ftPeso')}-${i}" class="inp" value="${row.peso_g || ''}"
+              min="0" step="any" placeholder="0"
+              oninput="_ftUpdateQtdFlat(${i})">
+            <span class="ft-qtd-unit" id="${_ftId('ftUnit')}-${i}">${ins?.unit || ''}</span>
+          </div>
+          <div class="ft-custo-cell">
+            <div id="${_ftId('ftCustoLn')}-${i}" style="font-weight:700;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">${custo > 0 ? 'R$ ' + fmt(custo) : '—'}</div>
+            <span class="ft-custo-pct" id="${_ftId('ftCustoPct')}-${i}">${custo > 0 ? fmt(pct) + '%' : ''}</span>
+          </div>
+          <button onclick="_ftRemoveRow(${i})"
+            style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem;padding:2px 4px;border-radius:4px;display:flex;align-items:center;justify-content:center"
+            title="Remover">×</button>
+        </div>
+      `;
+    }).join('')}
+    <div class="ft-table-total">
+      <span>TOTAL</span><span></span>
+      <span id="${_ftId('ftTotalCusto')}" style="text-align:right;color:var(--purple)">R$ ${fmt(total)}</span>
+      <span></span>
     </div>
   `;
 }
@@ -661,7 +935,7 @@ function renderPreparoGrid() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
         <div>
           <div style="font-size:var(--text-md);font-weight:700">${item.name}</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px">Produção Interna · ${item.unit} ${ftBadge}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px">Preparados · ${item.unit} ${ftBadge}</div>
         </div>
         <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();openEditPreparo(${item.id})">${lc("edit-2",13,"currentColor")}️</button>
       </div>
@@ -723,18 +997,32 @@ function openEditPreparo(id) {
 function savePreparo() {
   const name = document.getElementById('fpName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
-  // Ficha Técnica — build from current _ftRows
   const rendimento_kg = parseFloat(document.getElementById('ftRendimento').value) || 0;
-  const fichaTecnica = {
-    ingredientes: _ftRows.filter(r => r.item_id),
-    rendimento_kg,
-  };
-  // Custo calculado (já atualizado em fpCost pelo _ftRecalc)
+  const novaFT = { ingredientes: _ftRows.filter(r => r.item_id), rendimento_kg };
+
+  // Proteção: avisa se ficha técnica existente será apagada
+  if (editPreparoId) {
+    const itemAntes = items.find(i => i.id === editPreparoId);
+    const ftAntes = itemAntes?.fichaTecnica?.ingredientes?.length || 0;
+    if (ftAntes > 0 && novaFT.ingredientes.length === 0) {
+      vtpConfirm({
+        title: 'Ficha Técnica será apagada',
+        message: `A ficha técnica de "${itemAntes.name}" tem ${ftAntes} ingrediente(s) configurado(s).\n\nSalvar sem ingredientes vai apagar toda a ficha técnica. Deseja continuar?`,
+        confirmLabel: 'Apagar ficha e salvar',
+        onConfirm: () => _savePreparoConfirmado(name, novaFT),
+      });
+      return;
+    }
+  }
+  _savePreparoConfirmado(name, novaFT);
+}
+
+function _savePreparoConfirmado(name, fichaTecnica) {
   const custoKg = parseFloat(document.getElementById('fpCost').value) || 0;
   const data = {
     name,
     code:         document.getElementById('fpCode').value.trim(),
-    cat:          'Produção Interna',
+    cat:          'PREPARADOS',
     unit:         document.getElementById('fpUnit').value,
     cost:         custoKg,
     min:          parseFloat(document.getElementById('fpMin').value)    || 0,
@@ -1113,30 +1401,36 @@ function deleteSup() {
 
 const PROD_CATS = ['Pizza Pequena', 'Pizza Grande', 'Bebida', 'Outro'];
 
+// Aba "Outros" — bebidas, sobremesas e demais produtos vendáveis.
+// Mesmo padrão de Fichas Técnicas: lista cheia → editor em tela cheia.
+// A ficha de uma bebida de revenda é trivial (1 UN do insumo), mas passa
+// pela mesma lógica de débito/custo de todo produto.
 function renderCadProdutos() {
-  const el = document.getElementById('cadProdutosGrid');
+  const lv = document.getElementById('outrosListView');
+  const dv = document.getElementById('outrosDetailView');
+  if (lv) lv.style.display = '';
+  if (dv) dv.style.display = 'none';
+  const el = document.getElementById('listaOutros');
   if (!el) return;
+  const cnt = document.getElementById('cntOutros');
+  if (cnt) cnt.textContent = `(${produtos.length})`;
 
-  const byCat = {};
-  produtos.forEach(p => {
-    if (!byCat[p.cat]) byCat[p.cat] = [];
-    byCat[p.cat].push(p);
-  });
-
-  el.innerHTML = Object.entries(byCat).map(([cat, prods]) => `
-    <div style="margin-bottom:20px">
-      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--border)">${cat}</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${prods.map(p => `
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r8)">
-            <div style="flex:1">
-              <div style="font-size:var(--text-sm);font-weight:700">${p.name}</div>
-              <div style="font-size:var(--text-xs);color:var(--muted)">Preço de venda: R$ ${fmt(p.price)} · ${p.active ? 'Ativo' : 'Inativo'}</div>
-            </div>
-            <button class="btn btn-outline btn-sm" onclick="openProdModal(${p.id})">Editar</button>
-          </div>`).join('')}
+  if (!produtos.length) {
+    el.innerHTML = `<div class="ft-empty-list">Nenhum produto — cadastre aqui bebidas, sobremesas e outros itens vendáveis</div>`;
+    return;
+  }
+  el.innerHTML = produtos.map(p => {
+    const nIng  = p.fichaTecnica?.ingredientes?.length || 0;
+    const custo = _calcCustoFicha(p.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('outro',${p.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${p.name}</div>
+        <div class="ft-list-sub">${nIng > 0 ? nIng + ' insumo(s) na ficha' : 'Sem ficha técnica — débito não configurado'}</div>
       </div>
-    </div>`).join('') || `<div class="empty"><div class="empty-icon">${lc("tag",13,"currentColor")}</div>Nenhum produto cadastrado</div>`;
+      <div class="ft-list-cost">${nIng > 0 ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
+    </div>`;
+  }).join('');
 }
 
 let _editProdId = null;
@@ -1194,21 +1488,9 @@ function deleteProd() {
 // SABORES DE PIZZA
 // ══════════════════════════════════════════════════════════════
 
-function setProdTab(tab) {
-  ['sabores','outros'].forEach(t => {
-    const btn = document.getElementById('prod-tab-' + t);
-    if (!btn) return;
-    const isActive = t === tab;
-    btn.style.color             = isActive ? 'var(--purple)' : 'var(--muted)';
-    btn.style.borderBottomColor = isActive ? 'var(--purple)' : 'transparent';
-  });
-  const sabGrid  = document.getElementById('cadSaboresGrid');
-  const prodGrid = document.getElementById('cadProdutosGrid');
-  if (sabGrid)  sabGrid.style.display  = tab === 'sabores' ? '' : 'none';
-  if (prodGrid) prodGrid.style.display = tab === 'outros'  ? '' : 'none';
-  if (tab === 'sabores') renderCadSabores();
-  else renderCadProdutos();
-}
+// Configurações → Produtos é SÓ cadastro (Fichas Técnicas). A parte
+// analítica (CMV, curva ABC, porcionamento) vive no módulo Vendas
+// (js/vendas.js + js/vendas-ui.js), não aqui.
 
 function renderCadSabores() {
   const el = document.getElementById('cadSaboresGrid');
@@ -1230,19 +1512,764 @@ function renderCadSabores() {
         <button class="btn btn-outline btn-xs" onclick="openSaborModal('${tipo.id}')">+ Sabor</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px">
-        ${cat.items.sort((a,b)=>a.acr-b.acr||a.name.localeCompare(b.name)).map(s => `
+        ${cat.items.sort((a,b)=>a.acr-b.acr||a.name.localeCompare(b.name)).map(s => {
+          const opc     = opcoes.find(o => o.id === s.opcaoId);
+          const hasFt   = opc?.fichaTecnica?.ingredientes?.length > 0;
+          const ftBadge = opc
+            ? `<button onclick="event.stopPropagation();_irParaFicha('opcao',${opc.id})" title="${hasFt ? 'Ver ficha técnica' : 'Cadastrar ficha técnica'}"
+                style="font-size:9px;background:${hasFt ? 'var(--purple-xlight)' : 'var(--surface2)'};color:${hasFt ? 'var(--purple)' : 'var(--muted)'};border:none;border-radius:4px;padding:2px 7px;cursor:pointer;margin-left:8px;font-weight:600">${hasFt ? 'ficha ok' : 'sem ficha'}</button>`
+            : '';
+          return `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface);border:1.5px solid ${s.active===false?'var(--border)':'var(--border)'};border-radius:var(--r6);opacity:${s.active===false?0.5:1}">
             <div style="flex:1">
               <span style="font-size:var(--text-sm);font-weight:600">${s.name}</span>
               <span style="font-size:var(--text-xs);color:var(--muted);margin-left:8px">${s.acr > 0 ? '+R$ ' + fmt(s.acr) : 'Incluso'}</span>
               <span style="font-size:var(--text-xs);color:var(--purple);font-weight:700;margin-left:8px">= R$ ${fmt(tipo.basePrice + s.acr)}</span>
+              ${ftBadge}
             </div>
             <button class="btn btn-outline btn-xs" onclick="openSaborModal('${tipo.id}', ${s.id})">${lc("edit-2",13,"currentColor")}️</button>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
         ${cat.items.length === 0 ? `<div style="font-size:var(--text-xs);color:var(--muted);padding:8px">Nenhum sabor cadastrado</div>` : ''}
       </div>
     </div>`;
   }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// FICHAS TÉCNICAS — Produto (base) & Opção (cobertura)
+// Layout mestre-detalhe: lista à esquerda, editor de ficha à direita.
+// ══════════════════════════════════════════════════════════════
+
+let _fichaSel = null; // { tipo:'produto'|'opcao', id: number|null }
+
+function renderCadFichas() {
+  _fichaSel = null;
+  document.getElementById('fichaListView').style.display = '';
+  document.getElementById('fichaDetailView').style.display = 'none';
+  _renderListaProdutosPizza();
+  _renderListaOpcoes();
+}
+
+function _renderListaProdutosPizza() {
+  const el = document.getElementById('listaProdutosPizza');
+  if (!el) return;
+  // Produtos = bases de pizza + bebidas/outros (todos são produtos vendáveis)
+  const linhaBase = p => {
+    const nIng  = p.fichaTecnica?.ingredientes?.length || 0;
+    const custo = _calcCustoFicha(p.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('produto',${p.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${p.nome} <span style="font-size:.68rem;font-weight:600;background:var(--purple-xlight);color:var(--purple);padding:1px 7px;border-radius:var(--r6);margin-left:6px">base</span></div>
+        <div class="ft-list-sub">${nIng > 0 ? nIng + ' insumo(s) na ficha' : 'Base do produto — massa, embalagem'}</div>
+      </div>
+      <div class="ft-list-cost">${nIng > 0 ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
+    </div>`;
+  };
+  const linhaOutro = p => {
+    const nIng  = p.fichaTecnica?.ingredientes?.length || 0;
+    const custo = _calcCustoFicha(p.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('outro',${p.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${p.name} <span style="font-size:.68rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:1px 7px;border-radius:var(--r6);margin-left:6px">bebida/outro</span></div>
+        <div class="ft-list-sub">${nIng > 0 ? nIng + ' insumo(s) na ficha' : 'Sem ficha técnica'}</div>
+      </div>
+      <div class="ft-list-cost">${nIng > 0 ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
+    </div>`;
+  };
+  document.getElementById('cntProdutosPizza').textContent = `(${produtosPizza.length + produtos.length})`;
+  el.innerHTML = produtosPizza.map(linhaBase).join('') + produtos.map(linhaOutro).join('');
+}
+
+function _renderListaOpcoes() {
+  const el = document.getElementById('listaOpcoes');
+  if (!el) return;
+  const q = document.getElementById('srchOpcoes')?.value?.toLowerCase() || '';
+  const lista = opcoes
+    .filter(o => !q || o.nome.toLowerCase().includes(q))
+    .sort((a,b) => a.nome.localeCompare(b.nome));
+  document.getElementById('cntOpcoes').textContent = `(${opcoes.length})`;
+  if (!lista.length) {
+    el.innerHTML = `<div class="ft-empty-list">Nenhuma opção encontrada</div>`;
+    return;
+  }
+  el.innerHTML = lista.map(o => {
+    const hasFt = o.fichaTecnica?.ingredientes?.length > 0;
+    const custo = _calcCustoFicha(o.fichaTecnica);
+    return `<div class="ft-list-row" onclick="_selecionarFicha('opcao',${o.id})">
+      <div class="ft-list-main">
+        <div class="ft-list-name">${o.nome}</div>
+        <div class="ft-list-sub">${o.categoria==='doce'?'Doce':'Salgada'}</div>
+      </div>
+      <div class="ft-list-cost">${hasFt ? 'R$ ' + fmt(custo) : `<span class="ft-list-empty">sem ficha</span>`}</div>
+      ${lc('chevron-right',20,'var(--muted)')}
+    </div>`;
+  }).join('');
+}
+
+function _selecionarFicha(tipo, id) {
+  _fichaSel = { tipo, id };
+  // Bebidas ('outro') e demais fichas agora vivem todas na aba Fichas Técnicas
+  document.getElementById('fichaListView').style.display = 'none';
+  document.getElementById('fichaDetailView').style.display = '';
+  _renderFichaDetail();
+}
+
+function _novaFicha(tipo) {
+  _selecionarFicha(tipo, null);
+}
+
+function _voltarListaFichas() {
+  _fichaSel = null;
+  renderCadFichas();
+}
+
+function _irParaFicha(tipo, id) {
+  setCadTab('produtos');
+  _selecionarFicha(tipo, id);
+}
+
+function _renderFichaDetail() {
+  const isOutro   = _fichaSel?.tipo === 'outro';
+  const el = document.getElementById('fichaDetailView');
+  if (!el || !_fichaSel) return;
+
+  const isProduto = _fichaSel.tipo === 'produto';
+  const registro  = _fichaSel.id
+    ? (isProduto ? produtosPizza.find(p => p.id === _fichaSel.id)
+      : isOutro  ? produtos.find(p => p.id === _fichaSel.id)
+      : opcoes.find(o => o.id === _fichaSel.id))
+    : null;
+  const nomeAtual = (isOutro ? registro?.name : registro?.nome) || '';
+
+  const rotulo = isProduto ? 'Produto (base — massa, molho, embalagem)'
+    : isOutro ? 'Produto (bebidas, sobremesas e outros — débito via ficha técnica)'
+    : 'Opção (cobertura — a "1/2 porção" do sabor)';
+
+  el.innerHTML = `
+    <button class="ft-editor-back" onclick="_voltarListaFichas()">${lc('arrow-left',16,'currentColor')} Voltar para a lista</button>
+    <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">
+      ${rotulo}
+    </div>
+    <div class="ft-editor-head">
+      <input class="inp" id="xNome" placeholder="Nome" value="${nomeAtual.replace(/"/g,'&quot;')}" style="flex:2;min-width:260px">
+      ${(isProduto || isOutro) ? '' : `
+      <select class="inp" id="xCategoria" style="flex:1;min-width:140px" title="Só pra organizar a lista — não afeta cálculo nem débito">
+        <option value="salgada"${registro?.categoria!=='doce'?' selected':''}>Salgada</option>
+        <option value="doce"${registro?.categoria==='doce'?' selected':''}>Doce</option>
+      </select>`}
+    </div>
+    <div class="ft-summary-row">
+      <div><span class="ft-summary-val" id="xftCustoDisplay"></span><div class="ft-summary-label" id="xftCustoSub"></div></div>
+    </div>
+    <div id="xftTable"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+      <button class="btn btn-outline btn-sm" onclick="_ftAddRow()">+ Adicionar insumo</button>
+      <div style="display:flex;gap:10px">
+        ${registro ? `<button class="btn btn-red btn-sm" onclick="_excluirFicha()">Excluir</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick="_salvarFicha()">Salvar</button>
+      </div>
+    </div>
+  `;
+
+  _ftInit(registro?.fichaTecnica || null, 'flat', 'x');
+}
+
+function _salvarFicha() {
+  if (!_fichaSel) return;
+  const nome = document.getElementById('xNome').value.trim();
+  if (!nome) { toast('Informe o nome', 'err'); return; }
+  const fichaTecnica = { ingredientes: _ftRows.filter(r => r.item_id) };
+
+  if (_fichaSel.tipo === 'produto') {
+    if (_fichaSel.id) {
+      const idx = produtosPizza.findIndex(p => p.id === _fichaSel.id);
+      if (idx >= 0) produtosPizza[idx] = { ...produtosPizza[idx], nome, fichaTecnica };
+    } else {
+      const novo = { id: nextProdPizzaId++, nome, fichaTecnica, active: true };
+      produtosPizza.push(novo);
+      _fichaSel.id = novo.id;
+    }
+    saveProdPizza();
+  } else if (_fichaSel.tipo === 'outro') {
+    if (_fichaSel.id) {
+      const idx = produtos.findIndex(p => p.id === _fichaSel.id);
+      if (idx >= 0) produtos[idx] = { ...produtos[idx], name: nome, fichaTecnica };
+    } else {
+      const novo = { id: nextPid++, name: nome, cat: 'Outros', price: 0, active: true, fichaTecnica };
+      produtos.push(novo);
+      _fichaSel.id = novo.id;
+    }
+    saveP();
+  } else {
+    const categoria = document.getElementById('xCategoria')?.value || 'salgada';
+    if (_fichaSel.id) {
+      const idx = opcoes.findIndex(o => o.id === _fichaSel.id);
+      if (idx >= 0) opcoes[idx] = { ...opcoes[idx], nome, categoria, fichaTecnica };
+    } else {
+      const nova = { id: nextOpcaoId++, nome, categoria, fichaTecnica, active: true };
+      opcoes.push(nova);
+      _fichaSel.id = nova.id;
+    }
+    saveOpcoes();
+  }
+  toast(`${lc("check-circle",14,"var(--green)")} Ficha técnica salva!`);
+  _voltarListaFichas();
+}
+
+function _excluirFicha() {
+  if (!_fichaSel?.id) return;
+  const tipo = _fichaSel.tipo;
+  const nome = tipo === 'produto' ? produtosPizza.find(p => p.id === _fichaSel.id)?.nome
+    : tipo === 'outro' ? produtos.find(p => p.id === _fichaSel.id)?.name
+    : opcoes.find(o => o.id === _fichaSel.id)?.nome;
+  vtpConfirm({
+    title: `Excluir "${nome}"`,
+    message: 'Esta ação não pode ser desfeita.',
+    confirmLabel: 'Excluir',
+    onConfirm: () => {
+      if (tipo === 'produto') {
+        produtosPizza = produtosPizza.filter(p => p.id !== _fichaSel.id);
+        saveProdPizza();
+      } else if (tipo === 'outro') {
+        produtos = produtos.filter(p => p.id !== _fichaSel.id);
+        saveP();
+      } else {
+        opcoes = opcoes.filter(o => o.id !== _fichaSel.id);
+        saveOpcoes();
+      }
+      toast(`${lc("trash-2",14,"currentColor")} "${nome}" excluído.`);
+      _voltarListaFichas();
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// PRODUTOS (CARDÁPIO WEB) — interpretação estrutural + mapeamento
+//
+// O catálogo NÃO é cadastrado à mão nem classificado por nome de item.
+// O sistema INTERPRETA a estrutura de cada pedido (item → opções →
+// option_group_name) para descobrir, independente do canal (iFood /
+// 99Food / site), o que foi vendido — e reduz tudo a duas coisas que
+// precisam de ficha técnica:
+//
+//   SABORES — cada sabor distinto de pizza (Calabresa, Portuguesa...),
+//             não importa em qual das ~5 formas de nome ele apareça.
+//             Mapeia para uma Opção (a "1/2 porção"). Tamanho e base
+//             são DERIVADOS da estrutura, nunca digitados.
+//   BEBIDAS — refrigerantes e itens de revenda. Mapeiam para um Produto
+//             de "Outros" (débito via ficha técnica) ou insumo direto.
+//
+// Como a estrutura é lida (validado nos pedidos reais):
+//   • Grupo "Pizza Grande/Pequena (N Pedaços) | Pizza Salgada/Doce"
+//     → é um TRILHO de sabores: o grupo diz o tamanho, cada opção é um
+//       sabor; a quantidade da opção é a contagem de meias porções
+//       (grande inteira de 1 sabor vem como x2; meio a meio, 1+1).
+//   • Item "Sabor | Pizza Tradicional" com opção "Pizza Grande/Pequena"
+//     → o sabor está no nome do item, o tamanho na opção (layout iFood).
+//   • Grupo com "bebida" no nome, ou opção sem grupo que não é tamanho,
+//     ou item avulso sem opções → BEBIDA.
+//
+// O mapa (vtp_cw_mapa) é o contrato que o parser de débito vai consumir:
+//   { sabores: { <chaveSabor>: {opcaoId, auto} },
+//     bebidas: { <chaveBebida>: {tipo:'produto'|'insumo', id, auto} } }
+// ══════════════════════════════════════════════════════════════
+
+let _cwMapa = db._get('vtp_cw_mapa', null);
+if (!_cwMapa || !_cwMapa.sabores || !_cwMapa.bebidas) _cwMapa = { sabores: {}, bebidas: {} };
+const saveCwMapa = () => db._set('vtp_cw_mapa', _cwMapa);
+
+let _cwDados     = null;   // { sabores:[...], bebidas:[...] } — cache da sessão
+let _cwEditKind  = null;   // 'sabor' | 'bebida' — seção com form aberto
+let _cwEditKey   = null;   // chave da linha em edição
+let _cwAlvoSel   = null;   // destino escolhido no form { tipo, id }
+
+function _cwNorm(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Reduz qualquer forma de nome de sabor à sua "chave" canônica:
+//   "1/2 Quatro Queijos"        → "quatro queijos"
+//   "Quatro Queijos"            → "quatro queijos"
+//   "Sonho de Valsa | Pizza Doce" → "sonho de valsa"
+//   "Pizza de Calabresa"        → "calabresa"
+function _cwSaborKey(nome) {
+  return _cwNorm(nome)
+    .replace(/^1\/2\s+/, '')
+    .replace(/\s*\|\s*pizza.*$/, '')
+    .replace(/^pizza\s+(de\s+)?/, '')
+    .trim();
+}
+
+// ── Similaridade (matching por aproximação de nome) ────────────
+// Sabores foram renomeados no CW ao longo do tempo (ex: "Frango com
+// Requeijão" ≈ "Frango Catupiry" ≈ "Frango Cremoso"). Match exato não
+// resolve — então casamos por semelhança de tokens + tolerância a
+// grafia, com um pequeno dicionário de sinônimos culinários.
+const _CW_SINONIMOS = { catupiry: 'catupiry', cremoso: 'catupiry', requeijao: 'catupiry', creme: 'catupiry' };
+const _CW_STOP = new Set(['de','e','com','ao','a','o','da','do','na','no','ou','em','1','2','meia','inteira','pizza','sabor','antartica','antarctica']);
+function _cwCanonTok(t) { return _CW_SINONIMOS[t] || t; }
+function _cwTokens(s) {
+  return _cwSaborKey(s).replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter(t => t && !_CW_STOP.has(t)).map(_cwCanonTok);
+}
+function _cwLev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+function _cwSim(a, b) {
+  const A = _cwTokens(a), B = _cwTokens(b);
+  if (!A.length || !B.length) return 0;
+  const sA = new Set(A), sB = new Set(B);
+  let inter = 0; for (const t of sA) if (sB.has(t)) inter++;
+  const jaccard = inter / (sA.size + sB.size - inter);
+  let score = jaccard;
+  // Contenção DIRECIONAL: só dá bônus quando a query (A) está inteira no
+  // candidato (B) — ou seja, o candidato é mais específico e contém tudo
+  // que a query pediu ("Milho" ⊆ "Milho Verde"). O contrário ("COCA-COLA
+  // 1L" contido em "Coca-Cola Zero 1l") NÃO ganha bônus: o candidato está
+  // faltando um token que a query tem ("zero"), então é menos correto.
+  let queryContida = A.length > 0; for (const t of sA) if (!sB.has(t)) { queryContida = false; break; }
+  if (queryContida && [...sA].some(t => t.length >= 3)) score = Math.max(score, Math.min(0.92, jaccard + 0.35));
+  // Tolerância a grafia (nível de caractere)
+  const c1 = _cwSaborKey(a).replace(/[^a-z0-9]/g, ''), c2 = _cwSaborKey(b).replace(/[^a-z0-9]/g, '');
+  if (c1 && c2) score = Math.max(score, (1 - _cwLev(c1, c2) / Math.max(c1.length, c2.length)) * 0.9);
+  return score;
+}
+// Top-N candidatos de uma lista {nome} para um nome do CW
+function _cwRank(nome, pool, campoNome, n = 3, minScore = 0.34) {
+  return pool.map(x => ({ x, s: _cwSim(nome, x[campoNome]) }))
+    .filter(r => r.s >= minScore).sort((a, b) => b.s - a.s).slice(0, n);
+}
+
+// ── Regras de estrutura ────────────────────────────────────────
+const _RE_SLOT     = /pizza\s+(grande|pequena).*pizza\s+(salgada|doce)/i; // grupo = trilho de sabores
+const _RE_SIZE_OPT = /^pizza\s+(grande|pequena)\b/i;                       // opção = seletor de tamanho (layout B)
+const _RE_BEBIDA   = /bebida/i;                                           // grupo de bebida
+const _RE_CONTAINER= /combo|promo|leve\s*\d|pague|pizza\s+(grande|pequena)/i; // item que é container/pizza, não bebida
+
+function _cwTamDoGrupo(g)  { return /grande/i.test(g) ? 'grande' : 'pequena'; }
+function _cwTamDaOpcao(n)  { return /grande/i.test(n) ? 'grande' : 'pequena'; }
+
+async function _cwDescobrir(dias = 90) {
+  const sb = _cwGetSbClient();
+  const inicio = new Date(Date.now() - dias * 864e5).toISOString();
+  const { data, error } = await sb
+    .from('cw_pedidos')
+    .select('items, cw_created_at')
+    .gte('cw_created_at', inicio)
+    .limit(6000);
+  if (error) throw new Error(error.message);
+
+  const sab = {}; // chave → { chave, nome, vendas, tamanhos:Set, formas:Set }
+  const beb = {}; // chave → { chave, nome, vendas, ultimoPreco }
+
+  const addSaborUm = (nome, tam, qtd) => {
+    const chave = _cwSaborKey(nome);
+    if (!chave) return;
+    // Guarda: descritor de tamanho ("Pizza Grande", "Pequena (4 Pedaços)") não é sabor
+    if (/^(grande|pequena)\b/.test(chave) || /pedaco/.test(chave)) return;
+    if (!sab[chave]) sab[chave] = { chave, nome: _cwTitulo(chave), vendas: 0, tamanhos: new Set(), formas: new Set() };
+    sab[chave].vendas += qtd || 1;
+    if (tam) sab[chave].tamanhos.add(tam);
+    sab[chave].formas.add(nome);
+  };
+  // Nome pode conter vários sabores ("1/2 A + 1/2 B | Pizza Grande") — quebra em cada um
+  const addSabor = (nome, tam, qtd) => {
+    (nome || '').split('|')[0].split('+').forEach(parte => addSaborUm(parte, tam, qtd));
+  };
+  const addBebida = (nome, qtd, preco) => {
+    const chave = _cwNorm(nome);
+    if (!chave) return;
+    if (!beb[chave]) beb[chave] = { chave, nome, vendas: 0, ultimoPreco: 0 };
+    beb[chave].vendas += qtd || 1;
+    if (preco > 0) beb[chave].ultimoPreco = preco;
+  };
+
+  const walk = (it, mult) => {
+    if (!it || it.status === 'canceled') return;
+    const qtd = (it.quantity || 1) * mult;
+    const opts = it.options || [];
+
+    // Layout B: tamanho vem numa opção "Pizza Grande/Pequena", sabor no nome do item
+    const sizeOpt = opts.find(o => _RE_SIZE_OPT.test(o.name || ''));
+    if (sizeOpt) {
+      addSabor(it.name, _cwTamDaOpcao(sizeOpt.name), qtd);
+    }
+
+    for (const o of opts) {
+      const g = o.option_group_name || '';
+      const oq = (o.quantity || 1) * qtd;
+      if (_RE_SLOT.test(g)) {
+        addSabor(o.name, _cwTamDoGrupo(g), oq);            // trilho de sabores
+      } else if (_RE_BEBIDA.test(g)) {
+        addBebida(o.name, oq, o.unit_price || 0);          // bebida (grátis/upsell)
+      } else if (_RE_SIZE_OPT.test(o.name || '')) {
+        // opção de tamanho (layout B) já tratada acima → ignora
+      } else if (/\|\s*pizza/i.test(o.name || '')) {
+        addSabor(o.name, null, oq);                        // opção que é sabor ("Smores | Pizza Doce")
+      } else if (!g) {
+        addBebida(o.name, oq, o.unit_price || 0);          // opção solta → bebida/revenda
+      }
+    }
+
+    // Item avulso sem opção de tamanho e sem trilho de sabores:
+    if (!sizeOpt && !opts.some(o => _RE_SLOT.test(o.option_group_name || ''))) {
+      if (/\|\s*pizza/i.test(it.name || '')) {
+        // Layout B sem opção de tamanho (ex: "Smores | Pizza Doce") — é sabor,
+        // tamanho será derivado no débito pela estrutura do pedido
+        addSabor(it.name, null, qtd);
+      } else if (!opts.length && !_RE_CONTAINER.test(it.name || '')) {
+        // Item avulso de verdade (bebida/revenda)
+        addBebida(it.name, qtd, it.unit_price || 0);
+      }
+    }
+
+    for (const sub of (it.items || [])) walk(sub, qtd);
+  };
+
+  for (const p of (data || [])) {
+    for (const it of (p.items || [])) walk(it, 1);
+  }
+
+  _cwAutoMapear(sab, beb);
+
+  const finalizar = obj => Object.values(obj)
+    .map(r => ({ ...r, tamanhos: r.tamanhos ? [...r.tamanhos] : [], formas: r.formas ? [...r.formas] : [] }))
+    .sort((a, b) => b.vendas - a.vendas);
+
+  return { sabores: finalizar(sab), bebidas: finalizar(beb) };
+}
+
+// Title Case simples pra exibir a chave normalizada
+function _cwTitulo(chave) {
+  return chave.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Auto-match por SIMILARIDADE. Só aplica automaticamente quando há um
+// vencedor claro (alta semelhança e bem à frente do 2º) — nomes ambíguos
+// (ex: "Frango com Requeijão" entre Catupiry/Cremoso) ficam pendentes com
+// as sugestões clicáveis no formulário, pra você confirmar.
+const _CW_AUTO_STRONG = 0.93; // match quase-exato: auto sozinho, sem exigir gap
+const _CW_AUTO_MIN    = 0.82; // confiança mínima (com gap) pra auto-mapear
+const _CW_AUTO_GAP    = 0.12; // distância mínima do 2º candidato
+
+// Vencedor claro: quase-exato OU (bom o bastante E bem à frente do 2º)
+function _cwVencedorClaro(cands) {
+  if (!cands[0]) return false;
+  if (cands[0].s >= _CW_AUTO_STRONG) return true;
+  return cands[0].s >= _CW_AUTO_MIN && (!cands[1] || cands[0].s - cands[1].s >= _CW_AUTO_GAP);
+}
+
+function _cwPoolBebidas() {
+  return [
+    ...produtos.filter(p => p.active !== false).map(p => ({ tipo: 'produto', id: p.id, nome: p.name })),
+    ...items.filter(i => i.active !== false && !i.isProd).map(i => ({ tipo: 'insumo', id: i.id, nome: i.name })),
+  ];
+}
+
+function _cwAutoMapear(sab, beb) {
+  let mudou = false;
+  const poolBeb = _cwPoolBebidas();
+
+  for (const k in sab) {
+    if (_cwMapa.sabores[k]?.auto === false) continue;
+    const cands = _cwRank(sab[k].nome, opcoes, 'nome', 2);
+    const claro = _cwVencedorClaro(cands);
+    if (claro) {
+      if (_cwMapa.sabores[k]?.opcaoId !== cands[0].x.id) { _cwMapa.sabores[k] = { opcaoId: cands[0].x.id, auto: true }; mudou = true; }
+    } else if (_cwMapa.sabores[k]?.auto) { delete _cwMapa.sabores[k]; mudou = true; }
+  }
+
+  for (const k in beb) {
+    if (_cwMapa.bebidas[k]?.auto === false) continue;
+    const cands = _cwRank(beb[k].nome, poolBeb, 'nome', 2);
+    // produto ganha de insumo em empate de score
+    if (cands[1] && Math.abs(cands[0].s - cands[1].s) < 0.001 && cands[1].x.tipo === 'produto') cands.reverse();
+    const claro = _cwVencedorClaro(cands);
+    const cur = _cwMapa.bebidas[k];
+    if (claro) {
+      const novo = { tipo: cands[0].x.tipo, id: cands[0].x.id };
+      if (!cur || cur.tipo !== novo.tipo || cur.id !== novo.id) { _cwMapa.bebidas[k] = { ...novo, auto: true }; mudou = true; }
+    } else if (cur?.auto) { delete _cwMapa.bebidas[k]; mudou = true; }
+  }
+  if (mudou) saveCwMapa();
+}
+
+// ── Render ─────────────────────────────────────────────────────
+async function renderCadCw() {
+  const el = document.getElementById('cadCwGrid');
+  if (!el) return;
+  if (!_cwDados) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted);font-size:.9rem">
+      ${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos do Cardápio Web...</div>`;
+    try { _cwDados = await _cwDescobrir(90); }
+    catch (e) {
+      el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);font-size:.9rem">Não consegui ler os pedidos: ${e.message}</div>`;
+      return;
+    }
+  }
+  _cwRenderLista();
+}
+
+function _cwRenderLista() {
+  const el = document.getElementById('cadCwGrid');
+  if (!el || !_cwDados) return;
+
+  const busca  = _cwNorm(document.getElementById('srchCw')?.value || '');
+  const soPend = document.getElementById('filCwPend')?.checked || false;
+
+  const sabPend = _cwDados.sabores.filter(r => !_cwMapa.sabores[r.chave]).length;
+  const bebPend = _cwDados.bebidas.filter(r => !_cwMapa.bebidas[r.chave]).length;
+
+  const filtra = (lista, mapa) => lista.filter(r => {
+    if (busca && !r.chave.includes(busca) && !_cwNorm(r.nome).includes(busca)) return false;
+    if (soPend && mapa[r.chave]) return false;
+    return true;
+  });
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+      <div style="font-size:.82rem;color:var(--muted)">
+        Interpretado de <b>90 dias</b> de pedidos · ${sabPend + bebPend === 0
+          ? '<span style="color:var(--green);font-weight:700">tudo mapeado ✓</span>'
+          : `<span style="color:var(--warning-fg,#D97706);font-weight:700">${sabPend + bebPend} pendente(s)</span>`}
+      </div>
+      <div style="display:flex;gap:12px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="filCwPend" onchange="_cwRenderLista()" ${soPend ? 'checked' : ''}> só pendentes
+        </label>
+        <input class="inp" id="srchCw" placeholder="Buscar..." value="${busca}" oninput="_cwRenderLista()" style="width:200px">
+        <button class="btn btn-outline btn-sm" onclick="_cwDados=null;renderCadCw()">${lc('refresh-cw',13,'currentColor')} Reinterpretar</button>
+      </div>
+    </div>
+
+    <div class="ft-section">
+      <div class="ft-section-head">
+        <div><span class="ft-section-title">Sabores</span><span class="ft-section-count">${_cwDados.sabores.length} distintos${sabPend ? ` · ${sabPend} a mapear` : ''}</span></div>
+      </div>
+      ${filtra(_cwDados.sabores, _cwMapa.sabores).map(r => _cwLinhaSabor(r)).join('') || '<div class="ft-empty-list">Nenhum sabor</div>'}
+    </div>
+
+    <div class="ft-section">
+      <div class="ft-section-head">
+        <div><span class="ft-section-title">Bebidas e outros</span><span class="ft-section-count">${_cwDados.bebidas.length} distintos${bebPend ? ` · ${bebPend} a mapear` : ''}</span></div>
+      </div>
+      ${filtra(_cwDados.bebidas, _cwMapa.bebidas).map(r => _cwLinhaBebida(r)).join('') || '<div class="ft-empty-list">Nenhuma bebida</div>'}
+    </div>
+  `;
+  if (busca && document.activeElement?.id !== 'srchCw') {
+    const s = document.getElementById('srchCw');
+    if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  }
+}
+
+function _cwTamBadges(tamanhos) {
+  return (tamanhos || []).map(t =>
+    `<span style="font-size:.68rem;font-weight:600;background:var(--surface2);color:var(--muted);padding:1px 7px;border-radius:var(--r6);margin-left:6px">${t === 'grande' ? 'Grande' : 'Pequena'}</span>`
+  ).join('');
+}
+
+function _cwLinhaSabor(r) {
+  const m = _cwMapa.sabores[r.chave];
+  const editando = _cwEditKind === 'sabor' && _cwEditKey === r.chave;
+  let destino = '', badge;
+  if (!m) {
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:4px 11px;border-radius:var(--r6)">a mapear</span>`;
+  } else {
+    const opc = opcoes.find(o => o.id === m.opcaoId);
+    const temFt = opc?.fichaTecnica?.ingredientes?.length > 0;
+    destino = opc ? `<span style="font-size:.8rem;color:var(--muted)">→ ${opc.nome}</span>` : '';
+    badge = temFt
+      ? `<span style="font-size:.76rem;font-weight:700;background:var(--green-light);color:var(--green);padding:4px 11px;border-radius:var(--r6)">mapeado${m.auto ? ' · auto' : ''}</span>`
+      : `<span style="font-size:.76rem;font-weight:700;background:var(--orange-light);color:var(--orange-dark);padding:4px 11px;border-radius:var(--r6)" title="Opção sem ficha técnica — o custo não será calculado">sem ficha</span>`;
+  }
+  return `
+    <div class="ft-list-row" style="cursor:default;${editando ? 'border-color:var(--purple)' : ''}">
+      <div class="ft-list-main">
+        <div class="ft-list-name" style="font-size:.92rem">${r.nome}${_cwTamBadges(r.tamanhos)}</div>
+        <div class="ft-list-sub">${r.vendas} venda(s)${r.formas.length > 1 ? ` · ${r.formas.length} formas de nome no CW` : ''}</div>
+        ${editando ? _cwFormSabor(r) : ''}
+      </div>
+      ${destino}${badge}
+      <button class="btn btn-outline btn-xs" onclick="_cwEditar('sabor','${r.chave.replace(/'/g,"\\'")}')">${editando ? 'Fechar' : (m ? 'Editar' : 'Mapear')}</button>
+    </div>`;
+}
+
+function _cwLinhaBebida(r) {
+  const m = _cwMapa.bebidas[r.chave];
+  const editando = _cwEditKind === 'bebida' && _cwEditKey === r.chave;
+  let destino = '', badge;
+  if (!m) {
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--yellow-light);color:var(--warning-fg,#B45309);padding:4px 11px;border-radius:var(--r6)">a mapear</span>`;
+  } else {
+    const alvo = m.tipo === 'produto' ? produtos.find(p => p.id === m.id)?.name : items.find(i => i.id === m.id)?.name;
+    destino = alvo ? `<span style="font-size:.8rem;color:var(--muted)">→ ${alvo}</span>` : '';
+    badge = `<span style="font-size:.76rem;font-weight:700;background:var(--green-light);color:var(--green);padding:4px 11px;border-radius:var(--r6)">${m.tipo}${m.auto ? ' · auto' : ''}</span>`;
+  }
+  return `
+    <div class="ft-list-row" style="cursor:default;${editando ? 'border-color:var(--purple)' : ''}">
+      <div class="ft-list-main">
+        <div class="ft-list-name" style="font-size:.92rem">${r.nome}</div>
+        <div class="ft-list-sub">${r.vendas} venda(s)${r.ultimoPreco > 0 ? ' · R$ ' + fmt(r.ultimoPreco) : ''}</div>
+        ${editando ? _cwFormBebida(r) : ''}
+      </div>
+      ${destino}${badge}
+      <button class="btn btn-outline btn-xs" onclick="_cwEditar('bebida','${r.chave.replace(/'/g,"\\'")}')">${editando ? 'Fechar' : (m ? 'Editar' : 'Mapear')}</button>
+    </div>`;
+}
+
+function _cwEditar(kind, chave) {
+  if (_cwEditKind === kind && _cwEditKey === chave) { _cwEditKind = _cwEditKey = null; }
+  else {
+    _cwEditKind = kind; _cwEditKey = chave; _cwAlvoSel = null;
+    // Pré-seleciona a melhor sugestão por similaridade (se não houver mapa)
+    const lista = kind === 'sabor' ? _cwDados?.sabores : _cwDados?.bebidas;
+    const r = lista?.find(x => x.chave === chave);
+    const jaMapeado = kind === 'sabor' ? _cwMapa.sabores[chave] : _cwMapa.bebidas[chave];
+    if (r && !jaMapeado) {
+      const cand = _cwSugestoes(kind, r.nome)[0];
+      if (cand) _cwAlvoSel = { tipo: cand.tipo, id: cand.id };
+    }
+  }
+  _cwRenderLista();
+  if (_cwEditKey) setTimeout(() => document.getElementById('cwAlvo')?.focus(), 40);
+}
+
+// Top candidatos (com tipo/id/nome/score) para exibir como chips
+function _cwSugestoes(kind, nome) {
+  if (kind === 'sabor') {
+    return _cwRank(nome, opcoes, 'nome', 3).map(c => ({ tipo: 'opcao', id: c.x.id, nome: c.x.nome, s: c.s }));
+  }
+  return _cwRank(nome, _cwPoolBebidas(), 'nome', 3).map(c => ({ tipo: c.x.tipo, id: c.x.id, nome: c.x.nome, s: c.s }));
+}
+
+function _cwChipsHtml(kind, r) {
+  const sug = _cwSugestoes(kind, r.nome);
+  if (!sug.length) return '';
+  const sel = _cwAlvoSel;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;flex-basis:100%;align-items:center">
+    <span style="font-size:.7rem;color:var(--muted)">Sugestões:</span>
+    ${sug.map(c => {
+      const ativo = sel && sel.tipo === c.tipo && sel.id === c.id;
+      return `<button class="chip" onclick="event.stopPropagation();_cwPickChip('${c.tipo}',${c.id},this.dataset.n)" data-n="${c.nome.replace(/"/g,'&quot;')}"
+        style="cursor:pointer;font-size:.74rem;padding:3px 10px;border:1.5px solid ${ativo ? 'var(--purple)' : 'var(--border)'};background:${ativo ? 'var(--purple-xlight)' : 'var(--surface)'};color:${ativo ? 'var(--purple)' : 'var(--text)'};border-radius:var(--radius-pill,999px);font-weight:600">
+        ${c.nome} <span style="opacity:.6;font-weight:400">${Math.round(c.s * 100)}%</span></button>`;
+    }).join('')}
+  </div>`;
+}
+
+function _cwPickChip(tipo, id, nome) {
+  _cwPickAlvo(tipo, id, nome);
+  _cwRenderLista(); // re-render pra destacar o chip ativo
+}
+
+// Nome do alvo atualmente escolhido (_cwAlvoSel) pra preencher o input
+function _cwAlvoNome() {
+  if (!_cwAlvoSel) return '';
+  if (_cwAlvoSel.tipo === 'opcao')   return opcoes.find(o => o.id === _cwAlvoSel.id)?.nome || '';
+  if (_cwAlvoSel.tipo === 'produto') return produtos.find(p => p.id === _cwAlvoSel.id)?.name || '';
+  return items.find(i => i.id === _cwAlvoSel.id)?.name || '';
+}
+
+function _cwFormSabor(r) {
+  const m = _cwMapa.sabores[r.chave];
+  const opc = m ? opcoes.find(o => o.id === m.opcaoId) : null;
+  const val = _cwAlvoSel ? _cwAlvoNome() : (opc ? opc.nome : '');
+  const ch = r.chave.replace(/'/g, "\\'");
+  return `
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:flex-start" onclick="event.stopPropagation()">
+      <div class="ft-ac-wrap" style="flex:1;min-width:260px">
+        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Opção (cobertura)..." value="${val.replace(/"/g,'&quot;')}"
+          oninput="_cwSearchAlvo('sabor')" onfocus="_cwSearchAlvo('sabor')"
+          onblur="setTimeout(()=>{const d=document.getElementById('cwDrop');if(d)d.style.display='none'},150)">
+        <div class="ft-ac-list" id="cwDrop" style="display:none"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('sabor','${ch}')">Salvar</button>
+      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('sabor','${ch}')">Remover</button>` : ''}
+      ${_cwChipsHtml('sabor', r)}
+      <div style="font-size:.72rem;color:var(--muted);flex-basis:100%;margin-top:2px">Não achou a Opção? Crie em <b>Fichas Técnicas</b> primeiro.</div>
+    </div>`;
+}
+
+function _cwFormBebida(r) {
+  const m = _cwMapa.bebidas[r.chave];
+  const alvo = m ? (m.tipo === 'produto' ? produtos.find(p => p.id === m.id)?.name : items.find(i => i.id === m.id)?.name) : '';
+  const val = _cwAlvoSel ? _cwAlvoNome() : (alvo || '');
+  const ch = r.chave.replace(/'/g, "\\'");
+  return `
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:flex-start" onclick="event.stopPropagation()">
+      <div class="ft-ac-wrap" style="flex:1;min-width:260px">
+        <input type="text" class="inp" id="cwAlvo" placeholder="Buscar Produto (Outros) ou insumo..." value="${val.replace(/"/g,'&quot;')}"
+          oninput="_cwSearchAlvo('bebida')" onfocus="_cwSearchAlvo('bebida')"
+          onblur="setTimeout(()=>{const d=document.getElementById('cwDrop');if(d)d.style.display='none'},150)">
+        <div class="ft-ac-list" id="cwDrop" style="display:none"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="_cwSalvar('bebida','${ch}')">Salvar</button>
+      ${m ? `<button class="btn btn-ghost btn-sm" onclick="_cwRemover('bebida','${ch}')">Remover</button>` : ''}
+      ${_cwChipsHtml('bebida', r)}
+    </div>`;
+}
+
+function _cwSearchAlvo(kind) {
+  const drop = document.getElementById('cwDrop');
+  const q = _cwNorm(document.getElementById('cwAlvo')?.value || '');
+  if (!drop) return;
+  let pool;
+  if (kind === 'sabor') {
+    pool = opcoes.map(o => ({ tipo: 'opcao', id: o.id, nome: o.nome, sub: o.categoria }));
+  } else {
+    pool = [
+      ...produtos.filter(p => p.active !== false).map(p => ({ tipo: 'produto', id: p.id, nome: p.name, sub: 'produto' })),
+      ...items.filter(i => i.active !== false && !i.isProd).map(i => ({ tipo: 'insumo', id: i.id, nome: i.name, sub: i.cat || 'insumo' })),
+    ];
+  }
+  const matches = pool.filter(p => !q || _cwNorm(p.nome).includes(q)).slice(0, 8);
+  drop.innerHTML = matches.length
+    ? matches.map(p => `<div class="ft-ac-item" onmousedown="event.preventDefault();_cwPickAlvo('${p.tipo}',${p.id},this.querySelector('span').textContent)">
+        <span>${p.nome}</span><span class="ft-ac-cat">${p.sub || ''}</span></div>`).join('')
+    : `<div class="ft-ac-item" style="cursor:default;color:var(--muted)">Nada encontrado</div>`;
+  drop.style.display = 'block';
+}
+
+function _cwPickAlvo(tipo, id, nome) {
+  _cwAlvoSel = { tipo, id };
+  const inp = document.getElementById('cwAlvo');
+  if (inp) inp.value = nome;
+  const drop = document.getElementById('cwDrop');
+  if (drop) drop.style.display = 'none';
+}
+
+function _cwSalvar(kind, chave) {
+  if (!_cwAlvoSel) { toast('Escolha o destino', 'err'); return; }
+  if (kind === 'sabor') {
+    _cwMapa.sabores[chave] = { opcaoId: _cwAlvoSel.id, auto: false };
+  } else {
+    _cwMapa.bebidas[chave] = { tipo: _cwAlvoSel.tipo, id: _cwAlvoSel.id, auto: false };
+  }
+  saveCwMapa();
+  _cwEditKind = _cwEditKey = null; _cwAlvoSel = null;
+  toast(`${lc("check-circle",14,"var(--green)")} Mapeamento salvo!`);
+  _cwRenderLista();
+}
+
+function _cwRemover(kind, chave) {
+  if (kind === 'sabor') delete _cwMapa.sabores[chave];
+  else delete _cwMapa.bebidas[chave];
+  saveCwMapa();
+  _cwEditKind = _cwEditKey = null;
+  _cwRenderLista();
 }
 
 // renderCadProdutos already handles cadProdutosGrid correctly
@@ -1454,11 +2481,19 @@ function confirmarImportCad() {
   if (!data) return;
 
   // Adiciona novos
+  // Normaliza categoria: qualquer variação de "produção interna" → "PREPARADOS" (igual ao CW)
+  const _normCat = cat => {
+    const l = (cat || '').toLowerCase();
+    if (l.includes('produção') || l.includes('producao') || l.includes('interno') || l.includes('preparado')) return 'PREPARADOS';
+    return cat.trim() || 'Outros';
+  };
+
   data.novos.forEach(r => {
+    const catNorm = _normCat(r.cat);
     items.push({
       id:     nextIid++,
       name:   r.name.trim(),
-      cat:    r.cat.trim() || 'Geral',
+      cat:    catNorm,
       unit:   r.unit || 'un',
       qty:    0,
       min:    r.min || 0,
@@ -1467,7 +2502,7 @@ function confirmarImportCad() {
       supId:  null,
       brands: [],
       code:   r.code || '',
-      isProd: r.cat.toLowerCase().includes('produção') || r.cat.toLowerCase().includes('interno'),
+      isProd: catNorm === 'PREPARADOS',
     });
   });
 
@@ -1476,7 +2511,7 @@ function confirmarImportCad() {
     const item = items.find(i => i.id === r.id);
     if (!item) return;
     if (r.code) item.code = r.code;
-    if (r.cat)  item.cat  = r.cat;
+    if (r.cat)  item.cat  = _normCat(r.cat);
     if (r.cost > 0) item.cost = r.cost;
     if (r.min !== null) item.min = r.min;
   });
@@ -1590,6 +2625,13 @@ function renderPrestadores() {
 
 let _editPrestId = null;
 
+function _prestResetNotaForm() {
+  ['pfNotaData','pfNotaServico','pfNotaComentario'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const est = document.getElementById('pfNotaEstrelas'); if (est) est.value = '5';
+}
+
 function openPrestadorModal() {
   _editPrestId = null;
   document.getElementById('prestModalTitle').textContent = 'Novo Prestador';
@@ -1601,6 +2643,7 @@ function openPrestadorModal() {
   document.getElementById('pfConfianca').value  = 'backup';
   document.getElementById('delPrestBtn').style.display = 'none';
   document.getElementById('prestNotasSection').style.display = 'none';
+  _prestResetNotaForm();
   document.getElementById('ovPrest').classList.add('open');
   setTimeout(() => document.getElementById('pfNome').focus(), 80);
 }
@@ -1621,6 +2664,7 @@ function openEditPrestador(id) {
   document.getElementById('pfAviso').value        = p.aviso || '';
   document.getElementById('delPrestBtn').style.display = 'inline-flex';
   document.getElementById('prestNotasSection').style.display = '';
+  _prestResetNotaForm();
   _renderNotasPrestador(p);
   document.getElementById('ovPrest').classList.add('open');
 }
@@ -1798,6 +2842,13 @@ function renderTerceirizados() {
 
 let _editTerceirId = null;
 
+function _tercResetNotaForm() {
+  ['tfNotaData','tfNotaOcorrencia','tfNotaComentario'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const est = document.getElementById('tfNotaEstrelas'); if (est) est.value = '5';
+}
+
 function openTerceirizadoModal() {
   _editTerceirId = null;
   document.getElementById('terceirModalTitle').textContent = 'Novo Terceirizado';
@@ -1808,6 +2859,7 @@ function openTerceirizadoModal() {
   document.getElementById('tfValorHora').value = '';
   document.getElementById('delTerceirBtn').style.display = 'none';
   document.getElementById('terceirNotasSection').style.display = 'none';
+  _tercResetNotaForm();
   document.getElementById('ovTerceir').classList.add('open');
   setTimeout(() => document.getElementById('tfNome').focus(), 80);
 }
@@ -1827,6 +2879,7 @@ function openEditTerceirizado(id) {
   document.getElementById('tfObs').value         = t.obs || '';
   document.getElementById('delTerceirBtn').style.display = 'inline-flex';
   document.getElementById('terceirNotasSection').style.display = '';
+  _tercResetNotaForm();
   _renderNotasTerceirizado(t);
   document.getElementById('ovTerceir').classList.add('open');
 }

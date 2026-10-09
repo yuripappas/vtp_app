@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ponto de Impressão — VTP</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Inter, sans-serif;
+    background: #F4F3FF;
+    margin: 0;
+    padding: 24px 16px;
+    color: #1E1B2E;
+  }
+  .card {
+    max-width: 480px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  h1 { font-size: 1.15rem; margin: 0 0 16px; }
+  .status {
+    padding: 14px;
+    border-radius: 10px;
+    font-size: .95rem;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .status.offline { background: #F3F4F6; color: #6B7280; }
+  .status.ok      { background: #D1FAE5; color: #065F46; }
+  .status.erro    { background: #FEE2E2; color: #991B1B; }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: .95rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 10px;
+    background: #6D28D9;
+    color: #fff;
+    cursor: pointer;
+    margin-bottom: 16px;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #contador {
+    text-align: center;
+    font-size: .8rem;
+    color: #6B7280;
+    margin-bottom: 12px;
+  }
+  #log {
+    font-size: .74rem;
+    color: #6B7280;
+    line-height: 1.6;
+    max-height: 200px;
+    overflow-y: auto;
+    border-top: 1px solid #E5E7EB;
+    padding-top: 10px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🖨️ Ponto de Impressão</h1>
+    <div id="status" class="status offline">Desconectado</div>
+    <button id="btnConectar" onclick="conectar()">Conectar impressora</button>
+    <div id="contador">0 etiquetas impressas nesta sessão</div>
+    <div id="log"></div>
+  </div>
+
+<script>
+const VENDOR_ID_ZEBRA = 2655; // 0x0A5F — Zebra Technologies
+
+let device = null;
+let sb = null;
+let jobsProcessados = 0;
+let wakeLock = null;
+
+function getSb() {
+  if (!sb) sb = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
+  return sb;
+}
+
+function setStatus(texto, classe) {
+  const el = document.getElementById('status');
+  el.textContent = texto;
+  el.className = 'status ' + classe;
+}
+
+function log(msg) {
+  const el = document.getElementById('log');
+  const linha = document.createElement('div');
+  linha.textContent = `[${new Date().toLocaleTimeString('pt-BR')}] ${msg}`;
+  el.insertBefore(linha, el.firstChild);
+}
+
+function atualizarContador() {
+  document.getElementById('contador').textContent =
+    `${jobsProcessados} etiqueta${jobsProcessados !== 1 ? 's' : ''} impressa${jobsProcessados !== 1 ? 's' : ''} nesta sessão`;
+}
+
+async function pedirWakeLock() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (_) { /* não crítico se falhar */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') pedirWakeLock();
+});
+
+async function conectar() {
+  if (!('usb' in navigator)) {
+    setStatus('WebUSB não suportado neste navegador', 'erro');
+    log('Use o Chrome no Android — não funciona em Safari/iOS.');
+    return;
+  }
+  try {
+    let dispositivos = await navigator.usb.getDevices();
+    device = dispositivos.find(d => d.vendorId === VENDOR_ID_ZEBRA) || dispositivos[0];
+    if (!device) {
+      device = await navigator.usb.requestDevice({ filters: [{ vendorId: VENDOR_ID_ZEBRA }] });
+    }
+    await device.open();
+    if (device.configuration === null) await device.selectConfiguration(1);
+    await device.claimInterface(0);
+
+    setStatus('Conectado: ' + (device.productName || 'Zebra ZD220'), 'ok');
+    document.getElementById('btnConectar').textContent = 'Reconectar';
+    log('Impressora conectada.');
+    pedirWakeLock();
+    iniciarFila();
+  } catch (e) {
+    setStatus('Erro ao conectar: ' + e.message, 'erro');
+    log('Erro ao conectar: ' + e.message);
+  }
+}
+
+navigator.usb?.addEventListener('disconnect', (e) => {
+  if (device && e.device === device) {
+    setStatus('Impressora desconectada — toque em Conectar', 'erro');
+    device = null;
+  }
+});
+
+async function imprimirZPL(zpl) {
+  const data = new TextEncoder().encode(zpl);
+  await device.transferOut(1, data);
+}
+
+async function processarJob(job) {
+  const client = getSb();
+  // Reivindica atomicamente — evita imprimir em duplicidade se outro
+  // dispositivo/agente também estiver escutando a mesma fila.
+  const { data, error: claimErr } = await client
+    .from('etiq_print_jobs')
+    .update({ status: 'imprimindo' })
+    .eq('id', job.id)
+    .eq('status', 'pendente')
+    .select();
+
+  if (claimErr) { log('Erro ao reivindicar job: ' + claimErr.message); return; }
+  if (!data || data.length === 0) return; // outro dispositivo já pegou
+
+  try {
+    await imprimirZPL(job.zpl);
+    await client.from('etiq_print_jobs')
+      .update({ status: 'impresso', printed_at: new Date().toISOString() })
+      .eq('id', job.id);
+    jobsProcessados++;
+    atualizarContador();
+    log('Etiqueta impressa.');
+  } catch (e) {
+    await client.from('etiq_print_jobs')
+      .update({ status: 'erro', erro_msg: e.message })
+      .eq('id', job.id);
+    log('Erro ao imprimir: ' + e.message);
+    setStatus('Erro ao imprimir — verifique a impressora', 'erro');
+  }
+}
+
+async function processarPendentes() {
+  const client = getSb();
+  const { data, error } = await client
+    .from('etiq_print_jobs')
+    .select('*')
+    .eq('status', 'pendente')
+    .order('created_at', { ascending: true });
+  if (error) { log('Erro ao buscar pendentes: ' + error.message); return; }
+  for (const job of (data || [])) await processarJob(job);
+}
+
+function assinarRealtime() {
+  getSb().channel('etiq-print-tablet')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'etiq_print_jobs' }, payload => {
+      processarJob(payload.new);
+    })
+    .subscribe();
+}
+
+async function iniciarFila() {
+  await processarPendentes(); // catch-up: jobs criados enquanto a página estava fechada
+  assinarRealtime();
+  log('Escutando novos pedidos de impressão...');
+}
+
+// Se o navegador já tiver permissão de um uso anterior, reconecta sozinho
+// ao carregar a página — sem precisar tocar em nada.
+window.addEventListener('load', async () => {
+  if (!('usb' in navigator)) return;
+  const dispositivos = await navigator.usb.getDevices();
+  if (dispositivos.length > 0) conectar();
+});
+</script>
+</body>
+</html>

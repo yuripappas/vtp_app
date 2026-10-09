@@ -11,6 +11,16 @@ const fmtDT = d => d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short',
 const sname = id => { const s = suppliers.find(x => x.id === id); return s ? s.name : '—'; };
 const genToken = () => Math.random().toString(36).slice(2, 10).toUpperCase();
 
+// Atualiza o título da página em todas as cópias — header global (desktop)
+// e mobile-topbar — usado por módulos com abas internas (Vendas, Compras,
+// Omnichannel, Configurações) pra refletir a aba específica, não só o módulo.
+function _setPageTitle(text) {
+  const desktop = document.getElementById('topbarTitle');
+  if (desktop) desktop.textContent = text;
+  const mobile = document.getElementById('mobileModuleTitle');
+  if (mobile) mobile.textContent = text;
+}
+
 function toast(msg, type = 'ok') {
   const el = document.getElementById('toast');
   el.innerHTML = msg;
@@ -28,15 +38,28 @@ document.querySelectorAll('.overlay').forEach(o =>
   })
 );
 
+// Reposiciona a seta de colapsar/expandir — reaproveitado pelo estado de
+// submenu aberto, além do próprio toggleSidebar(). Alinhada na borda do
+// rail de ícones (--sb-min) quando colapsada, ou na borda da sidebar
+// expandida (--sb-w) quando aberta.
+function _positionSbToggle(expanded) {
+  const toggle = document.getElementById('sbToggle');
+  if (toggle) toggle.style.left = expanded
+    ? `calc(var(--sb-w) - 12px)`
+    : `calc(var(--sb-min) - 12px)`;
+}
+
 function toggleSidebar() {
   sidebarOpen = !sidebarOpen;
+  // Ao colapsar com um drill-down aberto, fecha ele também — senão a
+  // classe .submenu-open sozinha continua forçando width:var(--sb-w) e a
+  // sidebar não encolhe (só a seta reposiciona, ficando "solta").
+  if (!sidebarOpen && _mobileSubmenuActive) _closeMobileSubmenu();
   document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
   document.getElementById('toggleIcon').innerHTML = sidebarOpen
     ? '<path d="M8 2l-4 4 4 4"/>'
     : '<path d="M4 2l4 4-4 4"/>';
-  document.getElementById('sbToggle').style.left = sidebarOpen
-    ? `calc(var(--sb-w) - 12px)`
-    : `calc(var(--sb-min) - 12px)`;
+  _positionSbToggle(sidebarOpen);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -61,47 +84,63 @@ function toggleMobileMenu() {
     sidebar.classList.add('mobile-open');
     backdrop.classList.add('visible');
     btn.innerHTML = _MB_CLOSE;
+    // Trava scroll do body para evitar scroll-behind
+    document.body.style.overflow = 'hidden';
   } else {
     sidebar.classList.remove('mobile-open');
     backdrop.classList.remove('visible');
     btn.innerHTML = _MB_HAMBURGER;
+    // Restaura scroll
+    document.body.style.overflow = '';
     if (_mobileSubmenuActive) _closeMobileSubmenu();
   }
 }
 
-// Submenu items de Configurações
-const _CFG_SUBMENU_ITEMS = [
-  { id: 'empresa',      icon: 'building-2', label: 'Empresa'        },
-  { id: 'usuarios',     icon: 'shield',     label: 'Usuários'       },
-  { id: 'insumos',      icon: 'package',    label: 'Insumos'        },
-  { id: 'fornecedores', icon: 'truck',      label: 'Fornecedores'   },
-  { id: 'preparo',      icon: 'chef-hat',   label: 'Preparados'     },
-  { id: 'produtos',     icon: 'pizza',      label: 'Produtos'       },
-  { id: 'servicos',     icon: 'wrench',     label: 'Serviços'       },
-  { id: 'modulos',      icon: 'settings',   label: 'Personalização' },
-  { id: 'integracoes',  icon: 'zap',        label: 'Integrações'    },
-  { id: 'etiquetagem', icon: 'tag',        label: 'Etiquetagem'    },
+// Submenu items de Operação
+const _OPERACAO_SUBMENU_ITEMS = [
+  { id: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção' },
+  { id: 'desperdicio', icon: 'trash-2',      label: 'Desperdício'  },
+  { id: 'previsao',    icon: 'trending-up',  label: 'Previsão'     },
+  { id: 'manutencao',  icon: 'wrench',       label: 'Manutenção'   },
+  { id: 'inventario',  icon: 'layers',       label: 'Inventário'   },
 ];
+
+// Submenu items de Vendas
+const _VENDAS_SUBMENU_ITEMS = [
+  { id: 'cmv',           icon: 'dollar-sign', label: 'CMV'                     },
+  { id: 'produtos',      icon: 'bar-chart-2', label: 'Produtos (Curva ABC)'    },
+  { id: 'insumos',       icon: 'package',     label: 'Consumo de Insumos'      },
+  { id: 'canais',        icon: 'link',        label: 'Vendas'                  },
+  { id: 'precos',        icon: 'tag',         label: 'Precificação'            },
+];
+
+function _handleNavVendas() {
+  const action = (id) => `_vdTab='${id}'; goModule('vendas');`;
+  _openMobileSubmenu(_VENDAS_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })), 'Vendas');
+}
 
 function _openMobileSubmenu(items, parentLabel) {
   const sidebar = document.getElementById('sidebar');
   const nav     = sidebar.querySelector('.sb-nav');
-  const bottom  = sidebar.querySelector('.sb-bottom');
+  const bottom  = sidebar.querySelector('.sb-bottom'); // rodapé não existe mais no sidebar (header global) — segue opcional
   _mobileSubmenuActive = true;
+  sidebar.classList.add('submenu-open');
+  if (!isMobile()) _positionSbToggle(true);
 
-  nav._origHTML    = nav.innerHTML;
-  bottom._origDisp = bottom.style.display;
-  bottom.style.display = 'none';
+  nav._origHTML = nav.innerHTML;
+  if (bottom) {
+    bottom._origDisp = bottom.style.display;
+    bottom.style.display = 'none';
+  }
 
   nav.innerHTML = `
     <button class="sb-mobile-back" onclick="_closeMobileSubmenu()">
       ${lc('arrow-left', 16, 'currentColor')}
-      ${parentLabel}
+      Voltar
     </button>
     <div class="sb-mobile-submenu-label">${parentLabel}</div>
     ${items.map(item => `
-      <button class="sb-item" style="justify-content:flex-start;gap:10px" onclick="${item.action}">
-        <span class="sb-icon">${lc(item.icon, 18, 'currentColor')}</span>
+      <button class="sb-item sb-item-plain" onclick="${item.action}">
         <span class="sb-label" style="opacity:1;width:auto">${item.label}</span>
       </button>
     `).join('')}
@@ -115,31 +154,160 @@ function _closeMobileSubmenu() {
   if (nav._origHTML !== undefined) {
     nav.innerHTML    = nav._origHTML;
     nav._origHTML    = undefined;
-    bottom.style.display = bottom._origDisp || '';
+    if (bottom) bottom.style.display = bottom._origDisp || '';
   }
   _mobileSubmenuActive = false;
+  sidebar.classList.remove('submenu-open');
+  if (!isMobile() && !sidebarOpen) _positionSbToggle(false);
 }
 
+// Marca um sub-item como ativo dentro do drill-down aberto (chamada por
+// renderOmnichannel() em js/atendimento.js — mantém a mesma assinatura,
+// só aponta pro drill-down único do .sb-nav em vez do antigo painel de 2 colunas).
+function _setSubPanelActive(selector) {
+  document.querySelectorAll('.sb-nav .sb-item').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.sb-nav .sb-item[onclick*="${selector}"]`);
+  if (btn) btn.classList.add('active');
+}
+
+// ══════════════════════════════════════════════════════════════
+// SWITCHER DE EMPRESA/UNIDADE — dropdown ancorado na caixa do topo da sidebar
+// ══════════════════════════════════════════════════════════════
+
+function toggleBrandSwitcher(anchorEl) {
+  const existing = document.getElementById('brandSwitcherPopup');
+  if (existing) { existing.remove(); return; }
+
+  const cfg      = typeof getConfig === 'function' ? getConfig() : {};
+  const nome     = cfg.empresa  || 'Vai Ter Pizza!';
+  const endereco = cfg.endereco || 'Unidade principal';
+  const logoSrc  = document.getElementById('sbLogoImg')?.src || 'assets/logo-bg.jpg';
+
+  const rect  = anchorEl?.getBoundingClientRect() || { left: 16, bottom: 60 };
+  const cardW = 260;
+  const left  = Math.max(8, Math.min(rect.left, window.innerWidth - cardW - 12));
+  const top   = rect.bottom + 8;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'brandSwitcherPopup';
+  // z-index acima do drawer mobile (950) — o chevron vive dentro da própria sidebar,
+  // diferente do sino/config (fora do drawer), então precisa ficar por cima dele.
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:960';
+  wrap.innerHTML = `
+    <div style="position:fixed;top:${top}px;left:${left}px;width:${cardW}px;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-xl);box-shadow:0 16px 48px rgba(0,0,0,.16);overflow:hidden">
+      <div style="padding:10px 14px;font-size:var(--text-2xs);font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-subtle);border-bottom:1px solid var(--border)">Empresas &amp; unidades</div>
+      <div style="padding:8px">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--radius-md);background:var(--accent-subtle)">
+          <div style="width:30px;height:30px;border-radius:var(--radius-md);overflow:hidden;flex-shrink:0">
+            <img src="${logoSrc}" style="width:100%;height:100%;object-fit:cover">
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--text-sm);font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+            <div style="font-size:var(--text-2xs);color:var(--fg-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${endereco}</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+      </div>
+      <button onclick="document.getElementById('brandSwitcherPopup')?.remove(); toast('Em breve: múltiplas empresas e unidades','info')"
+        style="width:100%;padding:11px;border:none;border-top:1px solid var(--border);background:var(--bg-subtle);color:var(--purple);font-weight:700;font-size:var(--text-xs);cursor:pointer;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;gap:6px">
+        + Adicionar empresa/unidade
+      </button>
+    </div>`;
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
+}
+
+// Submenu items de Compras
+const _COMPRAS_SUBMENU_ITEMS = [
+  { id: 'listas',       icon: 'clipboard-list', label: 'Lista de Compras' },
+  { id: 'fornecedores', icon: 'truck',          label: 'Fornecedores'     },
+];
+
+function _handleNavCompras() {
+  _openMobileSubmenu(
+    _COMPRAS_SUBMENU_ITEMS.map(item => ({
+      ...item,
+      action: `_cpSection='${item.id}'; goModule('compras');`
+    })),
+    'Compras'
+  );
+}
+
+function _handleNavOperacao() {
+  _openMobileSubmenu(
+    _OPERACAO_SUBMENU_ITEMS.map(item => ({
+      ...item,
+      action: `goModule('${item.id}');`
+    })),
+    'Operação'
+  );
+}
+
+// Submenu items de Omnichannel
+const _OMNI_SUBMENU_ITEMS = [
+  { id: 'inbox',            icon: 'inbox',       label: 'Inbox'             },
+  { id: 'respostas',        icon: 'zap',         label: 'Respostas'         },
+  { id: 'estatisticas',     icon: 'bar-chart-2', label: 'Estatísticas'      },
+  { id: 'integracoes',      icon: 'link',        label: 'Integrações'       },
+  { id: 'configuracoes',    icon: 'settings',    label: 'Configurações'     },
+];
+
+function _handleNavOmnichannel() {
+  const action = (id) => `_atdPaginaAtiva='${id}'; goModule('omnichannel');`;
+  _openMobileSubmenu(
+    _OMNI_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
+    'Omnichannel'
+  );
+}
+
+// Submenu items de Marketing (Rede de Criadores/Afiliados)
+const _MKT_SUBMENU_ITEMS = [
+  { id: 'criadores',    icon: 'users',          label: 'Criadores'            },
+  { id: 'cupons',       icon: 'tag',            label: 'Cupons'                },
+  { id: 'conteudo',     icon: 'file-text',      label: 'Aprovação de Conteúdo' },
+  { id: 'compliance',   icon: 'shield-check',   label: 'Auditoria de Marca'    },
+  { id: 'mencoes',      icon: 'bell',           label: 'Menções'               },
+  { id: 'pagamentos',   icon: 'dollar-sign',    label: 'Pagamentos'            },
+  { id: 'resgates',     icon: 'gift',           label: 'Resgates'              },
+  { id: 'ranking',      icon: 'award',          label: 'Ranking & Desafios'    },
+];
+
+function _handleNavMarketing() {
+  const action = (id) => `_mktPaginaAtiva='${id}'; goModule('marketing');`;
+  _openMobileSubmenu(
+    _MKT_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
+    'Marketing'
+  );
+}
+
+// Configurações voltou pro sidebar com o mesmo padrão de drill-down dos
+// outros módulos (Vendas/Compras/Omnichannel) — reaproveita _CFG_SECTIONS
+// (definida em js/configuracoes.js) como fonte única das seções, em vez
+// de manter uma lista duplicada aqui.
 function _handleNavConfiguracoes() {
-  if (isMobile()) {
-    _openMobileSubmenu(
-      _CFG_SUBMENU_ITEMS.map(item => ({
-        ...item,
-        action: `_cfgSection='${item.id}'; goModule('configuracoes');`
-      })),
-      'Configurações'
-    );
-  } else {
-    goModule('configuracoes');
-  }
+  // IMPORTANTE: nunca atribuir "_cfgSection='x'" antes de goModule() aqui —
+  // setCfgSection() decide o que limpar comparando a seção NOVA com o valor
+  // atual de _cfgSection (a seção anterior); goModule('configuracoes') roda
+  // primeiro pra manter a seção atual intacta na comparação.
+  _openMobileSubmenu(
+    _CFG_SECTIONS.map(item => ({
+      ...item,
+      action: `goModule('configuracoes'); setCfgSection('${item.id}');`
+    })),
+    'Configurações'
+  );
 }
 
 const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
+  operacao:       { title: 'Operação',              sub: 'Pré-produção · Desperdício · Previsão · Manutenção · Inventário' },
+  omnichannel:    { title: 'Omnichannel',           sub: 'Central de atendimento e canais de venda' },
+  marketing:      { title: 'Marketing',             sub: 'Rede de Criadores · Cupons · Ranking & Desafios' },
   estoque:        { title: 'Estoque',               sub: 'Contagem e movimentações' },
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
-  compras:        { title: 'Compras',               sub: 'Carrinho · Cotação · Aprovação · OC · Recebimento' },
+  compras:        { title: 'Compras',               sub: 'Lista · Cotação · Aprovação · OC · Recebimento · Fornecedores' },
+  vendas:         { title: 'Vendas',                sub: 'CMV · Produtos · Consumo de Insumos · Vendas · Precificação — interpretado dos pedidos' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
   previsao:       { title: 'Previsão de Demanda',   sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },
@@ -160,31 +328,165 @@ const modInfo = {
 
 let _vtpNavFromPop = false; // flag para evitar loop no popstate
 
+// ══════════════════════════════════════════════════════════════
+// REALTIME — Fase 2: subscription única em kv_store
+// ══════════════════════════════════════════════════════════════
+
+// Chave → módulos que a usam (para saber quem re-renderizar)
+const _VTP_KEY_MODS = {
+  'vtp_items':          ['estoque','compras','cadastros','dashboard','inventario'],
+  'vtp_listas':         ['compras','dashboard'],
+  'vtp_suppliers':      ['compras','cadastros'],
+  'vtp_funcionarios':   ['rh','dashboard','configuracoes'],
+  'vtp_rh_escalas':     ['rh'],
+  'vtp_rh_presencas':   ['rh'],
+  'vtp_rh_horasextras': ['rh'],
+  'vtp_rh_materiais':   ['rh'],
+  'vtp_rh_periodos':    ['rh'],
+  'vtp_rh_config':      ['rh'],
+  'vtp_rh_diaristas':   ['rh'],
+  'vtp_rh_avaliacoes':  ['rh'],
+  'vtp_movimentacoes':  ['estoque'],
+  'vtp_hist_contagens': ['estoque'],
+  'vtp_ck_templates':   ['checklist'],
+  'vtp_ck_sessoes':     ['checklist'],
+  'vtp_manut_itens':    ['manutencao'],
+  'vtp_manut_equip':    ['manutencao'],
+  'vtp_manut_log':      ['manutencao'],
+  'vtp_contagens_inv':  ['inventario'],
+  'vtp_inv_baixas':     ['inventario'],
+  'vtp_desperdicios':   ['desperdicio','dashboard'],
+  'vtp_config':         ['configuracoes','dashboard'],
+  'vtp_etiq_metodos':   ['etiquetagem'],
+  'vtp_etiq_validades': ['etiquetagem'],
+  'vtp_etiquetas':      ['etiquetagem'],
+  'vtp_sabores':        ['cadastros'],
+  'vtp_produtos':       ['cadastros'],
+  'vtp_prestadores':    ['cadastros','manutencao'],
+  'vtp_terceirizados':  ['cadastros'],
+  'vtp_emp_cargos':     ['configuracoes','rh'],
+  'vtp_emp_tipos_desp': ['configuracoes','desperdicio'],
+  'vtp_emp_cat_insumo': ['configuracoes','cadastros'],
+  'vtp_auditlog':       ['auditoria'],
+};
+
+// Re-renders o módulo ativo sem mudar de tela
+function _vtpCallRender(mod) {
+  switch (mod) {
+    case 'dashboard':     typeof renderDashboard    === 'function' && renderDashboard();    break;
+    case 'compras':       typeof renderComprasModule === 'function' && renderComprasModule(); break;
+    case 'estoque':       typeof renderComprasLayout === 'function' && renderComprasLayout(); break;
+    case 'checklist':     typeof renderChecklist    === 'function' && renderChecklist();    break;
+    case 'manutencao':    typeof renderManutencao   === 'function' && renderManutencao();   break;
+    case 'rh':            typeof renderRh           === 'function' && renderRh();           break;
+    case 'inventario':    typeof renderInventario   === 'function' && renderInventario();   break;
+    case 'etiquetagem':   typeof renderEtiquetagem  === 'function' && renderEtiquetagem();  break;
+    case 'cadastros':     typeof renderCadastros    === 'function' && renderCadastros();    break;
+    case 'configuracoes': typeof renderConfiguracoes === 'function' && renderConfiguracoes(); break;
+    case 'desperdicio':   typeof renderDesperdicio  === 'function' && renderDesperdicio();  break;
+    case 'auditoria':     typeof renderAuditoria    === 'function' && renderAuditoria();    break;
+    // omnichannel tem seu próprio realtime — não re-renderiza aqui
+  }
+}
+
+// Fase 3: conjunto de writes próprios (para não reagir ao eco do Realtime)
+window._vtpOwnWrites = new Set();
+
+// Debounce por módulo para agrupar atualizações rápidas
+const _vtpRtDebounce = {};
+
+// Chamado por db.js quando kv_store recebe UPDATE de outro usuário
+window._vtpOnRealtimeUpdate = function(key) {
+  if (window._vtpOwnWrites.has(key)) return; // eco do próprio write — ignora
+
+  const currentMod = location.hash.replace('#', '').split('/')[0] || 'dashboard';
+  const affected = _VTP_KEY_MODS[key] || [];
+  if (!affected.includes(currentMod)) return;
+
+  // Fase 3: modal aberto → avisa em vez de re-renderizar (protege formulário em edição)
+  if (document.querySelector('.overlay')) {
+    if (typeof toast === 'function') toast('Dados alterados por outro usuário — salve com atenção', 'warn');
+    return;
+  }
+
+  clearTimeout(_vtpRtDebounce[currentMod]);
+  _vtpRtDebounce[currentMod] = setTimeout(() => _vtpCallRender(currentMod), 400);
+};
+
+// Fase 1: re-fetch do Supabase ao navegar (garante dados frescos)
+async function _vtpRefreshMod(mod) {
+  const sb = window._vtpSb;
+  if (!sb) return;
+  const keysSet = new Set();
+  for (const [k, mods] of Object.entries(_VTP_KEY_MODS)) {
+    if (mods.includes(mod)) keysSet.add(k);
+  }
+  const keys = [...keysSet];
+  if (!keys.length) return;
+  try {
+    const { data } = await sb.from('kv_store').select('key, value').in('key', keys);
+    if (!data?.length) return;
+    let changed = false;
+    for (const row of data) {
+      const newStr = JSON.stringify(row.value);
+      if (localStorage.getItem(row.key) !== newStr) {
+        localStorage.setItem(row.key, newStr);
+        window._vtpSetGlobal?.(row.key, row.value);
+        changed = true;
+      }
+    }
+    // Re-renderiza só se ainda estiver no mesmo módulo e sem modal aberto
+    const nowMod = location.hash.replace('#', '').split('/')[0] || 'dashboard';
+    if (changed && nowMod === mod && !document.querySelector('.overlay')) {
+      _vtpCallRender(mod);
+    }
+  } catch (_) { /* offline — silencioso */ }
+}
+
 function _vtpPushRoute(mod) {
-  // Normaliza: 'usuarios' exibe dentro de configuracoes
   const hashMod = mod === 'usuarios' ? 'configuracoes' : mod;
-  history.pushState({ mod: hashMod }, '', '#' + hashMod);
+  const getTab = window[`_vtpGetTab_${hashMod}`];
+  const sub = getTab ? getTab() : null;
+  const hash = sub ? `${hashMod}/${sub}` : hashMod;
+  history.pushState({ mod: hashMod, sub }, '', '#' + hash);
+}
+
+function _vtpApplySub(mod, sub) {
+  const setTab = window[`_vtpSetTab_${mod}`];
+  if (setTab && sub) setTab(sub);
 }
 
 // Botão Voltar / Avançar do navegador
 window.addEventListener('popstate', e => {
-  const mod = e.state?.mod || location.hash.replace('#', '') || 'dashboard';
-  if (modInfo[mod]) { _vtpNavFromPop = true; goModule(mod); _vtpNavFromPop = false; }
+  const parts = (location.hash.replace('#', '') || '').split('/');
+  const mod = e.state?.mod || parts[0] || 'dashboard';
+  const sub = e.state?.sub || parts[1] || null;
+  if (modInfo[mod]) {
+    _vtpNavFromPop = true;
+    _vtpApplySub(mod, sub);
+    goModule(mod);
+    _vtpNavFromPop = false;
+  }
 });
 
 // Chamado pelo initAuth para restaurar a rota salva no hash
 function _vtpRestoreRoute() {
-  const hash = location.hash.replace('#', '').trim();
-  const mod  = hash && modInfo[hash] ? hash : 'dashboard';
+  const parts = location.hash.replace('#', '').trim().split('/');
+  const mod   = parts[0] && modInfo[parts[0]] ? parts[0] : 'dashboard';
+  const sub   = parts[1] || null;
   // Verifica permissão antes de restaurar
   if (mod !== 'dashboard' && typeof canAccess === 'function' && !canAccess(mod)) {
     goModule('dashboard');
     return;
   }
+  _vtpApplySub(mod, sub);
   goModule(mod);
 }
 
 function goModule(mod) {
+  // Operação e Configurações sem seção definida → abrem submenu no sidebar
+  if (mod === 'operacao') { _handleNavOperacao(); return; }
+
   // Verifica permissão
   if (typeof canAccess === 'function' && !canAccess(mod)) {
     toast('Acesso não permitido para seu perfil', 'err');
@@ -194,14 +496,24 @@ function goModule(mod) {
   // Atualiza URL (não duplica entrada se veio do popstate)
   if (!_vtpNavFromPop) _vtpPushRoute(mod);
 
+  // Fecha drill-down (desktop e mobile) e drawer mobile ao navegar
+  if (_mobileSubmenuActive) _closeMobileSubmenu();
+  if (_mobileMenuOpen) toggleMobileMenu();
+
+  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
+
+  // Mostra widget iFood apenas no Omnichannel
+  document.body.classList.toggle('vtp-omnichannel', mod === 'omnichannel');
+
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
-  document.getElementById(`nav-${mod}`)?.classList.add('active');
-  // Configurações tem dois botões (nav e rodapé) — ativa ambos
-  if (mod === 'configuracoes') {
-    document.getElementById('nav-configuracoes-bottom')?.classList.add('active');
+  // Submódulos de Operação destacam o item "Operação" no sidebar
+  if (_OPERACAO_MODS.includes(mod)) {
+    document.getElementById('nav-operacao')?.classList.add('active');
+  } else {
+    document.getElementById(`nav-${mod}`)?.classList.add('active');
   }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById(`page-${mod}`).classList.add('active');
+  document.getElementById(`page-${mod}`)?.classList.add('active');
   const info = modInfo[mod];
   if (info) {
     document.getElementById('topbarTitle').textContent = info.title;
@@ -210,11 +522,23 @@ function goModule(mod) {
     const mobileTitle = document.getElementById('mobileModuleTitle');
     if (mobileTitle) mobileTitle.textContent = info.title;
   }
-  if (_mobileMenuOpen) toggleMobileMenu();
-  if (mod === 'dashboard')       renderDashboard();
-  else if (mod === 'estoque')    renderEstoque();
+  if (mod === 'operacao')        renderOperacao();
+  else if (mod === 'omnichannel') renderOmnichannel();
+  else if (mod === 'marketing')   renderMarketing();
+  else if (mod === 'dashboard')  renderDashboard();
+  else if (mod === 'estoque')    {
+    // Estoque agora é módulo próprio na sidebar, mas a implementação real
+    // (contagens, categorias, divergências) vive dentro de page-compras
+    // (_renderCpEstoque, ~1100 linhas) — reaproveita o mesmo container em
+    // vez de duplicar. page-estoque (a página vazia genérica) fica sem uso.
+    document.getElementById('page-estoque')?.classList.remove('active');
+    document.getElementById('page-compras')?.classList.add('active');
+    _cpSection = 'estoque';
+    renderComprasLayout();
+  }
   else if (mod === 'preproducao') renderPreproducao();
   else if (mod === 'compras')    renderComprasModule();
+  else if (mod === 'vendas')     renderVendas();
   else if (mod === 'cadastros')  renderCadastros();
   else if (mod === 'desperdicio')   renderDesperdicio();
   else if (mod === 'previsao')      renderPrevisao();
@@ -223,8 +547,12 @@ function goModule(mod) {
   else if (mod === 'usuarios') {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-configuracoes')?.classList.add('active');
-    _cfgSection = 'usuarios';
-    renderConfiguracoes();
+    // setCfgSection() compara a seção nova com o valor atual de _cfgSection
+    // (a seção anterior) para decidir o que limpar do DOM — nunca atribuir
+    // _cfgSection manualmente antes de chamá-la, ou a comparação vira sempre
+    // "igual" e o conteúdo da seção antiga fica grudado por baixo da nova.
+    _initCfgNav();
+    setCfgSection('usuarios');
   }
   else if (mod === 'checklist')  renderChecklist();
   else if (mod === 'manutencao') renderManutencao();
@@ -238,6 +566,9 @@ function goModule(mod) {
   else if (mod === 'rh')           renderRh();
   else if (mod === 'auditoria')    renderAuditoria();
   else if (mod === 'etiquetagem')  renderEtiquetagem();
+
+  // Fase 1: re-fetch em background — atualiza se dados mudaram desde o último acesso
+  if (mod !== 'omnichannel') _vtpRefreshMod(mod);
 }
 
 function calcScore(price, delivery, payTerm, minP, maxP, minD, maxD) {
@@ -281,3 +612,4 @@ function vtpConfirmExec() {
   vtpConfirmClose();
   if (typeof cb === 'function') cb();
 }
+

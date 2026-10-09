@@ -4,6 +4,8 @@
  */
 
 let _cfgSection         = 'empresa';
+window._vtpGetTab_configuracoes = () => _cfgSection;
+window._vtpSetTab_configuracoes = (v) => { _cfgSection = v; };
 let _cfgGrupoTab        = 'compras';
 let _cfgEditCtx         = null;
 let _cfgMostrarInativos = false;
@@ -86,6 +88,8 @@ function setCfgSection(section) {
   _CFG_SECTIONS.forEach(s =>
     document.getElementById(`cfgNav-${s.id}`)?.classList.toggle('active', s.id === section)
   );
+  const secInfo = _CFG_SECTIONS.find(s => s.id === section);
+  if (secInfo) _setPageTitle(secInfo.label);
 
   const el = document.getElementById('cfgSectionContent');
   if (!el) return;
@@ -105,34 +109,10 @@ function _renderCfgCadSection(section, el) {
   const cadPage = document.getElementById('page-cadastros');
   if (!cadPage) return;
 
-  // 1. Mapas de título/ícone por seção
-  const titles = {
-    insumos:      { icon:'package',  title:'Insumos',      sub:'Matérias-primas e ingredientes usados na produção' },
-    fornecedores: { icon:'truck',    title:'Fornecedores', sub:'Cadastro de fornecedores e condições comerciais'   },
-    preparo:      { icon:'chef-hat', title:'Preparados',   sub:'Preparados internos usados na produção'            },
-    produtos:     { icon:'pizza',    title:'Produtos',     sub:'Sabores de pizza e outros produtos'                },
-    servicos:     { icon:'wrench',   title:'Serviços',     sub:'Prestadores externos e categorias de serviço'      },
-  };
-  const info = titles[section];
+  // Título/subtítulo de página são só o #topbarTitle (setCfgSection já atualiza) —
+  // não duplica mais um cabeçalho aqui dentro.
 
-  // 2. Injeta ou atualiza cabeçalho padronizado
-  const existingTitle = el.querySelector('.settings-section-title');
-  if (existingTitle && info) {
-    // Já existe (navegando entre seções de cadastro) — só atualiza
-    existingTitle.innerHTML = `${lc(info.icon, 16, 'var(--purple)')} ${info.title}`;
-    const existingSub = el.querySelector('.settings-section-sub');
-    if (existingSub) existingSub.textContent = info.sub;
-  } else if (info) {
-    // Primeira entrada — injeta o cabeçalho antes de tudo
-    const hdr = document.createElement('div');
-    hdr.className = 'cfg-cad-header';
-    hdr.innerHTML = `
-      <div class="settings-section-title">${lc(info.icon, 16, 'var(--purple)')} ${info.title}</div>
-      <div class="settings-section-sub">${info.sub}</div>`;
-    el.insertBefore(hdr, el.firstChild);
-  }
-
-  // 3. Transplanta conteúdo do page-cadastros
+  // Transplanta conteúdo do page-cadastros
   if (cadPage.children.length > 0) {
     while (cadPage.firstChild) el.appendChild(cadPage.firstChild);
   }
@@ -215,9 +195,6 @@ function _renderCfgSecEmpresa(el) {
     : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">${lc('image', 26, 'var(--border-strong)')}</div>`;
 
   el.innerHTML = `
-    <div class="settings-section-title">${lc('building-2',16,'var(--purple)')} Empresa</div>
-    <div class="settings-section-sub">Identidade da empresa e aparência do sistema</div>
-
     <div style="margin-bottom:28px">
       <div style="font-size:var(--text-xs);font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">Logo / Foto da empresa</div>
       <div class="cfg-logo-wrap">
@@ -343,11 +320,138 @@ function _renderCfgSecEstoque(el) {
       </div>
     </div>
 
+    <div style="margin-bottom:22px">
+      ${_secTitle('Contagem de Estoque — Tolerância de Divergência', null)}
+      <div style="border:1.5px solid var(--border);border-radius:var(--r8);padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px;font-size:var(--text-sm);color:var(--text2);line-height:1.6">
+            Para itens com <strong>débito automático no CW</strong>, divergências abaixo de
+            <strong id="cfgTolDivDisplay">${cfg.toleranciaDiverg ?? 10}%</strong>
+            são classificadas como <span style="color:var(--muted);font-weight:600">variação normal</span>.
+            Acima disso, geram alerta de <span style="color:var(--red);font-weight:600">anomalia</span>.
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <input class="inp" type="number" id="cfgTolDiv" value="${cfg.toleranciaDiverg ?? 10}" min="1" max="50"
+              style="width:64px;text-align:center;font-size:var(--text-md);font-weight:700"
+              oninput="const d=document.getElementById('cfgTolDivDisplay');if(d)d.textContent=(this.value||10)+'%'">
+            <span style="font-size:var(--text-sm);color:var(--text2)">% de tolerância</span>
+            <button class="btn btn-primary btn-sm" onclick="saveConfiguracoes()">Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:22px">
+      ${_secTitle('Categorias Cadastradas', null)}
+      <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:10px">
+        Renomeie categorias que vieram do Cardápio Web ou ajuste qualquer nome. Todos os insumos e preparados da categoria são atualizados automaticamente.
+      </div>
+      <div id="cfgCatRenameList" style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden"></div>
+    </div>
+
     ${_block(_secTitle('Categorias de Insumo', null), _addBar(`
       <input class="inp" id="cfgNewCatInsumo" placeholder="Nova categoria" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddCatInsumo()">
       <button class="btn btn-primary" style="font-size:var(--text-sm);white-space:nowrap" onclick="_cfgAddCatInsumo()">${lc('plus',13,'#fff')} Add</button>`), 'cfgCatInsumoList')}
     ${_cfgContagemPermsHtml()}`;
   _cfgRenderCatInsumo();
+  _cfgRenderCatRename();
+}
+
+// ── Gerenciar Categorias ──────────────────────────────────────
+
+function _cfgRenderCatRename() {
+  const el = document.getElementById('cfgCatRenameList');
+  if (!el) return;
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const cats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+
+  if (!cats.length) {
+    el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:var(--text-sm)">Nenhum insumo cadastrado ainda.</div>`;
+    return;
+  }
+
+  el.innerHTML = cats.map((cat, idx) => {
+    const count = allItems.filter(i => (i.cat || 'Outros') === cat).length;
+    return `
+    <div id="cfgCatRow_${idx}" style="display:flex;align-items:center;gap:10px;padding:11px 14px;${idx > 0 ? 'border-top:1px solid var(--border)' : ''};background:var(--surface)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:var(--text-sm);font-weight:600;color:var(--text)">${cat}</div>
+        <div style="font-size:var(--text-2xs);color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
+      </div>
+      <button onclick="_cfgAbrirRenomearCat('${cat.replace(/'/g,"\\'")}', ${idx})"
+        style="display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r6);background:var(--surface);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--text2);white-space:nowrap;min-height:36px">
+        ${lc('edit-2',12,'currentColor')} Renomear
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function _cfgAbrirRenomearCat(catAtual, idx) {
+  const el = document.getElementById(`cfgCatRow_${idx}`);
+  if (!el) return;
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  const count = allItems.filter(i => (i.cat || 'Outros') === catAtual).length;
+
+  el.innerHTML = `
+    <div style="flex:1;min-width:0">
+      <input class="inp" id="cfgCatNovoNome_${idx}"
+        value="${catAtual}"
+        placeholder="Novo nome da categoria"
+        style="font-size:var(--text-sm);font-weight:600;width:100%"
+        onkeydown="if(event.key==='Enter')_cfgSalvarRenomearCat('${catAtual.replace(/'/g,"\\'")}', ${idx}); if(event.key==='Escape')_cfgRenderCatRename()">
+      <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:3px">${count} ${count === 1 ? 'item será' : 'itens serão'} atualizados</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0">
+      <button onclick="_cfgSalvarRenomearCat('${catAtual.replace(/'/g,"\\'")}', ${idx})"
+        style="padding:6px 12px;border:none;border-radius:var(--r6);background:var(--purple);color:#fff;font-size:var(--text-xs);font-weight:700;cursor:pointer;min-height:36px">
+        Salvar
+      </button>
+      <button onclick="_cfgRenderCatRename()"
+        style="padding:6px 12px;border:1.5px solid var(--border);border-radius:var(--r6);background:var(--surface);color:var(--muted);font-size:var(--text-xs);font-weight:600;cursor:pointer;min-height:36px">
+        Cancelar
+      </button>
+    </div>`;
+
+  setTimeout(() => {
+    const inp = document.getElementById(`cfgCatNovoNome_${idx}`);
+    if (inp) { inp.focus(); inp.select(); }
+  }, 50);
+}
+
+function _cfgSalvarRenomearCat(catAtual, idx) {
+  const novoNome = document.getElementById(`cfgCatNovoNome_${idx}`)?.value.trim();
+  if (!novoNome) { toast('Informe o novo nome', 'err'); return; }
+  if (novoNome === catAtual) { _cfgRenderCatRename(); return; }
+
+  const allItems = typeof items !== 'undefined' ? items : [];
+  let count = 0;
+  allItems.forEach(i => {
+    if ((i.cat || 'Outros') === catAtual) { i.cat = novoNome; count++; }
+  });
+
+  if (typeof saveI === 'function') saveI();
+
+  // Atualiza também a lista de categorias de insumo se o nome antigo estiver lá
+  if (typeof CATEGORIAS_INSUMO !== 'undefined') {
+    const ci = CATEGORIAS_INSUMO.indexOf(catAtual);
+    if (ci >= 0) { CATEGORIAS_INSUMO[ci] = novoNome; if (typeof saveCategoriasInsumo === 'function') saveCategoriasInsumo(); }
+  }
+
+  // Atualiza filtro de etiquetagem se o nome antigo estiver lá
+  if (typeof db !== 'undefined') {
+    const etiqCats = db._get('vtp_etiq_categorias', null);
+    if (Array.isArray(etiqCats)) {
+      const updated = etiqCats.map(c => c === catAtual ? novoNome : c);
+      db._set('vtp_etiq_categorias', updated);
+    }
+  }
+
+  toast(`${lc('check-circle',13,'var(--green)')} "${catAtual}" → "${novoNome}" · ${count} ${count === 1 ? 'item atualizado' : 'itens atualizados'}`, 'ok');
+  _cfgRenderCatRename();
+  if (typeof _cfgRenderCatInsumo === 'function') _cfgRenderCatInsumo();
+  if (typeof renderDashboard === 'function') renderDashboard();
 }
 
 // ── Seção: Módulos ────────────────────────────────────────────
@@ -365,8 +469,6 @@ function _renderCfgSecModulos(el) {
   }).join('');
 
   el.innerHTML = `
-    <div class="settings-section-title">${lc('settings',16,'var(--purple)')} Personalização</div>
-    <div class="settings-section-sub">Configurações específicas de cada módulo operacional</div>
     <div style="display:flex;overflow-x:auto;border-bottom:1.5px solid var(--border);margin-bottom:20px">
       ${tabsHtml}
     </div>
@@ -382,8 +484,6 @@ function _renderCfgSecModulos(el) {
 
 function _renderCfgSecUsuarios(el) {
   el.innerHTML = `
-    <div class="settings-section-title">${lc('shield',16,'var(--purple)')} Usuários & Permissões</div>
-    <div class="settings-section-sub">Cadastro de usuários e controle de acesso ao sistema</div>
     <div id="cfgUserList" style="display:flex;flex-direction:column;gap:12px"></div>`;
   _renderCfgUsuarios();
 }
@@ -393,9 +493,6 @@ function _renderCfgSecUsuarios(el) {
 function _renderCfgSecIntegracoes(el) {
   const cfg = getConfig();
   el.innerHTML = `
-    <div class="settings-section-title">${lc('zap',16,'var(--purple)')} Integrações</div>
-    <div class="settings-section-sub">Tokens e conexões com sistemas externos</div>
-
     <div style="border:1.5px solid var(--border);border-radius:var(--r12);padding:18px 20px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         ${lc('monitor',16,'var(--purple)')}
@@ -451,6 +548,8 @@ function _updateSidebarLogo() {
   if (img) img.src = cfg.logoBase64 || 'assets/logo-bg.jpg';
   const txt = document.getElementById('sbLogoText');
   if (txt) txt.textContent = cfg.empresa || 'Vai Ter Pizza!';
+  const sub = document.getElementById('sbBrandSub');
+  if (sub) sub.textContent = cfg.endereco || 'Unidade principal';
 }
 
 function _cfgSetGrupoTab(tab) {
@@ -839,8 +938,7 @@ function _cfgContagemPermsHtml() {
   return `<div style="margin-bottom:22px;margin-top:22px">
     <div style="font-size:var(--text-xs);font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Permissões de Contagem</div>
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
-      ${_row('diaria',  'Contagem Diária',  'Quem pode realizar a contagem diária de estoque')}
-      ${_row('semanal', 'Contagem Semanal', 'Quem pode realizar a contagem semanal completa')}
+      ${_row('semanal', 'Contagem de Estoque', 'Quem pode realizar a contagem de estoque por categoria')}
       <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--surface2);display:flex;justify-content:flex-end">
         <button class="btn btn-primary btn-sm" onclick="saveContagemPerms()">Salvar permissões</button>
       </div>
@@ -1460,7 +1558,8 @@ function saveConfiguracoes() {
   const endereco   = g('cfgEndereco');    if (endereco   !== null) cfg.endereco    = endereco.trim();
   const whatsapp   = g('cfgWhatsapp');    if (whatsapp   !== null) cfg.whatsapp    = whatsapp.replace(/\D/g,'');
   const codLoja    = g('cfgCodLoja');     if (codLoja    !== null) cfg.codLoja     = codLoja.trim();
-  const pctCrit    = g('cfgPctCrit');     if (pctCrit    !== null) cfg.pctCrit     = pctCrit;
+  const pctCrit    = g('cfgPctCrit');     if (pctCrit    !== null) cfg.pctCrit          = pctCrit;
+  const tolDiv     = g('cfgTolDiv');      if (tolDiv     !== null) cfg.toleranciaDiverg  = parseFloat(tolDiv) || 10;
 
   db._set('vtp_config', cfg);
   _updateSidebarLogo();
@@ -1619,7 +1718,7 @@ function _renderCfgCadInline(subTab) {
 
   if (subTab === 'insumos')       renderCadInsumos();
   else if (subTab === 'preparo')  renderPreparoGrid();
-  else if (subTab === 'produtos') { renderCadSabores(); setProdTab('sabores'); }
+  else if (subTab === 'produtos') renderCadFichas();
 }
 
 function _cfgRenderInvList(container) {
@@ -1679,14 +1778,17 @@ function abrirCadastroNaConfig(tab) {
 
 // Todos os IDs de permissão (folhas da árvore) — mantido para compatibilidade
 const _CFG_ALL_PERMS = [
-  'Ver Dashboard','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-  'Pré-produção','Desperdício','Compras','Aprovação de compras','Fornecedores','Relatórios',
-  'Checklist Meu','Checklist','Manutenção','RH','Performance','Gerenciar usuários','Configurações',
+  'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
+  'Pré-produção','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
+  'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','Alertas',
+  'Gerenciar usuários','Configurações',
 ];
 
-// Árvore hierárquica de permissões
+// Árvore hierárquica de permissões — espelha os módulos existentes no sidebar
 const _CFG_PERMS_TREE = [
   { id:'Ver Dashboard',      label:'Dashboard',           icon:'layout-dashboard' },
+  { id:'Omnichannel',        label:'Omnichannel',         icon:'message-circle'  },
+  { id:'Marketing',          label:'Marketing',           icon:'trending-up'     },
   { id:'_estoque',           label:'Estoque',             icon:'package',
     sub:[
       { id:'Estoque',                    label:'Visualizar e editar'        },
@@ -1696,6 +1798,7 @@ const _CFG_PERMS_TREE = [
     ]},
   { id:'Pré-produção',       label:'Pré-produção',        icon:'chef-hat'        },
   { id:'Desperdício',        label:'Desperdício',         icon:'trash-2'         },
+  { id:'Previsão',           label:'Previsão de Demanda', icon:'trending-up'     },
   { id:'_compras',           label:'Compras',             icon:'shopping-cart',
     sub:[
       { id:'Compras',               label:'Criar e gerenciar listas' },
@@ -1708,9 +1811,13 @@ const _CFG_PERMS_TREE = [
       { id:'Checklist Meu', label:'Ver meu checklist'                    },
       { id:'Checklist',     label:'Equipe, templates e dashboard'         },
     ]},
+  { id:'Etiquetagem',        label:'Etiquetagem',         icon:'tag'             },
   { id:'Manutenção',         label:'Manutenção',          icon:'wrench'          },
+  { id:'Inventário',         label:'Inventário',          icon:'layers'          },
   { id:'RH',                 label:'RH',                  icon:'users'           },
   { id:'Performance',        label:'Performance',         icon:'trending-up'     },
+  { id:'Vendas',             label:'Vendas',              icon:'dollar-sign'     },
+  { id:'Alertas',            label:'Alertas',             icon:'bell'            },
   { id:'Gerenciar usuários', label:'Gerenciar usuários',  icon:'user-cog'        },
   { id:'Configurações',      label:'Configurações',       icon:'settings'        },
 ];
@@ -2532,15 +2639,12 @@ function saveContagemPerms() {
 // CONFIGURAÇÕES → ETIQUETAGEM
 // ══════════════════════════════════════════════════════════════
 
-let _cfgEtqTab = 'metodos'; // 'metodos' | 'validades' | 'pontos'
+let _cfgEtqTab = 'metodos'; // 'metodos' | 'validades' | 'pontos' | 'categorias'
 
 function _renderCfgSecEtiquetagem(el) {
   if (typeof _etqInit === 'function') _etqInit();
 
   el.innerHTML = `
-    <div class="settings-section-title">${lc('tag', 16, 'var(--purple)')} Etiquetagem</div>
-    <div class="settings-section-sub">Métodos de conservação · Validades por produto · Pontos de impressão</div>
-
     <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
       <button onclick="_cfgEtqTab='metodos';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
         class="btn btn-sm ${_cfgEtqTab==='metodos'?'btn-primary':'btn-ghost'}">
@@ -2549,6 +2653,10 @@ function _renderCfgSecEtiquetagem(el) {
       <button onclick="_cfgEtqTab='validades';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
         class="btn btn-sm ${_cfgEtqTab==='validades'?'btn-primary':'btn-ghost'}">
         ${lc('clock',12,'currentColor')} Validades por Produto
+      </button>
+      <button onclick="_cfgEtqTab='categorias';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
+        class="btn btn-sm ${_cfgEtqTab==='categorias'?'btn-primary':'btn-ghost'}">
+        ${lc('filter',12,'currentColor')} Categorias Visíveis
       </button>
       <button onclick="_cfgEtqTab='pontos';_renderCfgSecEtiquetagem(document.getElementById('cfgSectionContent'))"
         class="btn btn-sm ${_cfgEtqTab==='pontos'?'btn-primary':'btn-ghost'}">
@@ -2562,9 +2670,73 @@ function _renderCfgSecEtiquetagem(el) {
   const cadEl = document.getElementById('cfgEtqContent');
   if (!cadEl) return;
 
-  if (_cfgEtqTab === 'metodos')   _cfgEtqMetodos(cadEl);
+  if (_cfgEtqTab === 'metodos')        _cfgEtqMetodos(cadEl);
   else if (_cfgEtqTab === 'validades') _cfgEtqValidades(cadEl);
+  else if (_cfgEtqTab === 'categorias') _cfgEtqCategorias(cadEl);
   else if (_cfgEtqTab === 'pontos')    _cfgEtqPontos(cadEl);
+}
+
+// ── Categorias Visíveis na Etiquetagem ───────────────────────
+
+function _cfgEtqCategorias(el) {
+  const allItems = typeof items !== 'undefined' ? items : [];
+  // Categorias exatamente como estão em item.cat — sem mapeamento
+  const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  const habilitadas = db._get('vtp_etiq_categorias', null);
+  const sel = habilitadas !== null ? new Set(habilitadas) : new Set(todasCats);
+
+  el.innerHTML = `
+    <div style="max-width:680px">
+      <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Categorias visíveis na Etiquetagem</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:14px">
+        Selecione quais categorias de insumos e preparados aparecem no wizard de impressão de etiquetas.
+        Categorias desmarcadas ficam ocultas para o operador.
+      </div>
+      <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden;margin-bottom:14px">
+        <div style="padding:10px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:.78rem;font-weight:700;color:var(--text2)">${todasCats.length} categorias encontradas</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-xs" onclick="_cfgEtqCatToggleAll(true)">Todas</button>
+            <button class="btn btn-ghost btn-xs" onclick="_cfgEtqCatToggleAll(false)">Nenhuma</button>
+          </div>
+        </div>
+        ${todasCats.map(cat => {
+          const count   = allItems.filter(i => (i.cat || 'Outros') === cat).length;
+          const checked = sel.has(cat);
+          return `
+          <label style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);cursor:pointer;
+            background:${checked ? 'var(--purple-xlight)' : 'var(--surface)'};transition:background .1s"
+            onmouseover="this.style.background='var(--purple-xlight)'"
+            onmouseout="this.style.background=this.querySelector('input').checked?'var(--purple-xlight)':'var(--surface)'">
+            <input type="checkbox" value="${cat}" ${checked ? 'checked' : ''}
+              style="width:16px;height:16px;accent-color:var(--purple);flex-shrink:0"
+              onchange="this.closest('label').style.background=this.checked?'var(--purple-xlight)':'var(--surface)'">
+            <div style="flex:1">
+              <div style="font-size:.82rem;font-weight:600;color:var(--text)">${cat}</div>
+              <div style="font-size:.67rem;color:var(--muted)">${count} ${count===1?'item':'itens'}</div>
+            </div>
+            ${checked ? `<span style="font-size:.65rem;font-weight:700;color:var(--purple);background:var(--purple-xlight);border:1px solid var(--purple-light);border-radius:20px;padding:1px 8px">Visível</span>` : `<span style="font-size:.65rem;color:var(--muted)">Oculta</span>`}
+          </label>`;
+        }).join('')}
+      </div>
+      <button class="btn btn-primary" onclick="_cfgEtqSalvarCategorias()">
+        ${lc('save',13,'#fff')} Salvar categorias visíveis
+      </button>
+    </div>`;
+}
+
+function _cfgEtqCatToggleAll(checked) {
+  document.querySelectorAll('#cfgEtqContent input[type=checkbox]').forEach(cb => {
+    cb.checked = checked;
+    cb.closest('label').style.background = checked ? 'var(--purple-xlight)' : 'var(--surface)';
+  });
+}
+
+function _cfgEtqSalvarCategorias() {
+  const selecionadas = [...document.querySelectorAll('#cfgEtqContent input[type=checkbox]:checked')]
+    .map(cb => cb.value);
+  db._set('vtp_etiq_categorias', selecionadas);
+  toast('Categorias salvas! O wizard de etiquetagem usará apenas as categorias selecionadas.', 'ok');
 }
 
 // ── Métodos de Conservação ────────────────────────────────────
@@ -2622,7 +2794,32 @@ function _cfgEtqOpenMetodo(id) {
 
 // ── Validades por Produto ─────────────────────────────────────
 
+let _cfgEtqBusca = '';
+
 function _cfgEtqValidades(el) {
+  if (typeof _etqMetodos === 'undefined' || !_etqMetodos) return;
+
+  // Só cria a estrutura do container uma vez — evita recriar o input e perder o foco
+  if (!el.querySelector('#cfgEtqValidList')) {
+    el.innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Validades por produto</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">
+          Configure quantos dias cada produto dura em cada método de conservação.
+          Esses valores são usados automaticamente no wizard de impressão.
+        </div>
+        <input class="inp" id="cfgEtqBuscaInp" placeholder="Buscar produto..." value="${_cfgEtqBusca}"
+          oninput="_cfgEtqBusca=this.value;_cfgEtqValidListUpdate()"
+          style="max-width:380px">
+      </div>
+      <div id="cfgEtqValidList" style="display:flex;flex-direction:column;gap:10px;max-width:900px"></div>`;
+  }
+  _cfgEtqValidListUpdate();
+}
+
+function _cfgEtqValidListUpdate() {
+  const el = document.getElementById('cfgEtqValidList');
+  if (!el) return;
   if (typeof _etqMetodos === 'undefined' || !_etqMetodos) return;
 
   const allItems  = typeof items !== 'undefined' ? items : [];
@@ -2630,65 +2827,48 @@ function _cfgEtqValidades(el) {
   const filtrados = allItems.filter(i => i.name.toLowerCase().includes(busca.toLowerCase()));
 
   el.innerHTML = `
-    <div style="margin-bottom:14px">
-      <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Validades por produto</div>
-      <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">
-        Configure quantos dias cada produto dura em cada método de conservação.
-        Esses valores são usados automaticamente no wizard de impressão.
-      </div>
-      <input class="inp" placeholder="Buscar produto..." value="${busca}"
-        oninput="_cfgEtqBusca=this.value;_cfgEtqValidades(document.getElementById('cfgEtqContent'))"
-        style="max-width:380px">
-    </div>
-
-    <div style="display:flex;flex-direction:column;gap:10px;max-width:900px">
-      ${filtrados.map(item => {
-        const validsItem = _etqValidades ? _etqValidades.filter(v => v.item_id == item.id) : [];
-        const isProd = item.isProd ? 'Produção Interna' : 'Insumo';
-        return `
-          <div style="border:1.5px solid var(--border);border-radius:var(--r10);background:var(--surface);overflow:hidden">
-            <div style="padding:11px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
-              <div style="flex:1;min-width:0">
-                <div style="font-size:.82rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div>
-                <div style="font-size:.67rem;color:var(--muted)">${item.cat || '—'} · ${isProd}</div>
-              </div>
-              <button class="btn btn-outline btn-xs" onclick="_cfgEtqOpenVal('${item.id}', null)">
-                ${lc('plus', 11, 'currentColor')} Adicionar
-              </button>
+    ${filtrados.map(item => {
+      const validsItem = _etqValidades ? _etqValidades.filter(v => v.item_id == item.id) : [];
+      const isProd = item.isProd ? 'Produção Interna' : 'Insumo';
+      return `
+        <div style="border:1.5px solid var(--border);border-radius:var(--r10);background:var(--surface);overflow:hidden">
+          <div style="padding:11px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.82rem;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.name}</div>
+              <div style="font-size:.67rem;color:var(--muted)">${item.cat || '—'} · ${isProd}</div>
             </div>
-            ${validsItem.length > 0 ? `
-              <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px">
-                ${validsItem.map(v => {
-                  const met = _etqMetodos.find(m => m.id === v.metodo_id);
-                  if (!met) return '';
-                  const label = met.status ? `${met.nome} · ${met.status}` : met.nome;
-                  return `
-                    <button onclick="_cfgEtqOpenVal('${item.id}','${v.metodo_id}')"
-                      title="Clique para editar"
-                      style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
-                        border:1.5px solid ${met.cor}44;background:${met.cor}11;
-                        cursor:pointer;font-family:Inter,sans-serif;font-size:.72rem;font-weight:600;color:var(--text)">
-                      ${lc(met.icone || 'thermometer', 10, met.cor)}
-                      ${label}
-                      <strong style="color:${met.cor}">${v.validade_dias}d</strong>
-                    </button>
-                  `;
-                }).join('')}
-              </div>
-            ` : `
-              <div style="padding:9px 14px;font-size:.72rem;color:var(--muted)">
-                Nenhuma conservação configurada — clique em Adicionar
-              </div>
-            `}
+            <button class="btn btn-outline btn-xs" onclick="_cfgEtqOpenVal('${item.id}', null)">
+              ${lc('plus', 11, 'currentColor')} Adicionar
+            </button>
           </div>
-        `;
-      }).join('')}
-      ${filtrados.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum produto encontrado</div>` : ''}
-    </div>
+          ${validsItem.length > 0 ? `
+            <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px">
+              ${validsItem.map(v => {
+                const met = _etqMetodos.find(m => m.id === v.metodo_id);
+                if (!met) return '';
+                const label = met.status ? `${met.nome} · ${met.status}` : met.nome;
+                return `
+                  <button onclick="_cfgEtqOpenVal('${item.id}','${v.metodo_id}')"
+                    title="Clique para editar"
+                    style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+                      border:1.5px solid ${met.cor}44;background:${met.cor}11;
+                      cursor:pointer;font-family:Inter,sans-serif;font-size:.72rem;font-weight:600;color:var(--text)">
+                    ${lc(met.icone || 'thermometer', 10, met.cor)}
+                    ${label}
+                    <strong style="color:${met.cor}">${v.validade_dias}d</strong>
+                  </button>`;
+              }).join('')}
+            </div>
+          ` : `
+            <div style="padding:9px 14px;font-size:.72rem;color:var(--muted)">
+              Nenhuma conservação configurada — clique em Adicionar
+            </div>
+          `}
+        </div>`;
+    }).join('')}
+    ${filtrados.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum produto encontrado</div>` : ''}
   `;
 }
-
-let _cfgEtqBusca = '';
 
 function _cfgEtqOpenVal(itemId, metodoId) {
   if (typeof _etqOpenValidadeModal === 'function') {
@@ -2696,59 +2876,26 @@ function _cfgEtqOpenVal(itemId, metodoId) {
   }
 }
 
-// ── Pontos de Impressão (Fase 3) ──────────────────────────────
+// ── Pontos de Impressão ────────────────────────────────────────
 
 function _cfgEtqPontos(el) {
   el.innerHTML = `
     <div style="max-width:680px">
       <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Pontos de Impressão</div>
       <div style="font-size:.72rem;color:var(--muted);margin-bottom:16px">
-        Cada ponto é um Raspberry Pi conectado a uma impressora Zebra ZD220 via USB na cozinha.
+        Cada ponto é um dispositivo (hoje: um Raspberry Pi) conectado via USB a uma impressora
+        Zebra ZD220 na cozinha.
       </div>
 
-      <div style="background:var(--warning-bg,#FEF3C7);border:1.5px solid var(--warning-border,#FDE68A);border-radius:var(--r10);padding:16px;display:flex;gap:12px;align-items:flex-start;margin-bottom:20px">
-        ${lc('alert-triangle', 16, 'var(--warning-fg,#D97706)')}
+      <div style="background:var(--success-bg,#D1FAE5);border:1.5px solid var(--success-border,#A7F3D0);border-radius:var(--r10);padding:16px;display:flex;gap:12px;align-items:flex-start">
+        ${lc('check-circle', 16, 'var(--success-fg,#065F46)')}
         <div>
-          <div style="font-size:.8rem;font-weight:700;color:var(--warning-fg,#D97706);margin-bottom:4px">Fase 3 — Em desenvolvimento</div>
-          <div style="font-size:.74rem;color:var(--warning-fg,#D97706);line-height:1.6">
-            A integração com Raspberry Pi + Zebra ZD220 via protocolo ZPL está planejada para a Fase 3.
-            Quando ativada, cada etiqueta gerada no wizard será impressa automaticamente no ponto configurado.
-            <br><br>
-            <strong>Hardware necessário:</strong> Raspberry Pi 4B (2GB+) · Zebra ZD220 · Cabo USB-B · Rede local
+          <div style="font-size:.8rem;font-weight:700;color:var(--success-fg,#065F46);margin-bottom:4px">Impressão ativa</div>
+          <div style="font-size:.74rem;color:var(--success-fg,#065F46);line-height:1.6">
+            Toda etiqueta gerada no wizard de Etiquetagem entra numa fila de impressão. O dispositivo
+            ligado à Zebra fica escutando essa fila em tempo real e imprime automaticamente — de
+            qualquer lugar que o pedido tenha sido feito, não precisa estar na mesma rede.
           </div>
-        </div>
-      </div>
-
-      <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden;margin-bottom:14px">
-        <div style="padding:12px 16px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-          <div style="font-size:.8rem;font-weight:700">Pontos cadastrados</div>
-          <button class="btn btn-outline btn-xs" disabled style="opacity:.5;cursor:not-allowed">
-            ${lc('plus',11,'currentColor')} Adicionar ponto
-          </button>
-        </div>
-        <div style="padding:14px 16px;opacity:.5">
-          <div style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px dashed var(--border);border-radius:var(--r8)">
-            <div style="width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center">
-              ${lc('cpu', 18, 'var(--muted)')}
-            </div>
-            <div>
-              <div style="font-size:.8rem;font-weight:700">COZINHA</div>
-              <div style="font-size:.68rem;color:var(--muted)">Raspberry Pi 4B · Zebra ZD220 · Aguardando Fase 3</div>
-            </div>
-            <span style="margin-left:auto;font-size:.65rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--muted)">OFFLINE</span>
-          </div>
-        </div>
-      </div>
-
-      <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:14px">
-        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Especificações técnicas do agente</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.76rem">
-          <div><span style="color:var(--muted)">Hardware</span><br><strong>Raspberry Pi 4B (2GB+)</strong></div>
-          <div><span style="color:var(--muted)">Impressora</span><br><strong>Zebra ZD220</strong></div>
-          <div><span style="color:var(--muted)">Protocolo</span><br><strong>ZPL via USB (lp0)</strong></div>
-          <div><span style="color:var(--muted)">Comunicação</span><br><strong>Supabase Realtime</strong></div>
-          <div><span style="color:var(--muted)">Etiqueta</span><br><strong>60×60mm térmica direta</strong></div>
-          <div><span style="color:var(--muted)">Runtime</span><br><strong>Node.js + systemd</strong></div>
         </div>
       </div>
     </div>

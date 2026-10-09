@@ -29,6 +29,8 @@ function _gerarCodigoInv() {
 }
 
 let _invTab = 'visao_geral';
+window._vtpGetTab_inventario = () => _invTab;
+window._vtpSetTab_inventario = (v) => { _invTab = v; };
 let _editInvId = null;
 let _invContagemAtiva = null;
 let _modoSelecionado = null;

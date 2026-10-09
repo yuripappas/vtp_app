@@ -18,10 +18,21 @@ const db = (() => {
 
   // ── Primitivas seguras ─────────────────────────────────────────
 
+  // Cópia em memória do que veio do Supabase. Se o localStorage estourar a
+  // cota (Safari/iOS ~5MB), _get cai aqui em vez de devolver o default —
+  // senão data.js "semeia" a entidade vazia e sobrescreve o Supabase.
+  const _remoteCache = new Map();
+
   function _get(key, defaultVal) {
     try {
       const raw = localStorage.getItem(key);
-      if (raw === null || raw === undefined) return defaultVal;
+      if (raw === null || raw === undefined) {
+        if (_remoteCache.has(key)) {
+          const v = _remoteCache.get(key);
+          return (v === null || v === undefined) ? defaultVal : v;
+        }
+        return defaultVal;
+      }
       const parsed = JSON.parse(raw);
       return (parsed === null || parsed === undefined) ? defaultVal : parsed;
     } catch (e) {
@@ -39,6 +50,8 @@ const db = (() => {
     clearTimeout(_debouncers[key]);
     _debouncers[key] = setTimeout(async () => {
       try {
+        // Marca como escrita própria para suprimir echo do Realtime
+        if (window._vtpOwnWrites) { window._vtpOwnWrites.add(key); setTimeout(() => window._vtpOwnWrites.delete(key), 4000); }
         await _sbClient.from('kv_store').upsert({ key, value }, { onConflict: 'key' });
       } catch (e) {
         console.warn('[db] push error:', e?.message);
@@ -46,15 +59,43 @@ const db = (() => {
     }, 400);
   }
 
+  function subscribeRealtime() {
+    if (!_sbClient) return;
+    _sbClient.channel('vtp-kv-live')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kv_store' }, payload => {
+        const key = payload.new?.key;
+        const value = payload.new?.value;
+        if (!key || value === undefined) return;
+        _remoteCache.set(key, value);
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+        window._vtpSetGlobal?.(key, value);
+        window._vtpOnRealtimeUpdate?.(key);
+      })
+      .subscribe();
+  }
+
   async function syncFromSupabase(client) {
-    _sbClient = client;
+    window._vtpSb = client;
     try {
       const { data, error } = await client.from('kv_store').select('key, value');
+      // Sync falhou: NÃO habilita push. Sem os dados remotos, qualquer save
+      // (inclusive os seeds de data.js) sobrescreveria o Supabase com default.
       if (error) { console.warn('[db] sync error:', error.message); return false; }
+      _sbClient = client;
+      const remoteKeys = new Set((data || []).map(r => r.key));
+      // Sincroniza dados do Supabase → memória + localStorage
       for (const row of (data || [])) {
+        _remoteCache.set(row.key, row.value);
         try { localStorage.setItem(row.key, JSON.stringify(row.value)); } catch (_) {}
       }
-      return (data || []).length;
+      // Remove do localStorage chaves vtp_ que não existem mais no Supabase
+      const VTP_KEYS = Object.values(ENTITY_MAP || {});
+      for (const key of VTP_KEYS) {
+        if (!remoteKeys.has(key)) {
+          try { localStorage.removeItem(key); } catch (_) {}
+        }
+      }
+      return remoteKeys.size;
     } catch (e) {
       console.warn('[db] sync exception:', e?.message);
       return false;
@@ -62,13 +103,16 @@ const db = (() => {
   }
 
   function _set(key, value) {
+    _remoteCache.set(key, value);
+    _pushToSupabase(key, value);
     try {
       localStorage.setItem(key, JSON.stringify(value));
-      _pushToSupabase(key, value);
       return true;
     } catch (e) {
       if (e.name === 'QuotaExceededError' || e.code === 22) {
         console.error('[db] localStorage cheio:', e);
+        // Já foi pro Supabase e está na memória — localStorage é só cache.
+        if (_sbClient) return true;
         if (typeof toast === 'function') {
           toast(
             'Armazenamento local cheio. Exporte os dados ou limpe o histórico em Configurações.',
@@ -125,7 +169,7 @@ const db = (() => {
       'vtp_emp_terceir','vtp_emp_cargos','vtp_emp_tipos_desp','vtp_emp_cat_insumo',
       'vtp_emp_ausencias','vtp_rh_escalas','vtp_rh_presencas','vtp_rh_horasextras',
       'vtp_rh_materiais','vtp_rh_periodos','vtp_rh_config','vtp_rh_diaristas',
-      'vtp_rh_avaliacoes','vtp_sabores','vtp_produtos','vtp_perms','vtp_config',
+      'vtp_rh_avaliacoes','vtp_sabores','vtp_produtos','vtp_produtos_pizza','vtp_opcoes','vtp_cw_mapa','vtp_canais_comissao','vtp_perms','vtp_config',
       'vtp_movimentacoes','vtp_hist_contagens','vtp_contagensInv',
       'vtp_manut_itens','vtp_manut_cats_cfg','vtp_manut_grupos',
       'vtp_inv_locs','vtp_inv_cats','vtp_ck_turnos','vtp_tipos_lista',
@@ -173,6 +217,9 @@ const db = (() => {
     rhAvaliacoes:      'vtp_rh_avaliacoes',
     sabores:           'vtp_sabores',
     produtos:          'vtp_produtos',
+    produtosPizza:     'vtp_produtos_pizza',
+    opcoes:            'vtp_opcoes',
+    cwMapa:            'vtp_cw_mapa',
     perms:             'vtp_perms',
     config:            'vtp_config',
     movimentacoes:     'vtp_movimentacoes',
@@ -207,6 +254,6 @@ const db = (() => {
 
   // ── Interface pública ─────────────────────────────────────────
 
-  return { _get, _set, _remove, get, set, healthCheck, usage, exportAll, syncFromSupabase };
+  return { _get, _set, _remove, get, set, healthCheck, usage, exportAll, syncFromSupabase, subscribeRealtime };
 
 })();
