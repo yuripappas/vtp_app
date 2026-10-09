@@ -17,29 +17,13 @@ let items = db._get('vtp_items', null) || [
   { id:8,  name:'Cream Cheese',            cat:'Laticínios',       unit:'kg', qty:3.9,  min:5,   ideal:12,  cost:35,    supId:null, brands:[],                              code:'157636', isProd:false },
   { id:9,  name:'Bacon em Cubos',          cat:'Carnes e Frios',   unit:'kg', qty:2,    min:3,   ideal:12,  cost:32.61, supId:null, brands:['Sadia','Seara'],               code:'157640', isProd:false },
   { id:10, name:'Caixa Pizza Pequena',     cat:'Embalagens',       unit:'un', qty:40,   min:400, ideal:393, cost:2.60,  supId:null, brands:[],                              code:'160000', isProd:false },
-  { id:11, name:'Frango Desfiado',         cat:'PREPARADOS', unit:'kg', qty:8,    min:1,   ideal:18,  cost:57.01, supId:null, brands:[],                              code:'157638', isProd:true,  medPorcao:0.090 },
-  { id:12, name:'Carne de Sol Desfiada',   cat:'PREPARADOS', unit:'kg', qty:12,   min:2,   ideal:20,  cost:70,    supId:null, brands:[],                              code:'157645', isProd:true,  medPorcao:0.080 },
-  { id:13, name:'Mussarela Triturada',     cat:'PREPARADOS', unit:'kg', qty:16.8, min:3,   ideal:30,  cost:34,    supId:null, brands:[],                              code:'157629', isProd:true,  medPorcao:0.090 },
-  { id:14, name:'Brigadeiro de Chocolate', cat:'PREPARADOS', unit:'kg', qty:16.9, min:0.5, ideal:20,  cost:24.58, supId:null, brands:[],                              code:'163291', isProd:true,  medPorcao:0.175 },
-  { id:15, name:'Creme de Gorgonzola',     cat:'PREPARADOS', unit:'kg', qty:8.4,  min:0.3, ideal:12,  cost:61.83, supId:null, brands:[],                              code:'157633', isProd:true,  medPorcao:0.080 },
-  { id:16, name:'Costela Bovina Desfiada', cat:'PREPARADOS', unit:'kg', qty:7.1,  min:3,   ideal:15,  cost:75.81, supId:null, brands:[],                              code:'157646', isProd:true,  medPorcao:0.075 },
+  { id:11, name:'Frango Desfiado',         cat:'Produção Interna', unit:'kg', qty:8,    min:1,   ideal:18,  cost:57.01, supId:null, brands:[],                              code:'157638', isProd:true,  medPorcao:0.090 },
+  { id:12, name:'Carne de Sol Desfiada',   cat:'Produção Interna', unit:'kg', qty:12,   min:2,   ideal:20,  cost:70,    supId:null, brands:[],                              code:'157645', isProd:true,  medPorcao:0.080 },
+  { id:13, name:'Mussarela Triturada',     cat:'Produção Interna', unit:'kg', qty:16.8, min:3,   ideal:30,  cost:34,    supId:null, brands:[],                              code:'157629', isProd:true,  medPorcao:0.090 },
+  { id:14, name:'Brigadeiro de Chocolate', cat:'Produção Interna', unit:'kg', qty:16.9, min:0.5, ideal:20,  cost:24.58, supId:null, brands:[],                              code:'163291', isProd:true,  medPorcao:0.175 },
+  { id:15, name:'Creme de Gorgonzola',     cat:'Produção Interna', unit:'kg', qty:8.4,  min:0.3, ideal:12,  cost:61.83, supId:null, brands:[],                              code:'157633', isProd:true,  medPorcao:0.080 },
+  { id:16, name:'Costela Bovina Desfiada', cat:'Produção Interna', unit:'kg', qty:7.1,  min:3,   ideal:15,  cost:75.81, supId:null, brands:[],                              code:'157646', isProd:true,  medPorcao:0.075 },
 ];
-
-// Migração automática: normaliza variações de "Preparados" para 'PREPARADOS' (igual ao CW)
-(function _migrarCatPreparados() {
-  const variantes = ['Produção Interna', 'Preparados', 'preparados', 'PREPARADO'];
-  let changed = false;
-  items.forEach(i => {
-    if (variantes.includes(i.cat) || (i.isProd && i.cat !== 'PREPARADOS')) {
-      i.cat = 'PREPARADOS'; changed = true;
-    }
-  });
-  if (changed) {
-    db._set('vtp_items', items);
-    db._set('vtp_etiq_categorias', null);
-  }
-})();
-
 
 let suppliers    = db._get('vtp_suppliers', []);
 let users        = db._get('vtp_users', null) || [
@@ -95,7 +79,7 @@ let editItemId    = null;
 let editSupId     = null;
 let editUserId    = null;
 let importData    = [];
-let sidebarOpen   = true;
+let sidebarOpen   = false;
 let _carrinho     = db._get('vtp_carrinho', []); // [{itemId, qty}]
 
 // ══════════════════════════════════════════════════════════════
@@ -161,27 +145,11 @@ const _TIPOS_DESPERDICIO_DEFAULT = [
 let TIPOS_DESPERDICIO = db._get('vtp_emp_tipos_desp', null) || [..._TIPOS_DESPERDICIO_DEFAULT];
 const saveTiposDesperdicio = () => db._set('vtp_emp_tipos_desp', TIPOS_DESPERDICIO);
 
-// ── Categorias de Insumo — sincronizadas com item.cat do CW ────
-// A fonte da verdade são as categorias reais dos itens.
-// CATEGORIAS_INSUMO é enriquecida automaticamente com novas
-// categorias que vierem do Cardápio Web.
-let CATEGORIAS_INSUMO = db._get('vtp_emp_cat_insumo', null) || [];
-
-// Auto-sincroniza: adiciona ao array qualquer cat de item que não esteja ainda
-(function _sincCatsInsumo() {
-  const catsItens = [...new Set(items.map(i => i.cat).filter(Boolean))].sort();
-  let changed = false;
-  catsItens.forEach(cat => {
-    if (!CATEGORIAS_INSUMO.includes(cat)) {
-      CATEGORIAS_INSUMO.push(cat);
-      changed = true;
-    }
-  });
-  // Garante ordenação alfabética
-  CATEGORIAS_INSUMO.sort();
-  if (changed || CATEGORIAS_INSUMO.length === 0) db._set('vtp_emp_cat_insumo', CATEGORIAS_INSUMO);
-})();
-
+// ── Categorias de Insumo configuráveis ─────────────────────────
+let CATEGORIAS_INSUMO = db._get('vtp_emp_cat_insumo', null) || [
+  'Carnes e Frios','Massas e Farinhas','Molhos e Temperos','Queijos','Vegetais',
+  'Bebidas','Embalagens','Limpeza','Descartáveis','Outros',
+];
 const saveCategoriasInsumo = () => db._set('vtp_emp_cat_insumo', CATEGORIAS_INSUMO);
 
 // ── Tipos de Ausência RH configuráveis ─────────────────────────
@@ -357,71 +325,19 @@ const saveP   = () => db._set('vtp_produtos', produtos);
 const saveSab = () => db._set('vtp_sabores',  sabores);
 
 // ══════════════════════════════════════════════════════════════
-// PRODUTO (base da pizza) & OPÇÃO (cobertura/sabor) — ficha técnica
-// Produto = massa+molho+embalagem, indivisível, 1x por pizza sempre.
-// Opção   = a "1/2 porção" de um sabor — mesma receita serve de
-//           cobertura inteira da pequena (1x) ou metade da grande (1x/2x).
-// ══════════════════════════════════════════════════════════════
-let produtosPizza = db._get('vtp_produtos_pizza', null);
-const saveProdPizza = () => db._set('vtp_produtos_pizza', produtosPizza);
-if (!produtosPizza) {
-  produtosPizza = PIZZA_TIPOS.map((t, i) => ({
-    id:           i + 1,
-    nome:         t.label,
-    tamanho:      t.grande ? 'grande' : 'pequena',
-    categoria:    t.id.endsWith('_doc') ? 'doce' : 'salgada',
-    fichaTecnica: { ingredientes: [] },
-    active:       true,
-  }));
-  saveProdPizza();
-}
-let nextProdPizzaId = Math.max(...(produtosPizza.length ? produtosPizza.map(p => p.id) : [0]), 0) + 1;
-
-let opcoes = db._get('vtp_opcoes', null);
-const saveOpcoes = () => db._set('vtp_opcoes', opcoes);
-if (!opcoes) {
-  // Migração: uma Opção por sabor único, casando "Calabresa" (pequena)
-  // com "1/2 Calabresa" (grande) pelo nome — é a mesma cobertura física.
-  const porChave = {};
-  sabores.forEach(s => {
-    const categoria = s.tipo.endsWith('_doc') ? 'doce' : 'salgada';
-    const nome      = s.name.replace(/^1\/2\s+/i, '').trim();
-    const chave     = categoria + '|' + nome.toLowerCase();
-    if (!porChave[chave]) porChave[chave] = { nome, categoria };
-  });
-  opcoes = Object.values(porChave).map((o, i) => ({
-    id:           i + 1,
-    nome:         o.nome,
-    categoria:    o.categoria,
-    fichaTecnica: { ingredientes: [] },
-    active:       true,
-  }));
-  sabores.forEach(s => {
-    const categoria = s.tipo.endsWith('_doc') ? 'doce' : 'salgada';
-    const nome      = s.name.replace(/^1\/2\s+/i, '').trim();
-    const opc = opcoes.find(o => o.categoria === categoria && o.nome.toLowerCase() === nome.toLowerCase());
-    s.opcaoId = opc ? opc.id : null;
-  });
-  saveOpcoes();
-  saveSab();
-}
-let nextOpcaoId = Math.max(...(opcoes.length ? opcoes.map(o => o.id) : [0]), 0) + 1;
-
-// ══════════════════════════════════════════════════════════════
 // PERMISSÕES
 // ══════════════════════════════════════════════════════════════
 let PERMS = {
   gerente: {
     label: 'Gestor', icon: 'crown', color: '#6B21D4', bg: '#EDE9FE', mutavel: false,
     perms: [
-      'Ver Dashboard','Omnichannel',
+      'Ver Dashboard',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-      'Pré-produção','Desperdício','Previsão',
+      'Pré-produção','Desperdício',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
-      'Manutenção','Inventário','RH','Performance',
-      'Vendas','Alertas',
+      'Manutenção','RH','Performance',
       'Gerenciar usuários','Configurações',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
@@ -429,33 +345,31 @@ let PERMS = {
   supervisor: {
     label: 'Supervisor', icon: 'key', color: '#D97706', bg: '#FEF3C7', mutavel: true,
     perms: [
-      'Ver Dashboard','Omnichannel',
+      'Ver Dashboard',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-      'Pré-produção','Desperdício','Previsão',
+      'Pré-produção','Desperdício',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
-      'Manutenção','Inventário','RH','Performance',
-      'Vendas','Alertas',
+      'Manutenção','RH','Performance',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
   },
   comprador: {
     label: 'Comprador', icon: 'shopping-cart', color: '#16A34A', bg: '#DCFCE7', mutavel: true,
     perms: [
-      'Ver Dashboard','Omnichannel',
+      'Ver Dashboard',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
-      'Pré-produção','Previsão',
+      'Pré-produção',
       'Compras',
       'Fornecedores',
       'Checklist Meu','Checklist',
-      'Inventário','Alertas',
       'Etiquetagem','Etiquetagem: Produção',
     ]
   },
   funcionario: {
     label: 'Funcionário', icon: 'user', color: '#3B82F6', bg: '#EFF6FF', mutavel: true,
-    perms: ['Ver Dashboard','Omnichannel','Checklist Meu','Etiquetagem']
+    perms: ['Checklist Meu','Etiquetagem']
   },
 };
 (function() {
@@ -682,62 +596,4 @@ const STATUS_ETAPA = {
   ordem_criada:          { label: 'Ordem de compra',       color: 'var(--purple)',       bg: 'var(--purple-xlight)' },
   recebimento:           { label: 'Em recebimento',        color: 'var(--yellow)',       bg: 'var(--yellow-light)'  },
   concluida:             { label: 'Concluída',             color: 'var(--green)',        bg: 'var(--green-light)'   },
-};
-
-// ══════════════════════════════════════════════════════════════
-// REALTIME — mapeia chave kv_store → variável global
-// Chamado por db.js quando chega um UPDATE via Supabase Realtime.
-// Funciona para vars de data.js e também de outros módulos (checklist,
-// manutencao, inventario, desperdicio) — todas são let globais no
-// mesmo escopo de página (classic scripts compartilham o escopo).
-// ══════════════════════════════════════════════════════════════
-window._vtpSetGlobal = function(key, val) {
-  /* eslint-disable no-global-assign */
-  switch (key) {
-    // data.js
-    case 'vtp_items':          items = val;              break;
-    case 'vtp_suppliers':      suppliers = val;          break;
-    case 'vtp_users':          users = val;              break;
-    case 'vtp_ordens':         ordens = val;             break;
-    case 'vtp_listas':         listas = val;             break;
-    case 'vtp_cycle_history':  cycleHistory = val;       break;
-    case 'vtp_price_history':  priceHistory = val;       break;
-    case 'vtp_forn_memoria':   fornMemoria = val;        break;
-    case 'vtp_carrinho':       _carrinho = val;          break;
-    case 'vtp_prestadores':    prestadores = val;        break;
-    case 'vtp_terceirizados':  terceirizados = val;      break;
-    case 'vtp_emp_terceir':    TERCEIR_FUNCOES = val;   break;
-    case 'vtp_funcionarios':   funcionarios = val;       break;
-    case 'vtp_emp_cargos':     FUNC_CARGOS = val;       break;
-    case 'vtp_emp_tipos_desp': TIPOS_DESPERDICIO = val; break;
-    case 'vtp_emp_cat_insumo': CATEGORIAS_INSUMO = val; break;
-    case 'vtp_emp_ausencias':  TIPOS_AUSENCIA = val;    break;
-    case 'vtp_rh_escalas':     rhEscalas = val;         break;
-    case 'vtp_rh_presencas':   rhPresencas = val;       break;
-    case 'vtp_rh_horasextras': rhHorasExtras = val;     break;
-    case 'vtp_rh_materiais':   rhMateriais = val;       break;
-    case 'vtp_rh_periodos':    rhPeriodos = val;        break;
-    case 'vtp_rh_config':      rhConfig = val;          break;
-    case 'vtp_rh_diaristas':   rhDiaristas = val;       break;
-    case 'vtp_rh_avaliacoes':  rhAvaliacoes = val;      break;
-    case 'vtp_sabores':        sabores = val;           break;
-    case 'vtp_produtos':       produtos = val;          break;
-    case 'vtp_produtos_pizza': produtosPizza = val;     break;
-    case 'vtp_opcoes':         opcoes = val;            break;
-    case 'vtp_inv_locs':       inventarioLocs = val;    break;
-    case 'vtp_inv_cats':       inventarioCats = val;    break;
-    case 'vtp_manut_cats_cfg': manutCats = val;         break;
-    case 'vtp_manut_grupos':   manutGrupos = val;       break;
-    case 'vtp_ck_turnos':      checklistTurnos = val;   break;
-    case 'vtp_auditlog':       auditLog = val;          break;
-    // manutencao.js
-    case 'vtp_manut_itens':    if (typeof manutItens   !== 'undefined') manutItens   = val; break;
-    case 'vtp_manut_equip':    if (typeof manutEquip   !== 'undefined') manutEquip   = val; break;
-    case 'vtp_manut_log':      if (typeof manutLog     !== 'undefined') manutLog     = val; break;
-    // inventario.js
-    case 'vtp_contagens_inv':  if (typeof contagensInv !== 'undefined') contagensInv = val; break;
-    case 'vtp_inv_baixas':     if (typeof _invBaixas   !== 'undefined') _invBaixas   = val; break;
-    // desperdicio.js
-    case 'vtp_desperdicios':   if (typeof desperdicios !== 'undefined') desperdicios = val; break;
-  }
 };

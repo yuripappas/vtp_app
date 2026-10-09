@@ -12,6 +12,7 @@ ALTER TABLE cw_pedidos
   ADD COLUMN IF NOT EXISTS customer_id      BIGINT,
   ADD COLUMN IF NOT EXISTS customer_name    TEXT,
   ADD COLUMN IF NOT EXISTS customer_phone   TEXT,  -- ddi+phone concatenados, só dígitos (ex: 5582996891417)
-  ADD COLUMN IF NOT EXISTS delivery_address JSONB; -- objeto completo da API, ver acima
+  ADD COLUMN IF NOT EXISTS delivery_address JSONB, -- objeto completo da API, ver acima
+  ADD COLUMN IF NOT EXISTS coupon_code      TEXT;  -- cupom de desconto aplicado ao pedido
 
 CREATE INDEX IF NOT EXISTS cw_pedidos_customer_phone_idx ON cw_pedidos (customer_phone);

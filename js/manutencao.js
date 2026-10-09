@@ -3,8 +3,6 @@
  */
 
 let _manutTab            = 'visao_geral';
-window._vtpGetTab_manutencao = () => _manutTab;
-window._vtpSetTab_manutencao = (v) => { _manutTab = v; };
 let _manutFiltro         = 'todos';
 let _manutCorrFiltro     = 'abertas';
 let _manutEquipFiltro    = null;

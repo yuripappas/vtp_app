@@ -3,8 +3,9 @@
  * Módulo completo de etiquetagem para cozinha profissional
  * Inspirado na Suflex · Integrado com items, users e funcionarios do app
  *
- * Wizard de impressão + Validades + Produção + Cadastros. Impressão física
- * via fila (etiq_print_jobs) + Supabase Realtime — ver print-agent/.
+ * Fase 1: Wizard de impressão (simulada) + Validades + Produção + Cadastros
+ * Fase 2: Integração com Pré-produção e Dashboard
+ * Fase 3 (pendente): Raspberry Pi + Zebra ZD220 + Supabase Realtime
  */
 
 // ═══════════════════════════════════════════════════════════════
@@ -21,87 +22,23 @@ const ETQ_METODOS_DEFAULT = [
   { id: 'tamb',       nome: 'Temp. Ambiente', status: null,          icone: 'sun',         cor: '#F59E0B' },
 ];
 
-// Mapa de ícones por categoria — usa exatamente os mesmos nomes que aparecem
-// em item.cat (vindos do Cardápio Web ou cadastrados manualmente).
-// Qualquer categoria não listada recebe o ícone genérico 'package'.
 const ETQ_CAT_ICONS = {
-  // Preparados / Produção interna
-  'Produção Interna':   'chef-hat',
-  'Preparados':         'chef-hat',
-
-  // Laticínios e derivados
-  'Laticínios':         'droplets',
-  'Queijos':            'droplets',
-
-  // Proteínas
-  'Carnes e Frios':     'flame',
-  'Carnes':             'flame',
-  'Frios':              'flame',
-
-  // Massas / farinhas
-  'Massas':             'layers',
-  'Massas e Farinhas':  'layers',
-  'Farinhas':           'layers',
-
-  // Molhos / temperos
-  'Molhos':             'droplets',
-  'Molhos e Temperos':  'droplets',
-  'Molhos e Pastas':    'droplets',
-  'Temperos':           'tag',
-
-  // Embalagens
-  'Embalagens':         'box',
-  'Descartáveis':       'box',
-
-  // Bebidas
-  'Bebidas':            'coffee',
-
-  // Hortifruti / vegetais
-  'Hortifruti':         'leaf',
-  'Vegetais':           'leaf',
-  'Frutas':             'leaf',
-
-  // Higiene / limpeza
-  'Limpeza':            'sparkles',
-  'Higiene/Limpeza':    'sparkles',
-  'Higiene':            'sparkles',
-
-  // Secos / grãos
-  'Secos':              'archive',
-  'Grãos':              'archive',
-
-  // Sobremesas / doces
-  'Sobremesas':         'star',
-  'Doces':              'star',
-
-  // Outros
-  'Outros':             'package',
+  'Produção Interna': 'chef-hat',
+  'Laticínios':       'package',
+  'Carnes e Frios':   'flame',
+  'Massas':           'package',
+  'Molhos e Pastas':  'droplets',
+  'Embalagens':       'box',
+  'Bebidas':          'coffee',
+  'Limpeza':          'sparkles',
+  'Hortifruti':       'leaf',
+  'Secos':            'archive',
+  'Sobremesas':       'star',
+  'Temperos':         'tag',
 };
-
-// Retorna o ícone para qualquer categoria, com fallback genérico
-function _etqIconCat(cat) {
-  if (!cat) return 'package';
-  if (ETQ_CAT_ICONS[cat]) return ETQ_CAT_ICONS[cat];
-  const lower = cat.toLowerCase();
-  for (const [key, icon] of Object.entries(ETQ_CAT_ICONS)) {
-    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) return icon;
-  }
-  return 'package';
-}
-
-// Normaliza o nome da categoria para exibição.
-// Garante consistência mesmo que itens antigos ainda tenham 'Produção Interna'.
-function _etqCatDisplay(item) {
-  if (!item) return 'Outros';
-  const cat = item.cat || '';
-  if (item.isProd || cat.toLowerCase().includes('produção') || cat.toLowerCase().includes('interno')) return 'Preparados';
-  return cat || 'Outros';
-}
 
 // Estado do módulo
 let _etqTab    = 'imprimir';
-window._vtpGetTab_etiquetagem = () => _etqTab;
-window._vtpSetTab_etiquetagem = (v) => { _etqTab = v; };
 let _etqCadTab = 'metodos';
 let _etqWizardStep = 1;
 let _etqWizardState = {};
@@ -112,17 +49,8 @@ let _etqValidades = null;
 let _etiquetas    = null;
 let _etqPontos    = null;
 
-// Produção — filtro de período (padrão Dashboard: 0|7|30|60|'custom')
-let _etqProdFiltro       = 0;
-let _etqProdCustomInicio = null;
-let _etqProdCustomFim    = null;
-let _etqProdCustomAberto = false;
-
-// Validades — filtro de período (prospectivo: vencendo nos próximos N dias)
-let _etqValidFiltro       = 7;
-let _etqValidCustomInicio = null;
-let _etqValidCustomFim    = null;
-let _etqValidCustomAberto = false;
+// Produção — filtro ativo
+let _etqProdFiltro = 'hoje';
 
 // Validades — drill
 let _etqValidDrill = null;
@@ -225,68 +153,13 @@ function _etqSetTab(tab) {
   _etqRenderTab();
 }
 
-async function _etqRenderTab() {
+function _etqRenderTab() {
   const el = document.getElementById('etqTabContent');
   if (!el) return;
-  if (_etqTab === 'imprimir') { _etqRenderWizard(el); return; }
-  if (_etqTab !== 'validades' && _etqTab !== 'producao') { _etqRenderWizard(el); return; }
-
-  // Validades/Produção mostram dados de todo mundo, não só do que foi
-  // impresso nessa sessão — re-sincroniza do Supabase antes de renderizar,
-  // em vez de confiar só no que foi carregado no boot da página.
-  const tabNoInicio = _etqTab;
-  el.innerHTML = `
-    <div style="text-align:center;padding:60px 20px;color:var(--muted)">
-      ${lc('refresh-cw',24,'currentColor')}
-      <div style="margin-top:10px;font-size:.82rem">Carregando…</div>
-    </div>`;
-  try {
-    if (window._vtpSb) await db.syncFromSupabase(window._vtpSb);
-  } catch (e) {
-    console.warn('[VTP Etiquetagem] Falha ao ressincronizar:', e?.message);
-  }
-  _etqInit();
-  if (_etqTab !== tabNoInicio) return; // usuário trocou de aba enquanto sincronizava
-
-  // Marca como 'vencida' quem passou da validade sem baixa — feito aqui (não
-  // só dentro de Validades) pra Produção também refletir o status correto,
-  // não importa qual aba o usuário abriu primeiro.
-  const agora = new Date();
-  let mudou = false;
-  _etiquetas.forEach(e => {
-    if (e.status === 'valida' && new Date(e.dt_validade) < agora) {
-      e.status = 'vencida';
-      mudou = true;
-    }
-  });
-  if (_etqBackfillLotePosicao()) mudou = true;
-  if (mudou) _saveEtiquetas();
-
-  if (_etqTab === 'validades') _etqRenderValidades(el);
-  else _etqRenderProducao(el);
-}
-
-// Etiquetas impressas antes do campo lote_posicao existir não têm sua
-// posição real gravada. Como todas as etiquetas do mesmo lote são criadas
-// com o mesmo created_at (mesmo "now" do loop de impressão) e na mesma
-// ordem em que entram no array, dá pra reconstruir a posição de verdade
-// agrupando por item+método+created_at exatos. Roda uma vez e persiste —
-// depois disso os registros já ficam corrigidos permanentemente.
-function _etqBackfillLotePosicao() {
-  const grupos = {};
-  let mudou = false;
-  _etiquetas.forEach(e => {
-    if (e.lote_posicao) return; // já tem posição real, não mexe
-    const key = `${e.item_id}|${e.metodo_id}|${e.created_at}`;
-    (grupos[key] = grupos[key] || []).push(e);
-  });
-  Object.values(grupos).forEach(grupo => {
-    grupo.forEach((e, idx) => {
-      e.lote_posicao = idx + 1;
-      mudou = true;
-    });
-  });
-  return mudou;
+  if (_etqTab === 'imprimir')       _etqRenderWizard(el);
+  else if (_etqTab === 'validades') _etqRenderValidades(el);
+  else if (_etqTab === 'producao')  _etqRenderProducao(el);
+  else _etqRenderWizard(el); // fallback
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -294,8 +167,7 @@ function _etqBackfillLotePosicao() {
 // ═══════════════════════════════════════════════════════════════
 
 function _etqRenderWizard(el) {
-  const catLabel   = _etqWizardState.categoria || 'Produto';
-  const stepTitles = ['','Responsável','Categoria', catLabel, 'Conservação','Confirmar'];
+  const stepTitles = ['','Responsável','Categoria','Produto','Conservação','Confirmar'];
   const step = _etqWizardStep;
 
   el.innerHTML = `
@@ -377,16 +249,14 @@ function _etqStep1(el) {
 
 function _etqStep2(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
-  // Categorias exatamente como estão em item.cat — sem normalização, sem mapeamento
-  const habilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
-  const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
-  const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
+  // Extrair categorias únicas
+  const cats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
       ${cats.map(cat => {
         const count = allItems.filter(i => (i.cat || 'Outros') === cat).length;
-        const icon  = _etqIconCat(cat);
+        const icon  = ETQ_CAT_ICONS[cat] || 'package';
         return `
           <button onclick="_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
           }';_etqWizNext()"
@@ -429,19 +299,24 @@ function _etqStep3(el) {
         const isSel = selId === item.id;
         const valids = _etqValidades.filter(v => v.item_id == item.id);
         return `
-          <button onclick="_etqWizardState.item=${JSON.stringify({id:item.id,name:item.name,cat:item.cat,isProd:item.isProd,unit:item.unit}).replace(/"/g,'&quot;')};_etqWizNext()"
+          <button onclick="_etqWizardState.item=${JSON.stringify({id:item.id,name:item.name,cat:item.cat,isProd:item.isProd,unit:item.unit}).replace(/"/g,'&quot;')};_etqRenderWizStep(document.getElementById('etqWizContent'))"
             class="etq-card"
             style="padding:14px;border-radius:var(--r10);border:2px solid ${isSel ? 'var(--brand-purple)' : 'var(--border)'};
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
               text-align:left;font-family:Inter,sans-serif">
             <div style="font-size:.82rem;font-weight:700;color:${isSel ? 'var(--brand-purple)' : 'var(--text)'};line-height:1.3;margin-bottom:4px">${item.name}</div>
-            <div style="font-size:.66rem;color:var(--muted)">${item.cat || 'Outros'}</div>
+            <div style="font-size:.66rem;color:var(--muted)">${item.isProd ? 'Produção Interna' : 'Insumo'}</div>
             <div style="font-size:.64rem;color:var(--muted);margin-top:3px">${valids.length} conservação${valids.length !== 1 ? 'ões' : ''} conf.</div>
           </button>
         `;
       }).join('')}
     </div>
     ${filtrados.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum produto encontrado</div>` : ''}
+    ${selId ? `<div style="margin-top:20px;max-width:700px">
+      <button class="btn btn-primary" onclick="_etqWizNext()">
+        Continuar com ${_etqWizardState.item?.name} ${lc('arrow-right',14,'#fff')}
+      </button>
+    </div>` : ''}
   `;
 }
 
@@ -485,7 +360,7 @@ function _etqStep4(el) {
         const label = met.status ? `${met.nome} · ${met.status}` : met.nome;
         const isSel = _etqWizardState.metodo?.id === v.metodo_id;
         return `
-          <button onclick="_etqWizardState.metodo=${JSON.stringify({id:met.id,nome:met.nome,status:met.status,icone:met.icone,cor:met.cor,validade_dias:v.validade_dias}).replace(/"/g,'&quot;')};_etqWizNext()"
+          <button onclick="_etqWizardState.metodo=${JSON.stringify({id:met.id,nome:met.nome,status:met.status,icone:met.icone,cor:met.cor,validade_dias:v.validade_dias}).replace(/"/g,'&quot;')};_etqRenderWizStep(document.getElementById('etqWizContent'))"
             class="etq-card"
             style="padding:20px 16px;border-radius:var(--r12);border:2px solid ${isSel ? 'var(--brand-purple)' : 'var(--border)'};
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
@@ -499,6 +374,11 @@ function _etqStep4(el) {
         `;
       }).join('')}
     </div>
+    ${_etqWizardState.metodo ? `<div style="margin-top:20px;max-width:700px">
+      <button class="btn btn-primary" onclick="_etqWizNext()">
+        Continuar ${lc('arrow-right',14,'#fff')}
+      </button>
+    </div>` : ''}
   `;
 }
 
@@ -746,6 +626,11 @@ function _etqStep6(el) {
         </div>
       ` : ''}
 
+      <div style="background:var(--warning-bg);border:1.5px solid var(--warning-border,var(--border));border-radius:var(--r8);padding:10px 14px;font-size:.76rem;color:var(--warning-fg);margin-bottom:20px;text-align:left;display:flex;gap:8px;align-items:flex-start">
+        ${lc('alert-triangle', 14, 'currentColor')}
+        <span>Impressão de etiquetas físicas via Zebra ZD220 está disponível na Fase 3 (Raspberry Pi). Por agora, os registros estão salvos no sistema.</span>
+      </div>
+
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="_etqSetTab('imprimir')">
           ${lc('plus', 14, 'currentColor')} Nova etiqueta
@@ -774,7 +659,6 @@ function _etqImprimir() {
   const sif     = document.getElementById('etqSif')?.value      || null;
 
   const hashes = [];
-  const novasEtiquetas = [];
   for (let i = 0; i < qty; i++) {
     const qr = _etqQRHash();
     hashes.push(qr);
@@ -792,7 +676,6 @@ function _etqImprimir() {
       dt_manipulacao: now.toISOString(),
       dt_validade:    dtVal.toISOString(),
       quantidade:     qty,
-      lote_posicao:   i + 1, // qual etiqueta é essa dentro do lote (ex: 2 de "2/4")
       medida:         medida,
       unidade:        unidade,
       validade_original: valOrig,
@@ -804,7 +687,6 @@ function _etqImprimir() {
       created_at:     now.toISOString(),
     };
     _etiquetas.push(etq);
-    novasEtiquetas.push(etq);
   }
 
   _saveEtiquetas();
@@ -813,93 +695,8 @@ function _etqImprimir() {
   _etqWizardState._impressas = hashes;
   _etqWizardState._medida    = medida;
   _etqWizardState._unidade   = unidade;
-
-  // Manda pra fila de impressão (Supabase) — o print-agent, rodando onde a
-  // Zebra estiver conectada, escuta via Realtime e imprime. Funciona de
-  // qualquer dispositivo/lugar, não só da máquina com a impressora.
-  // Fire-and-forget: nunca bloqueia a UI nem falha visivelmente se a fila
-  // estiver indisponível (o registro da etiqueta já foi salvo de qualquer forma).
-  _etqEnfileirarImpressao(novasEtiquetas, _etqConfigEmpresa())
-    .then(ok => {
-      if (ok) toast(`${lc('printer',14,'#fff')} Etiqueta${novasEtiquetas.length>1?'s':''} enviada${novasEtiquetas.length>1?'s':''} para impressão`, 'ok');
-    });
-
   _etqWizardStep = 6;
   _etqRenderWizard(document.getElementById('etqTabContent'));
-}
-
-// ── Impressão real via fila (Supabase Realtime + Zebra ZD220) ─
-// Qualquer navegador grava o ZPL na tabela etiq_print_jobs. O print-agent
-// (ver print-agent/), rodando na máquina fisicamente ligada à Zebra, escuta
-// via Realtime e imprime — funciona de qualquer lugar, não só da máquina
-// com a impressora.
-
-let _etqSbClient = null;
-function _etqGetSbClient() {
-  if (!_etqSbClient) _etqSbClient = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
-  return _etqSbClient;
-}
-
-function _etqGerarZPL(etq, cfg) {
-  const esc = s => String(s ?? '').replace(/\^/g, '').replace(/~/g, '');
-
-  const produto = esc((etq.item_nome || '').toUpperCase());
-  const metodo  = esc(etq.metodo_status
-    ? `${etq.metodo_nome.toUpperCase()} · ${etq.metodo_status.toUpperCase()}`
-    : (etq.metodo_nome || '').toUpperCase());
-  const peso    = etq.medida && etq.unidade ? esc(`${etq.medida} ${etq.unidade}`) : '';
-  const resp    = esc((etq.responsavel_nome || '').toUpperCase());
-  const empresa = esc((cfg.nome || 'VAI TER PIZZA!').toUpperCase());
-  const cnpj    = esc(cfg.cnpj || '');
-  const dtManip = esc(_etqFmtDT(etq.dt_manipulacao));
-  const dtVal   = esc(_etqFmtDT(etq.dt_validade));
-  const hash    = esc(etq.qr_hash);
-  // Posição dessa etiqueta física dentro do lote (ex: "2/4") — só mostra se
-  // o lote tiver mais de 1 etiqueta, pra não poluir etiqueta avulsa.
-  const posLote = etq.quantidade > 1 ? esc(`${etq.lote_posicao || 1}/${etq.quantidade}`) : '';
-
-  // Etiqueta 60×60mm a 203dpi → 480×480 dots (^PW/^LL). QR nativo via ^BQN.
-  // Bloco de rodapé (RESP/empresa/CNPJ/hash) começa mais perto do fim da
-  // etiqueta e o QR fica alinhado com ele. Endereço não entra de propósito —
-  // CNPJ já é suficiente e o campo colidia com a coluna do QR.
-  return [
-    '^XA',
-    '^PW480',
-    '^LL480',
-    '^CI28',
-    `^FO20,20^A0N,36,36^FD${produto}^FS`,
-    `^FO20,65^A0N,22,22^FD${metodo}^FS`,
-    peso ? `^FO380,65^A0N,22,22^FD${peso}^FS` : '',
-    '^FO20,90^GB440,2,2^FS',
-    '^FO20,105^A0N,22,22^FDMANIPULAÇÃO:^FS',
-    `^FO260,105^A0N,22,22^FD${dtManip}^FS`,
-    '^FO20,135^A0N,22,22^FDVALIDADE:^FS',
-    `^FO260,135^A0N,22,22^FD${dtVal}^FS`,
-    '^FO20,175^GB440,2,2^FS',
-    `^FO20,195^A0N,22,22^FDRESP.: ${resp}^FS`,
-    `^FO20,222^A0N,22,22^FD${empresa}^FS`,
-    cnpj ? `^FO20,249^A0N,20,20^FDCNPJ: ${cnpj}^FS` : '',
-    `^FO300,195^BQN,2,7^FDQA,${hash}^FS`,
-    // Segunda divisória perto do fim da etiqueta + hash em destaque —
-    // usa o espaço que antes ficava em branco, igual um rodapé de recibo.
-    '^FO20,395^GB440,2,2^FS',
-    `^FO20,412^A0N,28,28^FD${hash}^FS`,
-    posLote ? `^FO320,418^A0N,22,22^FD${posLote}^FS` : '',
-    '^XZ',
-  ].filter(Boolean).join('\n');
-}
-
-async function _etqEnfileirarImpressao(etqList, cfg) {
-  if (!etqList || etqList.length === 0) return false;
-  try {
-    const jobs = etqList.map(e => ({ zpl: _etqGerarZPL(e, cfg) }));
-    const { error } = await _etqGetSbClient().from('etiq_print_jobs').insert(jobs);
-    if (error) throw error;
-    return true;
-  } catch (e) {
-    console.warn('[VTP Etiquetagem] Falha ao enfileirar impressão:', e?.message);
-    return false;
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -913,18 +710,24 @@ function _etqRenderValidades(el) {
   const depAmanha = new Date(hoje.getTime() + 2 * 864e5);
   const ontem   = new Date(hoje.getTime() - 864e5);
 
+  // Atualiza status das vencidas
+  const agora = new Date();
+  _etiquetas.forEach(e => {
+    if (e.status === 'valida' && new Date(e.dt_validade) < agora) {
+      e.status = 'vencida';
+    }
+  });
+  _saveEtiquetas();
+
   if (_etqValidDrill) {
     _etqRenderValidadesDrill(el, _etqValidDrill);
     return;
   }
 
-  // Só etiquetas ainda pendentes ('valida') — quem já recebeu baixa não é
-  // mais uma pendência, sai dessas listas (mas continua visível no histórico
-  // de Produção, com o status real do que aconteceu com ela).
-  const vencOntem   = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), ontem));
-  const vencHoje    = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), hoje));
-  const vencAmanha  = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), amanha));
-  const vencDepAmanha = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), depAmanha));
+  const vencOntem   = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), ontem));
+  const vencHoje    = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), hoje));
+  const vencAmanha  = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), amanha));
+  const vencDepAmanha = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), depAmanha));
 
   el.innerHTML = `
     <div style="padding:20px 24px">
@@ -932,9 +735,6 @@ function _etqRenderValidades(el) {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="_etqOpenScanner()" style="display:flex;align-items:center;gap:7px">
           ${lc('scan-line',16,'#fff')} Dar Baixa por QR
-        </button>
-        <button class="btn btn-primary" onclick="_etqAbrirBaixaManual()" style="display:flex;align-items:center;gap:7px">
-          ${lc('search',16,'#fff')} Baixa Manual
         </button>
         <div style="font-size:.75rem;color:var(--muted)">ou abra uma etiqueta abaixo e use os botões de baixa</div>
       </div>
@@ -947,54 +747,11 @@ function _etqRenderValidades(el) {
       </div>
 
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-          <div style="font-size:.8rem;font-weight:700;color:var(--text)">Vencendo no período</div>
-          ${_etqPeriodoFiltroHtml({
-            RANGES: [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']],
-            filtroAtual: _etqValidFiltro,
-            customAberto: _etqValidCustomAberto,
-            customInicio: _etqValidCustomInicio,
-            customFim: _etqValidCustomFim,
-            fnSet: '_etqValidSetRange', fnToggle: '_etqValidToggleCustomRange', fnAplicar: '_etqValidAplicarCustomRange',
-            idInicio: 'etqValidCustomInicio', idFim: 'etqValidCustomFim',
-          })}
-        </div>
-        ${_etqValidTimelineHtml(_etqValidGetRange())}
+        <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:12px">Próximos 7 dias</div>
+        ${_etqValidTimelineHtml()}
       </div>
     </div>
   `;
-}
-
-// Padrão Dashboard, mas prospectivo (vencendo nos próximos N dias, não os últimos).
-function _etqValidSetRange(dias) {
-  _etqValidFiltro = dias;
-  _etqValidCustomAberto = false;
-  _etqRenderValidades(document.getElementById('etqTabContent'));
-}
-function _etqValidToggleCustomRange() {
-  _etqValidCustomAberto = !_etqValidCustomAberto;
-  _etqRenderValidades(document.getElementById('etqTabContent'));
-}
-function _etqValidAplicarCustomRange() {
-  const i = document.getElementById('etqValidCustomInicio')?.value;
-  const f = document.getElementById('etqValidCustomFim')?.value;
-  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
-  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
-  _etqValidCustomInicio = i;
-  _etqValidCustomFim    = f;
-  _etqValidFiltro       = 'custom';
-  _etqValidCustomAberto = false;
-  _etqRenderValidades(document.getElementById('etqTabContent'));
-}
-function _etqValidGetRange() {
-  const hoje = new Date();
-  hoje.setHours(0,0,0,0);
-  if (_etqValidFiltro === 'custom' && _etqValidCustomInicio && _etqValidCustomFim) {
-    return { inicio: new Date(_etqValidCustomInicio + 'T00:00:00'), fim: new Date(_etqValidCustomFim + 'T23:59:59') };
-  }
-  const fim = new Date(hoje.getTime() + Math.max(_etqValidFiltro, 0) * 864e5);
-  fim.setHours(23,59,59,999);
-  return { inicio: hoje, fim };
 }
 
 function _etqValidCard(label, etqs, cor, bg, date) {
@@ -1009,24 +766,16 @@ function _etqValidCard(label, etqs, cor, bg, date) {
   `;
 }
 
-function _etqValidTimelineHtml({ inicio, fim }) {
+function _etqValidTimelineHtml() {
   const hoje = new Date();
   hoje.setHours(0,0,0,0);
-  const amanha = new Date(hoje.getTime() + 864e5);
   const dias = [];
-  const cursor = new Date(inicio);
-  cursor.setHours(0,0,0,0);
-  const fimDia = new Date(fim);
-  fimDia.setHours(0,0,0,0);
-  let guard = 0;
-  while (cursor <= fimDia && guard < 366) {
-    const d = new Date(cursor);
-    const etqs = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), d));
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(hoje.getTime() + i * 864e5);
+    const etqs = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), d));
     if (etqs.length > 0) dias.push({ d, etqs });
-    cursor.setDate(cursor.getDate() + 1);
-    guard++;
   }
-  if (dias.length === 0) return `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:.82rem">Nenhuma etiqueta vencendo no período selecionado</div>`;
+  if (dias.length === 0) return `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:.82rem">Nenhuma etiqueta vencendo nos próximos 7 dias</div>`;
 
   return dias.map(({ d, etqs }) => {
     const label = _sameDay(d, hoje) ? 'Hoje' : _sameDay(d, new Date(hoje.getTime() + 864e5)) ? 'Amanhã' : _etqFmtDate(d);
@@ -1050,7 +799,7 @@ function _etqValidTimelineHtml({ inicio, fim }) {
 function _etqRenderValidadesDrill(el, dateIso) {
   const drillDate = new Date(dateIso);
   drillDate.setHours(0,0,0,0);
-  const etqs = _etiquetas.filter(e => e.status === 'valida' && _sameDay(new Date(e.dt_validade), drillDate));
+  const etqs = _etiquetas.filter(e => e.status !== 'excluida' && _sameDay(new Date(e.dt_validade), drillDate));
 
   el.innerHTML = `
     <div style="padding:16px 24px">
@@ -1065,7 +814,7 @@ function _etqRenderValidadesDrill(el, dateIso) {
 
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-width:900px">
         ${etqs.map(e => {
-          const sv = _etqStatusInfo(e);
+          const sv = _etqStatusValidade(e.dt_validade);
           const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
           return `
             <div onclick="_etqAbrirDetalheEtq('${e.id}')"
@@ -1095,7 +844,7 @@ function _etqAbrirDetalheEtq(id) {
   _etqDetalheId = id;
 
   const cfg = _etqConfigEmpresa();
-  const sv  = _etqStatusInfo(e);
+  const sv  = _etqStatusValidade(e.dt_validade);
   const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
   const dtManip  = new Date(e.dt_manipulacao);
   const dtVal    = new Date(e.dt_validade);
@@ -1125,7 +874,7 @@ function _etqAbrirDetalheEtq(id) {
         <div style="font-weight:bold">${(cfg.nome || 'VAI TER PIZZA!').toUpperCase()}</div>
         ${cfg.cnpj ? `<div>CNPJ: ${cfg.cnpj}</div>` : ''}
         ${cfg.cep  ? `<div>CEP: ${cfg.cep}${cfg.endereco ? ' ' + cfg.endereco : ''}</div>` : ''}
-        <div style="margin-top:4px;font-size:11px;font-weight:bold">${e.qr_hash}${e.quantidade > 1 ? ` · ${e.lote_posicao || 1}/${e.quantidade}` : ''}</div>
+        <div style="margin-top:4px;font-size:11px;font-weight:bold">${e.qr_hash}</div>
       </div>
       <img id="etqDetQRImg" width="62" height="62" alt="QR" style="border-radius:3px;flex-shrink:0">
     </div>
@@ -1167,7 +916,7 @@ function _etqAbrirDetalheEtq(id) {
   ).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   assocEl.innerHTML = sameBatch.map((x, idx) => {
-    const xsv = _etqStatusInfo(x);
+    const xsv = _etqStatusValidade(x.dt_validade);
     const isThis = x.id === id;
     return `
       <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r8);
@@ -1175,7 +924,6 @@ function _etqAbrirDetalheEtq(id) {
         background:${isThis ? 'var(--purple-xlight)' : 'var(--surface)'};cursor:pointer">
         <span style="font-size:.72rem;color:var(--muted);min-width:20px;text-align:right">${String(idx+1).padStart(2,'0')}</span>
         <span style="font-family:monospace;font-size:.78rem;font-weight:700;color:var(--brand-purple);flex:1">${x.qr_hash}</span>
-        ${x.quantidade > 1 ? `<span style="font-size:.68rem;color:var(--muted);font-family:monospace">${x.lote_posicao || 1}/${x.quantidade}</span>` : ''}
         <span style="font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:10px;background:${xsv.bg};color:${xsv.cor}">${xsv.label}</span>
         <input type="checkbox" class="etq-assoc-chk" data-id="${x.id}" ${isThis ? 'checked' : ''}
           style="width:16px;height:16px;accent-color:var(--brand-purple)">
@@ -1225,14 +973,7 @@ function _etqDarBaixaSelecao(tipo) {
 function _etqDarBaixa(id, tipo) {
   const e = _etiquetas.find(x => x.id === id);
   if (!e) return;
-
-  // Descartada → abre modal de desperdício pré-preenchido
-  if (tipo === 'descartada') {
-    _etqAbrirModalDesperdicio(e);
-    return;
-  }
-
-  const tipoLabel = { consumida: 'Consumida / Utilizada', nao_encontrada: 'Não encontrada', excluida: 'Excluída' }[tipo] || tipo;
+  const tipoLabel = { consumida: 'Consumida / Utilizada', descartada: 'Descartada / Perdida', nao_encontrada: 'Não encontrada', excluida: 'Excluída' }[tipo] || tipo;
   vtpConfirm({
     title: `Dar baixa: ${e.item_nome}`,
     message: `Marcar esta etiqueta como "${tipoLabel}"?`,
@@ -1250,138 +991,6 @@ function _etqDarBaixa(id, tipo) {
       if (tabEl && _etqTab === 'validades') _etqRenderValidades(tabEl);
     },
   });
-}
-
-function _etqAbrirModalDesperdicio(e) {
-  // Monta opções de tipo de desperdício
-  const tiposOpts = (typeof TIPOS_DESPERDICIO !== 'undefined' ? TIPOS_DESPERDICIO : [])
-    .map(t => `<option value="${t.id}">${t.label}</option>`).join('');
-
-  const qty    = e.medida  || e.quantidade || '';
-  const unid   = e.unidade || '';
-  const hoje   = new Date().toISOString().slice(0,10);
-
-  // Cria overlay temporário
-  const ovId = 'etqDespOverlay';
-  let ov = document.getElementById(ovId);
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = ovId;
-    ov.className = 'overlay';
-    document.body.appendChild(ov);
-  }
-
-  ov.innerHTML = `
-    <div class="mbox" style="max-width:420px">
-      <div class="mh">
-        <div class="mt">${lc('trash-2',16,'var(--orange-dark)')} Registrar Desperdício</div>
-        <button class="mc" onclick="closeModal('${ovId}')"></button>
-      </div>
-      <div class="mb" style="display:flex;flex-direction:column;gap:14px">
-        <div style="background:var(--surface2);border-radius:var(--r8);padding:10px 14px;font-size:var(--text-sm)">
-          <div style="font-weight:700;color:var(--text)">${e.item_nome}</div>
-          <div style="color:var(--muted);margin-top:2px">${qty ? qty + ' ' + unid : 'Quantidade não informada'}</div>
-        </div>
-        <div class="field">
-          <label>Tipo de desperdício *</label>
-          <select class="inp" id="etqDespTipo">${tiposOpts}</select>
-        </div>
-        <div class="f2">
-          <div class="field">
-            <label>Quantidade *</label>
-            <input class="inp" type="number" id="etqDespQty" value="${qty}" min="0.001" step="0.001" placeholder="0">
-          </div>
-          <div class="field">
-            <label>Unidade</label>
-            <input class="inp" id="etqDespUnid" value="${unid}" placeholder="kg, g, L…">
-          </div>
-        </div>
-        <div class="field">
-          <label>Responsável *</label>
-          <input class="inp" id="etqDespResp" placeholder="Nome de quem está registrando">
-        </div>
-        <div class="field">
-          <label>Observação</label>
-          <input class="inp" id="etqDespObs" placeholder="Opcional">
-        </div>
-      </div>
-      <div class="mf" style="gap:8px">
-        <button class="btn btn-ghost" onclick="closeModal('${ovId}')">Cancelar</button>
-        <button class="btn btn-primary" style="background:var(--orange-dark);border-color:var(--orange-dark)"
-          onclick="_etqConfirmarDesperdicio('${e.id}','${ovId}')">
-          ${lc('check-circle',14,'#fff')} Confirmar desperdício
-        </button>
-      </div>
-    </div>`;
-
-  ov.classList.add('open');
-}
-
-function _etqConfirmarDesperdicio(etqId, ovId) {
-  const e    = _etiquetas.find(x => x.id === etqId);
-  if (!e) return;
-
-  const tipo = document.getElementById('etqDespTipo')?.value;
-  const qty  = parseFloat(document.getElementById('etqDespQty')?.value);
-  const unid = document.getElementById('etqDespUnid')?.value.trim() || e.unidade || '';
-  const resp = document.getElementById('etqDespResp')?.value.trim();
-  const obs  = document.getElementById('etqDespObs')?.value.trim();
-
-  if (!tipo)         { toast('Selecione o tipo de desperdício', 'err'); return; }
-  if (!qty || qty <= 0) { toast('Informe a quantidade', 'err'); return; }
-  if (!resp)         { toast('Informe o responsável', 'err'); return; }
-
-  // Registra no módulo de desperdício
-  if (typeof desperdicios !== 'undefined') {
-    const item   = (typeof items !== 'undefined') ? items.find(i => i.id === e.item_id) : null;
-    const custo  = item ? (item.cost || 0) * qty : 0;
-    const nextId = Math.max(0, ...desperdicios.map(x => x.id)) + 1;
-    const d = {
-      id:        nextId,
-      itemId:    e.item_id || null,
-      prodId:    null,
-      origem:    'etiquetagem',
-      nome:      e.item_nome,
-      unidade:   unid,
-      qty,
-      tipo,
-      custo,
-      date:      new Date().toISOString().slice(0,10),
-      resp,
-      obs:       obs || `Descartada via Etiquetagem (etq #${etqId})`,
-      createdAt: new Date().toISOString(),
-    };
-    desperdicios.push(d);
-    if (typeof saveD === 'function') saveD();
-
-    // Baixa no estoque
-    if (item) {
-      item.qty = Math.max(0, parseFloat((item.qty - qty).toFixed(3)));
-      if (typeof saveI === 'function') saveI();
-      if (typeof registrarMovimentacao === 'function') {
-        registrarMovimentacao('saida_perda', item.id, qty, 'Desperdício via Etiquetagem: ' + tipo, null);
-      }
-    }
-
-    try { if (typeof logAudit === 'function') logAudit('desperdicio_registrado', tipo + ' — ' + e.item_nome + ' ' + qty + ' ' + unid, 'desperdicio'); } catch(_){}
-    if (typeof renderDesperdicio === 'function') renderDesperdicio();
-    if (typeof renderDashboard   === 'function') renderDashboard();
-  }
-
-  // Marca etiqueta como descartada
-  e.status = 'descartada';
-  _saveEtiquetas();
-  _etqUpdateBadge();
-
-  closeModal(ovId);
-  closeModal('etqDetalheOverlay');
-  closeModal('etqScannerOverlay');
-  closeModal('etqBaixaOverlay');
-
-  toast(`${lc('check-circle',14,'var(--green)')} Desperdício registrado e etiqueta baixada`, 'ok');
-
-  const tabEl = document.getElementById('etqTabContent');
-  if (tabEl && _etqTab === 'validades') _etqRenderValidades(tabEl);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1483,7 +1092,7 @@ function _etqBaixaPorHash(hash) {
   _etqStopCamera();
   closeModal('etqScannerOverlay');
 
-  const sv  = _etqStatusInfo(e);
+  const sv  = _etqStatusValidade(e.dt_validade);
   const cfg = _etqConfigEmpresa();
 
   document.getElementById('etqBaixaTitle').textContent = e.item_nome;
@@ -1530,164 +1139,44 @@ function _etqExcluirBatch() {
   _etqDarBaixaSelecao('excluida');
 }
 
-// ── Baixa Manual — busca por nome, sem QR ─────────────────────
-
-function _etqAbrirBaixaManual() {
-  const ovId = 'etqBaixaManualOverlay';
-  let ov = document.getElementById(ovId);
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = ovId;
-    ov.className = 'overlay';
-    document.body.appendChild(ov);
-  }
-
-  ov.innerHTML = `
-    <div class="mbox" style="max-width:460px">
-      <div class="mh">
-        <div class="mt">${lc('search',16,'var(--brand-purple)')} Baixa Manual</div>
-        <button class="mc" onclick="closeModal('${ovId}')"></button>
-      </div>
-      <div class="mb" style="display:flex;flex-direction:column;gap:12px">
-        <input class="inp" id="etqBaixaManualBusca" placeholder="Buscar por nome do produto..."
-          oninput="_etqBaixaManualAtualizarLista()" autofocus>
-        <div id="etqBaixaManualLista" style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto"></div>
-      </div>
-    </div>`;
-
-  ov.classList.add('open');
-  _etqBaixaManualAtualizarLista();
-  setTimeout(() => document.getElementById('etqBaixaManualBusca')?.focus(), 50);
-}
-
-function _etqBaixaManualAtualizarLista() {
-  const el = document.getElementById('etqBaixaManualLista');
-  if (!el) return;
-  const busca = (document.getElementById('etqBaixaManualBusca')?.value || '').trim().toLowerCase();
-
-  const validas = _etiquetas
-    .filter(e => e.status === 'valida')
-    .filter(e => !busca || e.item_nome.toLowerCase().includes(busca))
-    .sort((a, b) => new Date(a.dt_validade) - new Date(b.dt_validade));
-
-  if (validas.length === 0) {
-    el.innerHTML = `<div style="text-align:center;padding:30px 0;color:var(--muted);font-size:.82rem">
-      ${busca ? 'Nenhuma etiqueta encontrada' : 'Nenhuma etiqueta válida no momento'}
-    </div>`;
-    return;
-  }
-
-  el.innerHTML = validas.slice(0, 50).map(e => {
-    const sv = _etqStatusValidade(e.dt_validade);
-    const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
-    return `
-      <button onclick="closeModal('etqBaixaManualOverlay');_etqAbrirDetalheEtq('${e.id}')"
-        style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r8);
-          border:1.5px solid var(--border);background:var(--surface);cursor:pointer;text-align:left;
-          font-family:Inter,sans-serif;width:100%">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.82rem;font-weight:700;color:var(--text)">${e.item_nome}</div>
-          <div style="font-size:.7rem;color:var(--muted)">${metLabel} · Resp.: ${e.responsavel_nome || '—'}</div>
-        </div>
-        <span style="font-size:.65rem;font-weight:700;background:${sv.cor}22;color:${sv.cor};border-radius:4px;padding:2px 7px;flex-shrink:0">${sv.label}</span>
-      </button>`;
-  }).join('') + (validas.length > 50 ? `<div style="text-align:center;padding:8px;color:var(--muted);font-size:.7rem">+${validas.length - 50} outras — refine a busca</div>` : '');
-}
-
 // ═══════════════════════════════════════════════════════════════
 // ABA: PRODUÇÃO
 // ═══════════════════════════════════════════════════════════════
 
-// Mesmo padrão de estado/cálculo do filtro de período do Dashboard
-// (js/dashboard.js: _dashSetRange/_dashToggleCustomRange/_dashAplicarCustomRange/_perfGetRange).
-function _etqProdSetRange(dias) {
-  _etqProdFiltro = dias;
-  _etqProdCustomAberto = false;
-  _etqRenderProducao(document.getElementById('etqTabContent'));
-}
-function _etqProdToggleCustomRange() {
-  _etqProdCustomAberto = !_etqProdCustomAberto;
-  _etqRenderProducao(document.getElementById('etqTabContent'));
-}
-function _etqProdAplicarCustomRange() {
-  const i = document.getElementById('etqProdCustomInicio')?.value;
-  const f = document.getElementById('etqProdCustomFim')?.value;
-  if (!i || !f) { toast('Selecione as duas datas', 'err'); return; }
-  if (i > f) { toast('Data inicial deve ser antes da final', 'err'); return; }
-  _etqProdCustomInicio = i;
-  _etqProdCustomFim    = f;
-  _etqProdFiltro       = 'custom';
-  _etqProdCustomAberto = false;
-  _etqRenderProducao(document.getElementById('etqTabContent'));
-}
-function _etqProdGetRange() {
-  if (_etqProdFiltro === 'custom' && _etqProdCustomInicio && _etqProdCustomFim) {
-    return { inicio: new Date(_etqProdCustomInicio + 'T00:00:00'), fim: new Date(_etqProdCustomFim + 'T23:59:59') };
-  }
-  const fim = new Date();
-  const inicio = _etqProdFiltro > 0
-    ? new Date(new Date(fim.getTime() - _etqProdFiltro * 864e5).setHours(0,0,0,0))
-    : new Date(new Date().setHours(0,0,0,0));
-  return { inicio, fim };
-}
-function _etqPeriodoFiltroHtml(opts) {
-  const { RANGES, filtroAtual, customAberto, customInicio, customFim, fnSet, fnToggle, fnAplicar, idInicio, idFim } = opts;
-  const isCustom = filtroAtual === 'custom';
-  const customLabel = isCustom
-    ? `${customInicio?.split('-').reverse().join('/')} – ${customFim?.split('-').reverse().join('/')}`
-    : 'Personalizado';
-  return `
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative">
-      <div style="display:flex;gap:3px;background:var(--surface2);border-radius:var(--r8);padding:3px">
-        ${RANGES.map(([d,l]) => `
-          <button onclick="${fnSet}(${d})" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;font-weight:${filtroAtual===d?'700':'500'};background:${filtroAtual===d?'var(--bg)':'transparent'};color:${filtroAtual===d?'var(--purple)':'var(--text2)'};box-shadow:${filtroAtual===d?'0 1px 3px rgba(0,0,0,.1)':'none'}">${l}</button>
-        `).join('')}
-        <button onclick="${fnToggle}()" style="font-size:var(--text-xs);padding:5px 12px;border-radius:6px;border:none;cursor:pointer;display:flex;align-items:center;gap:5px;font-weight:${isCustom?'700':'500'};background:${isCustom?'var(--bg)':'transparent'};color:${isCustom?'var(--purple)':'var(--text2)'};box-shadow:${isCustom?'0 1px 3px rgba(0,0,0,.1)':'none'}">
-          ${lc('calendar',11,'currentColor')} ${customLabel}
-        </button>
-      </div>
-      ${customAberto ? `
-        <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--bg);border:1px solid var(--border);border-radius:var(--r10);padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);display:flex;align-items:end;gap:8px;flex-wrap:wrap">
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">De</label>
-            <input type="date" id="${idInicio}" value="${customInicio||''}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <div>
-            <label style="font-size:var(--text-2xs);color:var(--muted);display:block;margin-bottom:3px">Até</label>
-            <input type="date" id="${idFim}" value="${customFim||''}" style="font-size:var(--text-xs);padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text)">
-          </div>
-          <button class="btn btn-primary btn-xs" onclick="${fnAplicar}()">Aplicar</button>
-        </div>` : ''}
-    </div>`;
-}
-
 function _etqRenderProducao(el) {
-  const { inicio, fim } = _etqProdGetRange();
+  const filtros = [
+    { id: 'hoje',   label: 'Hoje' },
+    { id: 'ontem',  label: 'Ontem' },
+    { id: '7dias',  label: '7 dias' },
+    { id: '30dias', label: '30 dias' },
+  ];
+
+  const hoje  = new Date();
+  hoje.setHours(0,0,0,0);
+  const ontem = new Date(hoje.getTime() - 864e5);
 
   let etqs = _etiquetas.filter(e => e.status !== 'excluida');
-  etqs = etqs.filter(e => {
-    const d = new Date(e.dt_manipulacao);
-    return d >= inicio && d <= fim;
-  });
+  if (_etqProdFiltro === 'hoje') {
+    etqs = etqs.filter(e => _sameDay(new Date(e.dt_manipulacao), hoje));
+  } else if (_etqProdFiltro === 'ontem') {
+    etqs = etqs.filter(e => _sameDay(new Date(e.dt_manipulacao), ontem));
+  } else if (_etqProdFiltro === '7dias') {
+    etqs = etqs.filter(e => new Date(e.dt_manipulacao) >= new Date(hoje.getTime() - 7 * 864e5));
+  } else if (_etqProdFiltro === '30dias') {
+    etqs = etqs.filter(e => new Date(e.dt_manipulacao) >= new Date(hoje.getTime() - 30 * 864e5));
+  }
 
   // Ordena por mais recente
   etqs.sort((a, b) => new Date(b.dt_manipulacao) - new Date(a.dt_manipulacao));
 
-  const filtroHtml = _etqPeriodoFiltroHtml({
-    RANGES: [[0,'Hoje'],[7,'7 dias'],[30,'30 dias'],[60,'60 dias']],
-    filtroAtual: _etqProdFiltro,
-    customAberto: _etqProdCustomAberto,
-    customInicio: _etqProdCustomInicio,
-    customFim: _etqProdCustomFim,
-    fnSet: '_etqProdSetRange', fnToggle: '_etqProdToggleCustomRange', fnAplicar: '_etqProdAplicarCustomRange',
-    idInicio: 'etqProdCustomInicio', idFim: 'etqProdCustomFim',
-  });
-
   el.innerHTML = `
     <div style="padding:16px 24px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-        ${filtroHtml}
-        <span style="font-size:.72rem;color:var(--muted)">${etqs.length} registro${etqs.length !== 1 ? 's' : ''}</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+        ${filtros.map(f => `
+          <button onclick="_etqProdFiltro='${f.id}';_etqRenderProducao(document.getElementById('etqTabContent'))"
+            class="btn btn-sm ${_etqProdFiltro === f.id ? 'btn-primary' : 'btn-ghost'}">${f.label}</button>
+        `).join('')}
+        <span style="font-size:.72rem;color:var(--muted);margin-left:4px">${etqs.length} registro${etqs.length !== 1 ? 's' : ''}</span>
       </div>
 
       ${etqs.length === 0 ? `
@@ -1705,14 +1194,14 @@ function _etqRenderProducao(el) {
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Categoria</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Conservação</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Medida</th>
-                <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Nº no lote</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Qtd</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Responsável</th>
                 <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.5px">Status</th>
               </tr>
             </thead>
             <tbody>
               ${etqs.map((e, i) => {
-                const sv = _etqStatusInfo(e); // disposição (baixa) tem prioridade sobre urgência de validade
+                const sv = _etqStatusValidade(e.dt_validade);
                 const metLabel = e.metodo_status ? `${e.metodo_nome} · ${e.metodo_status}` : e.metodo_nome;
                 const medidaStr = e.medida ? `${e.medida} ${e.unidade || ''}` : '—';
                 return `
@@ -1722,7 +1211,7 @@ function _etqRenderProducao(el) {
                     <td style="padding:10px 14px;color:var(--muted)">${e.item_cat || '—'}</td>
                     <td style="padding:10px 14px;color:var(--muted)">${metLabel}</td>
                     <td style="padding:10px 14px;color:var(--muted);font-family:monospace">${medidaStr}</td>
-                    <td style="padding:10px 14px;font-weight:700;text-align:center;font-family:monospace">${e.lote_posicao || 1}/${e.quantidade}</td>
+                    <td style="padding:10px 14px;font-weight:700;text-align:center">${e.quantidade}</td>
                     <td style="padding:10px 14px;color:var(--muted)">${e.responsavel_nome || '—'}</td>
                     <td style="padding:10px 14px">
                       <span style="font-size:.65rem;font-weight:700;background:${sv.cor}22;color:${sv.cor};border-radius:4px;padding:2px 7px">${sv.label}</span>
@@ -1873,7 +1362,7 @@ function _etqCadValidades(el) {
             <div style="padding:12px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
               <div style="flex:1">
                 <div style="font-size:.84rem;font-weight:700;color:var(--text)">${item.name}</div>
-                <div style="font-size:.68rem;color:var(--muted)">${item.cat || '—'} · ${item.isProd ? 'Preparado' : 'Insumo'}</div>
+                <div style="font-size:.68rem;color:var(--muted)">${item.cat || '—'} · ${item.isProd ? 'Produção Interna' : 'Insumo'}</div>
               </div>
               <button class="btn btn-outline btn-xs" onclick="_etqOpenValidadeModal('${item.id}', null)">
                 ${lc('plus', 11, 'currentColor')} Adicionar
@@ -1988,6 +1477,81 @@ function _etqDeleteValidade() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ABA: CONFIGURAÇÕES
+// ═══════════════════════════════════════════════════════════════
+
+function _etqRenderConfig(el) {
+  const cfg = _etqConfigEmpresa();
+
+  el.innerHTML = `
+    <div style="padding:20px 24px;max-width:700px">
+
+      <!-- Dados da unidade (read-only — editar em Configurações) -->
+      <div class="card" style="margin-bottom:20px;padding:18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--brand-purple);display:flex;align-items:center;justify-content:center">
+            ${lc('building-2', 16, '#fff')}
+          </div>
+          <div>
+            <div style="font-size:.86rem;font-weight:800;color:var(--text)">Dados da Unidade</div>
+            <div style="font-size:.68rem;color:var(--muted)">Exibidos nas etiquetas — editar em Configurações → Empresa</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:.78rem">
+          <div><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">Empresa</span><br><strong>${cfg.nome || '—'}</strong></div>
+          <div><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">Responsável</span><br><strong>${cfg.resp || '—'}</strong></div>
+          ${cfg.cnpj     ? `<div><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">CNPJ</span><br><strong>${cfg.cnpj}</strong></div>` : ''}
+          ${cfg.endereco ? `<div style="grid-column:1/-1"><span style="color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.4px">Endereço</span><br><strong>${cfg.endereco}</strong></div>` : ''}
+        </div>
+      </div>
+
+      <!-- Pontos de impressão (Fase 3 placeholder) -->
+      <div class="card" style="padding:18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center">
+            ${lc('cpu', 16, 'var(--muted)')}
+          </div>
+          <div>
+            <div style="font-size:.86rem;font-weight:800;color:var(--text)">Pontos de Impressão</div>
+            <div style="font-size:.68rem;color:var(--muted)">Raspberry Pi + Zebra ZD220</div>
+          </div>
+        </div>
+
+        <div style="background:var(--warning-bg,#FEF3C7);border:1.5px solid var(--warning-border,#FDE68A);border-radius:var(--r8);padding:14px;display:flex;gap:12px;align-items:flex-start">
+          ${lc('alert-triangle', 16, 'var(--warning-fg,#D97706)')}
+          <div>
+            <div style="font-size:.8rem;font-weight:700;color:var(--warning-fg,#D97706);margin-bottom:4px">Fase 3 — Em desenvolvimento</div>
+            <div style="font-size:.74rem;color:var(--warning-fg,#D97706);line-height:1.5">
+              A integração com Raspberry Pi e a impressora Zebra ZD220 via protocolo ZPL está planejada para a Fase 3.
+              Quando ativada, cada etiqueta gerada aqui será impressa automaticamente no ponto de cozinha mais próximo.
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+          <div style="padding:14px;border-radius:var(--r8);border:1.5px dashed var(--border);display:flex;align-items:center;gap:12px;opacity:.5">
+            <div style="width:36px;height:36px;border-radius:8px;background:var(--surface2);border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center">
+              ${lc('cpu', 18, 'var(--muted)')}
+            </div>
+            <div>
+              <div style="font-size:.8rem;font-weight:700">COZINHA</div>
+              <div style="font-size:.68rem;color:var(--muted)">Raspberry Pi 4B · Zebra ZD220 · USB · Offline</div>
+            </div>
+            <span style="margin-left:auto;font-size:.66rem;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;color:var(--muted)">OFFLINE</span>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <button class="btn btn-outline btn-sm" disabled style="opacity:.5;cursor:not-allowed">
+            ${lc('plus', 12, 'currentColor')} Adicionar ponto (disponível na Fase 3)
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // INTEGRAÇÃO — DASHBOARD BADGE
 // ═══════════════════════════════════════════════════════════════
 
@@ -1997,7 +1561,7 @@ function _etqUpdateBadge() {
   const amanha = new Date(hoje.getTime() + 864e5);
 
   const urgentes = _etiquetas.filter(e =>
-    e.status === 'valida' &&
+    e.status !== 'excluida' &&
     new Date(e.dt_validade) >= hoje &&
     new Date(e.dt_validade) < amanha
   ).length;
@@ -2068,46 +1632,17 @@ function _etqConfigEmpresa() {
   };
 }
 
-// Classifica por DIA DO CALENDÁRIO (igual ao resto do módulo — cards Ontem/
-// Hoje/Amanhã, agrupamento do drill-down), não por "quantas horas faltam".
-// Antes usava uma janela rolante (≤24h = "Hoje", ≤48h = "Amanhã"), que dava
-// rótulo errado dependendo da hora do dia (ex: algo vencendo daqui a 2 dias
-// de calendário podia cair na janela de 48h e aparecer como "Amanhã").
 function _etqStatusValidade(dtIso) {
   const agora = new Date();
   const val   = new Date(dtIso);
-  if (val < agora) return { label: 'Vencida', cor: 'var(--red)', bg: 'var(--danger-bg,#FEE2E2)' };
+  const diffMs = val - agora;
+  const diffH  = diffMs / 3600000;
 
-  const hoje    = new Date(); hoje.setHours(0,0,0,0);
-  const amanha  = new Date(hoje.getTime() + 864e5);
-
-  if (_sameDay(val, hoje)) {
-    const diffH = (val - agora) / 3600000;
-    if (diffH <= 8) return { label: 'Crítico', cor: '#DC2626', bg: '#FEE2E2' };
-    return { label: 'Hoje', cor: '#D97706', bg: '#FEF3C7' };
-  }
-  if (_sameDay(val, amanha)) return { label: 'Amanhã', cor: 'var(--success-fg,#059669)', bg: 'var(--success-bg,#D1FAE5)' };
-  // --surface2 é quase idêntico ao fundo da página (--bg) — usado como
-  // "preenchimento sutil" em outros lugares, mas aqui fazia o card sumir
-  // visualmente. --surface é o branco de verdade, usado por cards no resto
-  // do app.
-  return { label: _etqFmtDate(val), cor: 'var(--muted)', bg: 'var(--surface)' };
-}
-
-// O que aconteceu com a etiqueta (baixa) importa mais que "quando vence"
-// quando ela já foi resolvida — senão uma etiqueta já Consumida continua
-// mostrando "Vencida"/"Hoje" como se ainda estivesse pendente. Só cai pra
-// urgência de validade (_etqStatusValidade) quando ainda está 'valida'.
-const ETQ_DISPOSICAO = {
-  consumida:       { label: 'Consumida',       cor: 'var(--green)',      bg: 'var(--green-light)' },
-  descartada:      { label: 'Descartada',      cor: 'var(--orange-dark)', bg: 'var(--orange-light)' },
-  nao_encontrada:  { label: 'Não encontrada',  cor: 'var(--red)',        bg: 'var(--danger-bg,#FEE2E2)' },
-  excluida:        { label: 'Excluída',        cor: 'var(--muted)',      bg: 'var(--surface2)' },
-};
-function _etqStatusInfo(etq) {
-  if (ETQ_DISPOSICAO[etq.status]) return ETQ_DISPOSICAO[etq.status];
-  if (etq.status === 'vencida') return { label: 'Vencida', cor: 'var(--red)', bg: 'var(--danger-bg,#FEE2E2)' };
-  return _etqStatusValidade(etq.dt_validade); // status 'valida' — mostra urgência
+  if (diffMs < 0) return { label: 'Vencida',  cor: 'var(--red)',          bg: 'var(--danger-bg,#FEE2E2)' };
+  if (diffH <= 8)  return { label: 'Crítico',  cor: '#DC2626',              bg: '#FEE2E2' };
+  if (diffH <= 24) return { label: 'Hoje',     cor: '#D97706',              bg: '#FEF3C7' };
+  if (diffH <= 48) return { label: 'Amanhã',   cor: 'var(--success-fg,#059669)', bg: 'var(--success-bg,#D1FAE5)' };
+  return { label: _etqFmtDate(val), cor: 'var(--muted)', bg: 'var(--surface2)' };
 }
 
 function _sameDay(a, b) {

@@ -9,14 +9,10 @@
 
 const MODULE_PERMISSIONS = {
   dashboard:     ['gerente', 'supervisor', 'comprador', 'funcionario'],
-  omnichannel:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
-  marketing:     ['gerente', 'supervisor'],
-  operacao:      ['gerente', 'supervisor', 'comprador', 'funcionario'],
   estoque:       ['gerente', 'supervisor', 'comprador'],
   preproducao:   ['gerente', 'supervisor', 'comprador'],
   desperdicio:   ['gerente', 'supervisor'],
   compras:       ['gerente', 'supervisor', 'comprador'],
-  vendas:        ['gerente', 'supervisor'],
   previsao:      ['gerente', 'supervisor', 'comprador'],
   cadastros:     ['gerente', 'supervisor'],
   configuracoes: ['gerente'],
@@ -30,37 +26,6 @@ const MODULE_PERMISSIONS = {
   auditoria:     ['gerente', 'supervisor'],
   etiquetagem:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
 };
-
-// Módulo → label de permissão granular (árvore de Perfis de Acesso em Configurações → Usuários).
-// Usado para que a edição de perfil/permissões individuais controle de fato a visibilidade
-// de TODOS os módulos (antes só Etiquetagem era ligada a essa árvore). Módulo sem entrada
-// aqui (ex.: 'operacao', que é só o agrupador visual) cai no fallback por role acima.
-const MOD_PERM_LABEL = {
-  dashboard:     'Ver Dashboard',
-  omnichannel:   'Omnichannel',
-  marketing:     'Marketing',
-  estoque:       'Estoque',
-  preproducao:   'Pré-produção',
-  desperdicio:   'Desperdício',
-  compras:       'Compras',
-  vendas:        'Vendas',
-  previsao:      'Previsão',
-  configuracoes: 'Configurações',
-  relatorios:    'Relatórios',
-  checklist:     ['Checklist Meu', 'Checklist'],
-  manutencao:    'Manutenção',
-  inventario:    'Inventário',
-  alertas:       'Alertas',
-  rh:            'RH',
-  etiquetagem:   'Etiquetagem',
-};
-
-// Retorna true/false se o módulo tem label mapeado, ou null se não mapeado (sem opinião)
-function _hasModPerm(perms, mod) {
-  const label = MOD_PERM_LABEL[mod];
-  if (!label) return null;
-  return Array.isArray(label) ? label.some(l => perms.includes(l)) : perms.includes(label);
-}
 
 // ══════════════════════════════════════════════════════════════
 // SESSÃO
@@ -124,16 +89,6 @@ async function _checkPass(input, stored) {
 // LOGIN / LOGOUT
 // ══════════════════════════════════════════════════════════════
 
-// Atualiza o avatar em todas as cópias existentes (header desktop + mobile)
-function _syncAvatarUI(name, foto) {
-  const html = foto
-    ? `<img src="${foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`
-    : name.charAt(0).toUpperCase();
-  document.querySelectorAll('#sbAvatar, #sbAvatar-m').forEach(el => {
-    if (foto) el.innerHTML = html; else el.textContent = html;
-  });
-}
-
 async function doLogin() {
   const email    = document.getElementById('loginEmail').value.trim().toLowerCase();
   const password = document.getElementById('loginPassword').value;
@@ -185,7 +140,8 @@ async function doLogin() {
   if (sbName) sbName.textContent = user.name;
   const sbRole = document.getElementById('sbUserRole');
   if (sbRole) { const p=PERMS[user.role]; sbRole.innerHTML = p ? (lc(p.icon||'user',11,p.color) + ' ' + p.label) : user.role; }
-  _syncAvatarUI(user.name, user.foto);
+  const sbAvatar = document.getElementById('sbAvatar');
+  if (sbAvatar) sbAvatar.textContent = user.name.charAt(0).toUpperCase();
   const dashBadge = document.getElementById('dashRoleBadge');
   if (dashBadge) dashBadge.textContent = (PERMS[user.role]?.label || user.role) + ' · ' + user.name;
 }
@@ -213,30 +169,16 @@ function shakeForm() {
 // ══════════════════════════════════════════════════════════════
 
 function applyPermissions(user) {
-  const role  = user.role;
-  const perms = typeof getUserPerms === 'function' ? getUserPerms(user) : [];
-
-  // Submódulos que só existem dentro do flyout de Operação — sem nav próprio no sidebar
-  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
-
-  // nav-operacao: visível se o usuário tem acesso a pelo menos 1 submódulo real
-  const hasOperacaoAccess = _OPERACAO_MODS.some(m => {
-    const viaPerms = _hasModPerm(perms, m);
-    return viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS[m] || []).includes(role);
-  });
-  const navOp = document.getElementById('nav-operacao');
-  if (navOp) navOp.style.display = hasOperacaoAccess ? '' : 'none';
-
+  const role = user.role;
   Object.entries(MODULE_PERMISSIONS).forEach(([mod, roles]) => {
-    if (mod === 'operacao' || _OPERACAO_MODS.includes(mod)) return; // controlado via nav-operacao
     const navEl = document.getElementById(`nav-${mod}`);
-    if (!navEl) return;
-    const viaPerms = _hasModPerm(perms, mod);
-    navEl.style.display = (viaPerms !== null ? viaPerms : roles.includes(role)) ? '' : 'none';
+    if (navEl) navEl.style.display = roles.includes(role) ? '' : 'none';
   });
-  // Espelha a visibilidade de Notificações na cópia mobile do header
-  const alertasM = document.getElementById('nav-alertas-m');
-  if (alertasM) alertasM.style.display = document.getElementById('nav-alertas')?.style.display || '';
+  // Botão de configurações no rodapé (id diferente)
+  const cfgBottom = document.getElementById('nav-configuracoes-bottom');
+  if (cfgBottom) {
+    cfgBottom.style.display = (MODULE_PERMISSIONS.configuracoes||[]).includes(role) ? '' : 'none';
+  }
   _updateSections();
   if (typeof atualizarBadgeAlertas === 'function') atualizarBadgeAlertas();
 }
@@ -261,9 +203,6 @@ function _updateSections() {
 function canAccess(mod) {
   const user = getCurrentUser();
   if (!user) return false;
-  const perms    = typeof getUserPerms === 'function' ? getUserPerms(user) : [];
-  const viaPerms = _hasModPerm(perms, mod);
-  if (viaPerms !== null) return viaPerms;
   return (MODULE_PERMISSIONS[mod] || []).includes(user.role);
 }
 
@@ -299,7 +238,8 @@ function initAuth() {
       if (sbName) sbName.textContent = stillExists.name;
       const sbRole = document.getElementById('sbUserRole');
       if (sbRole) { const p=PERMS[stillExists.role]; sbRole.innerHTML = p ? (lc(p.icon||'user',11,p.color) + ' ' + p.label) : stillExists.role; }
-      _syncAvatarUI(stillExists.name, stillExists.foto);
+      const sbAvatar = document.getElementById('sbAvatar');
+      if (sbAvatar) sbAvatar.textContent = stillExists.name.charAt(0).toUpperCase();
       const dashBadge = document.getElementById('dashRoleBadge');
       if (dashBadge) dashBadge.textContent = (PERMS[stillExists.role]?.label || stillExists.role) + ' · ' + stillExists.name;
       return;
@@ -334,7 +274,7 @@ function _fecharMenuPerfil() {
   document.getElementById('menuPerfilPopup')?.remove();
 }
 
-function abrirModalPerfil(anchorEl) {
+function abrirModalPerfil() {
   const u = getCurrentUser();
   if (!u) return;
   const p         = PERMS[u.role];
@@ -342,15 +282,13 @@ function abrirModalPerfil(anchorEl) {
 
   _fecharMenuPerfil();
 
-  // Avatar agora fica no cabeçalho (topo) — popup sempre abre para baixo,
-  // alinhado à borda direita do elemento clicado (antes assumia rodapé/canto
-  // inferior-esquerdo e abria para cima-direita).
-  const avatarEl  = anchorEl || document.getElementById('sbAvatar');
-  const rect      = avatarEl?.getBoundingClientRect() || { right: window.innerWidth - 20, bottom: 60 };
+  const avatarEl  = document.getElementById('sbAvatar');
+  const rect      = avatarEl?.getBoundingClientRect() || { right: 72, top: window.innerHeight - 200 };
   const cardW     = 268;
-  const gap       = 10;
-  const left      = Math.min(Math.max(8, rect.right - cardW), window.innerWidth - cardW - 12);
-  const top       = Math.min(rect.bottom + gap, window.innerHeight - 420);
+  const leftRaw   = rect.right + 14;
+  const left      = Math.min(leftRaw, window.innerWidth - cardW - 12);
+  const topRaw    = rect.top - 10;
+  const top       = Math.max(8, Math.min(topRaw, window.innerHeight - 420));
 
   const fotoHtml  = u.foto
     ? `<img src="${u.foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`
@@ -540,7 +478,14 @@ function salvarPerfil() {
 
   const sbName = document.getElementById('sbUserName');
   if (sbName) sbName.textContent = nome;
-  _syncAvatarUI(nome, sessaoAtualizada.foto);
+  const sbAvatar = document.getElementById('sbAvatar');
+  if (sbAvatar) {
+    if (sessaoAtualizada.foto) {
+      sbAvatar.innerHTML = `<img src="${sessaoAtualizada.foto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover">`;
+    } else {
+      sbAvatar.textContent = nome.charAt(0).toUpperCase();
+    }
+  }
 
   document.getElementById('modalEditarPerfil')?.remove();
   toast('Perfil atualizado!');

@@ -282,12 +282,6 @@
   --chart-6: #0891B2;                /* ciano            */
   --chart-7: #7C3AED;                /* violeta          */
   --chart-8: #C084FC;                /* lilac            */
-  --chart-2-soft: #EFF6FF;           /* fundo do azul    */
-
-  /* Pódio de rankings */
-  --rank-gold:   var(--yellow);
-  --rank-silver: var(--p-neutral-500);
-  --rank-bronze: var(--orange-dark);
 
   /* ============================================================
      TIPOGRAFIA

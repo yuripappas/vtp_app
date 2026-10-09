@@ -16,16 +16,14 @@ function renderPreproducao() {
   const okCount    = prod.filter(i => gst(i) === 'ok').length;
   const pendCount  = orFilt.filter(o => o.status === 'pendente').length;
   const prodCount  = orFilt.filter(o => o.status === 'produzido').length;
-  const cwPendCount = orFilt.filter(o => o.status === 'produzido' && o.cwPendente).length;
 
   // KPIs
   document.getElementById('prepKpi').innerHTML = `
-    ${_prepKpi(critCount,   'Críticos',     'var(--red)',        'crit',  'alert-circle')}
-    ${_prepKpi(warnCount,   'Baixo',        'var(--yellow)',     'warn',  'alert-triangle')}
-    ${_prepKpi(okCount,     'OK',           'var(--green)',      'ok',    'check-circle')}
-    ${_prepKpi(pendCount,   'Pendentes',    'var(--orange-dark)','pend',  'clock')}
-    ${_prepKpi(prodCount,   'Produzidos',   'var(--purple)',     'prod',  'check-circle')}
-    ${cwPendCount > 0 ? _prepKpi(cwPendCount, 'Atualizar CW', '#D97706', 'cw', 'refresh-cw') : ''}`;
+    ${_prepKpi(critCount, 'Críticos',  'var(--red)',        'crit', 'alert-circle')}
+    ${_prepKpi(warnCount, 'Baixo',     'var(--yellow)',     'warn', 'alert-triangle')}
+    ${_prepKpi(okCount,   'OK',        'var(--green)',      'ok',   'check-circle')}
+    ${_prepKpi(pendCount, 'Pendentes', 'var(--orange-dark)','pend', 'clock')}
+    ${_prepKpi(prodCount, 'Produzidos','var(--purple)',     'prod', 'check-circle')}`;
 
   // Filtro bar
   _renderPrepFiltros();
@@ -53,13 +51,12 @@ function _renderPrepFiltros() {
   if (!el) return;
   const f = window._prepFiltro || 'all';
   const btns = [
-    { id:'all',  label:'Todos',        icon:'package',        cls:'' },
-    { id:'crit', label:'Críticos',     icon:'alert-circle',   cls:'f-red' },
-    { id:'warn', label:'Baixo',        icon:'alert-triangle', cls:'f-yellow' },
-    { id:'ok',   label:'OK',           icon:'check-circle',   cls:'f-green' },
-    { id:'pend', label:'Pendentes',    icon:'clock',          cls:'' },
-    { id:'prod', label:'Produzidos',   icon:'check',          cls:'f-green' },
-    { id:'cw',   label:'Atualizar CW', icon:'refresh-cw',     cls:'' },
+    { id:'all',  label:'Todos',     icon:'package',        cls:'' },
+    { id:'crit', label:'Críticos',  icon:'alert-circle',   cls:'f-red' },
+    { id:'warn', label:'Baixo',     icon:'alert-triangle', cls:'f-yellow' },
+    { id:'ok',   label:'OK',        icon:'check-circle',   cls:'f-green' },
+    { id:'pend', label:'Pendentes', icon:'clock',          cls:'' },
+    { id:'prod', label:'Produzidos',icon:'check',          cls:'f-green' },
   ];
   el.innerHTML = btns.map(b =>
     `<button class="filter-btn ${b.cls} ${f===b.id?'active':''}" onclick="_setPrepFiltro('${b.id}')">
@@ -87,7 +84,6 @@ function _renderPrepGrid(prod, orFilt) {
     if (f === 'ok')   return s === 'ok';
     if (f === 'pend') return orFilt.some(o => o.itemId === item.id && o.status === 'pendente');
     if (f === 'prod') return orFilt.some(o => o.itemId === item.id && o.status === 'produzido');
-    if (f === 'cw')   return orFilt.some(o => o.itemId === item.id && o.status === 'produzido' && o.cwPendente);
     return true;
   }).sort((a,b) => {
     const order = { crit:0, warn:1, ok:2 };
@@ -106,17 +102,12 @@ function _renderPrepGrid(prod, orFilt) {
 
   grid.style.cssText = 'display:flex;flex-direction:column;gap:6px';
   grid.innerHTML = filtProd.map(item => {
-    const itemOrdens  = orFilt.filter(o => o.itemId === item.id).sort((a,b) => b.id - a.id);
-    const s           = gst(item);
-    const pct         = item.ideal <= 0 ? 0 : Math.min(100, Math.round(item.qty / item.ideal * 100));
-    const stColor     = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' }[s];
-    const pendOrdens  = itemOrdens.filter(o => o.status === 'pendente');
-    const cwPendOrdens = itemOrdens.filter(o => o.status === 'produzido' && o.cwPendente);
-    const lastProd    = itemOrdens.find(o => o.status === 'produzido');
-
-    // Projeção: qty CW + ordens em produção pendentes
-    const qtyEmProd   = pendOrdens.reduce((s, o) => s + (o.qty || 0), 0);
-    const qtyProj     = parseFloat((item.qty + qtyEmProd).toFixed(3));
+    const itemOrdens = orFilt.filter(o => o.itemId === item.id).sort((a,b) => b.id - a.id);
+    const s          = gst(item);
+    const pct        = item.ideal <= 0 ? 0 : Math.min(100, Math.round(item.qty / item.ideal * 100));
+    const stColor    = { crit:'var(--red)', warn:'var(--yellow)', ok:'var(--green)' }[s];
+    const pendOrdens = itemOrdens.filter(o => o.status === 'pendente');
+    const lastProd   = itemOrdens.find(o => o.status === 'produzido');
     const rendePizzas = item.medPorcao && item.qty > 0 ? Math.floor(item.qty / item.medPorcao) : null;
 
     return `
@@ -135,18 +126,11 @@ function _renderPrepGrid(prod, orFilt) {
             ${item.cat ? `<div style="font-size:var(--text-2xs);color:var(--muted)">${item.cat}</div>` : ''}
           </div>
 
-          <!-- Qtd CW (real) -->
-          <div style="text-align:center;min-width:62px">
+          <!-- Qtd atual -->
+          <div style="text-align:center;min-width:56px">
             <div style="font-size:1rem;font-weight:800;color:${stColor};font-family:monospace">${fmt(item.qty)}</div>
-            <div style="font-size:var(--text-2xs);color:var(--muted)">${item.unit} · CW atual</div>
+            <div style="font-size:var(--text-2xs);color:var(--muted)">${item.unit} atual</div>
           </div>
-
-          <!-- Projeção (se há ordens em andamento) -->
-          ${qtyEmProd > 0 ? `
-          <div style="text-align:center;min-width:62px">
-            <div style="font-size:1rem;font-weight:800;color:var(--purple);font-family:monospace">~${fmt(qtyProj)}</div>
-            <div style="font-size:var(--text-2xs);color:var(--purple)">projeção</div>
-          </div>` : ''}
 
           <!-- Barra + % -->
           <div style="display:flex;align-items:center;gap:6px;min-width:120px;flex:0 0 160px">
@@ -169,13 +153,7 @@ function _renderPrepGrid(prod, orFilt) {
 
           ${pendOrdens.length ? `
             <span class="chip" style="background:var(--orange-light);color:var(--orange-dark);border:1px solid #FCD34D;flex-shrink:0">
-              ${lc('clock',10,'currentColor')} ${pendOrdens.length} em prod. ${pendOrdens.length===1 ? '· +'+fmt(pendOrdens[0].qty)+' '+item.unit : ''}
-            </span>` : ''}
-
-          <!-- Badge CW pendente -->
-          ${cwPendOrdens.length ? `
-            <span class="chip" style="background:#FEF3C7;color:#D97706;border:1px solid #FCD34D;flex-shrink:0">
-              ${lc('refresh-cw',10,'currentColor')} Atualizar CW
+              ${lc('clock',10,'currentColor')} ${pendOrdens.length} pendente${pendOrdens.length>1?'s':''} ${pendOrdens.length===1 ? '· Prog. '+fmtD(pendOrdens[0].date) : ''}
             </span>` : ''}
 
           <!-- Ações -->
@@ -190,10 +168,10 @@ function _renderPrepGrid(prod, orFilt) {
           </div>
         </div>
 
-        <!-- Ordens em produção (pendentes) expandidas -->
+        <!-- Ordens pendentes expandidas (só quando há mais de 1) -->
         ${pendOrdens.length > 1 ? `
           <div style="padding:0 14px 10px;display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--border)">
-            <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding-top:8px;margin-bottom:2px">Ordens em produção</div>
+            <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding-top:8px;margin-bottom:2px">Ordens pendentes</div>
             ${pendOrdens.map(o => `
               <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--orange-light);border:1px solid #FCD34D;border-radius:var(--r8)">
                 <div style="font-size:var(--text-sm);font-weight:600">${fmt(o.qty)} ${item.unit} · Prog. ${fmtD(o.date)}${o.resp?' · '+o.resp:''}</div>
@@ -201,36 +179,10 @@ function _renderPrepGrid(prod, orFilt) {
               </div>`).join('')}
           </div>` : ''}
 
-        <!-- Ordens produzidas aguardando atualização no CW -->
-        ${cwPendOrdens.length ? `
-          <div style="padding:0 14px 10px;display:flex;flex-direction:column;gap:4px;border-top:1.5px solid #FCD34D;background:#FFFBEB">
-            <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#D97706;padding-top:8px;margin-bottom:2px">
-              ${lc('refresh-cw',11,'#D97706')} Aguardando atualização no Cardápio Web
-            </div>
-            ${cwPendOrdens.map(o => {
-              const div = o.qtyReal !== undefined && Math.abs(o.qtyReal - o.qty) > 0.01
-                ? `<span style="font-size:var(--text-2xs);color:${o.qtyReal < o.qty ? 'var(--red)' : 'var(--green)'}"> (solicitado ${fmt(o.qty)}, produzido ${fmt(o.qtyReal)} ${item.unit})</span>`
-                : '';
-              return `
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#FEF3C7;border:1px solid #FCD34D;border-radius:var(--r8);gap:8px;flex-wrap:wrap">
-                <div>
-                  <div style="font-size:var(--text-sm);font-weight:600">+${fmt(o.qtyReal ?? o.qty)} ${item.unit} produzidos${div}</div>
-                  <div style="font-size:var(--text-2xs);color:var(--muted)">Concluído ${o.finishedAt ? fmtDT(o.finishedAt) : '—'}${o.resp ? ' · '+o.resp : ''}</div>
-                </div>
-                <button class="btn btn-sm" onclick="_prepMarcarCW(${o.id})"
-                  style="background:#D97706;color:#fff;border:none;gap:4px;white-space:nowrap">
-                  ${lc('check',11,'#fff')} Marquei no CW
-                </button>
-              </div>`;}).join('')}
-            <div style="font-size:var(--text-2xs);color:#92400e;padding:4px 2px">
-              ${lc('info',10,'#92400e')} Após lançar a produção no Cardápio Web, clique "Marquei no CW". A próxima importação do CW atualizará a quantidade automaticamente.
-            </div>
-          </div>` : ''}
-
-        <!-- Última produção concluída (sem pendência CW) -->
-        ${lastProd && !lastProd.cwPendente ? `
+        <!-- Última produção concluída -->
+        ${lastProd ? `
           <div style="padding:4px 14px 8px;font-size:var(--text-xs);color:var(--muted);display:flex;align-items:center;gap:5px;border-top:1px solid var(--border)">
-            ${lc('check-circle',10,'var(--green)')} ${fmt(lastProd.qtyReal ?? lastProd.qty)} ${item.unit} produzidos · ${lastProd.finishedAt ? fmtDT(lastProd.finishedAt) : fmtD(lastProd.date)}${lastProd.resp ? ' · '+lastProd.resp : ''}
+            ${lc('check-circle',10,'var(--green)')} ${fmt(lastProd.qty)} ${item.unit} · Prog. ${fmtD(lastProd.date)}${lastProd.finishedAt ? ' · Conc. '+fmtDT(lastProd.finishedAt) : ''}${lastProd.resp ? ' · '+lastProd.resp : ''}
           </div>` : ''}
 
         <!-- Accordion ficha técnica de custo -->
@@ -332,10 +284,9 @@ function openOrdemModal(preItemId) {
   const sel = document.getElementById('opItem');
   sel.innerHTML = '<option value="">Selecionar...</option>' +
     items.filter(i => i.isProd).map(i => `<option value="${i.id}"${i.id === preItemId ? ' selected' : ''}>${i.name}</option>`).join('');
-  document.getElementById('opQty').value   = '';
-  document.getElementById('opObs').value   = '';
-  document.getElementById('opDate').value  = new Date().toISOString().slice(0, 10);
-  const opTurno = document.getElementById('opTurno'); if (opTurno) opTurno.value = '';
+  document.getElementById('opQty').value  = '';
+  document.getElementById('opObs').value  = '';
+  document.getElementById('opDate').value = new Date().toISOString().slice(0, 10);
   // Popula selects de responsável e conferente com funcionários cadastrados
   const funcs = (typeof users !== 'undefined' ? users : []).filter(u => u.active !== false);
   const optsFunc = '<option value="">Selecionar...</option>' +
@@ -479,29 +430,15 @@ function finishOrdem(id) {
   o.qtyReal    = parseFloat(qtyReal.toFixed(3));
   o.obs        = obs;
   o.finishedAt = new Date().toISOString();
-  // Produção registrada — aguarda confirmação no CW para atualizar a quantidade
-  // A quantidade (item.qty) NÃO é alterada aqui; a próxima importação do CW reflete a produção
-  o.cwPendente = true;
 
+  // Atualiza estoque com quantidade REAL produzida
+  item.qty = parseFloat((item.qty + o.qtyReal).toFixed(3));
+  saveI();
   saveO();
   closeModal('ovResponse');
   renderPreproducao();
   renderDashboard();
-  const div = Math.abs(o.qtyReal - o.qty) > 0.01
-    ? ` (solicitado ${o.qty}, produzido ${o.qtyReal} ${item.unit})`
-    : '';
-  toast(`Produção registrada!${div} Lance no Cardápio Web e marque "Marquei no CW".`, 'ok');
-}
-
-// Marca que o usuário já lançou a produção no Cardápio Web
-function _prepMarcarCW(id) {
-  const o = ordens.find(x => x.id === id);
-  if (!o) return;
-  o.cwPendente  = false;
-  o.cwMarkedAt  = new Date().toISOString();
-  saveO();
-  renderPreproducao();
-  toast('Ótimo! A próxima importação do CW atualizará a quantidade automaticamente.', 'ok');
+  toast(`Produção registrada! ${o.qtyReal} ${item.unit} adicionados ao estoque.`);
 }
 
 // ── PDF de ordens ──
@@ -641,21 +578,6 @@ function generatePDF() {
 // FORNECEDORES
 // ══════════════════════════════════════════════════════════════
 
-// Helper: descrição resumida das condições comerciais de um fornecedor
-function _supCondicoesLabel(s) {
-  const pgtos = Array.isArray(s.formasPagamento) ? s.formasPagamento : [];
-  const prazo = s.prazoPagamento != null && s.prazoPagamento !== '' ? parseInt(s.prazoPagamento) : null;
-  const taxa  = s.taxaEntrega || {};
-  const parts = [];
-  if (pgtos.length) parts.push(pgtos.map(p => p.toUpperCase()).join(' · '));
-  if (prazo === 0) parts.push('À vista');
-  else if (prazo > 0) parts.push(`${prazo}d p/ pagar`);
-  if (taxa.tipo === 'fixo' && taxa.valor > 0)     parts.push(`Frete R$ ${fmt(taxa.valor)}`);
-  else if (taxa.tipo === 'variavel')               parts.push('Frete variável');
-  else if (taxa.tipo === 'gratis' || !taxa.tipo)   parts.push('Frete grátis');
-  return parts.join(' · ');
-}
-
 function renderFornecedores() {
   const el = document.getElementById('supGrid');
   if (!suppliers.length) {
@@ -663,9 +585,7 @@ function renderFornecedores() {
     return;
   }
   el.innerHTML = suppliers.map(s => {
-    const si   = items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(s.id); });
-    const cond = _supCondicoesLabel(s);
-    const pgtos = Array.isArray(s.formasPagamento) ? s.formasPagamento : [];
+    const si = items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(s.id); });
     return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r12);padding:16px;cursor:pointer;transition:border-color .15s" onclick="openEditSup(${s.id})">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
         <div>
@@ -679,12 +599,6 @@ function renderFornecedores() {
         ${s.email ? `<div style="font-size:var(--text-sm);color:var(--text2)">${lc("mail",14,"currentColor")} ${s.email}</div>` : ''}
         ${s.cats  ? `<div style="font-size:var(--text-xs);color:var(--muted)">${s.cats}</div>` : ''}
       </div>
-      ${cond ? `
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
-          ${pgtos.map(p => `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">${p.toUpperCase()}</span>`).join('')}
-          ${s.prazoPagamento != null && s.prazoPagamento !== '' ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--purple-xlight);color:var(--purple);border:1px solid var(--purple-light)">${parseInt(s.prazoPagamento)===0?'À vista':parseInt(s.prazoPagamento)+'d p/ pagar'}</span>` : ''}
-          ${(s.taxaEntrega?.tipo==='fixo'&&s.taxaEntrega?.valor>0) ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--yellow-light);color:var(--orange-dark);border:1px solid #FCD34D">Frete R$ ${fmt(s.taxaEntrega.valor)}</span>` : s.taxaEntrega?.tipo==='variavel' ? `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--yellow-light);color:var(--orange-dark);border:1px solid #FCD34D">Frete variável</span>` : `<span style="font-size:var(--text-2xs);font-weight:700;padding:2px 7px;border-radius:20px;background:var(--green-light);color:var(--green);border:1px solid var(--green)">Frete grátis</span>`}
-        </div>` : ''}
       ${si.length
         ? `<div style="display:flex;flex-wrap:wrap;gap:4px">${si.map(i => `<span class="badge b-purple" style="font-size:var(--text-2xs)">${i.name}</span>`).join('')}</div>`
         : '<div style="font-size:var(--text-xs);color:var(--muted)">Sem insumos vinculados</div>'}
@@ -692,79 +606,15 @@ function renderFornecedores() {
   }).join('');
 }
 
-function toggleTaxaEntrega() {
-  const tipo = document.getElementById('sfTaxaEntregaTipo')?.value;
-  const fixo = document.getElementById('sfTaxaEntregaFixo');
-  const varr = document.getElementById('sfTaxaEntregaVar');
-  if (fixo) fixo.style.display = tipo === 'fixo'     ? '' : 'none';
-  if (varr) varr.style.display = tipo === 'variavel' ? '' : 'none';
-}
-
-function _supLoadPagamento(s) {
-  // Formas de pagamento
-  ['pix','especie','boleto','cartao','cheque','crediario'].forEach(k => {
-    const el = document.getElementById(`sfPgto_${k}`);
-    if (el) el.checked = Array.isArray(s?.formasPagamento) && s.formasPagamento.includes(k);
-  });
-  // Prazo
-  const prazoEl = document.getElementById('sfPrazoPagamento');
-  if (prazoEl) prazoEl.value = s?.prazoPagamento ?? '';
-  // Taxa entrega
-  const taxa = s?.taxaEntrega || {};
-  const tipoEl = document.getElementById('sfTaxaEntregaTipo');
-  if (tipoEl) tipoEl.value = taxa.tipo || 'gratis';
-  const valEl = document.getElementById('sfTaxaEntregaValor');
-  if (valEl) valEl.value = taxa.valor > 0 ? taxa.valor : '';
-  const obsEl = document.getElementById('sfTaxaEntregaObs');
-  if (obsEl) obsEl.value = taxa.obs || '';
-  toggleTaxaEntrega();
-}
-
-// Limpa/popula todos os campos do formulário de fornecedor
-function _supResetForm(s) {
-  // Campos de texto simples
-  const setText = (id, val) => { const el = document.getElementById(id); if (el) el.value = val ?? ''; };
-  setText('sfName',          s?.name   || '');
-  setText('sfSeller',        s?.seller || '');
-  setText('sfPhone',         s?.phone  || '');
-  setText('sfEmail',         s?.email  || '');
-  setText('sfPedidoMin',     s?.pedidoMin     ?? '');
-  setText('sfPrazoEntrega',  s?.prazoEntrega  ?? '');
-  setText('sfAntecedencia',  s?.antecedencia  ?? '');
-  setText('sfHorarioLimite', s?.horarioLimite ?? '');
-  setText('sfAviso',         s?.aviso         ?? '');
-
-  // Selects
-  const setSelect = (id, val, def) => { const el = document.getElementById(id); if (el) el.value = val || def || ''; };
-  setSelect('sfFormaEntrega',  s?.formaEntrega, 'entrega');
-  setSelect('sfPedidoMinTipo', s?.pedidoMinTipo, '');
-  setSelect('sfConfianca',     s?.confianca, 'backup');
-
-  // Checkboxes de dias da semana
-  ['seg','ter','qua','qui','sex','sab'].forEach(d => {
-    const el = document.getElementById(`sfDia_${d}`);
-    if (el) el.checked = Array.isArray(s?.diasPedido) ? s.diasPedido.includes(d) : false;
-  });
-
-  // Checkboxes de categoria da empresa (sfCat_*)
-  ['alimentos','suprimentos','bebidas'].forEach(c => {
-    const el = document.getElementById(`sfCat_${c}`);
-    if (el) el.checked = Array.isArray(s?.catEmpresa) ? s.catEmpresa.includes(c) : false;
-  });
-
-  // Condições comerciais (pagamento + taxa entrega)
-  _supLoadPagamento(s);
-}
-
 function openSupModal() {
   editSupId = null;
   document.getElementById('supModalTitle').textContent = 'Novo Fornecedor';
+  ['sfName','sfSeller','sfPhone','sfEmail'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  const sfFE = document.getElementById('sfFormaEntrega'); if(sfFE) sfFE.value = 'entrega';
   document.getElementById('eSupId').value = '';
   document.getElementById('delSupBtn').style.display = 'none';
-  document.getElementById('supNotasSection').style.display = 'none';
   const srch = document.getElementById('sfItemSearch'); if(srch) srch.value = '';
-  _supResetForm(null);          // limpa todos os campos sem exceção
-  renderSupCbx([], true);       // true = reset limpo, sem preservar DOM anterior
+  renderSupCbx([]);
   renderCatTags([]);
   document.getElementById('ovSup').classList.add('open');
   setTimeout(() => document.getElementById('sfName').focus(), 80);
@@ -775,33 +625,24 @@ function openEditSup(id) {
   if (!s) return;
   editSupId = id;
   document.getElementById('supModalTitle').innerHTML = `${lc("edit-2",13,"currentColor")} ${s.name}`;
-  document.getElementById('eSupId').value = id;
+  document.getElementById('sfName').value   = s.name   || '';
+  document.getElementById('sfSeller').value = s.seller || '';
+  document.getElementById('sfPhone').value  = s.phone  || '';
+  document.getElementById('sfEmail').value  = s.email  || '';
+  const sfFE2 = document.getElementById('sfFormaEntrega'); if(sfFE2) sfFE2.value = s.formaEntrega || 'entrega';
+  document.getElementById('eSupId').value   = id;
   document.getElementById('delSupBtn').style.display = 'inline-flex';
   const srch = document.getElementById('sfItemSearch'); if(srch) srch.value = '';
-  _supResetForm(s);             // popula todos os campos com os dados deste fornecedor
-  // Insumos vinculados — passa true para reset limpo
-  const vinculados = items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(id); }).map(i => i.id);
-  renderSupCbx(vinculados, true);
-  // Categorias salvas
+  renderSupCbx(items.filter(i => { const ids=i.supIds?.length?i.supIds:(i.supId?[i.supId]:[]); return ids.includes(id); }).map(i => i.id));
+  // Carrega categorias salvas como array
   const cats = Array.isArray(s.cats) ? s.cats : (s.cats ? s.cats.split(',').map(c => c.trim()).filter(Boolean) : []);
   renderCatTags(cats);
-  // Notas/avaliações
-  const notasSec = document.getElementById('supNotasSection');
-  if (notasSec) notasSec.style.display = (s.notas?.length) ? '' : 'none';
   document.getElementById('ovSup').classList.add('open');
 }
 
-function renderSupCbx(linked, resetOrQuery) {
-  // resetOrQuery = true → reset limpo (não preserva DOM anterior)
-  //              = string → query de busca
-  //              = undefined → preserva checkeds existentes (comportamento legado para filterSupItems)
-  const isReset = resetOrQuery === true;
-  const q       = typeof resetOrQuery === 'string' ? resetOrQuery : undefined;
-
-  // Só preserva estado do DOM quando NÃO for reset explícito
-  const existingChecked = isReset
-    ? []
-    : [...(document.querySelectorAll('#sfItems input:checked') || [])].map(c => parseInt(c.value));
+function renderSupCbx(linked, q) {
+  // Preserva checkeds existentes se já renderizado
+  const existingChecked = [...(document.querySelectorAll('#sfItems input:checked') || [])].map(c => parseInt(c.value));
   const allLinked = [...new Set([...linked, ...existingChecked])];
 
   const query = (q !== undefined ? q : (document.getElementById('sfItemSearch')?.value || '')).toLowerCase().trim();
@@ -843,18 +684,12 @@ function filterSupItems() {
 
 
 // Categorias pré-definidas para fornecedores
-// Categorias de fornecedor derivadas dos itens reais (dinâmico, atualiza com CW)
-function _getSupCats() {
-  const fromItems = [...new Set((typeof items !== 'undefined' ? items : []).map(i => i.cat).filter(Boolean))].sort();
-  // Garante "Outros" sempre ao final
-  if (!fromItems.includes('Outros')) fromItems.push('Outros');
-  return fromItems;
-}
+const SUP_CATS = ['Laticínios','Massas','Carnes e Frios','Embalagens','Molhos','Produção Interna','Bebidas','Higiene/Limpeza','Descartáveis','Outros'];
 
 function renderCatTags(selected) {
   const wrap = document.getElementById('sfCatsWrap');
   if (!wrap) return;
-  wrap.innerHTML = _getSupCats().map(cat => {
+  wrap.innerHTML = SUP_CATS.map(cat => {
     const active = selected.includes(cat);
     return `<span class="sup-cat-tag${active ? ' active' : ''}" data-cat="${cat}"
       style="padding:3px 10px;border-radius:20px;font-size:var(--text-xs);font-weight:600;cursor:pointer;border:1.5px solid ${active ? 'var(--purple)' : 'var(--border)'};background:${active ? 'var(--purple)' : 'var(--surface)'};color:${active ? '#fff' : 'var(--text2)'};transition:all .15s;user-select:none"
@@ -885,51 +720,15 @@ function saveSup() {
   const name = document.getElementById('sfName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
   const checked = [...document.querySelectorAll('#sfItems input:checked')].map(c => parseInt(c.value));
-
-  // Proteção: se está editando e havia insumos vinculados mas agora nenhum está marcado → confirma
-  if (editSupId && checked.length === 0) {
-    const vinculadosAntes = items.filter(i => {
-      const ids = i.supIds?.length ? i.supIds : (i.supId ? [i.supId] : []);
-      return ids.includes(editSupId);
-    });
-    if (vinculadosAntes.length > 0) {
-      const nomes = vinculadosAntes.slice(0,3).map(i => i.name).join(', ');
-      const mais  = vinculadosAntes.length > 3 ? ` e mais ${vinculadosAntes.length - 3}` : '';
-      vtpConfirm({
-        title: 'Nenhum insumo selecionado',
-        message: `Este fornecedor está vinculado a ${vinculadosAntes.length} insumo(s): ${nomes}${mais}.\n\nSalvar assim vai remover todos os vínculos. Tem certeza?`,
-        confirmLabel: 'Salvar sem insumos',
-        onConfirm: () => _salvarSupConfirmado(checked, name),
-      });
-      return;
-    }
-  }
-  _salvarSupConfirmado(checked, name);
-}
-
-function _salvarSupConfirmado(checked, name) {
+  // Pega categorias das tags selecionadas
   const selectedCats = [...document.querySelectorAll('.sup-cat-tag.active')].map(t => t.dataset.cat);
-  // Formas de pagamento (checkboxes múltiplos)
-  const formasPagamento = ['pix','especie','boleto','cartao','cheque','crediario']
-    .filter(k => document.getElementById(`sfPgto_${k}`)?.checked);
-  // Taxa de entrega
-  const taxaTipo  = document.getElementById('sfTaxaEntregaTipo')?.value || 'gratis';
-  const taxaValor = parseFloat(document.getElementById('sfTaxaEntregaValor')?.value) || 0;
-  const taxaObs   = document.getElementById('sfTaxaEntregaObs')?.value.trim() || '';
-  const taxaEntrega = { tipo: taxaTipo, valor: taxaValor, obs: taxaObs };
-
   const data = {
     name,
-    seller:          document.getElementById('sfSeller').value.trim(),
-    phone:           document.getElementById('sfPhone').value.trim(),
-    email:           document.getElementById('sfEmail').value.trim(),
-    cats:            selectedCats.join(', '),
-    formaEntrega:    document.getElementById('sfFormaEntrega')?.value || 'entrega',
-    formasPagamento,
-    prazoPagamento:  document.getElementById('sfPrazoPagamento')?.value !== ''
-                       ? parseInt(document.getElementById('sfPrazoPagamento')?.value) || 0
-                       : null,
-    taxaEntrega,
+    seller:       document.getElementById('sfSeller').value.trim(),
+    phone:        document.getElementById('sfPhone').value.trim(),
+    email:        document.getElementById('sfEmail').value.trim(),
+    cats:         selectedCats.join(', '),
+    formaEntrega: document.getElementById('sfFormaEntrega')?.value || 'entrega',
   };
   if (editSupId) {
     const idx = suppliers.findIndex(s => s.id === editSupId);
@@ -987,56 +786,3 @@ function openEditUser(id) {
 function saveUser()         { /* delegado ao modal unificado */ }
 function deleteUser()       { /* delegado ao modal unificado */ }
 function renderPermPreview(){ /* substituído pelo modal unificado */ }
-
-// ══════════════════════════════════════════════════════════════
-// OPERAÇÃO — painel de navegação lateral (padrão da plataforma)
-// ══════════════════════════════════════════════════════════════
-
-const _OP_ITEMS = [
-  { mod: 'estoque',     icon: 'package',      label: 'Estoque',      desc: 'Contagem e movimentações'            },
-  { mod: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção', desc: 'Ordens de produção interna'          },
-  { mod: 'desperdicio', icon: 'trash-2',      label: 'Desperdício',  desc: 'Monitore perdas e impacto financeiro'},
-  { mod: 'previsao',    icon: 'trending-up',  label: 'Previsão',     desc: 'Planejamento de demanda do dia'      },
-  { mod: 'checklist',   icon: 'check-square', label: 'Checklist',    desc: 'Tarefas diárias e controle de equipe'},
-  { mod: 'manutencao',  icon: 'wrench',       label: 'Manutenção',   desc: 'Equipamentos e histórico preventivo' },
-  { mod: 'inventario',  icon: 'layers',       label: 'Inventário',   desc: 'Ativos, utensílios e contagem mensal'},
-  { mod: 'etiquetagem', icon: 'tag',          label: 'Etiquetagem',  desc: 'Impressão de etiquetas e validades'  },
-];
-
-let _opSection = _OP_ITEMS[0].mod;
-
-function renderOperacao(section) {
-  _OP_ITEMS.forEach(item => {
-    const btn = document.getElementById(`opNav-${item.mod}`);
-    if (!btn) return;
-    btn.innerHTML = `${lc(item.icon, 16, 'currentColor')}<span>${item.label}</span>`;
-  });
-  setOpSection(section || _opSection);
-}
-
-function setOpSection(mod) {
-  _opSection = mod;
-  document.querySelectorAll('#opSettingsNav .settings-nav-item').forEach(b => b.classList.remove('active'));
-  document.getElementById(`opNav-${mod}`)?.classList.add('active');
-
-  const item = _OP_ITEMS.find(i => i.mod === mod);
-  const content = document.getElementById('opSectionContent');
-  if (!content || !item) return;
-
-  content.innerHTML = `
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px;text-align:center;padding:40px 32px">
-      <span style="width:56px;height:56px;border-radius:var(--r12);background:var(--purple-a12);display:flex;align-items:center;justify-content:center">
-        ${lc(item.icon, 26, 'var(--purple)')}
-      </span>
-      <div>
-        <div style="font-size:var(--text-lg);font-weight:700;color:var(--text1);margin-bottom:6px">${item.label}</div>
-        <div style="font-size:var(--text-sm);color:var(--text3);max-width:280px;line-height:1.6">${item.desc}</div>
-      </div>
-      <button onclick="goModule('${mod}')" class="btn btn-primary" style="gap:8px">
-        ${lc('arrow-right', 15, '#fff')} Abrir ${item.label}
-      </button>
-    </div>
-  `;
-}
-
-// renderOmnichannel() agora vive em js/atendimento.js

@@ -21,8 +21,7 @@
     'vtp_emp_terceir','vtp_emp_cargos','vtp_emp_tipos_desp','vtp_emp_cat_insumo',
     'vtp_emp_ausencias','vtp_rh_escalas','vtp_rh_presencas','vtp_rh_horasextras',
     'vtp_rh_materiais','vtp_rh_periodos','vtp_rh_config','vtp_rh_diaristas',
-    'vtp_rh_avaliacoes','vtp_sabores','vtp_produtos','vtp_produtos_pizza','vtp_opcoes','vtp_cw_mapa','vtp_canais_comissao','vtp_perms','vtp_config',
-    'vtp_precificacao_config','vtp_precificacao_produtos','vtp_canais_imposto',
+    'vtp_rh_avaliacoes','vtp_sabores','vtp_produtos','vtp_perms','vtp_config',
     'vtp_movimentacoes','vtp_hist_contagens','vtp_contagensInv',
     'vtp_manut_itens','vtp_manut_cats_cfg','vtp_manut_grupos',
     'vtp_inv_locs','vtp_inv_cats','vtp_ck_turnos','vtp_tipos_lista',
@@ -34,7 +33,6 @@
   try {
     setLoadMsg('Conectando ao servidor...');
     const _sb = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
-    window._vtpSb = _sb;
     const rowCount = await db.syncFromSupabase(_sb);
 
     if (rowCount === 0) {
@@ -60,15 +58,15 @@
 
   // Load all app scripts in order (data.js reads localStorage already populated above)
   const APP_SCRIPTS = [
-    'js/data.js', 'js/utils.js', 'js/cw-api.js', 'js/dashboard.js', 'js/estoque.js',
-    'js/compras.js', 'js/relatorios.js', 'js/modules.js', 'js/previsao-dados.js', 'js/previsao.js',
-    'js/cadastros.js', 'js/vendas.js', 'js/vendas-ui.js', 'js/configuracoes.js', 'js/desperdicio.js',
+    'js/data.js', 'js/utils.js', 'js/dashboard.js', 'js/estoque.js',
+    'js/compras.js', 'js/relatorios.js', 'js/modules.js', 'js/previsao.js',
+    'js/cadastros.js', 'js/configuracoes.js', 'js/desperdicio.js',
     'js/checklist.js', 'js/manutencao.js', 'js/inventario.js',
     'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/etiquetagem.js',
-    'js/atendimento.js', 'js/marketing.js', 'js/login.js',
+    'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=217');
+    await loadScript(src + '?v=4');
   }
 
   // First run: push all initialized data to Supabase
@@ -100,9 +98,6 @@
   ['despDe', 'relDe'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = _30d; });
   ['despAte', 'relAte'].forEach(id => { const el = document.getElementById(id); if (el && !el.value) el.value = _hoje; });
   if (typeof renderCatTags === 'function') renderCatTags([]);
-
-  // Realtime — assina kv_store após todos os scripts carregados
-  if (window._vtpSb) db.subscribeRealtime();
 
   // Hide loading overlay and start auth
   const ov = document.getElementById('vtpLoadOverlay');
