@@ -478,6 +478,7 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   color: var(--action-ghost-fg);
 }
 .btn-ghost:hover { background: var(--action-ghost-bg-hover); }
+.btn-ghost.active { background: var(--purple-xlight); color: var(--purple); border-color: var(--purple-xlight); }
 
 .btn-warm {
   background: var(--action-warm-bg);
