@@ -118,11 +118,10 @@ Deno.serve(async (_req) => {
     : { data: [] as any[] };
   const existentesMap = new Map((existentes || []).map(r => [r.id, r]));
 
-  // Pedidos que de fato mudaram desde a última sincronização.
-  const pendentes = summaries.filter(s => {
-    const ex = existentesMap.get(s.id);
-    return !ex || ex.cw_updated_at !== s.updated_at;
-  });
+  // Sincroniza TODOS os pedidos retornados pela API (a API já retorna só os
+  // recentes/ativos, volume pequeno). Remover o filtro por cw_updated_at evita
+  // perder pedidos quando o sync ficou parado por algum período.
+  const pendentes = summaries;
 
   let processados = 0, erros = 0;
 
