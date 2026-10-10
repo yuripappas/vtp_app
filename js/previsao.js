@@ -540,7 +540,7 @@ function _renderSecao35() {
   return `
     <div class="card" id="secao35">
       <div style="padding:16px 18px;border-bottom:1.5px solid var(--border)">
-        <div style="font-size:var(--text-md);font-weight:800">${lc('package',16,'var(--purple)')} Insumos e preparados para pré-produção</div>
+        <div style="font-size:var(--text-md);font-weight:800">${lc('package',16,'var(--purple)')} Insumos e processados para pré-produção</div>
         <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Quanto deixar porcionado/pronto pra praça da montagem</div>
       </div>
       <div style="padding:16px 18px" id="resultado35">
@@ -622,7 +622,7 @@ function _prevGerarImpressao() {
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#9B91B8;margin-bottom:2px">${cat}</div>
       ${porCategoria[cat].map(i => `
         <div class="row">
-          <span>${i.nome}${i.isProd ? ' <span style=\"color:#6B21D4;font-size:9px\">(preparado)</span>' : ''}</span>
+          <span>${i.nome}${i.isProd ? ' <span style=\"color:#6B21D4;font-size:9px\">(processado)</span>' : ''}</span>
           <strong>${_prevFmtQtd(i.qtd, i.unidade)}</strong>
         </div>`).join('')}
     </div>`).join('');
@@ -1476,7 +1476,7 @@ function _renderResultado35(r) {
                 <div style="border:1.5px solid ${i.ajustado ? 'var(--purple-light)' : 'var(--border)'};background:${i.ajustado ? 'var(--purple-xlight)' : 'transparent'};border-radius:var(--r8);padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
                   <div style="display:flex;align-items:center;gap:6px;min-width:0">
                     <span style="font-size:var(--text-sm);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.nome}</span>
-                    ${i.isProd ? `<span style="flex-shrink:0;font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:8px;background:var(--purple-xlight);color:var(--purple)">preparado</span>` : ''}
+                    ${i.isProd ? `<span style="flex-shrink:0;font-size:var(--text-2xs);font-weight:700;padding:1px 6px;border-radius:8px;background:var(--purple-xlight);color:var(--purple)">processado</span>` : ''}
                   </div>
                   <div style="flex-shrink:0;display:flex;align-items:center;gap:4px">
                     <input type="number" step="${step}" min="0" value="${inputVal}"

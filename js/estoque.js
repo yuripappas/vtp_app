@@ -117,7 +117,7 @@ function _atualizarEstTabs() {
 // ── Ícone por categoria ───────────────────────────────────────
 function _estIconCat(cat) {
   const m = {
-    'Preparados':'chef-hat','Laticínios':'droplets','Carnes e Frios':'flame',
+    'Preparados':'chef-hat','Processados':'chef-hat','Laticínios':'droplets','Carnes e Frios':'flame',
     'Carnes':'flame','Frios':'flame','Massas':'layers','Massas e Farinhas':'layers',
     'Molhos':'droplets','Molhos e Bases':'droplets','Molhos e Temperos':'droplets',
     'Embalagens':'box','Descartáveis':'box','Bebidas':'coffee',
@@ -2473,13 +2473,6 @@ function _renderEstoqueMain() {
           <div style="font-size:1.18rem;font-weight:800;color:${totalAnom > 0 ? 'var(--red)' : 'var(--green)'};line-height:1">${totalAnom}</div>
           <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">débito automático &gt;${Math.round(tol*100)}%</div>
         </div>
-        <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r10);padding:13px 16px">
-          <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:4px">
-            ${lc('upload',10,'currentColor')} Última atualização CW
-          </div>
-          <div style="font-size:var(--text-xs);font-weight:800;color:var(--text);line-height:1.3">${ultimaCW ? fmtD(ultimaCW.date) : '—'}</div>
-          <div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px">${ultimaCW ? ultimaCW.user : 'Nenhuma importação'}</div>
-        </div>
       </div>
 
       ${_htmlListaContagens(hist, tol)}
@@ -2585,76 +2578,10 @@ function _htmlEstoqueAtual(allItems, ultimaCW) {
 }
 
 // ── Modal: origem da contagem ──────────────────────────────────
+// A VTP não importa mais estoque do Cardápio Web: a contagem começa direto
+// pelas categorias, sem escolher "base" (última atualização ou planilha do CW).
 function _iniciarNovaContagem() {
-  const allItems = typeof items !== 'undefined' ? items : [];
-  const histCW   = db._get('vtp_hist_imports_cw', []);
-  const ultimaCW = histCW.length ? [...histCW].sort((a,b) => new Date(b.date)-new Date(a.date))[0] : null;
-
-  let ov = document.getElementById('ovOrigemContagem');
-  if (!ov) { ov = document.createElement('div'); ov.id = 'ovOrigemContagem'; document.body.appendChild(ov); }
-  ov.className = 'overlay open';
-  ov.onclick = e => { if (e.target === ov) ov.className = 'overlay'; };
-  ov.innerHTML = `
-    <div class="modal">
-      <div class="mbox" style="max-width:460px;padding:0;overflow:hidden">
-        <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
-          <div style="width:36px;height:36px;border-radius:var(--r8);background:var(--purple-xlight);
-            display:flex;align-items:center;justify-content:justify-content:center;align-items:center;flex-shrink:0">
-            ${lc('archive',16,'var(--purple)')}
-          </div>
-          <div style="flex:1">
-            <div style="font-size:var(--text-sm);font-weight:800">Nova contagem de estoque</div>
-            <div style="font-size:var(--text-xs);color:var(--muted)">Escolha a base para iniciar</div>
-          </div>
-          <button onclick="document.getElementById('ovOrigemContagem').className='overlay'"
-            style="width:30px;height:30px;border:none;background:var(--surface2);border-radius:var(--r8);cursor:pointer;display:flex;align-items:center;justify-content:center">
-            ${lc('x',14,'var(--muted)')}
-          </button>
-        </div>
-        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px">
-
-          <!-- Opção A: Usar última atualização CW -->
-          <button onclick="_confirmarOrigemContagem('ultima')"
-            style="display:flex;align-items:flex-start;gap:14px;padding:16px;border-radius:var(--r10);
-            border:1.5px solid var(--border);background:var(--surface);cursor:pointer;text-align:left;
-            font-family:Inter,sans-serif;transition:all .15s;width:100%"
-            onmouseover="this.style.borderColor='var(--purple)';this.style.background='var(--purple-xlight)'"
-            onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
-            <div style="width:40px;height:40px;border-radius:var(--r8);background:var(--purple-xlight);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              ${lc('archive',18,'var(--purple)')}
-            </div>
-            <div>
-              <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:3px">Usar última atualização do CW</div>
-              <div style="font-size:var(--text-xs);color:var(--muted);line-height:1.5">
-                Conta ${allItems.length} insumos cadastrados com a quantidade atual do sistema.
-              </div>
-              ${ultimaCW ? `<div style="font-size:var(--text-2xs);color:var(--muted);margin-top:4px;display:flex;align-items:center;gap:3px">
-                ${lc('clock',9,'currentColor')} Última atualização: <strong>${fmtD(ultimaCW.date)}</strong> por ${ultimaCW.user}
-              </div>` : `<div style="font-size:var(--text-2xs);color:var(--orange-dark);margin-top:4px">${lc('alert-triangle',9,'currentColor')} Nenhuma importação CW registrada</div>`}
-            </div>
-          </button>
-
-          <!-- Opção B: Importar planilha CW -->
-          <button onclick="_confirmarOrigemContagem('importar')"
-            style="display:flex;align-items:flex-start;gap:14px;padding:16px;border-radius:var(--r10);
-            border:1.5px solid var(--border);background:var(--surface);cursor:pointer;text-align:left;
-            font-family:Inter,sans-serif;transition:all .15s;width:100%"
-            onmouseover="this.style.borderColor='var(--purple)';this.style.background='var(--purple-xlight)'"
-            onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface)'">
-            <div style="width:40px;height:40px;border-radius:var(--r8);background:var(--orange-light);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              ${lc('upload',18,'var(--orange-dark)')}
-            </div>
-            <div>
-              <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:3px">Importar planilha do Cardápio Web</div>
-              <div style="font-size:var(--text-xs);color:var(--muted);line-height:1.5">
-                Sobe o arquivo XLSX/CSV do CW para sincronizar as quantidades antes de contar.
-              </div>
-            </div>
-          </button>
-
-        </div>
-      </div>
-    </div>`;
+  _iniciarFlowContagem();
 }
 
 function _confirmarOrigemContagem(origem) {

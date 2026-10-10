@@ -849,7 +849,7 @@ function _relProducao(el, per) {
     ])}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-      ${_relSecao(`${lc('chef-hat',13,'var(--purple)')} Volume por Preparado`,
+      ${_relSecao(`${lc('chef-hat',13,'var(--purple)')} Volume por Processado`,
         prepArr.length ? _relBars(prepArr,'var(--purple)',v=>`${fmt(v)}`) : _relVazio('Sem ordens no período'), {noMb:true})}
       ${_relSecao(`${lc('user',13,'var(--orange-dark)')} Ordens por Responsável`,
         respArr.length ? _relBars(respArr,'var(--orange-dark)',v=>`${v}`) : _relVazio('Sem dados'), {noMb:true})}
@@ -866,7 +866,7 @@ function _relProducao(el, per) {
 
     ${_relSecao(`${lc('list',13,'var(--purple)')} Ordens do Período`,
       _relTabela(
-        ['Data','Preparado','Qtd. planejada','Qtd. real','Turno','Responsável','Status'],
+        ['Data','Processado','Qtd. planejada','Qtd. real','Turno','Responsável','Status'],
         todas.sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(o => {
           const item = items.find(i => i.id === o.itemId);
           return [

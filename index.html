@@ -254,7 +254,7 @@
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
           <div>
             <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Pré-produção</h2>
-            <div style="font-size:.72rem;color:var(--muted)">Ordens de produção · preparados em <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastros</a></div>
+            <div style="font-size:.72rem;color:var(--muted)">Ordens de produção · processados em <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastros</a></div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-outline btn-sm" onclick="openExportPDF()">Exportar PDF</button>
@@ -265,7 +265,7 @@
         <div class="kpi-row" id="prepKpi" style="margin-bottom:14px"></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
           <div class="filter-bar" id="prepFiltroBar"></div>
-          <input class="inp" style="max-width:200px;padding:7px 12px;margin-left:auto" id="prepSearch" placeholder=" Buscar preparado..." oninput="renderPreproducao()">
+          <input class="inp" style="max-width:200px;padding:7px 12px;margin-left:auto" id="prepSearch" placeholder=" Buscar processado..." oninput="renderPreproducao()">
         </div>
         <div id="prepGrid"></div>
       </div>
@@ -338,10 +338,6 @@
               <select class="inp" style="max-width:160px;padding:7px 10px" id="catCadFil" onchange="renderCadInsumos()"><option value="">Todas categorias</option></select>
             </div>
             <div style="display:flex;gap:8px">
-              <button class="btn btn-outline btn-sm" onclick="abrirImportCadInsumos()" style="display:flex;align-items:center;gap:5px">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                Importar planilha
-              </button>
               <button class="btn btn-primary btn-sm" onclick="openItemModal()">+ Novo Insumo</button>
             </div>
           </div>
@@ -364,8 +360,8 @@
         </div>
         <div id="cad-preparo" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <div style="font-size:.8rem;color:var(--muted)">Cadastre os preparados internos que aparecem na Pré-produção</div>
-            <button class="btn btn-primary btn-sm" onclick="openPreparoModal()">+ Novo Preparado</button>
+            <div style="font-size:.8rem;color:var(--muted)">Cadastre os processados — itens com ficha técnica feitos aqui (cremes, fatiados, massa) que não são produto final de venda</div>
+            <button class="btn btn-primary btn-sm" onclick="openPreparoModal()">+ Novo Processado</button>
           </div>
           <div id="preparoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
         </div>
@@ -560,7 +556,7 @@
           <select class="inp" id="fUnit"><option>kg</option><option>g</option><option>L</option><option>ml</option><option>un</option><option>cx</option><option>pct</option><option>fardo</option></select>
         </div>
       </div>
-      <div class="field"><label>Código Cardápio Web *</label><input class="inp" id="fCode" placeholder="ex: 157629"><span style="font-size:.65rem;color:var(--muted);margin-top:3px">Usado para evitar duplicatas na importação</span></div>
+      <div class="field"><label>Código interno <span style="font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label><input class="inp" id="fCode" placeholder="ex: 157629"></div>
       <hr class="sdiv"><div class="slbl">Marcas preferidas</div>
       <div style="display:flex;flex-direction:column;gap:7px">
         <div style="display:flex;align-items:center;gap:8px;background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:8px 12px">
@@ -636,25 +632,26 @@
 <!-- Modal: Pré-preparo -->
 <div class="overlay" id="ovPreparo">
   <div class="mbox wide">
-    <div class="mh"><div class="mt" id="preparoModalTitle">Novo Preparado</div><button class="mc" onclick="closeModal('ovPreparo')"></button></div>
+    <div class="mh"><div class="mt" id="preparoModalTitle">Novo Processado</div><button class="mc" onclick="closeModal('ovPreparo')"></button></div>
     <div class="mb">
       <input type="hidden" id="ePreparoId">
       <input type="hidden" id="fpCost" value="0">
       <div class="f2">
-        <div class="field"><label>Nome do preparado *</label><input class="inp" id="fpName" placeholder="ex: Frango Desfiado"></div>
+        <div class="field"><label>Nome do processado *</label><input class="inp" id="fpName" placeholder="ex: Frango Desfiado"></div>
         <div class="field">
-          <label>Código Cardápio Web</label>
-          <input class="inp" id="fpCode" placeholder="ex: 157638">
-          <span style="font-size:.63rem;color:var(--muted);margin-top:2px">Sync via importação CSV</span>
+          <label>Categoria *</label>
+          <input class="inp" id="fpCat" placeholder="ex: Carnes e Frios" list="fpCatDL"><datalist id="fpCatDL"></datalist>
+          <span style="font-size:.63rem;color:var(--muted);margin-top:2px">Onde ele pesa no custo — a mesma dos insumos (ex.: Mussarela Triturada em Laticínios)</span>
         </div>
       </div>
       <div class="f2">
         <div class="field"><label>Unidade</label><select class="inp" id="fpUnit"><option>kg</option><option>g</option><option>L</option><option>un</option></select></div>
         <div class="field"><label>Kg por porção</label><input class="inp" type="number" id="fpPorcao" placeholder="ex: 0.090" step="0.001"></div>
       </div>
-      <div class="f2">
+      <div class="f3">
         <div class="field"><label>Qtd. mínima</label><input class="inp" type="number" id="fpMin" placeholder="0" min="0" step="0.1"></div>
         <div class="field"><label>Qtd. ideal</label><input class="inp" type="number" id="fpIdeal" placeholder="0" min="0" step="0.1"></div>
+        <div class="field"><label>Código interno <span style="font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label><input class="inp" id="fpCode" placeholder="ex: 157638"></div>
       </div>
       <div class="field"><label>Observações / instruções de preparo</label><textarea class="inp" id="fpObs" rows="2" placeholder="ex: Cozinhar em baixa temperatura por 4h..."></textarea></div>
 
@@ -718,7 +715,7 @@
           </button>
           <button type="button" id="orig-btn-preparado" onclick="setDespOrigem('preparado')"
             style="flex:1;padding:8px;border-radius:var(--r8);border:1.5px solid var(--border);background:var(--surface);color:var(--text2);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
-            Preparado
+            Processado
           </button>
           <button type="button" id="orig-btn-produto" onclick="setDespOrigem('produto')"
             style="flex:1;padding:8px;border-radius:var(--r8);border:1.5px solid var(--border);background:var(--surface);color:var(--text2);font-size:.76rem;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">
@@ -1246,7 +1243,7 @@
     <div class="mh"><div class="mt">Nova Ordem de Produção</div><button class="mc" onclick="closeModal('ovOrdem')"></button></div>
     <div class="mb">
       <div class="f2">
-        <div class="field"><label>Preparado</label><select class="inp" id="opItem" onchange="_ppUpdateCusto()"><option value="">Selecionar...</option></select></div>
+        <div class="field"><label>Processado</label><select class="inp" id="opItem" onchange="_ppUpdateCusto()"><option value="">Selecionar...</option></select></div>
         <div class="field"><label>Quantidade</label><input class="inp" type="number" id="opQty" placeholder="0" min="0" step="0.1" oninput="_ppUpdateCusto()"></div>
       </div>
       <div class="f2">
@@ -1414,7 +1411,7 @@
 <script src="js/icons.js"></script>
 <script src="js/db.js?v=117"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=220"></script>
+<script src="js/init.js?v=221"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">

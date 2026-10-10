@@ -25,19 +25,41 @@ let items = db._get('vtp_items', null) || [
   { id:16, name:'Costela Bovina Desfiada', cat:'PREPARADOS', unit:'kg', qty:7.1,  min:3,   ideal:15,  cost:75.81, supId:null, brands:[],                              code:'157646', isProd:true,  medPorcao:0.075 },
 ];
 
-// Migração automática: normaliza variações de "Preparados" para 'PREPARADOS' (igual ao CW)
-(function _migrarCatPreparados() {
-  const variantes = ['Produção Interna', 'Preparados', 'preparados', 'PREPARADO'];
+// Tipo × categoria: o tipo (insumo/processado) é o isProd; a categoria é
+// onde o item pesa no custo (Laticínios, Carnes e Frios…). Até out/2026 os
+// processados ficavam todos na categoria "PREPARADOS" — esta migração dá a
+// eles a categoria real (a mesma que o usuário usa no Pinch) e, se o nome não
+// estiver no mapa, a categoria do ingrediente de maior peso na ficha.
+// Idempotente: só mexe em item que ainda esteja em "PREPARADOS" (ou variações).
+(function _migrarCatProcessados() {
+  const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+  const VARIANTES = new Set(['PREPARADOS', 'PREPARADO', 'PRODUCAO INTERNA']);
+  const MAPA = {
+    'FRANGO DESFIADO': 'CARNES E FRIOS', 'CARNE DE SOL DESFIADA': 'CARNES E FRIOS',
+    'COSTELA BOVINA DESFIADA': 'CARNES E FRIOS', 'COSTELINHA BOVINA DESFIADA': 'CARNES E FRIOS',
+    'PRESUNTO TRITURADO': 'CARNES E FRIOS', 'PONTA DE ALCATRA CUBO': 'CARNES E FRIOS', 'PONTA DE ALCATRA EM CUBO': 'CARNES E FRIOS',
+    'MUSSARELA TRITURADA': 'LATICÍNIOS',
+    'BRIGADEIRO DE CHOCOLATE': 'DOCES', 'BRIGADEIRO DE NINHO': 'DOCES', 'FAROFA DE BISCOITO': 'DOCES',
+    'CREME DE MARSHMALLOW': 'DOCES', 'GELEIA DE MORANGO': 'DOCES',
+    'CEBOLA FATIADA': 'HORTI-FRUTI', 'PIMENTAO VERDE FATIADO': 'HORTI-FRUTI', 'TOMATE FATIADO': 'HORTI-FRUTI',
+    'MASSA DE PIZZA': 'MASSAS E SEUS COMPLEMENTOS',
+    'BARBECUE DE GOIABADA': 'MOLHOS E BASES', 'CREME DE ALHO': 'MOLHOS E BASES', 'CREME DE GORGONZOLA': 'MOLHOS E BASES',
+  };
+  const catPrincipal = it => {
+    const ing = (it.fichaTecnica?.ingredientes || [])
+      .map(g => ({ x: items.find(i => i.id === g.item_id), p: g.peso_g || 0 }))
+      .filter(g => g.x && !VARIANTES.has(norm(g.x.cat)))
+      .sort((a, b) => b.p - a.p)[0];
+    return ing?.x.cat || 'Outros';
+  };
   let changed = false;
   items.forEach(i => {
-    if (variantes.includes(i.cat) || (i.isProd && i.cat !== 'PREPARADOS')) {
-      i.cat = 'PREPARADOS'; changed = true;
-    }
+    if (!VARIANTES.has(norm(i.cat))) return;
+    i.isProd = true;
+    i.cat = MAPA[norm(i.name)] || catPrincipal(i);
+    changed = true;
   });
-  if (changed) {
-    db._set('vtp_items', items);
-    db._set('vtp_etiq_categorias', null);
-  }
+  if (changed) db._set('vtp_items', items);
 })();
 
 
@@ -180,6 +202,10 @@ let CATEGORIAS_INSUMO = db._get('vtp_emp_cat_insumo', null) || [];
       changed = true;
     }
   });
+  // "PREPARADOS" era categoria-tipo; processado agora tem categoria real
+  const usadas = new Set(items.map(i => i.cat));
+  const semPrep = CATEGORIAS_INSUMO.filter(c => !/^PREPARADOS?$/i.test(c) || usadas.has(c));
+  if (semPrep.length !== CATEGORIAS_INSUMO.length) { CATEGORIAS_INSUMO.splice(0, CATEGORIAS_INSUMO.length, ...semPrep); changed = true; }
   // Garante ordenação alfabética
   CATEGORIAS_INSUMO.sort();
   if (changed || CATEGORIAS_INSUMO.length === 0) db._set('vtp_emp_cat_insumo', CATEGORIAS_INSUMO);

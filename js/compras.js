@@ -1301,7 +1301,7 @@ function _e1RenderCarrinho() {
 function e1AddItem(itemId) {
   const item = items.find(i => i.id === itemId);
   if (!item) return;
-  if (item.isProd) { toast('Preparados são produção interna — não entram na lista de compras.', 'warn'); return; }
+  if (item.isProd) { toast('Processados são produção interna — não entram na lista de compras.', 'warn'); return; }
   if (_listaAtual.itens.find(ci => ci.itemId === itemId)) return;
   const need = gneed(item);
   const qty  = need > 0 ? parseFloat(need.toFixed(3)) : parseFloat((item.min||1).toFixed(3));

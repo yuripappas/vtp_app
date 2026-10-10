@@ -554,13 +554,13 @@ async function renderVendasInsumos() {
 
   const nf = n => (Math.round(n * 100) / 100).toLocaleString('pt-BR');
   const banner = naoRastreado.length ? `<div class="card" style="padding:12px 16px;margin-bottom:16px;border-color:var(--warning-fg,#D97706);background:var(--warning-bg,#FEF3C7)">
-      <div style="font-size:.84rem;font-weight:700;color:var(--warning-fg,#B45309)">${lc('alert-triangle',14,'currentColor')} Consumo parcial — ${naoRastreado.length} preparado(s) sem ficha técnica</div>
+      <div style="font-size:.84rem;font-weight:700;color:var(--warning-fg,#B45309)">${lc('alert-triangle',14,'currentColor')} Consumo parcial — ${naoRastreado.length} processado(s) sem ficha técnica</div>
       <div style="font-size:.76rem;color:var(--warning-fg,#92400E);margin-top:3px">${naoRastreado.slice(0,6).map(x=>`${x.nome} (${nf(x.qtd)} ${x.unidade})`).join(' · ')}${naoRastreado.length>6?' …':''}</div>
       <div style="font-size:.72rem;color:var(--muted);margin-top:5px">Cadastre a ficha em <a href="#" onclick="event.preventDefault();setCadTab('preparo');goModule('cadastros')" style="color:var(--purple);font-weight:600;text-decoration:none">Cadastros → Pré-preparo</a> para o consumo entrar no cálculo.</div>
     </div>` : '';
 
   el.innerHTML = _inFiltros() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos cadastrados, com o consumo nas pizzas vendidas em <b>${_perLabel('insumos')}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''} — preparados cascateiam pro insumo cru que consomem.</div>
+    <div style="font-size:.82rem;color:var(--muted);margin-bottom:14px">Todos os insumos cadastrados, com o consumo nas pizzas vendidas em <b>${_perLabel('insumos')}</b>${_vdCanal?` · canal <b>${_vdCanal}</b>`:''}${_inCats.length?` · ${_inCats.length===1?_inCats[0]:_inCats.length+' categorias'}`:''} — processados cascateiam pro insumo cru que consomem.</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,220px));gap:14px;margin-bottom:22px">
       ${kpi('Insumos cadastrados', insumos.length, 'no cadastro', 'var(--purple-xlight)', 'var(--purple)')}
       <div style="background:var(--green-light);border-radius:var(--r12,10px);padding:16px 18px">

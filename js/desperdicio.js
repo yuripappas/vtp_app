@@ -130,7 +130,7 @@ function renderDesperdicio() {
           const unit   = d.unidade || item?.unit || '';
           const custo  = _getCusto(d);
           const tipo   = TIPOS_DESPERDICIO.find(t => t.id === d.tipo);
-          const origemLabel = d.origem === 'produto' ? 'Produto' : d.origem === 'preparado' ? 'Preparado' : 'Insumo';
+          const origemLabel = d.origem === 'produto' ? 'Produto' : d.origem === 'preparado' ? 'Processado' : 'Insumo';
           const origemIcon  = d.origem === 'produto' ? 'tag' : d.origem === 'preparado' ? 'chef-hat' : 'package';
 
           return `
@@ -273,7 +273,7 @@ function setDespOrigem(origem) {
   if (noteEl) {
     const notes = {
       insumo:    'Insumos de compras — quantidade debitada do estoque',
-      preparado: 'Preparados de produção — quantidade debitada do estoque',
+      preparado: 'Processados de produção — quantidade debitada do estoque',
       produto:   'Produto final (pizza/bebida) — custo = preço de venda',
     };
     noteEl.textContent = notes[origem] || '';
@@ -300,7 +300,7 @@ function updateDespOrigemList() {
     [...items].filter(i => i.isProd)
       .sort((a,b) => a.name.localeCompare(b.name))
       .forEach(i => { sel.innerHTML += `<option value="i_${i.id}">${i.name} (${i.unit})</option>`; });
-    if (qtyLabel) qtyLabel.textContent = 'Preparado *';
+    if (qtyLabel) qtyLabel.textContent = 'Processado *';
 
   } else if (origem === 'produto') {
     if (qtyLabel) qtyLabel.textContent = 'Tipo de pizza *';

@@ -28,6 +28,7 @@ const ETQ_CAT_ICONS = {
   // Preparados / Produção interna
   'Produção Interna':   'chef-hat',
   'Preparados':         'chef-hat',
+  'Processados':        'chef-hat',
 
   // Laticínios e derivados
   'Laticínios':         'droplets',
@@ -94,8 +95,14 @@ function _etqIconCat(cat) {
 function _etqCatDisplay(item) {
   if (!item) return 'Outros';
   const cat = item.cat || '';
-  if (item.isProd || cat.toLowerCase().includes('produção') || cat.toLowerCase().includes('interno')) return 'Preparados';
+  if (item.isProd || cat.toLowerCase().includes('produção') || cat.toLowerCase().includes('interno')) return 'Processados';
   return cat || 'Outros';
+}
+
+// Categoria "virtual" do wizard: todos os processados, de qualquer categoria
+const ETQ_CAT_PROCESSADOS = 'PROCESSADOS';
+function _etqItensDaCat(lista, cat) {
+  return cat === ETQ_CAT_PROCESSADOS ? lista.filter(i => i.isProd) : lista.filter(i => (i.cat || 'Outros') === cat);
 }
 
 // Estado do módulo
@@ -381,12 +388,15 @@ function _etqStep2(el) {
   const habilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
   const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
   const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
+  // Processados ficam na categoria real (ex.: Mussarela Triturada em
+  // Laticínios), mas a produção etiqueta quase só eles — atalho no topo.
+  if (allItems.some(i => i.isProd)) cats.unshift(ETQ_CAT_PROCESSADOS);
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
       ${cats.map(cat => {
-        const count = allItems.filter(i => (i.cat || 'Outros') === cat).length;
-        const icon  = _etqIconCat(cat);
+        const count = _etqItensDaCat(allItems, cat).length;
+        const icon  = cat === ETQ_CAT_PROCESSADOS ? 'chef-hat' : _etqIconCat(cat);
         return `
           <button onclick="_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
           }';_etqWizNext()"
@@ -403,7 +413,7 @@ function _etqStep2(el) {
         `;
       }).join('')}
     </div>
-    ${cats.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum insumo ou preparado cadastrado</div>` : ''}
+    ${cats.length === 0 ? `<div style="text-align:center;padding:40px 0;color:var(--muted);font-size:.82rem">Nenhum insumo ou processado cadastrado</div>` : ''}
   `;
 }
 
@@ -412,7 +422,7 @@ function _etqStep2(el) {
 function _etqStep3(el) {
   const allItems  = typeof items !== 'undefined' ? items : [];
   const cat       = _etqWizardState.categoria;
-  const catItems  = allItems.filter(i => (i.cat || 'Outros') === cat);
+  const catItems  = _etqItensDaCat(allItems, cat);
   const busca     = _etqWizardState._buscaProd || '';
   const filtrados = catItems.filter(i => i.name.toLowerCase().includes(busca.toLowerCase()));
   const selId     = _etqWizardState.item?.id;
@@ -1873,7 +1883,7 @@ function _etqCadValidades(el) {
             <div style="padding:12px 14px;background:var(--surface2);border-bottom:1.5px solid var(--border);display:flex;align-items:center;gap:10px">
               <div style="flex:1">
                 <div style="font-size:.84rem;font-weight:700;color:var(--text)">${item.name}</div>
-                <div style="font-size:.68rem;color:var(--muted)">${item.cat || '—'} · ${item.isProd ? 'Preparado' : 'Insumo'}</div>
+                <div style="font-size:.68rem;color:var(--muted)">${item.cat || '—'} · ${item.isProd ? 'Processado' : 'Insumo'}</div>
               </div>
               <button class="btn btn-outline btn-xs" onclick="_etqOpenValidadeModal('${item.id}', null)">
                 ${lc('plus', 11, 'currentColor')} Adicionar

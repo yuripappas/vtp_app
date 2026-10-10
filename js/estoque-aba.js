@@ -143,7 +143,7 @@ function _estRenderAbaEstoqueConteudo(dados) {
       ${card('Itens por tipo', 'layers', `
         <div style="display:flex;gap:22px;align-items:baseline">
           <div><span style="font-size:var(--text-2xl);font-weight:800">${nIns}</span> <span style="font-size:var(--text-sm);color:var(--text2)">insumos</span></div>
-          <div><span style="font-size:var(--text-2xl);font-weight:800">${nPrep}</span> <span style="font-size:var(--text-sm);color:var(--text2)">preparados</span></div>
+          <div><span style="font-size:var(--text-2xl);font-weight:800">${nPrep}</span> <span style="font-size:var(--text-sm);color:var(--text2)">processados</span></div>
         </div>
         ${nSemContagem ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);margin-top:6px">${nSemContagem} ainda sem contagem de ciclo — mostrando o saldo antigo</div>` : ''}`)}
       ${card('Top categorias', 'bar-chart-2', topCats.length ? topCats.map(([c, v]) => `
@@ -168,9 +168,9 @@ function _estRenderAbaEstoqueConteudo(dados) {
           ${cats.map(c => `<option value="${_estEsc(c)}"${f.cat === c ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}
         </select>
         <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_estFil.tipo=this.value;_estRerender()">
-          <option value="">Insumos e preparados</option>
+          <option value="">Insumos e processados</option>
           <option value="insumo"${f.tipo === 'insumo' ? ' selected' : ''}>Só insumos</option>
-          <option value="preparado"${f.tipo === 'preparado' ? ' selected' : ''}>Só preparados</option>
+          <option value="preparado"${f.tipo === 'preparado' ? ' selected' : ''}>Só processados</option>
         </select>
         ${chip(f.abaixo,  `_estFil.abaixo=!_estFil.abaixo;_estFil.zerados=false;_estRerender()`, `${lc('alert-triangle', 13, 'currentColor')} Abaixo do mínimo (${nAbaixo})`, 'var(--orange-dark)', 'var(--orange-light)')}
         ${chip(f.zerados, `_estFil.zerados=!_estFil.zerados;_estFil.abaixo=false;_estRerender()`, `Zerados (${nZerados})`, 'var(--text)', 'var(--surface2)')}
@@ -196,7 +196,7 @@ function _estRenderAbaEstoqueConteudo(dados) {
                 <td style="padding:12px 14px">
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                     <span style="font-weight:600">${_estEsc(it.name)}</span>
-                    ${it.isProd ? `<span class="badge b-orange" style="font-size:var(--text-2xs)">Preparado</span>` : ''}
+                    ${it.isProd ? `<span class="badge b-orange" style="font-size:var(--text-2xs)">Processado</span>` : ''}
                     ${debAuto.has(it.id) ? `<span title="Débito automático pela ficha técnica" style="line-height:0">${lc('zap', 12, 'var(--green)')}</span>` : ''}
                   </div>
                   ${!f.local && estLocaisDoItem(it)[0] === EST_SEM_LOCAL ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);margin-top:2px">sem local definido</div>` : ''}
@@ -267,7 +267,7 @@ function estAbrirDetalheItem(itemId) {
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:16px">
       <div>
         <div style="font-size:var(--text-xl);font-weight:800">${_estEsc(it.name)}</div>
-        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:2px">${_estEsc(it.cat || '')} · ${it.isProd ? 'Preparado' : 'Insumo'} · custo ${it.cost ? _estR(it.cost) + '/' + u : '—'}</div>
+        <div style="font-size:var(--text-sm);color:var(--muted);margin-top:2px">${_estEsc(it.cat || '')} · ${it.isProd ? 'Processado' : 'Insumo'} · custo ${it.cost ? _estR(it.cost) + '/' + u : '—'}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:var(--text-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700">Estoque atual</div>

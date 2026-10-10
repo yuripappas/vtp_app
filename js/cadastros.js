@@ -805,7 +805,7 @@ function _ftRecalc() {
       display.style.color = 'var(--muted)';
       display.style.background = 'var(--surface2)';
       display.style.borderColor = 'var(--border)';
-      if (sub) sub.textContent = 'Adicione insumos ou preparados';
+      if (sub) sub.textContent = 'Adicione insumos ou processados';
     } else {
       display.textContent = `R$ ${fmt(totalCusto)}`;
       display.style.color = 'var(--brand-purple,#6B21D4)';
@@ -942,7 +942,7 @@ function _ftRenderTableFlat(el) {
       return `
         <div class="ft-table-row">
           <div class="ft-ac-wrap">
-            <input type="text" id="${_ftId('ftSearch')}-${i}" class="inp" placeholder="Pesquise um insumo ou preparado..."
+            <input type="text" id="${_ftId('ftSearch')}-${i}" class="inp" placeholder="Pesquise um insumo ou processado..."
               value="${ins?.name ? ins.name.replace(/"/g,'&quot;') : ''}"
               oninput="_ftSearchInsumo(${i}, this.value)"
               onfocus="_ftSearchInsumo(${i}, this.value)"
@@ -978,7 +978,7 @@ function renderPreparoGrid() {
   const el    = document.getElementById('preparoGrid');
 
   if (!prods.length) {
-    el.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("chef-hat",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum preparado cadastrado</div><div>Clique em "Novo Preparado" para começar</div></div>`;
+    el.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("chef-hat",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum processado cadastrado</div><div>Clique em "Novo Processado" para começar</div></div>`;
     return;
   }
 
@@ -994,7 +994,7 @@ function renderPreparoGrid() {
         <div class="cfg-row-icon" style="background:var(--purple-xlight);color:var(--purple)">${lc('chef-hat',14,'currentColor')}</div>
         <div style="flex:1;min-width:0">
           <div class="cfg-row-label">${item.name}</div>
-          <div class="cfg-row-sub" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${item.unit} · Mín ${item.min} · Ideal ${item.ideal} ${ftBadge}</div>
+          <div class="cfg-row-sub" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${item.cat || 'Sem categoria'} · ${item.unit} · Mín ${item.min} · Ideal ${item.ideal} ${ftBadge}</div>
         </div>
         <div class="cfg-row-actions">
           <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openEditPreparo(${item.id})">${lc('edit-2',12,'currentColor')}</button>
@@ -1018,7 +1018,7 @@ function renderPreparoGrid() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
         <div>
           <div style="font-size:var(--text-md);font-weight:700">${item.name}</div>
-          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px">Preparados · ${item.unit} ${ftBadge}</div>
+          <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px">${item.cat || 'Sem categoria'} · ${item.unit} ${ftBadge}</div>
         </div>
         <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();openEditPreparo(${item.id})">${lc("edit-2",13,"currentColor")}️</button>
       </div>
@@ -1047,9 +1047,10 @@ function renderPreparoGrid() {
 
 function openPreparoModal() {
   editPreparoId = null;
-  document.getElementById('preparoModalTitle').textContent = 'Novo Preparado';
+  document.getElementById('preparoModalTitle').textContent = 'Novo Processado';
   document.getElementById('ePreparoId').value = '';
-  ['fpName','fpCode','fpMin','fpIdeal','fpPorcao','fpObs'].forEach(id => document.getElementById(id).value = '');
+  ['fpName','fpCat','fpCode','fpMin','fpIdeal','fpPorcao','fpObs'].forEach(id => document.getElementById(id).value = '');
+  _fpPopularCategorias();
   document.getElementById('fpCost').value = '0';
   document.getElementById('fpUnit').value = 'kg';
   document.getElementById('delPreparoBtn').style.display = 'none';
@@ -1065,6 +1066,8 @@ function openEditPreparo(id) {
   editPreparoId = id;
   document.getElementById('preparoModalTitle').textContent = `${item.name}`;
   document.getElementById('fpName').value   = item.name;
+  document.getElementById('fpCat').value    = item.cat || '';
+  _fpPopularCategorias();
   document.getElementById('fpCode').value   = item.code  || '';
   document.getElementById('fpUnit').value   = item.unit;
   document.getElementById('fpCost').value   = item.cost  || 0;
@@ -1079,9 +1082,18 @@ function openEditPreparo(id) {
   document.getElementById('ovPreparo').classList.add('open');
 }
 
+// Mesmas categorias dos insumos — processado não tem categoria própria
+function _fpPopularCategorias() {
+  const dl = document.getElementById('fpCatDL');
+  if (!dl) return;
+  const cats = [...new Set([...(typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []), ...items.map(i => i.cat)].filter(Boolean))].sort();
+  dl.innerHTML = cats.map(c => `<option value="${c}">`).join('');
+}
+
 function savePreparo() {
   const name = document.getElementById('fpName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
+  if (!document.getElementById('fpCat').value.trim()) { toast('Informe a categoria', 'err'); return; }
   const rendimento_kg = parseFloat(document.getElementById('ftRendimento').value) || 0;
   const novaFT = { ingredientes: _ftRows.filter(r => r.item_id), rendimento_kg };
 
@@ -1102,12 +1114,24 @@ function savePreparo() {
   _savePreparoConfirmado(name, novaFT);
 }
 
+// Usa a grafia já cadastrada quando só muda maiúscula/acento (ex.: "laticinios" → "LATICÍNIOS")
+function _fpCategoria() {
+  const v = document.getElementById('fpCat').value.trim();
+  const n = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const existente = [...(typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []), ...items.map(i => i.cat)].find(c => c && n(c) === n(v));
+  if (existente) return existente;
+  if (typeof CATEGORIAS_INSUMO !== 'undefined' && typeof saveCategoriasInsumo === 'function') {
+    CATEGORIAS_INSUMO.push(v); CATEGORIAS_INSUMO.sort(); saveCategoriasInsumo();
+  }
+  return v;
+}
+
 function _savePreparoConfirmado(name, fichaTecnica) {
   const custoKg = parseFloat(document.getElementById('fpCost').value) || 0;
   const data = {
     name,
     code:         document.getElementById('fpCode').value.trim(),
-    cat:          'PREPARADOS',
+    cat:          _fpCategoria(),
     unit:         document.getElementById('fpUnit').value,
     cost:         custoKg,
     min:          parseFloat(document.getElementById('fpMin').value)    || 0,

@@ -15,7 +15,7 @@ const _CFG_SECTIONS = [
   { id:'usuarios',     icon:'shield',     label:'Usuários'       },
   { id:'insumos',      icon:'package',    label:'Insumos'        },
   { id:'fornecedores', icon:'truck',      label:'Fornecedores'   },
-  { id:'preparo',      icon:'chef-hat',   label:'Preparados'     },
+  { id:'preparo',      icon:'chef-hat',   label:'Processados'    },
   { id:'produtos',     icon:'pizza',      label:'Produtos'       },
   { id:'servicos',     icon:'wrench',     label:'Serviços'       },
   { id:'modulos',      icon:'settings',   label:'Personalização' },
@@ -135,7 +135,7 @@ function _cfgToggleAddRow(id) {
   }
 }
 
-// Toggle individual category group (Insumos, Preparados, Produtos)
+// Toggle individual category group (Insumos, Processados, Produtos)
 function toggleCfgCat(btn) {
   btn.closest('.cfg-cat-group').classList.toggle('collapsed');
 }
@@ -344,7 +344,7 @@ function _renderCfgSecEstoque(el) {
     <div style="margin-bottom:22px">
       ${_secTitle('Categorias Cadastradas', null)}
       <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:10px">
-        Renomeie categorias que vieram do Cardápio Web ou ajuste qualquer nome. Todos os insumos e preparados da categoria são atualizados automaticamente.
+        Renomeie categorias que vieram do Cardápio Web ou ajuste qualquer nome. Todos os insumos e processados da categoria são atualizados automaticamente.
       </div>
       <div id="cfgCatRenameList" style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden"></div>
     </div>
@@ -1324,7 +1324,7 @@ function _cfgRenderInvLocais() {
     </div>
     ${semLocal ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--orange-light);border-radius:var(--r8);margin-bottom:8px;font-size:var(--text-sm);color:var(--orange-dark)">
       ${lc('alert-triangle',14,'currentColor')}
-      <span style="flex:1"><strong>${semLocal}</strong> insumo(s)/preparado(s) ainda sem local — eles não vão aparecer em nenhuma contagem.</span>
+      <span style="flex:1"><strong>${semLocal}</strong> insumo(s)/processado(s) ainda sem local — eles não vão aparecer em nenhuma contagem.</span>
       <button class="btn btn-outline btn-sm" onclick="_cfgAbrirDistribuirLocais()">Distribuir por categoria</button>
     </div>` : ''}
     ${lista.map((loc, idx) => {
@@ -1431,7 +1431,7 @@ function _cfgRemoverInvLoc(idx) {
   const label = inventarioLocs[idx]?.label;
   const uso = _cfgUsoLocal(inventarioLocs[idx]?.id);
   if (uso.itens || uso.ativos) {
-    const partes = [uso.itens ? `${uso.itens} insumo(s)/preparado(s)` : '', uso.ativos ? `${uso.ativos} ativo(s) do Inventário` : ''].filter(Boolean);
+    const partes = [uso.itens ? `${uso.itens} insumo(s)/processado(s)` : '', uso.ativos ? `${uso.ativos} ativo(s) do Inventário` : ''].filter(Boolean);
     toast(`"${label}" está em uso por ${partes.join(' e ')}. Troque o local deles antes de remover.`, 'err');
     return;
   }
@@ -2818,7 +2818,7 @@ function _cfgEtqCategorias(el) {
     <div style="max-width:680px">
       <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Categorias visíveis na Etiquetagem</div>
       <div style="font-size:.72rem;color:var(--muted);margin-bottom:14px">
-        Selecione quais categorias de insumos e preparados aparecem no wizard de impressão de etiquetas.
+        Selecione quais categorias de insumos e processados aparecem no wizard de impressão de etiquetas.
         Categorias desmarcadas ficam ocultas para o operador.
       </div>
       <div style="border:1.5px solid var(--border);border-radius:var(--r10);overflow:hidden;margin-bottom:14px">

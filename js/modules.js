@@ -313,7 +313,7 @@ function _ppToggleFicha(id) {
 function zerarCicloPrepara() {
   vtpConfirm({
     title: 'Zerar ciclo de pré-produção',
-    message: 'Zera a quantidade atual de todos os preparados e arquiva todas as ordens existentes. Após isso, importe o CSV do Cardápio Web.',
+    message: 'Zera a quantidade atual de todos os processados e arquiva todas as ordens existentes. Após isso, importe o CSV do Cardápio Web.',
     confirmLabel: 'Zerar ciclo',
     onConfirm: () => {
       items.filter(i => i.isProd).forEach(i => { i.qty = 0; });
@@ -417,7 +417,7 @@ function _ppUpdateCusto() {
 function saveOrdem() {
   const itemId = parseInt(document.getElementById('opItem').value);
   const qty    = parseFloat(document.getElementById('opQty').value);
-  if (!itemId) { toast('Selecione o preparado', 'err'); return; }
+  if (!itemId) { toast('Selecione o processado', 'err'); return; }
   if (!qty)    { toast('Informe a quantidade',  'err'); return; }
   ordens.push({
     id:     (Math.max(...ordens.map(o => o.id), 0) + 1),
@@ -600,7 +600,7 @@ function generatePDF() {
     <div><div class="sum-val">${[...new Set(selOrdens.map(o => o.date))].length}</div><div class="sum-lbl">Dias cobertos</div></div>
   </div>
   <table>
-    <thead><tr><th>#</th><th>Preparado</th><th>Quantidade</th><th>Data</th><th>Turno</th><th>Responsável</th><th>Conferente</th><th>Status</th><th>Observações</th></tr></thead>
+    <thead><tr><th>#</th><th>Processado</th><th>Quantidade</th><th>Data</th><th>Turno</th><th>Responsável</th><th>Conferente</th><th>Status</th><th>Observações</th></tr></thead>
     <tbody>
       ${selOrdens.map((o, i) => {
         const item = items.find(x => x.id === o.itemId);
