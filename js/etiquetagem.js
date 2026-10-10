@@ -1341,9 +1341,15 @@ function _etqConfirmarDesperdicio(etqId, ovId) {
   if (!qty || qty <= 0) { toast('Informe a quantidade', 'err'); return; }
   if (!resp)         { toast('Informe o responsável', 'err'); return; }
 
-  // Registra no módulo de desperdício
-  if (typeof desperdicios !== 'undefined') {
-    const item   = (typeof items !== 'undefined') ? items.find(i => i.id === e.item_id) : null;
+  // Item cadastrado → baixa no estoque por ciclos (Movimentações › Baixa,
+  // que também espelha em `desperdicios` pros Relatórios)
+  const itemBx = (typeof items !== 'undefined') ? items.find(i => i.id === e.item_id) : null;
+  if (itemBx && typeof estRegistrarBaixaItem === 'function') {
+    estRegistrarBaixaItem(itemBx, qty, tipo, { obs: obs || `Descartada via Etiquetagem (etq #${etqId})`, refTipo: 'etiqueta', refId: etqId })
+      .catch(err => toast('Etiqueta descartada, mas a baixa no estoque falhou: ' + err.message, 'err'));
+    try { if (typeof logAudit === 'function') logAudit('desperdicio_registrado', tipo + ' — ' + e.item_nome + ' ' + qty + ' ' + unid, 'estoque'); } catch(_){}
+  } else if (typeof desperdicios !== 'undefined') {
+    const item   = null;
     const custo  = item ? (item.cost || 0) * qty : 0;
     const nextId = Math.max(0, ...desperdicios.map(x => x.id)) + 1;
     const d = {

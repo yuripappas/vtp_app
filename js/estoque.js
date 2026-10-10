@@ -2379,7 +2379,7 @@ function salvarMovManual() {
 // ══════════════════════════════════════════════════════════════
 // ESTOQUE COMO FILHO DE COMPRAS — nova navegação integrada
 // ══════════════════════════════════════════════════════════════
-let _estCpAba        = 'estoque';   // 'estoque' | 'contagens' (abas no topo — ver estoque-aba.js)
+let _estCpAba        = 'estoque';   // 'estoque' | 'contagens' | 'movimentacoes' (abas no topo — ver estoque-aba.js)
 let _estCpFlowEtapa  = null;       // null | 'categorias' | 'contagem' | 'divergencias' | 'atualizarcw'
 let _estCpContagem   = null;       // contagem concluída aguardando CW step
 let _estCpGrupos     = null;       // grupos de divergência da contagem atual
@@ -2399,9 +2399,10 @@ function _renderEstoqueMain() {
   if (!el) return;
 
   if (_estCpAba !== 'contagens') {
-    _estCpAba = 'estoque';
+    if (_estCpAba !== 'movimentacoes') _estCpAba = 'estoque';
     el.innerHTML = `<div style="padding:20px 24px">${_estTopTabsHtml()}<div id="estAbaBody"></div></div>`;
-    estRenderAbaEstoque();
+    if (_estCpAba === 'movimentacoes') estRenderAbaMov();
+    else estRenderAbaEstoque();
     return;
   }
 

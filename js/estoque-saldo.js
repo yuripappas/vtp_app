@@ -13,9 +13,11 @@
  * nova é aprovada, ela vira a base e o que veio antes deixa de contar.
  *
  * Item que ainda não teve nenhuma contagem no módulo novo usa o saldo antigo
- * (item.qty, que vinha da importação do CW) como base, sem débito de venda —
- * não dá pra saber desde quando descontar. Ele aparece marcado como
- * "sem contagem" até a primeira contagem de ciclo.
+ * (item.qty) como saldo, sem débito de venda — não dá pra saber desde quando
+ * descontar. Ele aparece marcado como "sem contagem" até a primeira contagem
+ * de ciclo. Toda movimentação nova também ajusta item.qty (ver
+ * estAplicarLegado em estoque-mov.js), então para esses itens as
+ * movimentações NÃO são somadas de novo aqui — já estão dentro do item.qty.
  *
  * Dados: tabelas est_* no Supabase (ver migration 20261010120000) + cw_pedidos.
  */
@@ -189,7 +191,7 @@ async function estCalcularSaldos() {
   // Movimentações depois da base de cada local
   for (const m of movs) {
     const r = porItem.get(m.item_id);
-    if (!r) continue;
+    if (!r || r.semContagem) continue; // já refletida no item.qty
     for (const [loc, delta] of estEfeitoMov(m)) {
       if (!loc) continue;
       const pl = r.porLocal[loc] || (r.porLocal[loc] = { saldo: 0, base: 0, baseData: null, entradas: 0, vendas: 0, baixas: 0, transferencias: 0, ajustes: 0 });

@@ -99,7 +99,6 @@ function toggleMobileMenu() {
 // Submenu items de Operação
 const _OPERACAO_SUBMENU_ITEMS = [
   { id: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção' },
-  { id: 'desperdicio', icon: 'trash-2',      label: 'Desperdício'  },
   { id: 'previsao',    icon: 'trending-up',  label: 'Previsão'     },
   { id: 'manutencao',  icon: 'wrench',       label: 'Manutenção'   },
   { id: 'inventario',  icon: 'layers',       label: 'Inventário'   },
@@ -486,6 +485,13 @@ function _vtpRestoreRoute() {
 function goModule(mod) {
   // Operação e Configurações sem seção definida → abrem submenu no sidebar
   if (mod === 'operacao') { _handleNavOperacao(); return; }
+
+  // A página de Desperdício virou Estoque › Movimentações filtrado em Baixa
+  if (mod === 'desperdicio') {
+    if (typeof _estMovFil !== 'undefined') { _estMovFil.tipo = 'baixa'; _estMovFil.tipoBaixa = ''; }
+    if (typeof _estCpAba !== 'undefined') _estCpAba = 'movimentacoes';
+    mod = 'estoque';
+  }
 
   // Verifica permissão
   if (typeof canAccess === 'function' && !canAccess(mod)) {

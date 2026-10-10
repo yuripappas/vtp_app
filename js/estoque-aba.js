@@ -1,6 +1,6 @@
 /**
  * VTP Compras — Vai Ter Pizza!
- * estoque-aba.js — Página do Estoque com abas no topo (Estoque · Contagem)
+ * estoque-aba.js — Página do Estoque com abas no topo (Estoque · Contagem · Movimentações)
  *
  * Teste do padrão "filhos saem do sidebar e viram abas no topo da página mãe".
  * Aba Estoque: saldo por item e local, calculado por js/estoque-saldo.js.
@@ -10,6 +10,7 @@
 const _EST_ABAS = [
   { id: 'estoque',   icon: 'package',        label: 'Estoque'  },
   { id: 'contagens', icon: 'clipboard-list', label: 'Contagem' },
+  { id: 'movimentacoes', icon: 'repeat',     label: 'Movimentações' },
 ];
 
 let _estFil = { local: '', q: '', cat: '', tipo: '', abaixo: false, zerados: false, sort: 'nome', dir: 1 };

@@ -629,7 +629,7 @@ const saveInventarioLocs = () => db._set('vtp_inv_locs', inventarioLocs);
 // insumos — cadastros antigos não precisam ser migrados.
 const estLocalGuardaInsumos = l => l && l.estoque !== false;
 const estLocaisEstoque = () => inventarioLocs.filter(estLocalGuardaInsumos);
-const estLocalLabel = id => inventarioLocs.find(l => l.id === id)?.label || id || '—';
+const estLocalLabel = id => id === '_sem_local' ? 'Sem local' : (inventarioLocs.find(l => l.id === id)?.label || id || '—');
 
 // ══════════════════════════════════════════════════════════════
 // ESTOQUE — Tipos de contagem
