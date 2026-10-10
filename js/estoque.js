@@ -35,6 +35,33 @@ function _ultimaContagemPorItem() {
   return mapa;
 }
 
+// ── Débito automático (calculado, não configurado) ─────────────
+// Um item tem débito automático quando aparece DIRETO na ficha técnica de
+// algo que é vendido: base da pizza (massa+embalagem), opção/sabor, produto
+// avulso, ou é ele próprio vendido (bebida mapeada como insumo no CW).
+// Não desce para dentro do preparado: a pizza baixa a Mussarela Triturada,
+// não a Mussarela em Barra — a barra sai do saldo só na contagem.
+// Devolve Map itemId → [nomes do que o consome], pra explicar no cadastro.
+function estDebitoAutoMapa() {
+  const mapa = new Map();
+  const add = (itemId, origem) => {
+    if (itemId == null) return;
+    if (!mapa.has(itemId)) mapa.set(itemId, []);
+    const l = mapa.get(itemId);
+    if (!l.includes(origem)) l.push(origem);
+  };
+  const ativo = x => x && x.active !== false;
+  (typeof produtosPizza !== 'undefined' ? produtosPizza : []).filter(ativo)
+    .forEach(p => (p.fichaTecnica?.ingredientes || []).forEach(i => add(i.item_id, p.nome)));
+  (typeof opcoes !== 'undefined' ? opcoes : []).filter(ativo)
+    .forEach(o => (o.fichaTecnica?.ingredientes || []).forEach(i => add(i.item_id, o.nome)));
+  (typeof produtos !== 'undefined' ? produtos : []).filter(ativo)
+    .forEach(p => (p.fichaTecnica?.ingredientes || []).forEach(i => add(i.item_id, p.name)));
+  const bebidas = (typeof _cwMapa !== 'undefined' && _cwMapa?.bebidas) || {};
+  Object.values(bebidas).forEach(b => { if (b?.tipo === 'insumo') add(b.id, 'Venda direta'); });
+  return mapa;
+}
+
 // Tipos de movimentação
 const MOV_TIPOS = {
   entrada_compra:   { label: 'Entrada — Compra',         icon: 'arrow-down-circle', cor: 'var(--green)', bg: 'var(--green-light)' },

@@ -72,11 +72,12 @@ function renderCadInsumos() {
     if (dl) dl.innerHTML = cats.map(c => `<option value="${c}">`).join('');
   }
 
+  const _debAuto = estDebitoAutoMapa();
   let filt = insumos.filter(i => {
     if (q && !i.name.toLowerCase().includes(q) && !i.cat.toLowerCase().includes(q)) return false;
     if (cat && i.cat !== cat) return false;
     if (window._cadFilEmb    && !(i.unidCompra && i.qtdEmb > 0)) return false;
-    if (window._cadFilDiaria && !i.debitoAuto)                    return false;
+    if (window._cadFilDiaria && !_debAuto.has(i.id))              return false;
     return true;
   }).sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
 
@@ -94,7 +95,7 @@ function renderCadInsumos() {
 
   if (inCfg) {
     const nEmb    = insumos.filter(i => i.unidCompra && i.qtdEmb > 0).length;
-    const nDiaria = insumos.filter(i => i.debitoAuto).length;
+    const nDiaria = insumos.filter(i => _debAuto.has(i.id)).length;
     const filEmb  = !!window._cadFilEmb;
     const filDia  = !!window._cadFilDiaria;
 
@@ -110,7 +111,7 @@ function renderCadInsumos() {
   </button>
   <button onclick="window._cadFilDiaria=!window._cadFilDiaria;renderCadInsumos()"
     style="display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:99px;border:1.5px solid ${filDia?'var(--orange-dark)':'var(--border)'};background:${filDia?'var(--orange-light)':'transparent'};color:${filDia?'var(--orange-dark)':'var(--muted)'};font-size:var(--text-xs);font-weight:700;cursor:pointer">
-    ${lc('zap',11,'currentColor')} Débito CW <span style="font-size:var(--text-2xs);opacity:.7">(${nDiaria})</span>
+    ${lc('zap',11,'currentColor')} Débito automático <span style="font-size:var(--text-2xs);opacity:.7">(${nDiaria})</span>
   </button>
   ${filEmb||filDia ? `<button onclick="window._cadFilEmb=false;window._cadFilDiaria=false;renderCadInsumos()"
     style="font-size:var(--text-xs);color:var(--muted);background:none;border:none;cursor:pointer;padding:2px 6px">limpar</button>` : ''}
@@ -130,7 +131,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
         const supIds  = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
         const sups    = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
         const temEmb  = !!(item.unidCompra && item.qtdEmb > 0);
-        const temDebito = !!item.debitoAuto;
+        const temDebito = _debAuto.has(item.id);
         const supExcCfg = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
         return `<div class="cfg-row" style="cursor:pointer" onclick="openEditItem(${item.id})"
             onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'">
@@ -139,7 +140,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
               <span class="cfg-row-label">${item.name}</span>
               <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
               ${temEmb ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>` : ''}
-              ${temDebito ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito CW</span>` : ''}
+              ${temDebito ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito auto</span>` : ''}
               ${supExcCfg ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('star',9,'currentColor')} Exclusivo · ${supExcCfg.name}</span>` : ''}
             </div>
             <div class="cfg-row-sub" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:2px">
@@ -175,7 +176,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
             const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
             const sups   = supIds.map(id => suppliers.find(s => s.id === id)).filter(Boolean);
             const temEmb = !!(item.unidCompra && item.qtdEmb > 0);
-            const temDebito = !!item.debitoAuto;
+            const temDebito = _debAuto.has(item.id);
             const supExc = item.supIdExclusivo ? suppliers.find(s => s.id === item.supIdExclusivo) : null;
             return `<div class="insumo-row" onclick="openEditItem(${item.id})">
               <div style="flex:1;min-width:0">
@@ -183,7 +184,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
                   <span style="font-size:var(--text-sm);font-weight:700">${item.name}</span>
                   <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
                   ${temEmb?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>`:''}
-                  ${temDebito?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito CW</span>`:''}
+                  ${temDebito?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito auto</span>`:''}
                 </div>
                 ${sups.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
                   ${sups.map(s => {
@@ -222,6 +223,7 @@ function openItemModal() {
   const prev = document.getElementById('fEmbPreview'); if (prev) prev.textContent = '';
   populateSupChecks([]);
   const cd = document.getElementById('fContagemDiaria'); if (cd) cd.checked = false;
+  _estBoxRender('fEstoqueBox', null, false);
   document.getElementById('delItemBtn').style.display = 'none';
   document.getElementById('ovItem').classList.add('open');
   setTimeout(() => document.getElementById('fName').focus(), 80);
@@ -251,7 +253,7 @@ function openEditItem(id) {
   // Suporta supIds (array novo) e supId (legado)
   const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
   populateSupChecks(supIds, item.supIdExclusivo ?? null);
-  const da = document.getElementById('fDebitoAuto');     if (da) da.checked = !!item.debitoAuto;
+  _estBoxRender('fEstoqueBox', item, false);
   document.getElementById('delItemBtn').style.display = 'inline-flex';
   document.getElementById('ovItem').classList.add('open');
 }
@@ -495,7 +497,7 @@ function _saveItemConfirmado(name, supIds) {
       document.getElementById('fB2').value.trim(),
     ],
     isProd:          false,
-    debitoAuto:      document.getElementById('fDebitoAuto')?.checked || false,
+    ..._estBoxLer('fEstoqueBox'),
   };
   if (editItemId) {
     const idx = items.findIndex(i => i.id === editItemId);
@@ -510,6 +512,87 @@ function _saveItemConfirmado(name, supIds) {
   closeModal('ovItem');
   renderCadInsumos();
   renderDashboard();
+}
+
+// ── Bloco "Estoque" dos modais de insumo e preparado ─────────────
+// Local de entrada: onde a compra (insumo) ou a produção (preparado) entra.
+// Local de saída: de onde a venda debita. Ex.: caixa de pizza entra na
+// Gráfica e sai na Loja — o que liga os dois é a Transferência.
+// "Também guardado em": locais extras onde o item aparece na contagem.
+let _estBoxSel = {}; // boxId → Set de locais extras marcados
+
+function _estBoxRender(boxId, item, isPreparado) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  const locais = estLocaisEstoque();
+  const ent    = item?.localEntrada || '';
+  const sai    = item?.localSaida   || '';
+  _estBoxSel[boxId] = new Set((item?.locais || []).filter(l => l !== ent && l !== sai));
+
+  const origens = item ? (estDebitoAutoMapa().get(item.id) || []) : null;
+  let debHtml;
+  if (!item) {
+    debHtml = `<span style="color:var(--muted)">Definido pelas fichas técnicas: se o item entrar na ficha de um produto vendido, ele sai do saldo a cada venda.</span>`;
+  } else if (origens.length) {
+    const lista = origens.slice(0, 3).join(', ') + (origens.length > 3 ? ` e mais ${origens.length - 3}` : '');
+    debHtml = `<strong style="color:var(--green)">Débito automático: sim</strong> <span style="color:var(--text2)">— sai do saldo na venda de ${lista}.</span>`;
+  } else {
+    debHtml = `<strong style="color:var(--text2)">Débito automático: não</strong> <span style="color:var(--muted)">— não está na ficha de nenhum produto vendido; sai do saldo só na contagem.</span>`;
+  }
+
+  const opts = sel => `<option value="">— Não definido —</option>` +
+    locais.map(l => `<option value="${l.id}"${l.id === sel ? ' selected' : ''}>${l.label}</option>`).join('');
+
+  box.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:flex-start;padding:9px 12px;border-radius:var(--r8);background:${origens?.length ? 'var(--green-light)' : 'var(--surface2)'};font-size:var(--text-xs);line-height:1.5;margin-bottom:10px">
+      <span style="flex-shrink:0;line-height:0;margin-top:2px">${lc('zap', 13, origens?.length ? 'var(--green)' : 'var(--muted)')}</span><div>${debHtml}</div>
+    </div>
+    ${locais.length ? `
+    <div class="f2">
+      <div class="field"><label>${isPreparado ? 'Entrada da produção' : 'Entrada da compra'}</label>
+        <select class="inp" id="${boxId}-ent" onchange="_estBoxSync('${boxId}')">${opts(ent)}</select></div>
+      <div class="field"><label>Saída na venda</label>
+        <select class="inp" id="${boxId}-sai" onchange="_estBoxSync('${boxId}')">${opts(sai)}</select></div>
+    </div>
+    <div class="field" style="margin-bottom:0"><label>Também guardado em <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+      <div id="${boxId}-extras" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <span style="font-size:.65rem;color:var(--muted);margin-top:4px">O item aparece na contagem de cada local marcado.</span>
+    </div>` : `
+    <div style="font-size:var(--text-xs);color:var(--muted)">Nenhum local de estoque cadastrado. Cadastre em Configurações › Personalização › Estoque.</div>`}`;
+  _estBoxSync(boxId);
+}
+
+function _estBoxSync(boxId) {
+  const wrap = document.getElementById(boxId + '-extras');
+  if (!wrap) return;
+  const ent = document.getElementById(boxId + '-ent')?.value || '';
+  const sai = document.getElementById(boxId + '-sai')?.value || '';
+  const sel = _estBoxSel[boxId] || new Set();
+  wrap.innerHTML = estLocaisEstoque().map(l => {
+    const fixo = l.id === ent || l.id === sai;
+    const on   = fixo || sel.has(l.id);
+    return `<button type="button" ${fixo ? 'disabled title="Já é entrada ou saída"' : `onclick="_estBoxToggle('${boxId}','${l.id}')"`}
+      style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;font-size:var(--text-xs);font-weight:600;font-family:inherit;
+      cursor:${fixo ? 'default' : 'pointer'};border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};
+      background:${on ? 'var(--purple-xlight)' : 'transparent'};color:${on ? 'var(--purple)' : 'var(--text2)'};opacity:${fixo ? .7 : 1}">
+      ${on ? lc('check', 10, 'currentColor') : ''}${l.label}</button>`;
+  }).join('');
+}
+
+function _estBoxToggle(boxId, localId) {
+  const sel = _estBoxSel[boxId] || (_estBoxSel[boxId] = new Set());
+  sel.has(localId) ? sel.delete(localId) : sel.add(localId);
+  _estBoxSync(boxId);
+}
+
+// Campos que vão pro item. `locais` sempre inclui entrada e saída.
+function _estBoxLer(boxId) {
+  const entEl = document.getElementById(boxId + '-ent');
+  if (!entEl) return {}; // sem locais cadastrados: não mexe no que o item já tem
+  const ent = entEl.value || null;
+  const sai = document.getElementById(boxId + '-sai')?.value || null;
+  const locais = [...new Set([ent, sai, ...(_estBoxSel[boxId] || [])].filter(Boolean))];
+  return { localEntrada: ent, localSaida: sai, locais };
 }
 
 function deleteItem() {
@@ -970,6 +1053,7 @@ function openPreparoModal() {
   document.getElementById('fpCost').value = '0';
   document.getElementById('fpUnit').value = 'kg';
   document.getElementById('delPreparoBtn').style.display = 'none';
+  _estBoxRender('fpEstoqueBox', null, true);
   _ftInit(null);
   document.getElementById('ovPreparo').classList.add('open');
   setTimeout(() => document.getElementById('fpName').focus(), 80);
@@ -990,6 +1074,7 @@ function openEditPreparo(id) {
   document.getElementById('fpObs').value    = item.obs   || '';
   // Ficha Técnica — _ftInit seta ftRendimento, popula _ftRows e renderiza
   _ftInit(item.fichaTecnica || null);
+  _estBoxRender('fpEstoqueBox', item, true);
   document.getElementById('delPreparoBtn').style.display = 'inline-flex';
   document.getElementById('ovPreparo').classList.add('open');
 }
@@ -1033,6 +1118,7 @@ function _savePreparoConfirmado(name, fichaTecnica) {
     isProd:       true,
     brands:       [],
     supId:        null,
+    ..._estBoxLer('fpEstoqueBox'),
   };
   if (editPreparoId) {
     const idx = items.findIndex(i => i.id === editPreparoId);

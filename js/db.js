@@ -172,7 +172,7 @@ const db = (() => {
       'vtp_rh_avaliacoes','vtp_sabores','vtp_produtos','vtp_produtos_pizza','vtp_opcoes','vtp_cw_mapa','vtp_canais_comissao','vtp_perms','vtp_config',
       'vtp_movimentacoes','vtp_hist_contagens','vtp_contagensInv',
       'vtp_manut_itens','vtp_manut_cats_cfg','vtp_manut_grupos',
-      'vtp_inv_locs','vtp_inv_cats','vtp_ck_turnos','vtp_tipos_lista',
+      'vtp_inv_locs','vtp_inv_cats','vtp_est_tipos_contagem','vtp_ck_turnos','vtp_tipos_lista',
       'vtp_auditlog','vtp_alertas',
       'vtp_etiq_metodos','vtp_etiq_validades','vtp_etiquetas','vtp_etiq_pontos',
     ];
@@ -230,6 +230,7 @@ const db = (() => {
     manutGrupos:       'vtp_manut_grupos',
     inventarioLocs:    'vtp_inv_locs',
     inventarioCats:    'vtp_inv_cats',
+    tiposContagem:     'vtp_est_tipos_contagem',
     checklistTurnos:   'vtp_ck_turnos',
     tiposLista:        'vtp_tipos_lista',
     auditLog:          'vtp_auditlog',

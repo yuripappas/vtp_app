@@ -25,7 +25,7 @@
     'vtp_precificacao_config','vtp_precificacao_produtos','vtp_canais_imposto',
     'vtp_movimentacoes','vtp_hist_contagens','vtp_contagensInv',
     'vtp_manut_itens','vtp_manut_cats_cfg','vtp_manut_grupos',
-    'vtp_inv_locs','vtp_inv_cats','vtp_ck_turnos','vtp_tipos_lista',
+    'vtp_inv_locs','vtp_inv_cats','vtp_est_tipos_contagem','vtp_ck_turnos','vtp_tipos_lista',
     'vtp_auditlog','vtp_alertas','vtp_desperdicios','vtp_manut_sessoes','vtp_v',
     'vtp_etiq_metodos','vtp_etiq_validades','vtp_etiquetas','vtp_etiq_pontos',
   ];
@@ -68,7 +68,7 @@
     'js/atendimento.js', 'js/marketing.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=218');
+    await loadScript(src + '?v=219');
   }
 
   // First run: push all initialized data to Supabase

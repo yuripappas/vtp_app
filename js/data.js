@@ -146,7 +146,9 @@ const _FUNC_CARGOS_DEFAULT = {
 let FUNC_CARGOS = db._get('vtp_emp_cargos', null) || {..._FUNC_CARGOS_DEFAULT};
 const saveFuncCargos = () => db._set('vtp_emp_cargos', FUNC_CARGOS);
 
-// ── Tipos configuráveis de Desperdício ──────────────────────────
+// ── Tipos configuráveis de Baixa (antigo "Tipos de Desperdício") ──
+// Mesma chave vtp_emp_tipos_desp: os registros antigos de desperdício
+// apontam para estes ids e continuam válidos depois da migração.
 const _TIPOS_DESPERDICIO_DEFAULT = [
   { id:'preproducao', label:'Erro de pré-produção', color:'var(--red)',        bg:'var(--red-light)',    icon:'chef-hat' },
   { id:'montagem',    label:'Montagem incorreta',   color:'var(--orange-dark)',bg:'var(--orange-light)', icon:'tag' },
@@ -154,6 +156,7 @@ const _TIPOS_DESPERDICIO_DEFAULT = [
   { id:'validade',    label:'Vencimento/validade',  color:'#7C3AED',           bg:'#EDE9FE',             icon:'calendar' },
   { id:'acidente',    label:'Acidente/queda',       color:'var(--muted)',      bg:'var(--surface2)',      icon:'alert-triangle' },
   { id:'alimentacao', label:'Alimentação',           color:'var(--green)',      bg:'var(--green-light)',   icon:'user' },
+  { id:'consumo_interno', label:'Consumo interno',    color:'var(--green)',      bg:'var(--green-light)',   icon:'coffee' },
   { id:'cortesia',    label:'Cortesias',             color:'var(--purple)',     bg:'var(--purple-light)',  icon:'star' },
   { id:'marketing',   label:'Marketing',             color:'#0EA5E9',           bg:'#E0F2FE',             icon:'trending-up' },
   { id:'outro',       label:'Outro',                 color:'var(--text2)',      bg:'var(--surface2)',      icon:'package' },
@@ -595,6 +598,27 @@ let inventarioLocs = db._get('vtp_inv_locs', null) || [
 ];
 const saveInventarioLocs = () => db._set('vtp_inv_locs', inventarioLocs);
 
+// Locais servem ao Inventário (ativos) e ao Estoque (insumos). `estoque:false`
+// tira o local da contagem de insumos (ex.: Escritório). Sem a flag = guarda
+// insumos — cadastros antigos não precisam ser migrados.
+const estLocalGuardaInsumos = l => l && l.estoque !== false;
+const estLocaisEstoque = () => inventarioLocs.filter(estLocalGuardaInsumos);
+const estLocalLabel = id => inventarioLocs.find(l => l.id === id)?.label || id || '—';
+
+// ══════════════════════════════════════════════════════════════
+// ESTOQUE — Tipos de contagem
+// ══════════════════════════════════════════════════════════════
+// freq: 'semanal' (dia = 0 dom … 6 sáb) | 'diaria' | 'livre'
+// escopo: 'todos' | 'categorias' (cats[]) | 'itens' (itemIds[])
+// fechaCiclo: a contagem completa fecha o ciclo e abre o próximo; as
+// demais só acertam o saldo dos itens contados.
+const _TIPOS_CONTAGEM_DEFAULT = [
+  { id:'semanal', label:'Semanal completa', freq:'semanal', dia:1, escopo:'todos', cats:[], itemIds:[], fechaCiclo:true  },
+  { id:'diaria',  label:'Diária — itens críticos', freq:'diaria', dia:null, escopo:'itens', cats:[], itemIds:[], fechaCiclo:false },
+];
+let TIPOS_CONTAGEM = db._get('vtp_est_tipos_contagem', null) || _TIPOS_CONTAGEM_DEFAULT.map(t => ({ ...t }));
+const saveTiposContagem = () => db._set('vtp_est_tipos_contagem', TIPOS_CONTAGEM);
+
 let inventarioCats = db._get('vtp_inv_cats', null) || {
   equipamento: { label:'Equipamento', icon:'settings',   color:'var(--orange-dark)', bg:'var(--orange-light)',  _builtin:true },
   estrutura:   { label:'Estrutura',   icon:'building-2', color:'var(--yellow)',      bg:'var(--yellow-light)',  _builtin:true },
@@ -725,6 +749,7 @@ window._vtpSetGlobal = function(key, val) {
     case 'vtp_produtos_pizza': produtosPizza = val;     break;
     case 'vtp_opcoes':         opcoes = val;            break;
     case 'vtp_inv_locs':       inventarioLocs = val;    break;
+    case 'vtp_est_tipos_contagem': TIPOS_CONTAGEM = val; break;
     case 'vtp_inv_cats':       inventarioCats = val;    break;
     case 'vtp_manut_cats_cfg': manutCats = val;         break;
     case 'vtp_manut_grupos':   manutGrupos = val;       break;

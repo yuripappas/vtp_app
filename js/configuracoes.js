@@ -32,7 +32,6 @@ const _CFG_MODULOS_TABS = [
   { id:'compras',    icon:'shopping-bag', label:'Compras'    },
   { id:'inventario', icon:'layers',       label:'Inventário' },
   { id:'manutencao', icon:'wrench',       label:'Manutenção' },
-  { id:'desperdicio',icon:'trash-2',      label:'Desperdício'},
   { id:'checklist',  icon:'clock',        label:'Checklist'  },
 ];
 
@@ -176,10 +175,11 @@ function setCfgTab(tab) {
     fornecedores:'fornecedores', preparo:'preparo',
     produtos:'produtos', servicos:'servicos',
     equipe:'modulos', rh:'modulos',
-    estoque:'modulos', estoque_cfg:'modulos', modulos:'modulos',
+    estoque:'modulos', estoque_cfg:'modulos', modulos:'modulos', desperdicio:'modulos',
     etiquetagem:'etiquetagem',
   };
   _cfgSection = map[tab] || tab;
+  if (['estoque','estoque_cfg','desperdicio'].includes(tab)) _cfgGrupoTab = 'estoque';
   if (document.getElementById('cfgSectionContent')) {
     _initCfgNav();
     setCfgSection(_cfgSection);
@@ -618,6 +618,29 @@ function _cfgRenderGrupoContent() {
   } else if (_cfgGrupoTab === 'estoque') {
     const cfg = getConfig();
     el.innerHTML =
+      _sb('Locais da empresa', '_cfgResetInvLocais', 'invLoc',
+        `<input class="inp" id="cfgNewInvLoc" placeholder="Nome do local (ex: Gráfica)" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddInvLoc()">
+         <button class="btn btn-primary btn-sm" onclick="_cfgAddInvLoc()">${lc('check',12,'#fff')} Salvar</button>
+         <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('invLoc')">Cancelar</button>`,
+        'cfgInvLocaisList') +
+      `<div class="cfg-section-block">
+        <div class="cfg-section-block-header">
+          <button class="cfg-section-block-toggle" onclick="toggleCfgBlock(this)">
+            <span class="cfg-section-block-chevron">${lc('chevron-down',13,'currentColor')}</span>
+            <span class="cfg-section-block-title">Tipos de contagem</span>
+          </button>
+          <div class="cfg-section-block-actions">
+            <button class="btn btn-outline btn-sm" onclick="_cfgAbrirTipoContagem(null)">${lc('plus',12,'currentColor')} Adicionar</button>
+          </div>
+        </div>
+        <div class="cfg-section-block-body"><div id="cfgTiposContagemList"></div></div>
+      </div>` +
+      _sb('Tipos de baixa', '_cfgResetTiposDesp', 'tiposDesp',
+        `<input class="inp" id="cfgNewDespNome" placeholder="Nome do tipo (ex: Cortesia)" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddTipoDesp()">
+         <select class="inp" id="cfgNewDespIcon" style="padding:7px 8px;font-size:var(--text-sm);width:auto">${iconOpts}</select>
+         <button class="btn btn-primary btn-sm" onclick="_cfgAddTipoDesp()">${lc('check',12,'#fff')} Salvar</button>
+         <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('tiposDesp')">Cancelar</button>`,
+        'cfgTiposDespList') +
       `<div class="cfg-section-block">
         <div class="cfg-section-block-header">
           <button class="cfg-section-block-toggle" onclick="toggleCfgBlock(this)">
@@ -647,7 +670,7 @@ function _cfgRenderGrupoContent() {
          <button class="btn btn-primary btn-sm" onclick="_cfgAddCatInsumo()">${lc('check',12,'#fff')} Salvar</button>
          <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('catInsumo')">Cancelar</button>`,
         'cfgCatInsumoList');
-    _cfgRenderCatInsumo();
+    _cfgRenderCatInsumo(); _cfgRenderInvLocais(); _cfgRenderTiposContagem(); _cfgRenderTiposDesp();
 
   } else if (_cfgGrupoTab === 'compras') {
     el.innerHTML =
@@ -661,18 +684,17 @@ function _cfgRenderGrupoContent() {
 
   } else if (_cfgGrupoTab === 'inventario') {
     el.innerHTML =
-      _sb('Localizações', '_cfgResetInvLocais', 'invLoc',
-        `<input class="inp" id="cfgNewInvLoc" placeholder="Nome da localização" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddInvLoc()">
-         <button class="btn btn-primary btn-sm" onclick="_cfgAddInvLoc()">${lc('check',12,'#fff')} Salvar</button>
-         <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('invLoc')">Cancelar</button>`,
-        'cfgInvLocaisList') +
+      `<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--surface2);border-radius:var(--r8);border-left:3px solid var(--border);margin-bottom:12px;font-size:var(--text-xs);color:var(--text2);line-height:1.5">
+        ${lc('info',12,'var(--text2)')} Os locais da empresa (usados pelo Inventário e pelo Estoque) ficam na aba
+        <button class="btn btn-ghost btn-xs" style="color:var(--purple);font-weight:700;padding:0 2px" onclick="_cfgSetGrupoTab('estoque')">Estoque</button>.
+      </div>` +
       _sb('Tipos de Ativo', '_cfgResetInvCats', 'invCat',
         `<input class="inp" id="cfgNewInvCatLabel" placeholder="Nome do tipo" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddInvCat()">
          <select class="inp" id="cfgNewInvCatIcon" style="padding:7px 8px;font-size:var(--text-sm);width:auto">${iconOpts}</select>
          <button class="btn btn-primary btn-sm" onclick="_cfgAddInvCat()">${lc('check',12,'#fff')} Salvar</button>
          <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('invCat')">Cancelar</button>`,
         'cfgInvCatsList');
-    _cfgRenderInvLocais(); _cfgRenderInvCats();
+    _cfgRenderInvCats();
 
   } else if (_cfgGrupoTab === 'manutencao') {
     el.innerHTML =
@@ -689,16 +711,6 @@ function _cfgRenderGrupoContent() {
          <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('manutGrupo')">Cancelar</button>`,
         'cfgManutGruposList');
     _cfgRenderManutCats(); _cfgRenderManutGrupos();
-
-  } else if (_cfgGrupoTab === 'desperdicio') {
-    el.innerHTML =
-      _sb('Tipos de Desperdício', '_cfgResetTiposDesp', 'tiposDesp',
-        `<input class="inp" id="cfgNewDespNome" placeholder="Nome do tipo" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddTipoDesp()">
-         <select class="inp" id="cfgNewDespIcon" style="padding:7px 8px;font-size:var(--text-sm);width:auto">${iconOpts}</select>
-         <button class="btn btn-primary btn-sm" onclick="_cfgAddTipoDesp()">${lc('check',12,'#fff')} Salvar</button>
-         <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('tiposDesp')">Cancelar</button>`,
-        'cfgTiposDespList');
-    _cfgRenderTiposDesp();
 
   } else if (_cfgGrupoTab === 'checklist') {
     el.innerHTML =
@@ -1139,9 +1151,19 @@ function _cfgAddTipoDesp() {
   toast(`Tipo "${nome}" adicionado!`);
 }
 
-function _cfgRemoverTipoDesp(id) {
+function _cfgRemoverTipoDesp(id, confirmado) {
   if (typeof TIPOS_DESPERDICIO === 'undefined') return;
   const t = TIPOS_DESPERDICIO.find(x => x.id === id);
+  const emUso = (typeof desperdicios !== 'undefined' ? desperdicios : []).filter(d => d.tipo === id).length;
+  if (emUso && !confirmado) {
+    vtpConfirm({
+      title: `Remover "${t?.label || id}"?`,
+      message: `${emUso} registro(s) de baixa usam este tipo. Eles continuam no histórico, mas sem o nome do tipo.`,
+      confirmLabel: 'Remover',
+      onConfirm: () => _cfgRemoverTipoDesp(id, true),
+    });
+    return;
+  }
   TIPOS_DESPERDICIO.splice(TIPOS_DESPERDICIO.findIndex(x => x.id === id), 1);
   saveTiposDesperdicio();
   _cfgRenderTiposDesp();
@@ -1151,14 +1173,14 @@ function _cfgRemoverTipoDesp(id) {
 function _cfgResetTiposDesp() {
   if (typeof TIPOS_DESPERDICIO === 'undefined' || typeof _TIPOS_DESPERDICIO_DEFAULT === 'undefined') return;
   vtpConfirm({
-    title: 'Restaurar tipos de desperdício',
+    title: 'Restaurar tipos de baixa',
     message: 'Os tipos personalizados serão substituídos pelos valores padrão.',
     confirmLabel: 'Restaurar',
     onConfirm: () => {
       TIPOS_DESPERDICIO.splice(0, TIPOS_DESPERDICIO.length, ...JSON.parse(JSON.stringify(_TIPOS_DESPERDICIO_DEFAULT)));
       saveTiposDesperdicio();
       _cfgRenderTiposDesp();
-      toast('Tipos de desperdício restaurados.');
+      toast('Tipos de baixa restaurados.');
     }
   });
 }
@@ -1275,22 +1297,120 @@ function _cfgRemoveDictEntry(dict, saveFn, key, renderFn, badgeSec) {
 
 // ── Localizações do Inventário ────────────────────────────────
 
+// Quantos insumos/preparados e ativos do Inventário usam o local
+function _cfgUsoLocal(id) {
+  if (!id) return { itens: 0, ativos: 0, semLocal: 0 };
+  const itens  = items.filter(i => i.localEntrada === id || i.localSaida === id || (i.locais || []).includes(id)).length;
+  const inv    = typeof _getInvData === 'function' ? (_getInvData() || []) : [];
+  const ativos = (Array.isArray(inv) ? inv : []).filter(a => a.invLocalizacao === id).length;
+  return { itens, ativos };
+}
+
+// Insumos e preparados ativos que ainda não têm nenhum local de estoque
+function _cfgItensSemLocal() {
+  return items.filter(i => i.active !== false && !i.localEntrada && !i.localSaida && !(i.locais || []).length);
+}
+
 function _cfgRenderInvLocais() {
   const el = document.getElementById('cfgInvLocaisList');
   if (!el) return;
   const lista = typeof inventarioLocs !== 'undefined' ? inventarioLocs : [];
-  if (!lista.length) { el.innerHTML = `<div style="padding:20px;text-align:center;font-size:var(--text-sm);color:var(--muted);font-style:italic">Nenhuma localização cadastrada.</div>`; return; }
-  el.innerHTML = lista.map((loc, idx) =>
-    `<div class="cfg-row">
-      <div class="cfg-row-icon" style="background:var(--purple-xlight);color:var(--purple)">${lc('map-pin',14,'currentColor')}</div>
-      <span class="cfg-row-label">${loc.label}</span>
-      <div class="cfg-row-actions">
-        <button class="btn btn-ghost btn-xs" onclick="_cfgEditarInvLoc(${idx})" title="Editar">${lc('edit-2',12,'currentColor')}</button>
-        ${_cfgDelBtn(`_cfgRemoverInvLoc(${idx})`, 'Remover localização')}
-      </div>
-    </div>`
-  ).join('');
+  if (!lista.length) { el.innerHTML = `<div style="padding:20px;text-align:center;font-size:var(--text-sm);color:var(--muted);font-style:italic">Nenhum local cadastrado.</div>`; return; }
+  const semLocal = _cfgItensSemLocal().length;
+  el.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px;background:var(--surface2);border-radius:var(--r8);border-left:3px solid var(--border);margin-bottom:8px;font-size:var(--text-xs);color:var(--text2);line-height:1.5">
+      ${lc('info',12,'var(--text2)')}
+      <span>Os mesmos locais servem ao <strong>Inventário</strong> (ativos) e ao <strong>Estoque</strong> (insumos). Desligue "Guarda insumos" nos locais que não entram na contagem de estoque, como o Escritório.</span>
+    </div>
+    ${semLocal ? `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--orange-light);border-radius:var(--r8);margin-bottom:8px;font-size:var(--text-sm);color:var(--orange-dark)">
+      ${lc('alert-triangle',14,'currentColor')}
+      <span style="flex:1"><strong>${semLocal}</strong> insumo(s)/preparado(s) ainda sem local — eles não vão aparecer em nenhuma contagem.</span>
+      <button class="btn btn-outline btn-sm" onclick="_cfgAbrirDistribuirLocais()">Distribuir por categoria</button>
+    </div>` : ''}
+    ${lista.map((loc, idx) => {
+      const guarda = estLocalGuardaInsumos(loc);
+      const uso    = _cfgUsoLocal(loc.id);
+      const sub    = [uso.itens ? `${uso.itens} insumo(s)` : '', uso.ativos ? `${uso.ativos} ativo(s)` : ''].filter(Boolean).join(' · ') || 'Sem itens';
+      return `<div class="cfg-row">
+        <div class="cfg-row-icon" style="background:${guarda ? 'var(--purple-xlight)' : 'var(--surface2)'};color:${guarda ? 'var(--purple)' : 'var(--muted)'}">${lc('map-pin',14,'currentColor')}</div>
+        <div style="flex:1;min-width:0">
+          <div class="cfg-row-label">${loc.label}</div>
+          <div class="cfg-row-sub">${sub}</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--text-xs);font-weight:600;color:${guarda ? 'var(--purple)' : 'var(--muted)'};user-select:none;white-space:nowrap">
+          <input type="checkbox" ${guarda ? 'checked' : ''} onchange="_cfgToggleLocalEstoque(${idx}, this.checked)" style="accent-color:var(--purple);width:14px;height:14px">
+          Guarda insumos
+        </label>
+        <div class="cfg-row-actions">
+          <button class="btn btn-ghost btn-xs" onclick="_cfgEditarInvLoc(${idx})" title="Editar">${lc('edit-2',12,'currentColor')}</button>
+          ${_cfgDelBtn(`_cfgRemoverInvLoc(${idx})`, 'Remover local')}
+        </div>
+      </div>`;
+    }).join('')}`;
   _cfgUpdateNavBadge('inv_locais', lista.length);
+}
+
+function _cfgToggleLocalEstoque(idx, on) {
+  const loc = inventarioLocs[idx];
+  if (!loc) return;
+  if (!on) {
+    const uso = _cfgUsoLocal(loc.id);
+    if (uso.itens) {
+      toast(`${uso.itens} insumo(s) estão guardados em "${loc.label}". Troque o local deles antes de desligar.`, 'err');
+      _cfgRenderInvLocais();
+      return;
+    }
+  }
+  inventarioLocs[idx] = { ...loc, estoque: !!on };
+  saveInventarioLocs();
+  _cfgRenderInvLocais();
+}
+
+// Atribui um local, em lote, aos itens sem local de uma ou mais categorias
+function _cfgAbrirDistribuirLocais() {
+  const semLocal = _cfgItensSemLocal();
+  const locais   = estLocaisEstoque();
+  if (!locais.length) { toast('Ligue "Guarda insumos" em pelo menos um local', 'err'); return; }
+  const porCat = {};
+  semLocal.forEach(i => { const c = i.cat || 'Outros'; porCat[c] = (porCat[c] || 0) + 1; });
+  const cats = Object.keys(porCat).sort();
+  const ov = document.createElement('div'); ov.className = 'overlay open'; ov.id = 'ovDistLocais';
+  ov.innerHTML = `<div class="modal" style="width:440px;max-width:calc(100vw - 32px);padding:22px" onclick="event.stopPropagation()">
+    <div style="font-size:var(--text-md);font-weight:700;margin-bottom:4px">Distribuir itens por local</div>
+    <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:16px">Só os itens que ainda não têm local recebem o escolhido como entrada e saída. Depois dá pra ajustar item a item no cadastro.</div>
+    <div class="field"><label class="slbl">Local</label>
+      <select id="distLocal" class="inp">${locais.map(l => `<option value="${l.id}">${l.label}</option>`).join('')}</select></div>
+    <div class="field"><label class="slbl">Categorias</label>
+      <div style="display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:auto;padding:8px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2)">
+        ${cats.map(c => `<label style="text-transform:none;letter-spacing:normal;font-weight:500;color:var(--text);display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:3px 2px">
+          <input type="checkbox" class="distCat" value="${c.replace(/"/g,'&quot;')}" style="accent-color:var(--purple);width:14px;height:14px">
+          <span style="flex:1">${c}</span><span style="font-size:var(--text-xs);color:var(--muted)">${porCat[c]}</span>
+        </label>`).join('')}
+      </div></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-ghost" style="flex:1" onclick="this.closest('.overlay').remove()">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="_cfgAplicarDistribuirLocais()">Aplicar</button>
+    </div>
+  </div>`;
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+}
+
+function _cfgAplicarDistribuirLocais() {
+  const local = document.getElementById('distLocal')?.value;
+  const cats  = new Set([...document.querySelectorAll('#ovDistLocais .distCat:checked')].map(c => c.value));
+  if (!local || !cats.size) { toast('Escolha o local e pelo menos uma categoria', 'err'); return; }
+  let n = 0;
+  _cfgItensSemLocal().forEach(i => {
+    if (!cats.has(i.cat || 'Outros')) return;
+    i.localEntrada = local; i.localSaida = local; i.locais = [local];
+    n++;
+  });
+  saveI();
+  try { logAudit('locais_distribuidos', `${n} itens → ${estLocalLabel(local)}`, 'configuracoes'); } catch (_) {}
+  document.getElementById('ovDistLocais')?.remove();
+  _cfgRenderInvLocais();
+  toast(`${n} item(ns) agora em "${estLocalLabel(local)}"`, 'ok');
 }
 
 function _cfgAddInvLoc() {
@@ -1309,6 +1429,12 @@ function _cfgAddInvLoc() {
 function _cfgRemoverInvLoc(idx) {
   if (inventarioLocs.length <= 1) { toast('Deve existir ao menos uma localização', 'err'); return; }
   const label = inventarioLocs[idx]?.label;
+  const uso = _cfgUsoLocal(inventarioLocs[idx]?.id);
+  if (uso.itens || uso.ativos) {
+    const partes = [uso.itens ? `${uso.itens} insumo(s)/preparado(s)` : '', uso.ativos ? `${uso.ativos} ativo(s) do Inventário` : ''].filter(Boolean);
+    toast(`"${label}" está em uso por ${partes.join(' e ')}. Troque o local deles antes de remover.`, 'err');
+    return;
+  }
   inventarioLocs.splice(idx, 1);
   saveInventarioLocs();
   _cfgRenderInvLocais();
@@ -1343,9 +1469,12 @@ function _cfgSalvarInvLoc(idx, btn) {
 }
 
 function _cfgResetInvLocais() {
+  const padrao = ['cozinha_fin','cozinha_prod','escritorio','atendimento','delivery','estoque_coz','corredor','quintal'];
+  const emUso = inventarioLocs.filter(l => !padrao.includes(l.id) && (_cfgUsoLocal(l.id).itens || _cfgUsoLocal(l.id).ativos));
+  if (emUso.length) { toast(`Não dá pra restaurar: ${emUso.map(l => l.label).join(', ')} está(ão) em uso.`, 'err'); return; }
   vtpConfirm({
     title: 'Restaurar localizações',
-    message: 'As localizações personalizadas serão substituídas pelos valores padrão.',
+    message: 'Os locais personalizados serão substituídos pelos valores padrão.',
     confirmLabel: 'Restaurar',
     onConfirm: () => {
       inventarioLocs = [
@@ -2900,4 +3029,216 @@ function _cfgEtqPontos(el) {
       </div>
     </div>
   `;
+}
+
+// ── Tipos de contagem (Estoque) ───────────────────────────────
+// Ex.: "Semanal completa" (fecha o ciclo, toda segunda) e "Diária — itens
+// críticos" (só acerta o saldo dos itens escolhidos, não fecha ciclo).
+
+const _CFG_DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+let _cfgTcEdit = null; // rascunho do modal: { id|null, ...campos }
+
+function _cfgTcResumo(t) {
+  const freq = t.freq === 'semanal' ? `Toda ${_CFG_DIAS_SEMANA[t.dia ?? 1].toLowerCase()}`
+             : t.freq === 'diaria'  ? 'Todo dia' : 'Quando precisar';
+  const esc  = t.escopo === 'categorias' ? `${(t.cats || []).length} categoria(s)`
+             : t.escopo === 'itens'      ? `${(t.itemIds || []).length} item(ns)` : 'Todos os itens';
+  return `${freq} · ${esc}`;
+}
+
+function _cfgRenderTiposContagem() {
+  const el = document.getElementById('cfgTiposContagemList');
+  if (!el) return;
+  const lista = typeof TIPOS_CONTAGEM !== 'undefined' ? TIPOS_CONTAGEM : [];
+  if (!lista.length) { el.innerHTML = `<div style="padding:16px;text-align:center;font-size:var(--text-sm);color:var(--muted);font-style:italic">Nenhum tipo cadastrado.</div>`; return; }
+  el.innerHTML = lista.map(t => `
+    <div class="cfg-row" style="cursor:pointer" onclick="_cfgAbrirTipoContagem('${t.id}')">
+      ${_cfgIconDot(t.fechaCiclo ? 'refresh-cw' : 'clipboard-list', t.fechaCiclo ? 'var(--purple)' : 'var(--orange-dark)', t.fechaCiclo ? 'var(--purple-xlight)' : 'var(--orange-light)')}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span class="cfg-row-label" style="flex:none">${t.label}</span>
+          ${t.fechaCiclo
+            ? `<span style="padding:1px 8px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple)">Fecha o ciclo</span>`
+            : `<span style="padding:1px 8px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--surface2);color:var(--text2)">Só acerta o saldo</span>`}
+        </div>
+        <div class="cfg-row-sub">${_cfgTcResumo(t)}</div>
+      </div>
+      <div class="cfg-row-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-ghost btn-xs" onclick="_cfgAbrirTipoContagem('${t.id}')" title="Editar">${lc('edit-2',12,'currentColor')}</button>
+        ${_cfgDelBtn(`_cfgRemoverTipoContagem('${t.id}')`, 'Remover tipo')}
+      </div>
+    </div>`).join('');
+}
+
+function _cfgAbrirTipoContagem(id) {
+  const t = id ? TIPOS_CONTAGEM.find(x => x.id === id) : null;
+  _cfgTcEdit = t
+    ? { ...t, cats: [...(t.cats || [])], itemIds: [...(t.itemIds || [])] }
+    : { id: null, label: '', freq: 'diaria', dia: 1, escopo: 'itens', cats: [], itemIds: [], fechaCiclo: false };
+  _cfgTcEdit._busca = '';
+  document.getElementById('ovTipoContagem')?.remove();
+  const ov = document.createElement('div'); ov.className = 'overlay open'; ov.id = 'ovTipoContagem';
+  ov.innerHTML = `<div class="modal" style="width:520px;max-width:calc(100vw - 32px);max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:0" onclick="event.stopPropagation()">
+    <div style="padding:20px 22px 0;font-size:var(--text-md);font-weight:700">${t ? 'Editar tipo de contagem' : 'Novo tipo de contagem'}</div>
+    <div id="tcBody" style="padding:16px 22px;overflow-y:auto;flex:1"></div>
+    <div style="display:flex;gap:8px;padding:14px 22px;border-top:1px solid var(--border)">
+      <button class="btn btn-ghost" style="flex:1" onclick="this.closest('.overlay').remove()">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="_cfgSalvarTipoContagem()">Salvar</button>
+    </div>
+  </div>`;
+  ov.onclick = e => { if (e.target === ov) ov.remove(); };
+  document.body.appendChild(ov);
+  _cfgTcRenderBody();
+  setTimeout(() => document.getElementById('tcNome')?.focus(), 60);
+}
+
+function _cfgTcSet(campo, valor) {
+  if (!_cfgTcEdit) return;
+  _cfgTcEdit[campo] = valor;
+  if (campo === 'fechaCiclo' && valor) _cfgTcEdit.escopo = 'todos'; // fechar ciclo exige contar tudo
+  _cfgTcRenderBody();
+}
+
+function _cfgTcToggleLista(campo, v) {
+  const arr = _cfgTcEdit[campo];
+  const i = arr.indexOf(v);
+  i >= 0 ? arr.splice(i, 1) : arr.push(v);
+  _cfgTcRenderBody();
+}
+
+function _cfgTcRenderBody() {
+  const el = document.getElementById('tcBody');
+  const t  = _cfgTcEdit;
+  if (!el || !t) return;
+  const nomeAtual = document.getElementById('tcNome')?.value;
+  if (nomeAtual !== undefined) t.label = nomeAtual;
+
+  const pill = (on, onclick, txt) => `<button type="button" onclick="${onclick}"
+    style="padding:6px 12px;border-radius:99px;font-size:var(--text-xs);font-weight:600;font-family:inherit;cursor:pointer;
+    border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};background:${on ? 'var(--purple-xlight)' : 'transparent'};color:${on ? 'var(--purple)' : 'var(--text2)'}">${txt}</button>`;
+
+  const cats = [...new Set(items.filter(i => i.active !== false).map(i => i.cat || 'Outros'))].sort();
+
+  el.innerHTML = `
+    <div class="field"><label class="slbl">Nome *</label>
+      <input id="tcNome" class="inp" value="${(t.label || '').replace(/"/g,'&quot;')}" placeholder="ex: Diária — refrigerantes"></div>
+
+    <div class="field"><label class="slbl">O que essa contagem faz</label>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${[{ v: true,  t: 'Fecha o ciclo', d: 'Conta todos os locais. Fecha o ciclo atual e abre o próximo (base do CMV).' },
+           { v: false, t: 'Só acerta o saldo', d: 'Corrige o saldo dos itens contados e mostra a diferença. Não fecha ciclo.' }]
+          .map(o => `<label style="text-transform:none;letter-spacing:normal;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:var(--r8);cursor:pointer;border:1.5px solid ${t.fechaCiclo === o.v ? 'var(--purple)' : 'var(--border)'};background:${t.fechaCiclo === o.v ? 'var(--purple-xlight)' : 'transparent'}">
+            <input type="radio" name="tcFecha" ${t.fechaCiclo === o.v ? 'checked' : ''} onchange="_cfgTcSet('fechaCiclo', ${o.v})" style="accent-color:var(--purple);margin-top:2px">
+            <div><div style="font-size:var(--text-sm);font-weight:700">${o.t}</div><div style="font-size:var(--text-xs);color:var(--muted)">${o.d}</div></div>
+          </label>`).join('')}
+      </div></div>
+
+    <div class="field"><label class="slbl">Frequência</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${pill(t.freq === 'semanal', `_cfgTcSet('freq','semanal')`, 'Semanal')}
+        ${pill(t.freq === 'diaria',  `_cfgTcSet('freq','diaria')`,  'Diária')}
+        ${pill(t.freq === 'livre',   `_cfgTcSet('freq','livre')`,   'Quando precisar')}
+      </div>
+      ${t.freq === 'semanal' ? `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:var(--text-sm);color:var(--text2)">Dia previsto:
+        <select class="inp" style="width:auto" onchange="_cfgTcSet('dia', parseInt(this.value))">
+          ${_CFG_DIAS_SEMANA.map((d, i) => `<option value="${i}"${(t.dia ?? 1) === i ? ' selected' : ''}>${d}</option>`).join('')}
+        </select></div>
+        ${t.fechaCiclo ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px">É só o dia sugerido — dá pra fechar o ciclo em outro dia quando precisar.</div>` : ''}` : ''}
+    </div>
+
+    ${t.fechaCiclo ? `<div style="display:flex;gap:8px;align-items:center;padding:9px 12px;background:var(--surface2);border-radius:var(--r8);font-size:var(--text-xs);color:var(--text2)">
+        ${lc('info',12,'var(--text2)')} Contagem que fecha o ciclo sempre inclui todos os itens de todos os locais.
+      </div>` : `
+    <div class="field"><label class="slbl">Quais itens</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        ${pill(t.escopo === 'todos',      `_cfgTcSet('escopo','todos')`,      'Todos')}
+        ${pill(t.escopo === 'categorias', `_cfgTcSet('escopo','categorias')`, 'Por categoria')}
+        ${pill(t.escopo === 'itens',      `_cfgTcSet('escopo','itens')`,      'Itens escolhidos')}
+      </div>
+      ${t.escopo === 'categorias' ? `<div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${cats.map(c => pill(t.cats.includes(c), `_cfgTcToggleLista('cats', '${c.replace(/'/g, "\\'")}')`, c)).join('')}
+      </div>` : ''}
+      ${t.escopo === 'itens' ? `
+        <input class="inp" placeholder="Buscar item..." value="${(t._busca || '').replace(/"/g,'&quot;')}" style="margin-bottom:6px;font-size:var(--text-sm)"
+          oninput="_cfgTcEdit._busca=this.value;_cfgTcRenderItens()">
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:4px"><strong id="tcNSel">${t.itemIds.length}</strong> selecionado(s)</div>
+        <div id="tcItens" style="max-height:240px;overflow-y:auto;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2);padding:4px"></div>` : ''}
+    </div>`}`;
+  if (t.escopo === 'itens' && !t.fechaCiclo) _cfgTcRenderItens();
+}
+
+// Lista de itens re-renderiza sozinha pra busca não perder o foco do input
+function _cfgTcRenderItens() {
+  const el = document.getElementById('tcItens');
+  const t  = _cfgTcEdit;
+  if (!el || !t) return;
+  const q = (t._busca || '').toLowerCase();
+  const lista = items.filter(i => i.active !== false)
+    .filter(i => !q || i.name.toLowerCase().includes(q) || (i.cat || '').toLowerCase().includes(q))
+    .sort((a, b) => (a.cat || '').localeCompare(b.cat || '') || a.name.localeCompare(b.name));
+  el.innerHTML = lista.length ? lista.map(i => `<label style="text-transform:none;letter-spacing:normal;font-weight:500;color:var(--text);display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:var(--text-sm);cursor:pointer;border-radius:6px">
+      <input type="checkbox" ${t.itemIds.includes(i.id) ? 'checked' : ''} onchange="_cfgTcToggleItem(${i.id}, this.checked)" style="accent-color:var(--purple);width:14px;height:14px">
+      <span style="flex:1">${i.name}</span><span style="font-size:var(--text-xs);color:var(--muted)">${i.cat || ''}</span>
+    </label>`).join('') : `<div style="padding:12px;text-align:center;font-size:var(--text-xs);color:var(--muted)">Nenhum item encontrado</div>`;
+}
+
+function _cfgTcToggleItem(id, on) {
+  const arr = _cfgTcEdit.itemIds;
+  const i = arr.indexOf(id);
+  if (on && i < 0) arr.push(id);
+  if (!on && i >= 0) arr.splice(i, 1);
+  const n = document.getElementById('tcNSel'); if (n) n.textContent = arr.length;
+}
+
+function _cfgSalvarTipoContagem() {
+  const t = _cfgTcEdit;
+  if (!t) return;
+  t.label = document.getElementById('tcNome')?.value.trim() || '';
+  if (!t.label) { toast('Informe o nome', 'err'); return; }
+  if (!t.fechaCiclo && t.escopo === 'categorias' && !t.cats.length) { toast('Escolha pelo menos uma categoria', 'err'); return; }
+  if (!t.fechaCiclo && t.escopo === 'itens' && !t.itemIds.length)   { toast('Escolha pelo menos um item', 'err'); return; }
+  const outrosFecham = TIPOS_CONTAGEM.filter(x => x.fechaCiclo && x.id !== t.id).length;
+  if (!t.fechaCiclo && !outrosFecham) { toast('Precisa existir pelo menos um tipo que fecha o ciclo', 'err'); return; }
+
+  const reg = {
+    id: t.id, label: t.label, freq: t.freq, dia: t.freq === 'semanal' ? (t.dia ?? 1) : null,
+    escopo: t.fechaCiclo ? 'todos' : t.escopo,
+    cats:    !t.fechaCiclo && t.escopo === 'categorias' ? t.cats    : [],
+    itemIds: !t.fechaCiclo && t.escopo === 'itens'      ? t.itemIds : [],
+    fechaCiclo: !!t.fechaCiclo,
+  };
+  if (reg.id) {
+    const idx = TIPOS_CONTAGEM.findIndex(x => x.id === reg.id);
+    if (idx >= 0) TIPOS_CONTAGEM[idx] = reg;
+  } else {
+    const base = reg.label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'') || 'tipo';
+    let id = base, n = 2;
+    while (TIPOS_CONTAGEM.some(x => x.id === id)) id = base + '_' + n++;
+    reg.id = id;
+    TIPOS_CONTAGEM.push(reg);
+  }
+  saveTiposContagem();
+  document.getElementById('ovTipoContagem')?.remove();
+  _cfgTcEdit = null;
+  _cfgRenderTiposContagem();
+  toast(`Tipo "${reg.label}" salvo`, 'ok');
+}
+
+function _cfgRemoverTipoContagem(id) {
+  const t = TIPOS_CONTAGEM.find(x => x.id === id);
+  if (!t) return;
+  if (t.fechaCiclo && TIPOS_CONTAGEM.filter(x => x.fechaCiclo).length <= 1) {
+    toast('Precisa existir pelo menos um tipo que fecha o ciclo', 'err'); return;
+  }
+  vtpConfirm({
+    title: `Remover "${t.label}"?`,
+    message: 'As contagens já feitas com este tipo continuam no histórico.',
+    confirmLabel: 'Remover',
+    onConfirm: () => {
+      TIPOS_CONTAGEM.splice(TIPOS_CONTAGEM.findIndex(x => x.id === id), 1);
+      saveTiposContagem();
+      _cfgRenderTiposContagem();
+      toast(`Tipo "${t.label}" removido.`);
+    }
+  });
 }
