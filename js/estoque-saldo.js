@@ -47,13 +47,17 @@ async function _estSelectTodos(montarQuery) {
 
 // Última contagem aprovada de cada (item, local).
 // → Map "itemId|localId" → { qtd, data, contagemId }
-async function estBuscarBasesContagem() {
-  const linhas = await _estSelectTodos(() => _estSb()
-    .from('est_contagem_itens')
-    .select('item_id, contado, contagem:est_contagens!inner(id, local_id, data_ref, status, excluido_em)')
-    .eq('contagem.status', 'concluida')
-    .is('contagem.excluido_em', null)
-    .not('contado', 'is', null));
+async function estBuscarBasesContagem(ateISO = null) {
+  const linhas = await _estSelectTodos(() => {
+    let q = _estSb()
+      .from('est_contagem_itens')
+      .select('item_id, contado, contagem:est_contagens!inner(id, local_id, data_ref, status, excluido_em)')
+      .eq('contagem.status', 'concluida')
+      .is('contagem.excluido_em', null)
+      .not('contado', 'is', null);
+    if (ateISO) q = q.lte('contagem.data_ref', ateISO);
+    return q;
+  });
   const bases = new Map();
   for (const l of linhas) {
     const k = l.item_id + '|' + l.contagem.local_id;
@@ -155,18 +159,20 @@ const _EST_GRUPO_MOV = {
 };
 
 /**
- * Calcula o saldo de todos os itens ativos.
+ * Calcula o saldo de todos os itens ativos (agora, ou no momento `ate`).
  * → { porItem: Map itemId → resumo, debitos:[pedidos], geradoEm }
  *   resumo = { item, total, porLocal: { localId: { saldo, base, baseData, entradas,
  *              vendas, baixas, transferencias, ajustes } }, semContagem, baseMaisAntiga }
  */
-async function estCalcularSaldos() {
-  const [bases, movs] = await Promise.all([estBuscarBasesContagem(), estBuscarMovimentacoes()]);
+async function estCalcularSaldos({ ate = null } = {}) {
+  // `ate`: saldo naquele momento (ex.: hora em que o estoque foi contado),
+  // ignorando contagens, movimentações e vendas posteriores.
+  const [bases, movs] = await Promise.all([estBuscarBasesContagem(ate), estBuscarMovimentacoes({ ate })]);
   const ativos = items.filter(i => i.active !== false);
 
   // Débitos de venda: só a partir da contagem mais antiga entre as bases
   const datasBase = [...bases.values()].map(b => b.data).sort((a, b) => _estMs(a) - _estMs(b));
-  const debitos = datasBase.length ? await estBuscarDebitos(new Date(_estMs(datasBase[0])).toISOString()) : [];
+  const debitos = datasBase.length ? await estBuscarDebitos(new Date(_estMs(datasBase[0])).toISOString(), ate) : [];
 
   const porItem = new Map();
   for (const item of ativos) {

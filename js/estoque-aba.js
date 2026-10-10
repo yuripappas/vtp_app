@@ -4,7 +4,7 @@
  *
  * Teste do padrão "filhos saem do sidebar e viram abas no topo da página mãe".
  * Aba Estoque: saldo por item e local, calculado por js/estoque-saldo.js.
- * A aba Contagem ainda mostra o fluxo antigo até a etapa 4 dos ciclos.
+ * Aba Contagem: estoque-contagem.js · Aba Movimentações: estoque-mov.js.
  */
 
 const _EST_ABAS = [
@@ -35,7 +35,7 @@ function _estSetAba(aba) {
 
 // ── Formatação ─────────────────────────────────────────────────
 const _estQ = n => (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
-const _estR = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const _estR = n => { const v = Number(n) || 0; return (v < -0.004 ? '−' : '') + 'R$ ' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
 const _estData = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
 const _estEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 

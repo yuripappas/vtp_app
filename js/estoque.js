@@ -2398,13 +2398,14 @@ function _renderEstoqueMain() {
   const el = document.getElementById('cpSectionContent');
   if (!el) return;
 
-  if (_estCpAba !== 'contagens') {
-    if (_estCpAba !== 'movimentacoes') _estCpAba = 'estoque';
-    el.innerHTML = `<div style="padding:20px 24px">${_estTopTabsHtml()}<div id="estAbaBody"></div></div>`;
-    if (_estCpAba === 'movimentacoes') estRenderAbaMov();
-    else estRenderAbaEstoque();
-    return;
-  }
+  // Abas no topo (estoque-aba.js). O fluxo antigo de contagem (abaixo) não é
+  // mais alcançável — a aba Contagem usa o módulo por ciclos (estoque-contagem.js).
+  if (!['estoque', 'contagens', 'movimentacoes'].includes(_estCpAba)) _estCpAba = 'estoque';
+  el.innerHTML = `<div style="padding:20px 24px">${_estTopTabsHtml()}<div id="estAbaBody"></div></div>`;
+  if (_estCpAba === 'movimentacoes') estRenderAbaMov();
+  else if (_estCpAba === 'contagens') estRenderAbaContagem();
+  else estRenderAbaEstoque();
+  return;
 
   const hist = _getHistContagens();
   const cfg  = typeof getConfig === 'function' ? getConfig() : {};
