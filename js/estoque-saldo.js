@@ -131,6 +131,19 @@ async function estBuscarDebitos(desdeISO, ateISO = null) {
   return estDebitosPorPedido(linhas);
 }
 
+// ── Entra no CMV? ──────────────────────────────────────────────
+// Regra de negócio: o CMV só conta o que influencia a venda direta
+// (insumos e processados). Escritório, higiene e descartáveis são contados
+// no estoque, mas entram como outra categoria de despesa. Configurável por
+// categoria em Configurações › Personalização › Estoque.
+const EST_CATS_FORA_CMV_PADRAO = ['MATERIAL DE ESCRITÓRIO', 'HIGIENE E LIMPEZA', 'DESCARTÁVEIS'];
+function estCatsForaCMV() {
+  const cfg = typeof getConfig === 'function' ? getConfig() : {};
+  return new Set(Array.isArray(cfg.catsForaCMV) ? cfg.catsForaCMV : EST_CATS_FORA_CMV_PADRAO);
+}
+const estCatNoCMV  = (cat, fora = estCatsForaCMV()) => !fora.has(cat || 'Outros');
+const estItemNoCMV = (item, fora) => estCatNoCMV(item?.cat, fora);
+
 // ── Locais do item ─────────────────────────────────────────────
 
 const EST_SEM_LOCAL = '_sem_local';

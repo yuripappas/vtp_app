@@ -471,9 +471,12 @@ function _ctgRenderRevisao() {
     const pct = esp ? Math.abs(dif) / Math.abs(esp) : (Math.abs(dif) > 0.0005 ? 1 : 0);
     return { i, esp, cont, dif, valor, pct };
   };
+  const foraCmv = estCatsForaCMV();
   const ls = contados.map(linha);
-  const div    = ls.filter(x => x.i.debito_auto && Math.abs(x.dif) > 0.0005).sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
-  const consumo= ls.filter(x => !x.i.debito_auto && Math.abs(x.dif) > 0.0005).sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
+  const noCmv  = x => estCatNoCMV(x.i.categoria, foraCmv);
+  const div    = ls.filter(x => noCmv(x) && x.i.debito_auto && Math.abs(x.dif) > 0.0005).sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
+  const consumo= ls.filter(x => noCmv(x) && !x.i.debito_auto && Math.abs(x.dif) > 0.0005).sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
+  const despesa= ls.filter(x => !noCmv(x) && Math.abs(x.dif) > 0.0005).sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor));
   const iguais = ls.filter(x => Math.abs(x.dif) <= 0.0005);
   const naoContados = itens.filter(i => i.contado === null);
   const soma = arr => arr.reduce((s, x) => s + x.valor, 0);
@@ -510,6 +513,7 @@ function _ctgRenderRevisao() {
       Aprovada por <strong>${_estEsc(c.aprovado_por || '—')}</strong> em ${_estDH(c.aprovado_em)}. Os números contados viraram o saldo deste local.</div>` : ''}
     ${bloco('Divergências', 'Itens com débito automático (saem na venda pela ficha). A diferença é o que ninguém explicou — confira ficha técnica, porcionamento ou baixa não registrada.', div, 'div', 'var(--danger-fg)')}
     ${bloco('Consumo do ciclo', 'Itens sem débito automático (ex.: insumo cru que vira processado). A diferença é o consumo normal da produção, não erro.', consumo, 'consumo', 'var(--text)')}
+    ${bloco('Fora do CMV — outras despesas', 'Escritório, higiene, descartáveis e outras categorias que não influenciam a venda direta. Entram no estoque, mas o consumo é despesa, não CMV.', despesa, 'consumo', 'var(--text2)')}
     ${iguais.length ? `<details style="margin-bottom:16px"><summary style="cursor:pointer;font-size:var(--text-md);font-weight:700;color:var(--success-fg)">Sem diferença (${iguais.length})</summary>
       <div style="margin-top:8px">${tabela(iguais, 'div')}</div></details>` : ''}
     ${naoContados.length ? `<details><summary style="cursor:pointer;font-size:var(--text-md);font-weight:700;color:var(--muted)">Não contados (${naoContados.length}) — saldo continua como está</summary>

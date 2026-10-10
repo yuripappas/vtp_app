@@ -86,6 +86,8 @@ function _estRenderAbaEstoqueConteudo(dados) {
   // ── Cards (sempre sobre o estoque inteiro, não sobre o filtro) ──
   const valorItem = r => Math.max(r.total, 0) * (r.item.cost || 0);
   const valorTotal = todas.reduce((s, r) => s + valorItem(r), 0);
+  const foraCmv = estCatsForaCMV();
+  const valorCmv = todas.filter(r => estItemNoCMV(r.item, foraCmv)).reduce((s, r) => s + valorItem(r), 0);
   const nIns  = todas.filter(r => !r.item.isProd).length;
   const nPrep = todas.filter(r => r.item.isProd).length;
   const nSemContagem = todas.filter(r => r.semContagem).length;
@@ -140,6 +142,10 @@ function _estRenderAbaEstoqueConteudo(dados) {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:18px">
       ${card('Valor total em estoque', 'dollar-sign', `
         <div style="font-size:var(--text-3xl);font-weight:800;color:var(--text);letter-spacing:-.5px">${_estR(valorTotal)}</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:var(--text-sm);margin-top:6px">
+          <span><span style="color:var(--muted)">Entra no CMV</span> <strong>${_estR(valorCmv)}</strong></span>
+          <span><span style="color:var(--muted)">Outras despesas</span> <strong>${_estR(valorTotal - valorCmv)}</strong></span>
+        </div>
         <div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px">Saldo × custo de referência de cada item</div>`)}
       ${card('Itens por tipo', 'layers', `
         <div style="display:flex;gap:22px;align-items:baseline">
@@ -149,7 +155,7 @@ function _estRenderAbaEstoqueConteudo(dados) {
         ${nSemContagem ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);margin-top:6px">${nSemContagem} ainda sem contagem de ciclo — mostrando o saldo antigo</div>` : ''}`)}
       ${card('Top categorias', 'bar-chart-2', topCats.length ? topCats.map(([c, v]) => `
         <div style="display:flex;justify-content:space-between;gap:10px;font-size:var(--text-sm);padding:2px 0">
-          <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_estEsc(c)}</span>
+          <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_estEsc(c)}${estCatNoCMV(c, foraCmv) ? '' : ' <span style="font-size:var(--text-2xs);color:var(--muted)">· fora do CMV</span>'}</span>
           <strong style="white-space:nowrap">${_estR(v)}</strong></div>`).join('') : `<div style="color:var(--muted);font-size:var(--text-sm)">Sem valor em estoque</div>`)}
     </div>
 

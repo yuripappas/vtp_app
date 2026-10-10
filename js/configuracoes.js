@@ -965,6 +965,7 @@ function _cfgRenderCatInsumo() {
   if (!el) return;
   const lista = typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : [];
   if (!lista.length) { el.innerHTML = `<div style="padding:20px;text-align:center;font-size:var(--text-sm);color:var(--muted);font-style:italic">Nenhuma categoria cadastrada.</div>`; return; }
+  const foraCmv = estCatsForaCMV();
   el.innerHTML = lista.map((cat, idx) => {
     if (_cfgCatInsumoEditIdx === idx) {
       return `<div class="cfg-row" style="border-color:var(--purple);background:var(--purple-xlight)">
@@ -976,9 +977,15 @@ function _cfgRenderCatInsumo() {
         </div>
       </div>`;
     }
+    const noCmv = estCatNoCMV(cat, foraCmv);
     return `<div class="cfg-row">
-      <div style="width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0"></div>
+      <div style="width:8px;height:8px;border-radius:50%;background:${noCmv ? 'var(--purple)' : 'var(--muted)'};flex-shrink:0"></div>
       <span class="cfg-row-label">${cat}</span>
+      <label title="Entra no CMV: influencia a venda direta (insumos e processados). Desmarcado = outra despesa (ex.: escritório, higiene, descartáveis)"
+        style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--text-xs);font-weight:600;color:${noCmv ? 'var(--purple)' : 'var(--muted)'};user-select:none;white-space:nowrap">
+        <input type="checkbox" ${noCmv ? 'checked' : ''} onchange="_cfgToggleCatCMV(${idx}, this.checked)" style="accent-color:var(--purple);width:14px;height:14px">
+        ${noCmv ? 'Entra no CMV' : 'Outra despesa'}
+      </label>
       <div class="cfg-row-actions">
         <button class="btn btn-ghost btn-xs" onclick="_cfgEditCatInsumo(${idx})" title="Renomear">${lc('edit-2',12,'currentColor')}</button>
         ${_cfgDelBtn(`_cfgRemoverCatInsumo(${idx})`, 'Remover categoria')}
@@ -987,6 +994,20 @@ function _cfgRenderCatInsumo() {
   }).join('');
   if (_cfgCatInsumoEditIdx !== null) setTimeout(() => document.getElementById('cfgCatInsumoEditInp')?.focus(), 40);
   _cfgUpdateNavBadge('insumos', lista.length);
+}
+
+// Lista de categorias fora do CMV fica em vtp_config.catsForaCMV
+function _cfgToggleCatCMV(idx, entra) {
+  const cat = CATEGORIAS_INSUMO[idx];
+  if (!cat) return;
+  const fora = estCatsForaCMV();
+  entra ? fora.delete(cat) : fora.add(cat);
+  const cfg = getConfig();
+  cfg.catsForaCMV = [...fora];
+  db._set('vtp_config', cfg);
+  if (typeof estInvalidarSaldos === 'function') estInvalidarSaldos();
+  _cfgRenderCatInsumo();
+  toast(entra ? `"${cat}" entra no CMV` : `"${cat}" fica fora do CMV (outra despesa)`, 'ok');
 }
 
 function _cfgEditCatInsumo(idx) {
@@ -998,6 +1019,9 @@ function _cfgSaveCatInsumo(idx) {
   const val = document.getElementById('cfgCatInsumoEditInp')?.value.trim();
   if (!val) { toast('Nome não pode ser vazio', 'err'); return; }
   if (CATEGORIAS_INSUMO.some((c, i) => i !== idx && c === val)) { toast('Categoria já existe', 'err'); return; }
+  const antiga = CATEGORIAS_INSUMO[idx];
+  const fora = estCatsForaCMV();
+  if (fora.has(antiga)) { fora.delete(antiga); fora.add(val); const cfg = getConfig(); cfg.catsForaCMV = [...fora]; db._set('vtp_config', cfg); }
   CATEGORIAS_INSUMO[idx] = val;
   saveCategoriasInsumo();
   _cfgCatInsumoEditIdx = null;
