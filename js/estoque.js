@@ -2379,7 +2379,7 @@ function salvarMovManual() {
 // ══════════════════════════════════════════════════════════════
 // ESTOQUE COMO FILHO DE COMPRAS — nova navegação integrada
 // ══════════════════════════════════════════════════════════════
-let _estCpAba        = 'contagens'; // 'contagens' | 'atual'
+let _estCpAba        = 'estoque';   // 'estoque' | 'contagens' (abas no topo — ver estoque-aba.js)
 let _estCpFlowEtapa  = null;       // null | 'categorias' | 'contagem' | 'divergencias' | 'atualizarcw'
 let _estCpContagem   = null;       // contagem concluída aguardando CW step
 let _estCpGrupos     = null;       // grupos de divergência da contagem atual
@@ -2397,6 +2397,13 @@ function _renderCpEstoque() {
 function _renderEstoqueMain() {
   const el = document.getElementById('cpSectionContent');
   if (!el) return;
+
+  if (_estCpAba !== 'contagens') {
+    _estCpAba = 'estoque';
+    el.innerHTML = `<div style="padding:20px 24px">${_estTopTabsHtml()}<div id="estAbaBody"></div></div>`;
+    estRenderAbaEstoque();
+    return;
+  }
 
   const hist = _getHistContagens();
   const cfg  = typeof getConfig === 'function' ? getConfig() : {};
@@ -2428,6 +2435,7 @@ function _renderEstoqueMain() {
 
   el.innerHTML = `
     <div style="padding:20px 24px">
+      ${_estTopTabsHtml()}
       <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
         <div>
@@ -2474,26 +2482,7 @@ function _renderEstoqueMain() {
         </div>
       </div>
 
-      <!-- Abas -->
-      <div style="display:flex;border-bottom:1.5px solid var(--border);margin-bottom:16px;gap:0">
-        <button onclick="_estCpAba='contagens';_renderCpEstoque()"
-          style="padding:8px 16px;border:none;border-bottom:2.5px solid ${_estCpAba==='contagens'?'var(--purple)':'transparent'};
-          background:none;color:${_estCpAba==='contagens'?'var(--purple)':'var(--muted)'};
-          font-size:var(--text-sm);font-weight:${_estCpAba==='contagens'?'700':'500'};cursor:pointer;font-family:Inter,sans-serif;
-          display:flex;align-items:center;gap:5px;transition:all .15s">
-          ${lc('clock',13,'currentColor')} Contagens
-        </button>
-        <button onclick="_estCpAba='atual';_renderCpEstoque()"
-          style="padding:8px 16px;border:none;border-bottom:2.5px solid ${_estCpAba==='atual'?'var(--purple)':'transparent'};
-          background:none;color:${_estCpAba==='atual'?'var(--purple)':'var(--muted)'};
-          font-size:var(--text-sm);font-weight:${_estCpAba==='atual'?'700':'500'};cursor:pointer;font-family:Inter,sans-serif;
-          display:flex;align-items:center;gap:5px;transition:all .15s">
-          ${lc('archive',13,'currentColor')} Estoque atual
-        </button>
-      </div>
-
-      <!-- Conteúdo da aba -->
-      ${_estCpAba === 'contagens' ? _htmlListaContagens(hist, tol) : _htmlEstoqueAtual(allItems, ultimaCW)}
+      ${_htmlListaContagens(hist, tol)}
     </div>`;
 }
 
