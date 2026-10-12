@@ -11,6 +11,7 @@ const _EST_ABAS = [
   { id: 'estoque',   icon: 'package',        label: 'Estoque'  },
   { id: 'contagens', icon: 'clipboard-list', label: 'Contagem' },
   { id: 'movimentacoes', icon: 'repeat',     label: 'Movimentações' },
+  { id: 'cmv',       icon: 'bar-chart-2',    label: 'CMV do ciclo' },
 ];
 
 let _estFil = { local: '', q: '', cat: '', tipo: '', abaixo: false, zerados: false, sort: 'nome', dir: 1 };
