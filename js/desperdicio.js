@@ -433,9 +433,6 @@ function saveDesp() {
       if (item) {
         item.qty = Math.max(0, parseFloat((item.qty - qty).toFixed(3)));
         saveI();
-        if (typeof registrarMovimentacao === 'function') {
-          registrarMovimentacao('saida_perda', itemId, qty, 'Desperdício: ' + tipo + (d.obs ? ' — ' + d.obs : ''), null);
-        }
       }
     }
     desperdicios.push(d);

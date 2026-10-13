@@ -1374,9 +1374,6 @@ function _etqConfirmarDesperdicio(etqId, ovId) {
     if (item) {
       item.qty = Math.max(0, parseFloat((item.qty - qty).toFixed(3)));
       if (typeof saveI === 'function') saveI();
-      if (typeof registrarMovimentacao === 'function') {
-        registrarMovimentacao('saida_perda', item.id, qty, 'Desperdício via Etiquetagem: ' + tipo, null);
-      }
     }
 
     try { if (typeof logAudit === 'function') logAudit('desperdicio_registrado', tipo + ' — ' + e.item_nome + ' ' + qty + ' ' + unid, 'desperdicio'); } catch(_){}

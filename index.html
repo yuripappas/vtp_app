@@ -206,46 +206,6 @@
       <!-- DASHBOARD -->
       <div class="page active" id="page-dashboard" style="padding:0"></div>
 
-      <!-- ESTOQUE -->
-      <div class="page" id="page-estoque" style="padding:0">
-        <!-- Tab bar do estoque -->
-        <div id="estTabBar" class="tab-bar" style="justify-content:space-between">
-          <div style="display:flex">
-            <button onclick="setEstTab('contagem')" id="estTab-contagem" class="tab-btn active">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-              Contagem
-            </button>
-            <button onclick="setEstTab('historico')" id="estTab-historico" class="tab-btn">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Histórico
-            </button>
-            <button onclick="setEstTab('movcw')" id="estTab-movcw" class="tab-btn">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              Movimentações
-            </button>
-          </div>
-          <div style="display:flex;gap:8px;padding:8px 0;flex-shrink:0">
-            <button onclick="openImportModal()" id="estBtnImport" class="btn btn-outline btn-sm" style="gap:6px">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Importar planilha
-            </button>
-          </div>
-        </div>
-
-        <!-- Conteúdo dinâmico das tabs -->
-        <div id="estConteudo" style="padding:0">
-
-          <!-- ABA: CONTAGEM — renderizada dinamicamente por JS -->
-          <div id="estPanelContagem" style="min-height:200px"></div>
-
-          <!-- ABA: HISTÓRICO — renderizada dinamicamente por JS -->
-          <div id="estPanelHistorico" style="display:none"></div>
-
-          <!-- ABA: MOVIMENTAÇÕES CW — renderizada dinamicamente por JS -->
-          <div id="estPanelMovCW" style="display:none"></div>
-
-        </div>
-      </div><!-- /page-estoque -->
 
       <!-- PRÉ-PRODUÇÃO -->
       <!-- PRÉ-PRODUÇÃO -->
@@ -788,28 +748,6 @@
   </div>
 </div>
 
-<div class="overlay" id="ovImport">
-  <div class="mbox wide">
-    <div class="mh"><div class="mt"> Importar do Cardápio Web</div><button class="mc" onclick="closeModal('ovImport')"></button></div>
-    <div class="mb">
-      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px 14px;font-size:.76rem;color:var(--text2);line-height:1.6">
-        <strong style="color:var(--purple)">Como exportar:</strong> Cardápio Web → Estoque → Relatório de Insumos → Exportar CSV<br>
-        <strong style="color:var(--purple)">Deduplicação:</strong> O sistema usa o <strong>código do Cardápio Web</strong> para identificar insumos e evitar duplicatas.
-      </div>
-      <div class="dropzone" id="dropzone" onclick="document.getElementById('csvFile').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop(event)">
-        <div style="font-size:2rem;margin-bottom:8px"></div>
-        <div style="font-size:.84rem;font-weight:600;color:var(--text2)">Clique ou arraste o arquivo CSV ou Excel (.xlsx) aqui</div>
-        <div style="font-size:.72rem;color:var(--muted);margin-top:4px">Exportado do Cardápio Web · formato UTF-8</div>
-        <input type="file" id="csvFile" accept=".csv,.xlsx,.xls,.ods,.txt" style="display:none" onchange="handleFile(this)">
-      </div>
-      <div id="importPreview"></div>
-    </div>
-    <div class="mf">
-      <button class="btn btn-outline" onclick="closeModal('ovImport')">Cancelar</button>
-      <button class="btn btn-primary" id="importBtn" style="display:none" onclick="confirmImport()">Importar</button>
-    </div>
-  </div>
-</div>
 
 <!-- Modal: Fornecedor -->
 <div class="overlay" id="ovSup">
@@ -1286,43 +1224,6 @@
   </div>
 </div>
 
-<!-- Modal: Sazonal -->
-<div class="overlay" id="ovSazonal">
-  <div class="mbox wide">
-    <div class="mh"><div class="mt"> Ajuste Sazonal de Compras</div><button class="mc" onclick="closeModal('ovSazonal')"></button></div>
-    <div class="mb">
-      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px 14px;font-size:.78rem;color:var(--text2);line-height:1.6">
-        <strong style="color:var(--purple)">Deseja ajustar as quantidades para esta semana?</strong><br>O ajuste é temporário e não altera os valores padrão do cadastro.
-      </div>
-      <div class="field"><label>Nome do período (opcional)</label><input class="inp" id="sazonalNome" placeholder="ex: Feriado de Corpus Christi"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="sazonal-preset" data-val="30" onclick="selectPreset(this,30)" style="border:2px solid var(--border);border-radius:var(--r10);padding:14px;cursor:pointer;transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px"></div><div style="font-size:.82rem;font-weight:700;color:var(--red)">Alta demanda</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Feriado, evento especial</div><div style="font-size:1rem;font-weight:800;color:var(--red);margin-top:8px">+30%</div></div>
-        <div class="sazonal-preset" data-val="15" onclick="selectPreset(this,15)" style="border:2px solid var(--border);border-radius:var(--r10);padding:14px;cursor:pointer;transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px"></div><div style="font-size:.82rem;font-weight:700;color:var(--orange-dark)">Acima do normal</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Fim de semana longo</div><div style="font-size:1rem;font-weight:800;color:var(--orange-dark);margin-top:8px">+15%</div></div>
-        <div class="sazonal-preset" data-val="0" onclick="selectPreset(this,0)" style="border:2px solid var(--purple);border-radius:var(--r10);padding:14px;cursor:pointer;background:var(--purple-xlight);transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px"></div><div style="font-size:.82rem;font-weight:700;color:var(--purple)">Semana normal</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Sem ajuste</div><div style="font-size:1rem;font-weight:800;color:var(--purple);margin-top:8px">0%</div></div>
-        <div class="sazonal-preset" data-val="-20" onclick="selectPreset(this,-20)" style="border:2px solid var(--border);border-radius:var(--r10);padding:14px;cursor:pointer;transition:all .15s;text-align:center"><div style="font-size:1.4rem;margin-bottom:6px"></div><div style="font-size:.82rem;font-weight:700;color:var(--green)">Baixa demanda</div><div style="font-size:.7rem;color:var(--muted);margin-top:2px">Período de férias</div><div style="font-size:1rem;font-weight:800;color:var(--green);margin-top:8px">-20%</div></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <div class="field" style="flex:1">
-          <label>Percentual personalizado</label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input class="inp" type="number" id="sazonalPct" value="0" min="-80" max="200" step="5" oninput="onPctChange(this)" style="width:100px">
-            <span style="font-size:.82rem;color:var(--muted)">%</span>
-          </div>
-        </div>
-      </div>
-      <div id="sazonalPreview" style="display:none">
-        <hr class="sdiv"><div class="slbl" style="margin-bottom:8px">Prévia do ajuste</div>
-        <div class="tbl-wrap" style="max-height:180px;overflow-y:auto">
-          <table><thead><tr><th>Insumo</th><th class="c">Ideal atual</th><th class="c">Ideal ajustado</th><th class="r">Necessidade orig.</th><th class="r">Necessidade ajust.</th></tr></thead><tbody id="sazonalPreviewBody"></tbody></table>
-        </div>
-      </div>
-    </div>
-    <div class="mf">
-      <button class="btn btn-outline" onclick="closeModal('ovSazonal');iniciarCompras()">Pular ajuste</button>
-      <button class="btn btn-primary" onclick="confirmarSazonal()">Aplicar e continuar →</button>
-    </div>
-  </div>
-</div>
 
 </div><!-- /appScreen -->
 
@@ -1411,45 +1312,7 @@
 <script src="js/icons.js"></script>
 <script src="js/db.js?v=117"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=231"></script>
-<!-- Modal: Adicionar item manual -->
-<div class="overlay" id="ovAddItem">
-  <div class="mbox" style="max-width:500px">
-    <div class="mh"><div class="mt">Adicionar Item à Lista</div><button class="mc" onclick="closeModal('ovAddItem')"></button></div>
-    <div class="mb">
-      <div class="field"><label>Nome do item *</label><input class="inp" id="aiNome" placeholder="ex: Farinha de trigo, Luvas, Detergente..."></div>
-      <div class="f2">
-        <div class="field"><label>Quantidade *</label><input class="inp" type="number" id="aiQtd" placeholder="0" min="0.001" step="0.001"></div>
-        <div class="field"><label>Unidade</label>
-          <select class="inp" id="aiUnit">
-            <option>un</option><option>kg</option><option>g</option>
-            <option>L</option><option>ml</option><option>cx</option><option>pct</option><option>sc</option>
-          </select>
-        </div>
-      </div>
-      <div class="f2">
-        <div class="field"><label>Categoria</label>
-          <select class="inp" id="aiCat">
-            <option value="">— Selecionar</option>
-            <option>Limpeza</option><option>EPIs</option><option>Utensílios</option>
-            <option>Manutenção</option><option>Equipamentos</option><option>Escritório</option><option>Geral</option>
-          </select>
-        </div>
-        <div class="field"><label>Preço est. (R$)</label><input class="inp" type="number" id="aiPreco" placeholder="0,00" step="0.01" min="0"></div>
-      </div>
-      <div class="field">
-        <label>Fornecedor / Local de compra</label>
-        <input class="inp" id="aiLocal" placeholder="ex: Atacadão, Makro, Up Distribuidora... (deixe vazio para definir depois)">
-        <div style="font-size:.67rem;color:var(--muted);margin-top:4px">Se informar um local, o item será marcado como compra presencial</div>
-      </div>
-      <div class="field"><label>Observações</label><input class="inp" id="aiObs" placeholder="marca preferida, urgente, especificação..."></div>
-    </div>
-    <div class="mf">
-      <button class="btn btn-outline" onclick="closeModal('ovAddItem')">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveItemManual()">Adicionar item</button>
-    </div>
-  </div>
-</div>
+<script src="js/init.js?v=232"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">

@@ -132,30 +132,6 @@ function _estDesespelharBaixas(movs) {
 
 // ── APIs usadas por outros módulos ─────────────────────────────
 
-// Compras › concluir recebimento. item.qty já é somado por concluirLista,
-// então aqui não aplica a ponte de novo.
-async function estRegistrarRecebimentos(lista, linhas) {
-  const rows = [];
-  for (const l of linhas) {
-    const item = items.find(i => i.id === l.itemId);
-    if (!item || !(l.qtd > 0)) continue;
-    rows.push(_estMovRow(item, {
-      tipo: 'recebimento', sinal: 1, qtd: _estRound(l.qtd),
-      local_destino: estLocalEntrada(item) || EST_SEM_LOCAL,
-      custo_unit: l.custoUnit || item.cost || 0,
-      motivo: [lista.codigo, l.fornecedor].filter(Boolean).join(' · '),
-      ref_tipo: 'lista_compras', ref_id: `${lista.codigo || lista.id}:${l.linhaId}`,
-      data_mov: l.data ? new Date(l.data + 'T12:00:00').toISOString() : new Date().toISOString(),
-    }));
-  }
-  try {
-    await estInserirMovs(rows, { aplicarLegado: false });
-  } catch (e) {
-    console.error('[estoque] recebimento não registrado:', e);
-    if (typeof toast === 'function') toast('Recebimento concluído, mas não consegui registrar as movimentações de estoque: ' + e.message, 'err');
-  }
-}
-
 // Pré-produção › confirmar produção
 async function estRegistrarProducao(item, qtd, { obs = '', refId = null } = {}) {
   if (!item || !(qtd > 0)) return;

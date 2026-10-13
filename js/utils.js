@@ -216,22 +216,6 @@ function toggleBrandSwitcher(anchorEl) {
   wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
 }
 
-// Submenu items de Compras
-const _COMPRAS_SUBMENU_ITEMS = [
-  { id: 'listas',       icon: 'clipboard-list', label: 'Lista de Compras' },
-  { id: 'fornecedores', icon: 'truck',          label: 'Fornecedores'     },
-];
-
-function _handleNavCompras() {
-  _openMobileSubmenu(
-    _COMPRAS_SUBMENU_ITEMS.map(item => ({
-      ...item,
-      action: `_cpSection='${item.id}'; goModule('compras');`
-    })),
-    'Compras'
-  );
-}
-
 function _handleNavOperacao() {
   _openMobileSubmenu(
     _OPERACAO_SUBMENU_ITEMS.map(item => ({
@@ -533,11 +517,7 @@ function goModule(mod) {
   else if (mod === 'marketing')   renderMarketing();
   else if (mod === 'dashboard')  renderDashboard();
   else if (mod === 'estoque')    {
-    // Estoque agora é módulo próprio na sidebar, mas a implementação real
-    // (contagens, categorias, divergências) vive dentro de page-compras
-    // (_renderCpEstoque, ~1100 linhas) — reaproveita o mesmo container em
-    // vez de duplicar. page-estoque (a página vazia genérica) fica sem uso.
-    document.getElementById('page-estoque')?.classList.remove('active');
+    // Estoque usa o mesmo container de Compras (page-compras), sem as abas de Compras.
     document.getElementById('page-compras')?.classList.add('active');
     _cpSection = 'estoque';
     renderComprasLayout();
