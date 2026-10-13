@@ -17,7 +17,7 @@
 const CP_ABAS = [
   { id: 'compras',     icon: 'shopping-bag',   label: 'Compras'        },
   { id: 'listas',      icon: 'clipboard-list', label: 'Lista de compra' },
-  { id: 'cotacao',     icon: 'tag',            label: 'Cotação',        breve: true },
+  { id: 'cotacao',     icon: 'tag',            label: 'Cotação' },
   { id: 'recebimento', icon: 'truck',          label: 'Recebimento',    breve: true },
   { id: 'antigo',      icon: 'archive',        label: 'Histórico (antigo)' },
 ];
@@ -61,6 +61,7 @@ function cpRenderAba() {
   el.innerHTML = `<div style="padding:20px 24px" id="cpAbaBody"></div>`;
   if (aba.id === 'compras') cpRenderAbaCompras();
   else if (aba.id === 'listas') cpRenderAbaListas();
+  else if (aba.id === 'cotacao') cpRenderAbaCotacao();
 }
 
 // ── Dados ──────────────────────────────────────────────────────
