@@ -77,27 +77,50 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'contato sem telefone vinculado' }), { status: 400, headers: CORS_HEADERS });
     }
 
-    // Mídia (imagem, áudio, vídeo, documento)
+    const WA_PHONE_ID = Deno.env.get('WA_PHONE_NUMBER_ID')!;
+    const WA_TOKEN    = Deno.env.get('WA_ACCESS_TOKEN')!;
+    const waUrl = `https://graph.facebook.com/v21.0/${WA_PHONE_ID}/messages`;
+    const waHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${WA_TOKEN}` };
+
+    // Número destino: garante DDI 55 se for número BR sem DDI
+    const digits = telefone.replace(/\D/g, '');
+    const numero = digits.startsWith('55') ? digits : `55${digits}`;
+
+    let waBody: Record<string, unknown>;
+
     if (tipo !== 'texto' && body.url) {
       const mediaTypeMap: Record<string, string> = { imagem: 'image', audio: 'audio', video: 'video', documento: 'document' };
-      const evoRes = await fetch(`${EVO_URL}/message/sendMedia/${EVO_INSTANCE}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: EVO_KEY },
-        body: JSON.stringify({
-          number:    telefone,
-          mediatype: mediaTypeMap[tipo] || 'image',
-          media:     body.url,
-          caption:   body.texto || '',
-          fileName:  body.nome_arquivo || '',
-        }),
-      });
-      if (!evoRes.ok) {
-        const detalhe = await evoRes.text();
-        return new Response(JSON.stringify({ error: `Evolution API HTTP ${evoRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
-      }
-      const evoData = await evoRes.json();
-      externalId = evoData?.key?.id ?? null;
+      const waType = mediaTypeMap[tipo] || 'image';
+      const mediaPayload: Record<string, unknown> = { link: body.url };
+      if (body.texto) mediaPayload.caption = body.texto;
+      if (tipo === 'documento' && body.nome_arquivo) mediaPayload.filename = body.nome_arquivo;
+      waBody = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: numero,
+        type: waType,
+        [waType]: mediaPayload,
+      };
+    } else {
+      waBody = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: numero,
+        type: 'text',
+        text: { preview_url: false, body: body.texto },
+      };
+    }
 
+    const waRes = await fetch(waUrl, { method: 'POST', headers: waHeaders, body: JSON.stringify(waBody) });
+
+    if (!waRes.ok) {
+      const detalhe = await waRes.text();
+      return new Response(JSON.stringify({ error: `Meta WABA HTTP ${waRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
+    }
+
+    if (tipo !== 'texto' && body.url) {
+      const waData = await waRes.json();
+      externalId = waData?.messages?.[0]?.id ?? null;
       await sb.from('atd_mensagens').insert({
         conversa_id:  body.conversa_id,
         origem:       'atendente',
@@ -113,18 +136,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
     }
 
-    const evoRes = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: EVO_KEY },
-      body: JSON.stringify({ number: telefone, text: body.texto }),
-    });
-
-    if (!evoRes.ok) {
-      const detalhe = await evoRes.text();
-      return new Response(JSON.stringify({ error: `Evolution API HTTP ${evoRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
-    }
-    const evoData = await evoRes.json();
-    externalId = evoData?.key?.id ?? null;
+    const waData = await waRes.json();
+    externalId = waData?.messages?.[0]?.id ?? null;
   } else if (conversa.canal_tipo === 'instagram') {
     const igsid = contato?.instagram_id;
     if (!igsid) {

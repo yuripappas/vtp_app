@@ -1,37 +1,44 @@
-// VTP Atendimento — webhook-whatsapp
-// Recebe eventos da Evolution API (messages.upsert) e persiste em atd_*.
-// Com WEBHOOK_BASE64=true na Evolution API, o payload já traz o base64 da mídia.
-// O base64 é salvo no Supabase Storage (bucket "atd-midias") como URL permanente.
+// VTP Atendimento — webhook-whatsapp (Meta WABA)
+// Recebe eventos da Meta WhatsApp Business Platform e persiste em atd_*.
+// Também responde ao desafio de verificação de webhook da Meta (GET).
+//
+// Env vars necessárias no Supabase:
+//   WA_PHONE_NUMBER_ID   — ID do número no Meta Business Manager
+//   WA_ACCESS_TOKEN      — System User token (permanente, sem expiração)
+//   WA_VERIFY_TOKEN      — Token arbitrário configurado no painel Meta
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-interface EvoLocation { degreesLatitude?: number; degreesLongitude?: number; }
-interface EvoMedia   { url?: string; caption?: string; seconds?: number; fileName?: string; mimetype?: string; base64?: string; }
-interface EvoMessage {
-  conversation?: string;
-  base64?:          string;   // adicionado pela Evolution API quando webhookBase64=true
-  imageMessage?:    EvoMedia;
-  audioMessage?:    EvoMedia;
-  videoMessage?:    EvoMedia;
-  documentMessage?: EvoMedia;
-  locationMessage?: EvoLocation;
-  stickerMessage?:  EvoMedia;
+interface MetaMessage {
+  from: string;
+  id: string;
+  timestamp: string;
+  type: string;
+  text?: { body: string };
+  image?: { id: string; mime_type: string; caption?: string };
+  audio?: { id: string; mime_type: string };
+  video?: { id: string; mime_type: string; caption?: string };
+  document?: { id: string; mime_type: string; filename?: string; caption?: string };
+  sticker?: { id: string; mime_type: string };
+  location?: { latitude: number; longitude: number; name?: string; address?: string };
+  reaction?: { message_id: string; emoji: string };
+  statuses?: Array<{ id: string; status: string; recipient_id: string }>;
 }
-interface EvoPayload {
-  event: string;
-  instance: string;
-  data: {
-    key?: { remoteJid: string; id: string; fromMe?: boolean };
-    message?: EvoMessage;
-    messageType?: string;
-    pushName?: string;
-    messageTimestamp?: number;
-    // messages.update
-    update?: { status?: string };
-    keyId?: string; // ID da mensagem atualizada (messages.update)
-  } | Array<{
-    key: { remoteJid: string; id: string; fromMe?: boolean };
-    update: { status?: string };
+
+interface MetaPayload {
+  object: string;
+  entry: Array<{
+    id: string;
+    changes: Array<{
+      value: {
+        messaging_product: string;
+        metadata: { display_phone_number: string; phone_number_id: string };
+        contacts?: Array<{ profile: { name: string }; wa_id: string }>;
+        messages?: MetaMessage[];
+        statuses?: Array<{ id: string; status: string; recipient_id: string; timestamp: string }>;
+      };
+      field: string;
+    }>;
   }>;
 }
 
@@ -44,50 +51,41 @@ const MIME_TO_EXT: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 };
 
-function normalizarJid(remoteJid: string): string | null {
-  const digitos = remoteJid.split('@')[0].replace(/\D/g, '');
-  return digitos || null;
-}
-
-function detectarTipo(msg: EvoMessage, messageType: string): string {
-  if (msg.locationMessage)  return 'localizacao';
-  if (msg.imageMessage)     return 'imagem';
-  if (msg.audioMessage)     return 'audio';
-  if (msg.videoMessage)     return 'video';
-  if (msg.documentMessage)  return 'documento';
-  if (msg.stickerMessage)   return 'sticker';
-  if (messageType === 'conversation') return 'texto';
-  return 'texto';
-}
-
-function getMidia(msg: EvoMessage, tipo: string): EvoMedia | null {
-  switch (tipo) {
-    case 'imagem':    return msg.imageMessage    ?? null;
-    case 'audio':     return msg.audioMessage    ?? null;
-    case 'video':     return msg.videoMessage    ?? null;
-    case 'documento': return msg.documentMessage ?? null;
-    case 'sticker':   return msg.stickerMessage  ?? null;
-    default:          return null;
-  }
-}
-
-// Salva base64 no Supabase Storage e retorna URL pública permanente.
-async function salvarBase64(
+// Baixa mídia da Meta Graph API e salva no Supabase Storage.
+// A Meta exige Bearer token para baixar a URL da mídia.
+async function baixarESalvarMidia(
   sb: ReturnType<typeof createClient>,
+  mediaId: string,
   tipo: string,
   externalId: string,
-  base64: string,
-  mimetype: string,
-  fileName?: string,
-): Promise<string | null> {
+  waToken: string,
+): Promise<{ url: string | null; mimeType: string; fileName?: string }> {
   try {
-    const raw = base64.includes(',') ? base64.split(',')[1] : base64;
-    const binaryStr = atob(raw);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    // 1. Busca a URL de download
+    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+      headers: { Authorization: `Bearer ${waToken}` },
+    });
+    if (!metaRes.ok) {
+      console.warn('[webhook-wpp] erro ao buscar URL da mídia:', await metaRes.text());
+      return { url: null, mimeType: 'application/octet-stream' };
+    }
+    const meta = await metaRes.json();
+    const downloadUrl: string = meta.url;
+    const mimeType: string = meta.mime_type || 'application/octet-stream';
 
-    const mimeBase = mimetype.split(';')[0].trim();
-    const ext = MIME_TO_EXT[mimeBase] || fileName?.split('.').pop() || 'bin';
+    // 2. Baixa o arquivo com Bearer token
+    const fileRes = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${waToken}` },
+    });
+    if (!fileRes.ok) {
+      console.warn('[webhook-wpp] erro ao baixar mídia:', fileRes.status);
+      return { url: null, mimeType };
+    }
+    const bytes = new Uint8Array(await fileRes.arrayBuffer());
+
+    // 3. Salva no Supabase Storage
+    const mimeBase = mimeType.split(';')[0].trim();
+    const ext = MIME_TO_EXT[mimeBase] || 'bin';
     const path = `${tipo}/${externalId}.${ext}`;
 
     const { error } = await sb.storage
@@ -96,154 +94,161 @@ async function salvarBase64(
 
     if (error) {
       console.warn('[webhook-wpp] erro ao salvar storage:', error.message);
-      return null;
+      return { url: null, mimeType };
     }
 
     const { data } = sb.storage.from('atd-midias').getPublicUrl(path);
-    console.log('[webhook-wpp] mídia salva:', data.publicUrl);
-    return data.publicUrl;
+    return { url: data.publicUrl, mimeType };
   } catch (e) {
-    console.warn('[webhook-wpp] erro ao processar base64:', e);
-    return null;
-  }
-}
-
-async function buscarFotoWhatsApp(evoUrl: string, evoKey: string, instance: string, remoteJid: string): Promise<string | null> {
-  try {
-    const res = await fetch(`${evoUrl}/chat/fetchProfilePictureUrl/${instance}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: evoKey },
-      body: JSON.stringify({ number: remoteJid }),
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json?.profilePictureUrl ?? json?.picture ?? null;
-  } catch {
-    return null;
+    console.warn('[webhook-wpp] exceção ao processar mídia:', e);
+    return { url: null, mimeType: 'application/octet-stream' };
   }
 }
 
 Deno.serve(async (req) => {
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-  const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const EVO_URL      = Deno.env.get('EVOLUTION_API_URL') ?? '';
-  const EVO_KEY      = Deno.env.get('EVOLUTION_API_KEY') ?? '';
-  const EVO_INSTANCE = Deno.env.get('EVOLUTION_INSTANCE_NAME') ?? 'vtp-main';
-  const sb = createClient(SUPABASE_URL, SERVICE_KEY);
+  const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
+  const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const WA_TOKEN      = Deno.env.get('WA_ACCESS_TOKEN') ?? '';
+  const VERIFY_TOKEN  = Deno.env.get('WA_VERIFY_TOKEN') ?? '';
 
-  const payload: EvoPayload = await req.json();
+  // ── Verificação de webhook (GET) ─────────────────────────────────────────
+  if (req.method === 'GET') {
+    const url = new URL(req.url);
+    const mode      = url.searchParams.get('hub.mode');
+    const token     = url.searchParams.get('hub.verify_token');
+    const challenge = url.searchParams.get('hub.challenge');
 
-  // ── messages.update: atualiza status (delivered / read) ──────────────────
-  if (payload.event === 'messages.update') {
-    const updates = Array.isArray(payload.data) ? payload.data : [payload.data];
-    for (const upd of updates) {
-      if (!upd || !upd.key?.fromMe) continue; // só mensagens enviadas pelo atendente
-      const rawStatus = upd.update?.status ?? '';
-      let status: string | null = null;
-      if (rawStatus === 'DELIVERY_ACK' || rawStatus === '3') status = 'delivered';
-      if (rawStatus === 'READ'         || rawStatus === '4') status = 'read';
-      if (rawStatus === 'PLAYED'       || rawStatus === '5') status = 'read';
-      if (!status) continue;
-      await sb.from('atd_mensagens')
-        .update({ status })
-        .eq('external_id', upd.key.id);
+    if (mode === 'subscribe' && token === VERIFY_TOKEN && challenge) {
+      return new Response(challenge, { status: 200, headers: { 'Content-Type': 'text/plain' } });
     }
-    return new Response('ok', { status: 200 });
+    return new Response('Forbidden', { status: 403 });
   }
 
-  if (payload.event !== 'messages.upsert' || (payload.data as { key?: { fromMe?: boolean } })?.key?.fromMe) {
+  if (req.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+
+  const payload: MetaPayload = await req.json();
+
+  if (payload.object !== 'whatsapp_business_account') {
     return new Response(JSON.stringify({ ignorado: true }), { headers: { 'Content-Type': 'application/json' } });
   }
 
+  const sb = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  const telefone = normalizarJid(payload.data.key.remoteJid);
-  if (!telefone) {
-    return new Response(JSON.stringify({ error: 'remoteJid inválido' }), { status: 400 });
-  }
+  for (const entry of payload.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== 'messages') continue;
+      const val = change.value;
 
-  // 1. Upsert contato
-  const { data: contato, error: contatoErr } = await sb
-    .from('atd_contatos')
-    .upsert(
-      { telefone, nome: payload.data.pushName || null, canal_origem: 'whatsapp' },
-      { onConflict: 'telefone', ignoreDuplicates: false }
-    )
-    .select('id, avatar_url')
-    .single();
-  if (contatoErr || !contato) {
-    return new Response(JSON.stringify({ error: 'falha ao salvar contato', detalhe: contatoErr }), { status: 500 });
-  }
+      // ── Status updates (delivered / read) ─────────────────────────────
+      for (const st of val.statuses ?? []) {
+        let status: string | null = null;
+        if (st.status === 'delivered') status = 'delivered';
+        if (st.status === 'read')      status = 'read';
+        if (!status) continue;
+        await sb.from('atd_mensagens').update({ status }).eq('external_id', st.id);
+      }
 
-  // 1b. Busca foto de perfil do WhatsApp se ainda não tiver
-  if (!contato.avatar_url && EVO_URL && EVO_KEY) {
-    const foto = await buscarFotoWhatsApp(EVO_URL, EVO_KEY, EVO_INSTANCE, payload.data.key.remoteJid);
-    if (foto) {
-      await sb.from('atd_contatos').update({ avatar_url: foto }).eq('id', contato.id);
+      // ── Mensagens recebidas ────────────────────────────────────────────
+      for (const msg of val.messages ?? []) {
+        const telefone = msg.from.replace(/\D/g, '');
+        if (!telefone) continue;
+
+        const nomeContato = val.contacts?.find(c => c.wa_id === msg.from)?.profile?.name ?? null;
+
+        // 1. Upsert contato
+        const { data: contato, error: contatoErr } = await sb
+          .from('atd_contatos')
+          .upsert(
+            { telefone, nome: nomeContato, canal_origem: 'whatsapp' },
+            { onConflict: 'telefone', ignoreDuplicates: false }
+          )
+          .select('id')
+          .single();
+        if (contatoErr || !contato) {
+          console.error('[webhook-wpp] falha contato:', contatoErr);
+          continue;
+        }
+
+        // 2. Canal whatsapp
+        const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'whatsapp').eq('ativo', true).limit(1).single();
+
+        // 3. Obtém ou cria conversa
+        const { data: conversaId, error: convErr } = await sb.rpc('atd_obter_ou_criar_conversa', {
+          p_contato_id: contato.id,
+          p_canal_id:   canal?.id ?? null,
+          p_canal_tipo: 'whatsapp',
+        });
+        if (convErr || !conversaId) {
+          console.error('[webhook-wpp] falha conversa:', convErr);
+          continue;
+        }
+
+        // 4. Monta conteúdo por tipo
+        let tipo: string;
+        let conteudo: Record<string, unknown>;
+
+        if (msg.type === 'text') {
+          tipo = 'texto';
+          conteudo = { texto: msg.text?.body || '' };
+        } else if (msg.type === 'location') {
+          tipo = 'localizacao';
+          conteudo = {
+            latitude:  msg.location?.latitude,
+            longitude: msg.location?.longitude,
+            nome:      msg.location?.name || null,
+            endereco:  msg.location?.address || null,
+          };
+        } else if (msg.type === 'reaction') {
+          // Reações não são mensagens visuais — ignorar silenciosamente
+          continue;
+        } else if (msg.type === 'image' && msg.image) {
+          tipo = 'imagem';
+          const { url } = await baixarESalvarMidia(sb, msg.image.id, 'imagem', msg.id, WA_TOKEN);
+          conteudo = { url, texto: msg.image.caption || '' };
+        } else if (msg.type === 'audio' && msg.audio) {
+          tipo = 'audio';
+          const { url } = await baixarESalvarMidia(sb, msg.audio.id, 'audio', msg.id, WA_TOKEN);
+          conteudo = { url };
+        } else if (msg.type === 'video' && msg.video) {
+          tipo = 'video';
+          const { url } = await baixarESalvarMidia(sb, msg.video.id, 'video', msg.id, WA_TOKEN);
+          conteudo = { url, texto: msg.video.caption || '' };
+        } else if (msg.type === 'document' && msg.document) {
+          tipo = 'documento';
+          const { url } = await baixarESalvarMidia(sb, msg.document.id, 'documento', msg.id, WA_TOKEN);
+          conteudo = { url, nome: msg.document.filename || 'documento', texto: msg.document.caption || '' };
+        } else if (msg.type === 'sticker' && msg.sticker) {
+          tipo = 'sticker';
+          const { url } = await baixarESalvarMidia(sb, msg.sticker.id, 'sticker', msg.id, WA_TOKEN);
+          conteudo = { url };
+        } else {
+          tipo = 'texto';
+          conteudo = { texto: `[mensagem do tipo ${msg.type}]` };
+        }
+
+        // 5. Insere mensagem
+        const { error: msgErr } = await sb.from('atd_mensagens').upsert({
+          conversa_id:  conversaId,
+          origem:       'cliente',
+          visibilidade: 'publica',
+          tipo,
+          conteudo,
+          external_id:  msg.id,
+          enviado_em:   new Date(Number(msg.timestamp) * 1000).toISOString(),
+        }, { onConflict: 'external_id', ignoreDuplicates: true });
+
+        if (msgErr) {
+          console.error('[webhook-wpp] falha ao salvar mensagem:', msgErr);
+          continue;
+        }
+
+        await sb.from('atd_conversas').update({ atualizado_em: new Date().toISOString() }).eq('id', conversaId);
+      }
     }
   }
 
-  // 2. Busca canal whatsapp
-  const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'whatsapp').eq('ativo', true).limit(1).single();
-
-  // 3. Obtém ou cria conversa de forma atômica (evita race condition com múltiplos webhooks simultâneos)
-  const { data: conversaId, error: convErr } = await sb.rpc('atd_obter_ou_criar_conversa', {
-    p_contato_id: contato.id,
-    p_canal_id:   canal?.id ?? null,
-    p_canal_tipo: 'whatsapp',
-  });
-  if (convErr || !conversaId) {
-    return new Response(JSON.stringify({ error: 'falha ao obter/criar conversa', detalhe: convErr }), { status: 500 });
-  }
-
-  // 4. Monta conteúdo
-  const tipo = detectarTipo(payload.data.message, payload.data.messageType);
-  const externalId = payload.data.key.id;
-  let conteudo: Record<string, unknown>;
-
-  if (tipo === 'localizacao') {
-    conteudo = {
-      latitude:  payload.data.message.locationMessage?.degreesLatitude,
-      longitude: payload.data.message.locationMessage?.degreesLongitude,
-    };
-  } else if (tipo === 'texto') {
-    conteudo = { texto: payload.data.message.conversation || '' };
-  } else {
-    const midia = getMidia(payload.data.message, tipo)!;
-    // base64 fica em data.message.base64, NÃO dentro de imageMessage/audioMessage/etc
-    const base64 = payload.data.message.base64;
-    const mimetype = midia.mimetype || 'application/octet-stream';
-
-    let urlFinal: string | null = null;
-    if (base64) {
-      urlFinal = await salvarBase64(sb, tipo, externalId, base64, mimetype, midia.fileName);
-    }
-    if (!urlFinal) urlFinal = midia.url ?? null;
-
-    if (tipo === 'audio') {
-      conteudo = { url: urlFinal, duracao: midia.seconds };
-    } else if (tipo === 'documento') {
-      conteudo = { url: urlFinal, nome: midia.fileName || 'documento', texto: '' };
-    } else {
-      conteudo = { url: urlFinal, texto: midia.caption || '' };
-    }
-  }
-
-  // 5. Insere mensagem (dedupe por external_id)
-  const { error: msgErr } = await sb.from('atd_mensagens').upsert({
-    conversa_id:  conversaId,
-    origem:       'cliente',
-    visibilidade: 'publica',
-    tipo,
-    conteudo,
-    external_id:  externalId,
-    enviado_em:   new Date(payload.data.messageTimestamp * 1000).toISOString(),
-  }, { onConflict: 'external_id', ignoreDuplicates: true });
-
-  if (msgErr) {
-    return new Response(JSON.stringify({ error: 'falha ao salvar mensagem', detalhe: msgErr }), { status: 500 });
-  }
-
-  await sb.from('atd_conversas').update({ atualizado_em: new Date().toISOString() }).eq('id', conversaId);
-
-  return new Response(JSON.stringify({ ok: true, conversa_id: conversaId }), { headers: { 'Content-Type': 'application/json' } });
+  // Meta exige 200 OK em até 20s — sempre responder ok
+  return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
 });
