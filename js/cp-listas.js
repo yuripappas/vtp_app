@@ -177,7 +177,7 @@ async function _clAbrirEditor({ lista, nome, cats, modo }) {
   }
   // Lista nova: já vem marcado o que o estoque sugere
   if (!lista) for (const l of linhas.values()) if (l.sugerida > 0) { l.marcado = true; l.qtd = l.sugerida; }
-  _clAtual = { lista, nome, cats, modo, linhas, q: '', todos: !!lista };
+  _clAtual = { lista, nome, cats, modo, linhas, q: '', filtro: lista ? 'na_lista' : 'sugestao', forn: '', cat: '' };
   _clRender();
 }
 
@@ -205,12 +205,18 @@ function _clRender() {
     ${l?.status === 'devolvida' && l.comentario_aprovacao ? `<div style="margin-top:10px;padding:9px 12px;border-radius:var(--r8);background:var(--orange-light);color:var(--orange-dark);font-size:var(--text-sm)">
       Devolvida por ${_estEsc(l.aprovado_por || '')}: "${_estEsc(l.comentario_aprovacao)}"</div>` : ''}`;
 
-  // Corpo
+  // Corpo — filtros de necessidade (só ao montar)
   const q = a.q.toLowerCase();
-  let vis = [...a.linhas.values()];
-  if (a.modo !== 'editar') vis = vis.filter(x => x.marcado);
-  else if (!a.todos) vis = vis.filter(x => x.marcado || x.sugerida > 0);
+  const todas = [...a.linhas.values()];
+  let base = todas;
+  if (a.modo === 'editar') {
+    if (a.forn) base = base.filter(x => _clDoFornecedor(x.item, +a.forn));
+    if (a.cat) base = base.filter(x => (x.item.cat || 'Outros') === a.cat);
+  }
+  const conta = f => base.filter(x => _CL_FILTROS[f].teste(x)).length;
+  let vis = a.modo !== 'editar' ? todas.filter(x => x.marcado) : base.filter(x => _CL_FILTROS[a.filtro].teste(x));
   if (q) vis = vis.filter(x => x.item.name.toLowerCase().includes(q) || (x.item.cat || '').toLowerCase().includes(q));
+  window._clVisiveis = vis.map(x => x.item.id);
   const porCat = {};
   vis.forEach(x => { (porCat[x.item.cat || 'Outros'] ||= []).push(x); });
   const th = (t, al = 'right') => `<th style="padding:8px 10px;text-align:${al};font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">${t}</th>`;
@@ -240,7 +246,7 @@ function _clRender() {
     }
     return `<tr style="border-top:1px solid var(--border);${a.modo === 'editar' && !x.marcado ? 'opacity:.6' : ''}">
       ${a.modo === 'editar' ? `<td style="padding:8px 10px;width:28px"><input type="checkbox" ${x.marcado ? 'checked' : ''} onchange="_clToggle(${id}, this.checked)" style="accent-color:var(--purple);width:16px;height:16px"></td>` : ''}
-      <td style="padding:8px 10px"><div style="font-weight:600">${_estEsc(it.name)}</div>
+      <td style="padding:8px 10px"><div style="font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${_estEsc(it.name)}${_clSituacao(x)}</div>
         ${ultimo ? `<div style="font-size:var(--text-xs);color:var(--muted)">últ. compra ${_estR(ultimo.precoUnit)} · ${_estEsc(ultimo.fornecedorNome || '')}</div>` : ''}</td>
       <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:${corSaldo}">${_estQ(x.saldo)} ${u}</td>
       <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${it.min ? _estQ(it.min) : '—'} / ${it.ideal ? _estQ(it.ideal) : '—'}</td>
@@ -253,8 +259,23 @@ function _clRender() {
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
       <input class="inp" id="clBusca" placeholder="Buscar item…" value="${_estEsc(a.q)}" style="max-width:320px;font-size:var(--text-md)"
         oninput="_clAtual.q=this.value;clearTimeout(window._clQT);window._clQT=setTimeout(()=>{_clRender();const b=document.getElementById('clBusca');b.focus();b.setSelectionRange(b.value.length,b.value.length)},200)">
-      ${a.modo === 'editar' ? `<label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--text2);cursor:pointer">
-        <input type="checkbox" ${a.todos ? 'checked' : ''} onchange="_clAtual.todos=this.checked;_clRender()" style="accent-color:var(--purple)"> Mostrar também itens sem sugestão</label>` : ''}
+      ${a.modo === 'editar' ? (() => {
+        const fornIds = [...new Set(todas.flatMap(x => _clFornsDoItem(x.item)))].filter(f => cpFornecedor(f)).sort((f1, f2) => cpFornecedor(f1).name.localeCompare(cpFornecedor(f2).name));
+        const catsLista = [...new Set(todas.map(x => x.item.cat || 'Outros'))].sort();
+        return `${fornIds.length ? `<select class="inp" style="width:auto;font-size:var(--text-sm)" onchange="_clAtual.forn=this.value;_clRender()">
+          <option value="">Todos os fornecedores</option>${fornIds.map(f => `<option value="${f}"${String(f) === a.forn ? ' selected' : ''}>${_estEsc(cpFornecedor(f).name)}</option>`).join('')}</select>` : ''}
+        ${catsLista.length > 1 ? `<select class="inp" style="width:auto;font-size:var(--text-sm)" onchange="_clAtual.cat=this.value;_clRender()">
+          <option value="">Todas as categorias</option>${catsLista.map(c => `<option value="${_estEsc(c)}"${c === a.cat ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}</select>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+          ${Object.entries(_CL_FILTROS).map(([id, f]) => { const on = a.filtro === id; return `<button onclick="_clAtual.filtro='${id}';_clRender()" title="${f.dica}"
+            style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;font-size:var(--text-sm);font-weight:600;font-family:inherit;cursor:pointer;
+            border:1.5px solid ${on ? f.cor : 'var(--border)'};background:${on ? f.bg : 'var(--card-bg)'};color:${on ? f.cor : 'var(--text2)'}">${f.label} <span style="opacity:.75">${conta(id)}</span></button>`; }).join('')}
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn btn-outline btn-xs" onclick="_clMarcarVisiveis(true)" title="Marca os itens da tela com a quantidade sugerida">${lc('check-square', 12, 'currentColor')} Marcar visíveis</button>
+            <button class="btn btn-ghost btn-xs" onclick="_clMarcarVisiveis(false)">Desmarcar visíveis</button>
+          </span>`;
+      })() : ''}
       ${a.modo === 'aprovar' ? `<span style="font-size:var(--text-sm);color:var(--text2)">Ajuste as quantidades se precisar. Zero corta o item.</span>` : ''}
     </div>
     ${Object.keys(porCat).sort().map(cat => `
@@ -264,7 +285,7 @@ function _clRender() {
           <thead style="background:var(--surface2)"><tr>${a.modo === 'editar' ? '<th></th>' : ''}${th('Item', 'left')}${th('Saldo')}${th('Mín / ideal')}${th('Sugerido')}${th(a.modo === 'aprovar' ? 'Aprovar' : 'Comprar')}${th('Estimado')}</tr></thead>
           <tbody>${porCat[cat].sort((p, q2) => p.item.name.localeCompare(q2.item.name)).map(linhaHtml).join('')}</tbody>
         </table></div>`).join('')}
-    ${!vis.length ? `<div style="padding:40px;text-align:center;color:var(--muted)">${a.modo === 'editar' && !a.todos ? 'Nada abaixo do ideal nessas categorias. Marque "Mostrar também itens sem sugestão" para escolher à mão.' : 'Nenhum item'}</div>` : ''}`;
+    ${!vis.length ? `<div style="padding:40px;text-align:center;color:var(--muted)">${a.modo === 'editar' ? `Nenhum item em "${_CL_FILTROS[a.filtro].label}" com esses filtros. Experimente "Todos".` : 'Nenhum item'}</div>` : ''}`;
 
   // Rodapé
   const f = document.getElementById('clFoot');
@@ -282,6 +303,36 @@ function _clRender() {
       ${aguard && l.criado_por === estUsuario() ? `<button class="btn btn-outline" onclick="_clRetirar()">Retirar para editar</button>` : ''}
       <button class="btn btn-primary" onclick="_clFechar()">Fechar</button>`;
   }
+}
+
+// Filtros de necessidade de estoque (chips do editor)
+const _clZerado = x => x.saldo <= 0.0005;
+const _clAbaixoMin = x => x.item.min > 0 && x.saldo < x.item.min;
+const _CL_FILTROS = {
+  sugestao: { label: 'Precisa comprar', dica: 'Abaixo do ideal (tem sugestão de compra)', cor: 'var(--purple)', bg: 'var(--purple-xlight)', teste: x => x.sugerida > 0 },
+  zerado:   { label: 'Zerados',        dica: 'Saldo zero ou negativo', cor: 'var(--danger-fg)', bg: 'var(--danger-bg)', teste: _clZerado },
+  minimo:   { label: 'Abaixo do mínimo', dica: 'Saldo menor que o estoque mínimo', cor: 'var(--orange-dark)', bg: 'var(--orange-light)', teste: _clAbaixoMin },
+  na_lista: { label: 'Na lista',       dica: 'Itens já marcados nesta lista', cor: 'var(--success-fg)', bg: 'var(--success-bg)', teste: x => x.marcado },
+  todos:    { label: 'Todos',          dica: 'Todos os insumos, para escolher à mão', cor: 'var(--text)', bg: 'var(--surface2)', teste: () => true },
+};
+function _clSituacao(x) {
+  if (_clZerado(x)) return `<span class="badge b-red" style="font-size:var(--text-2xs)">Zerado</span>`;
+  if (_clAbaixoMin(x)) return `<span class="badge b-orange" style="font-size:var(--text-2xs)">Abaixo do mínimo</span>`;
+  return '';
+}
+const _clFornsDoItem = it => [...new Set([...(it.supIds || []), it.supId, it.supIdExclusivo].filter(Boolean))];
+const _clDoFornecedor = (it, f) => it.supIdExclusivo ? it.supIdExclusivo === f : _clFornsDoItem(it).includes(f);
+
+function _clMarcarVisiveis(on) {
+  let n = 0;
+  for (const id of (window._clVisiveis || [])) {
+    const x = _clAtual.linhas.get(id);
+    if (!x || x.marcado === on) continue;
+    x.marcado = on; n++;
+    if (on && !(x.qtd > 0)) x.qtd = x.sugerida > 0 ? x.sugerida : (x.item.qtdEmb > 0 ? x.item.qtdEmb : 1);
+  }
+  toast(on ? `${n} item(ns) marcados` : `${n} item(ns) desmarcados`, 'ok');
+  _clRender();
 }
 
 function _clFechar() {
