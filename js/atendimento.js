@@ -3185,26 +3185,72 @@ function _atdCfgAba(aba) {
   }
 }
 
+// Formata dígitos de WhatsApp (ex: "558287949894") em "+55 (82) 8794-9894".
+function _atdFormatarTelefoneBR(numero) {
+  const d = String(numero || '').replace(/\D/g, '');
+  if (!d.startsWith('55') || (d.length !== 12 && d.length !== 13)) return d ? `+${d}` : '';
+  const ddd = d.slice(2, 4);
+  const resto = d.slice(4);
+  const meio = resto.length === 9 ? resto.slice(0, 5) : resto.slice(0, 4);
+  const fim  = resto.length === 9 ? resto.slice(5) : resto.slice(4);
+  return `+55 (${ddd}) ${meio}-${fim}`;
+}
+
+// Status "ativo" em atd_canais só diz que o canal já foi configurado alguma
+// vez — não reflete se a instância do WhatsApp está conectada AGORA (ela cai
+// sozinha quando o aparelho é desvinculado, sessão expira etc.). Por isso
+// sempre consulta o estado real na Evolution API antes de desenhar o card.
+async function _atdBuscarStatusWhatsAppLive() {
+  const BASE = typeof VTP_SUPABASE_URL !== 'undefined'
+    ? VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1')
+    : '';
+  try {
+    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
+    if (!r.ok) return { state: 'erro' };
+    return await r.json();
+  } catch {
+    return { state: 'erro' };
+  }
+}
+
 async function _atdRenderIntegracoes() {
   const wrap = document.getElementById('page-omnichannel');
   wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle)">Carregando...</div>`;
 
   const sb = _atdGetSbClient();
-  const { data: canais } = await sb.from('atd_canais').select('*');
+  const [{ data: canais }, wppLive] = await Promise.all([
+    sb.from('atd_canais').select('*'),
+    _atdBuscarStatusWhatsAppLive(),
+  ]);
   _atdState.canais = canais || [];
 
   const cards = ATD_CANAIS_DEFINICAO.map((def) => {
     const registro = _atdState.canais.find((c) => c.tipo === def.tipo);
-    const conectado = !!registro?.ativo;
+    // WhatsApp: "conectado" vem do estado real da instância, não do flag do
+    // banco — os outros canais continuam usando atd_canais.ativo normalmente.
+    const conectado = def.tipo === 'whatsapp' ? wppLive.state === 'open' : !!registro?.ativo;
 
     let statusHtml, acaoHtml, detalheHtml = '';
 
     if (!def.disponivel) {
       statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Em breve</span>`;
       acaoHtml = `<button class="btn btn-ghost" disabled style="opacity:.5;cursor:not-allowed;font-size:var(--text-xs)">Indisponível</button>`;
+    } else if (def.tipo === 'whatsapp' && registro?.ativo && !conectado) {
+      // Já foi conectado alguma vez, mas a instância caiu agora.
+      const motivo = wppLive.state === 'connecting' ? 'Conectando…' : wppLive.state === 'erro' ? 'Erro ao checar status' : 'Desconectado';
+      const cor = wppLive.state === 'connecting' ? 'var(--warning-fg)' : 'var(--danger)';
+      const bg  = wppLive.state === 'connecting' ? 'var(--warning-bg)' : 'var(--danger-bg)';
+      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:${cor};background:${bg};padding:2px 8px;border-radius:999px">${lc('alert-triangle', 10, 'currentColor')} ${motivo}</span>`;
+      if (wppLive.numero) {
+        detalheHtml = `<div style="font-size:var(--text-2xs);color:var(--fg-subtle)">Último número: ${_atdFormatarTelefoneBR(wppLive.numero)}${wppLive.nome_perfil ? ` · ${wppLive.nome_perfil}` : ''}</div>`;
+      }
+      acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Reconectar</button>`;
     } else if (conectado) {
       statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--green);background:var(--success-bg);padding:2px 8px;border-radius:999px">${lc('check', 10, 'currentColor')} Conectado</span>`;
       if (def.tipo === 'whatsapp') {
+        if (wppLive.numero) {
+          detalheHtml = `<div style="font-size:var(--text-2xs);color:var(--fg-subtle)">${_atdFormatarTelefoneBR(wppLive.numero)}${wppLive.nome_perfil ? ` · ${wppLive.nome_perfil}` : ''}</div>`;
+        }
         acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">Reconectar / Trocar número</button>`;
       } else {
         acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirDetalheCanal('${def.tipo}')">Gerenciar</button>`;

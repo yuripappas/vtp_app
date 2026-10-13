@@ -28,7 +28,22 @@ Deno.serve(async (req) => {
     if (action === 'status') {
       const r = await evoFetch(`/instance/connectionState/${EVO_INSTANCE}`);
       const d = await r.json();
-      return new Response(JSON.stringify({ state: d?.instance?.state ?? d?.state ?? 'unknown' }), {
+      const state = d?.instance?.state ?? d?.state ?? 'unknown';
+
+      // Número e nome do perfil conectado — pra UI nunca mostrar "Conectado"
+      // sem saber (e sem o usuário saber) qual número é, e pra ficar óbvio
+      // quando um reconectar trocou de número sem querer.
+      let numero: string | null = null;
+      let nomePerfil: string | null = null;
+      try {
+        const rInfo = await evoFetch(`/instance/fetchInstances`);
+        const dInfo = await rInfo.json();
+        const info = Array.isArray(dInfo) ? dInfo.find((i: { name?: string }) => i.name === EVO_INSTANCE) : null;
+        numero = info?.ownerJid ? String(info.ownerJid).split('@')[0] : null;
+        nomePerfil = info?.profileName ?? null;
+      } catch { /* best-effort — status principal (state) já respondeu */ }
+
+      return new Response(JSON.stringify({ state, numero, nome_perfil: nomePerfil }), {
         headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
