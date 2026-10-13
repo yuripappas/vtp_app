@@ -117,10 +117,9 @@
           <span class="sb-caret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
         </button>
 
-        <button class="sb-item" id="nav-compras" onclick="_handleNavCompras()">
+        <button class="sb-item" id="nav-compras" onclick="goModule('compras')">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
           <span class="sb-label">Compras</span>
-          <span class="sb-caret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
         </button>
 
         <button class="sb-item" id="nav-estoque" onclick="goModule('estoque')">
@@ -307,8 +306,9 @@
       </div>
 
       <!-- COMPRAS -->
-      <div class="page" id="page-compras" style="padding:0">
-        <div id="cpSectionContent" style="height:100%;overflow-y:auto"></div>
+      <div class="page" id="page-compras" style="padding:0;display:flex;flex-direction:column">
+        <div id="cpTopTabs" style="display:none;flex-shrink:0"></div>
+        <div id="cpSectionContent" style="flex:1;min-height:0;overflow-y:auto"></div>
       </div><!-- /page-compras -->
 
       <!-- PREVISÃO -->
@@ -1411,7 +1411,7 @@
 <script src="js/icons.js"></script>
 <script src="js/db.js?v=117"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=226"></script>
+<script src="js/init.js?v=227"></script>
 <!-- Modal: Adicionar item manual -->
 <div class="overlay" id="ovAddItem">
   <div class="mbox" style="max-width:500px">
