@@ -3,7 +3,7 @@
  * cp-base.js — Módulo de Compras (novo): abas no topo, dados e utilitários
  *
  * Abas: Compras (visão geral) · Lista de compra · Cotação · Recebimento
- *       · Histórico (fluxo antigo, só consulta até a troca completa)
+ * (o fluxo antigo de 6 etapas em compras.js não é mais alcançável pela tela)
  *
  * Fluxo: Lista de compra (aprovada) → Cotação (lotes) → Recebimento (1 pedido
  * por fornecedor) → conferido = Compra + entrada no estoque.
@@ -18,8 +18,7 @@ const CP_ABAS = [
   { id: 'compras',     icon: 'shopping-bag',   label: 'Compras'        },
   { id: 'listas',      icon: 'clipboard-list', label: 'Lista de compra' },
   { id: 'cotacao',     icon: 'tag',            label: 'Cotação' },
-  { id: 'recebimento', icon: 'truck',          label: 'Recebimento',    breve: true },
-  { id: 'antigo',      icon: 'archive',        label: 'Histórico (antigo)' },
+  { id: 'recebimento', icon: 'truck',          label: 'Recebimento' },
 ];
 
 let _cpAba = 'compras';
@@ -42,8 +41,6 @@ function cpTabsHtml() {
 
 function cpSetAba(aba) {
   _cpAba = aba;
-  // Histórico: abre sem o filtro da semana atual, para ver todas as listas antigas
-  if (aba === 'antigo') { _cpListaAberta = null; window._lcDe = ''; window._lcAte = ''; }
   renderComprasLayout();
 }
 
@@ -52,16 +49,17 @@ function cpRenderAba() {
   const el = document.getElementById('cpSectionContent');
   if (!el) return;
   const aba = CP_ABAS.find(a => a.id === _cpAba) || CP_ABAS[0];
-  if (aba.breve) {
+  if (aba.breve) {  // (nenhuma aba em construção no momento)
     el.innerHTML = `<div style="padding:60px 24px;text-align:center;color:var(--muted);font-size:var(--text-md)">
       ${lc(aba.icon, 28, 'var(--muted)')}<div style="font-size:var(--text-lg);font-weight:800;color:var(--text);margin:10px 0 4px">${aba.label}</div>
-      Esta aba chega nas próximas entregas do módulo novo. Enquanto isso, o fluxo de listas continua em <strong>Histórico (antigo)</strong>.</div>`;
+      Esta aba chega nas próximas entregas do módulo novo.</div>`;
     return;
   }
   el.innerHTML = `<div style="padding:20px 24px" id="cpAbaBody"></div>`;
   if (aba.id === 'compras') cpRenderAbaCompras();
   else if (aba.id === 'listas') cpRenderAbaListas();
   else if (aba.id === 'cotacao') cpRenderAbaCotacao();
+  else if (aba.id === 'recebimento') cpRenderAbaRecebimento();
 }
 
 // ── Dados ──────────────────────────────────────────────────────

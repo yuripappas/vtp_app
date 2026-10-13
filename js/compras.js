@@ -80,11 +80,11 @@ function renderComprasLayout(section) {
   if (section) _cpSection = section;
 
   // Módulo novo (cp-base.js): abas no topo. Estoque e Fornecedores usam a
-  // mesma página sem as abas; o fluxo antigo vive na aba "Histórico (antigo)".
+  // mesma página sem as abas. O fluxo antigo (abaixo) não é mais alcançável.
   const tabs = document.getElementById('cpTopTabs');
   const modoCompras = _cpSection !== 'estoque' && _cpSection !== 'fornecedores' && typeof cpTabsHtml === 'function';
   if (tabs) { tabs.style.display = modoCompras ? '' : 'none'; if (modoCompras) tabs.innerHTML = cpTabsHtml(); }
-  if (modoCompras && _cpAba !== 'antigo') { _setPageTitle('Compras'); cpRenderAba(); return; }
+  if (modoCompras) { _setPageTitle('Compras'); cpRenderAba(); return; }
 
   const item = (typeof _COMPRAS_SUBMENU_ITEMS !== 'undefined' && _COMPRAS_SUBMENU_ITEMS.find(i => i.id === _cpSection)) || { label: 'Lista de Compras' };
   if (!_cpListaAberta) _setPageTitle(item.label);

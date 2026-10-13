@@ -142,6 +142,7 @@ async function cpVerCompra(id) {
       <div><div style="color:var(--muted)">Origem</div><span class="badge ${CP_ORIGEM[c.origem]?.cls || 'b-gray'}">${CP_ORIGEM[c.origem]?.label || c.origem}</span></div>
       <div><div style="color:var(--muted)">Lançada por</div><strong>${_estEsc(c.criado_por)}</strong></div>
       ${url ? `<div><div style="color:var(--muted)">Anexo</div><a href="${url}" target="_blank" rel="noopener" style="color:var(--purple);font-weight:700">${lc('paperclip', 12, 'currentColor')} Abrir nota</a></div>` : ''}
+      ${(c.fotos || []).length ? `<div><div style="color:var(--muted)">Fotos do recebimento</div>${c.fotos.map((f, k) => `<a href="${cpUrlAnexo(f)}" target="_blank" rel="noopener" style="color:var(--purple);font-weight:700;margin-right:8px">${lc('image', 12, 'currentColor')} ${k + 1}</a>`).join('')}</div>` : ''}
     </div>
     ${c.obs ? `<div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:12px">${_estEsc(c.obs)}</div>` : ''}
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
@@ -436,11 +437,12 @@ async function cpDarEntradaEstoque(compra, linhas) {
   for (const l of linhas) {
     const it = items.find(i => i.id === l.item_id);
     if (!it || !(l.preco_unit > 0)) continue;
+    const custoAnterior = it.cost ?? null;
     it.cost = Number(l.preco_unit); mudou = true;
     if (typeof priceHistory !== 'undefined') priceHistory.push({
       itemId: it.id, itemName: it.name, cat: it.cat, unidade: it.unit, marca: '',
       fornecedorId: compra.fornecedor_id || null, fornecedorNome: forn || '—', tipoCompra: compra.origem === 'pedido' ? 'fornecedor' : 'avulsa',
-      precoUnit: Number(l.preco_unit), precoEstimado: 0, data: compra.data_compra, listaId: compra.id,
+      precoUnit: Number(l.preco_unit), precoEstimado: 0, data: compra.data_compra, listaId: compra.id, custoAnterior,
     });
   }
   if (mudou) { if (typeof savePriceHistory === 'function') savePriceHistory(); if (typeof saveI === 'function') saveI(); }
@@ -450,13 +452,16 @@ async function cpDarEntradaEstoque(compra, linhas) {
 // referência de cada item para o último preço que sobrou
 function _cpDesfazerPrecos(compraId) {
   if (typeof priceHistory === 'undefined') return;
-  const afetados = new Set(priceHistory.filter(p => p.listaId === compraId).map(p => p.itemId));
-  if (!afetados.size) return;
+  const removidos = priceHistory.filter(p => p.listaId === compraId);
+  if (!removidos.length) return;
   priceHistory.splice(0, priceHistory.length, ...priceHistory.filter(p => p.listaId !== compraId));
-  for (const itemId of afetados) {
-    const it = items.find(i => i.id === itemId);
-    const ult = estUltimoPreco(itemId);
-    if (it && ult) it.cost = ult.precoUnit;
+  for (const r of removidos) {
+    const it = items.find(i => i.id === r.itemId);
+    if (!it) continue;
+    // Só mexe no custo se ele ainda é o desta compra (nenhuma compra depois mudou)
+    if (Number(it.cost) !== Number(r.precoUnit)) continue;
+    if (r.custoAnterior !== undefined && r.custoAnterior !== null) it.cost = r.custoAnterior;
+    else { const ult = estUltimoPreco(r.itemId); if (ult) it.cost = ult.precoUnit; }
   }
   if (typeof savePriceHistory === 'function') savePriceHistory();
   if (typeof saveI === 'function') saveI();
