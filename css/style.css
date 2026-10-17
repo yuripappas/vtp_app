@@ -441,6 +441,7 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
 .content { flex: 1; overflow-y: auto; }
 .page         { padding: 24px; display: none; }
 .page.active  { display: block; }
+#page-compras.active { display: flex; flex-direction: column; }
 
 /* ── BOTÕES ── */
 .btn {
