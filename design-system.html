@@ -692,6 +692,7 @@ section:last-child { border-bottom: none; }
       <a href="#cards">08 · Cards & KPIs</a>
       <a href="#tabela">09 · Tabela</a>
       <a href="#feedback">10 · Feedback</a>
+      <a href="#modal-form">10b · Modal de formulário</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Padrões</div>
@@ -1473,6 +1474,40 @@ section:last-child { border-bottom: none; }
     </section>
 
     <!-- 10 · FEEDBACK -->
+    <section id="modal-form">
+      <div class="section-head">
+        <div class="meta">
+          <div class="section-num">10b</div>
+          <h2>Modal de formulário</h2>
+          <p>Classes <code>fm-*</code> em <code>css/style.css</code>, montadas por <code>_estModal()</code> (js/estoque-mov.js). Título + subtítulo + fechar, corpo com respiro fixo de 16px entre blocos, rótulos em caixa normal, cards de escolha (<code>_estOpcoes</code>), dicas (<code>_estDica</code>) e lista com itens removíveis. No celular (&lt;480px) ocupa a tela toda e o <code>.f2</code> vira uma coluna. Fica acima da barra do topo (z-index 980).</p>
+        </div>
+      </div>
+      <style>
+        .dsfm{width:520px;max-width:100%;background:var(--modal-bg,#fff);border-radius:16px;box-shadow:0 20px 50px rgba(30,10,60,.18);font-family:Inter,sans-serif}
+        .dsfm-h{display:flex;justify-content:space-between;gap:12px;padding:22px 24px 0}.dsfm-t{font-size:18px;font-weight:700;color:var(--fg)}
+        .dsfm-s{font-size:13px;color:var(--fg-muted);margin-top:4px;line-height:1.5}.dsfm-b{padding:20px 24px 24px}.dsfm-b>*+*{margin-top:16px}
+        .dsfm-l{font-size:13px;font-weight:600;color:var(--fg);margin-bottom:6px}.dsfm-i{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font:inherit;font-size:13px;box-sizing:border-box}
+        .dsfm-o{display:grid;grid-template-columns:1fr 1fr;gap:10px}.dsfm-oc{padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;min-height:68px;box-sizing:border-box}
+        .dsfm-oc.on{border-color:var(--purple);background:var(--purple-xlight)}.dsfm-ot{font-size:14px;font-weight:700}.dsfm-oc.on .dsfm-ot{color:var(--purple)}.dsfm-od{font-size:12px;color:var(--fg-muted);margin-top:4px}
+        .dsfm-d{font-size:12px;color:var(--fg-subtle);margin-top:6px}.dsfm-f{display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--border)}
+      </style>
+      <div class="sub">
+        <div class="sub-title">Exemplo — Registrar entrada</div>
+        <div class="demo">
+          <div class="dsfm">
+            <div class="dsfm-h"><div><div class="dsfm-t">Registrar entrada</div><div class="dsfm-s">Compras entram sozinhas ao concluir o recebimento.</div></div><span style="color:var(--fg-subtle)">×</span></div>
+            <div class="dsfm-b">
+              <div><div class="dsfm-l">O que entrou</div><div class="dsfm-o">
+                <div class="dsfm-oc on"><div class="dsfm-ot">Insumo</div><div class="dsfm-od">doação, devolução, ajuste</div></div>
+                <div class="dsfm-oc"><div class="dsfm-ot">Processado</div><div class="dsfm-od">produção (ex.: molho, massa)</div></div></div></div>
+              <div><div class="dsfm-l">Insumo *</div><input class="dsfm-i" placeholder="Selecionar…"><div class="dsfm-d">Dica curta abaixo do campo, nunca com margem negativa.</div></div>
+            </div>
+            <div class="dsfm-f"><button class="btn btn-outline">Cancelar</button><button class="btn btn-primary">Registrar entrada</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="feedback">
       <div class="section-head">
         <div class="meta">

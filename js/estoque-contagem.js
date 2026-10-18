@@ -273,7 +273,8 @@ function estNovaContagem() {
   const fora = estCatsForaCMV();
   const catsFora = [...new Set(items.filter(i => i.active !== false && !estItemNoCMV(i, fora)).map(i => i.cat || 'Outros'))].sort();
   _ctgNova = { tipo: 'cmv', locais: null, cats: new Set(catsFora), catsFora, dia: null, nome: '', obs: '' };
-  _estModal('ovCtgNova', 'Nova contagem', `<div id="cnTipos"></div><div id="cnCorpo"></div>`, '_ctgCriar()', 'Criar', 600);
+  _estModal('ovCtgNova', 'Nova contagem', `<div id="cnTipos"></div><div id="cnCorpo" class="fm-pilha"></div>`, '_ctgCriar()', 'Criar', 600,
+    'Um card por local escolhido. Cada card entra no estoque ao concluir a revisão.');
   _ctgNovaRender();
 }
 
@@ -308,50 +309,43 @@ function _ctgNovaRender() {
   const info = _ctgNovaInfo();
   if (!n.locais) n.locais = new Set(info.locais.filter(l => l !== EST_SEM_LOCAL)); // "Sem local" vem desmarcado
   for (const l of [...n.locais]) if (!info.locais.includes(l)) n.locais.delete(l);
-  const opcao = (id, icon, titulo, sub) => {
-    const on = n.tipo === id;
-    return `<button type="button" onclick="_ctgNovaSet('tipo','${id}')" style="text-align:left;padding:14px;border-radius:var(--r10);cursor:pointer;font-family:inherit;
-      border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};background:${on ? 'var(--purple-xlight)' : 'var(--card-bg)'}">
-      <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-md);font-weight:800;color:${on ? 'var(--purple)' : 'var(--text)'}">${lc(icon, 16, 'currentColor')} ${titulo}</div>
-      <div style="font-size:var(--text-xs);color:var(--text2);margin-top:4px;line-height:1.4">${sub}</div></button>`;
-  };
-  document.getElementById('cnTipos').innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:16px">
-    ${opcao('cmv', 'refresh-cw', 'Contagem de CMV', 'Ciclo semanal. Itens das categorias que entram no CMV.')}
-    ${opcao('outras', 'package', 'Outras categorias', 'Limpeza, escritório, descartáveis… Só atualiza o estoque.')}
-  </div>`;
+  document.getElementById('cnTipos').innerHTML = _estCampo('Tipo de contagem', _estOpcoes([
+    { id: 'cmv',    label: 'Contagem de CMV',   icon: 'refresh-cw', desc: 'Ciclo semanal. Itens das categorias que entram no CMV.' },
+    { id: 'outras', label: 'Outras categorias', icon: 'package',    desc: 'Limpeza, escritório, descartáveis… Só atualiza o estoque.' },
+  ], n.tipo, "_ctgNovaSet.bind(null,'tipo')"));
 
-  const check = (on, onclick, txt, sub = '') => `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:var(--text-md);cursor:pointer;text-transform:none">
+  const check = (on, onclick, txt, sub = '') => `<label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:var(--text-md);font-weight:400;cursor:pointer;text-transform:none;letter-spacing:0">
     <input type="checkbox" ${on ? 'checked' : ''} onchange="${onclick}" style="accent-color:var(--purple);width:16px;height:16px">
     <span>${txt}</span>${sub ? `<span style="font-size:var(--text-xs);color:var(--muted)">${sub}</span>` : ''}</label>`;
   const blocoLocais = info.locais.length ? `
-    <div style="background:var(--surface2);border-radius:var(--r10);padding:12px 14px;margin-bottom:14px">
+    <div class="fm-box">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">
-        <div style="display:flex;align-items:center;gap:6px;font-size:var(--text-md);font-weight:700">${lc('map-pin', 15, 'currentColor')} Locais que receberão card de contagem:</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:var(--text-md);font-weight:700">${lc('map-pin', 15, 'currentColor')} Locais que receberão card</div>
         <button type="button" class="btn btn-ghost btn-xs" onclick="_ctgNova.locais=new Set(${n.locais.size === info.locais.length ? '[]' : JSON.stringify(info.locais).replace(/"/g, '&quot;')});_ctgNovaRender()">${n.locais.size === info.locais.length ? 'Desmarcar todos' : 'Marcar todos'}</button>
       </div>
       ${info.locais.map(l => check(n.locais.has(l), `_ctgNovaToggle('locais','${l}')`, _estEsc(estLocalLabel(l)), `${_ctgItensDoLocal(info.escopo, l).length} itens`)).join('')}
-    </div>` : `<div style="padding:12px 14px;border-radius:var(--r10);background:var(--surface2);font-size:var(--text-sm);color:var(--text2);margin-bottom:14px">${
+    </div>` : `<div class="fm-box" style="font-size:var(--text-sm);color:var(--fg-muted)">${
       n.tipo === 'cmv' && info.rodada.length ? 'Todos os locais já têm card nesta rodada.' : 'Nenhum local com itens para contar. Confira os locais no cadastro dos itens.'}</div>`;
 
   let corpo;
   if (n.tipo === 'cmv') {
     corpo = `
-      ${info.rodada.length ? `<div style="padding:10px 14px;border-radius:var(--r10);background:var(--purple-xlight);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">
+      ${info.rodada.length ? `<div class="fm-box" style="background:var(--purple-xlight);font-size:var(--text-sm);line-height:1.5">
         Rodada aberta: <strong>${_estEsc(info.rodada[0].nome)}</strong>. Os cards novos entram nela, com a mesma data.</div>` : ''}
       ${blocoLocais}
-      ${_estCampo('Data da contagem *', `<input class="inp" type="date" id="cnDia" value="${info.dia}" ${info.rodada.length ? 'disabled' : ''} onchange="_ctgNovaSet('dia', this.value)">`)}
-      <div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 12px;line-height:1.5">Os cards serão nomeados “${_estEsc(info.nome)} — local”. Cada card entra no estoque ao concluir a revisão. Ao concluir o ciclo, ele fecha nesta data e o próximo começa nela.</div>
+      ${_estCampo('Data da contagem *', `<input class="inp" type="date" id="cnDia" value="${info.dia}" ${info.rodada.length ? 'disabled' : ''} onchange="_ctgNovaSet('dia', this.value)">`, '',
+        `Os cards serão nomeados “${_estEsc(info.nome)} — local”. Ao concluir o ciclo, ele fecha nesta data e o próximo começa nela.`)}
       ${_estCampo('Observações', `<textarea class="inp" id="cnObs" rows="2" placeholder="Notas sobre esta contagem…" oninput="_ctgNova.obs=this.value">${_estEsc(n.obs)}</textarea>`)}`;
   } else {
     corpo = `
-      <div style="background:var(--surface2);border-radius:var(--r10);padding:12px 14px;margin-bottom:14px">
+      <div class="fm-box">
         <div style="display:flex;align-items:center;gap:6px;font-size:var(--text-md);font-weight:700;margin-bottom:4px">${lc('tag', 15, 'currentColor')} Categorias</div>
         ${n.catsFora.length ? n.catsFora.map(c => check(n.cats.has(c), `_ctgNovaToggle('cats','${_estEsc(c).replace(/'/g, "\\'")}')`, _estEsc(c))).join('')
           : '<div style="font-size:var(--text-sm);color:var(--muted)">Nenhuma categoria fora do CMV. Marque em Configurações › Estoque.</div>'}
       </div>
       ${blocoLocais}
-      ${_estCampo('Nome da contagem *', `<input class="inp" id="cnNome" placeholder="Ex: Limpeza e escritório" value="${_estEsc(n.nome)}" oninput="_ctgNova.nome=this.value">`)}
-      <div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 12px">Cada card recebe o nome com o local (ex.: “nome — local”).</div>
+      ${_estCampo('Nome da contagem *', `<input class="inp" id="cnNome" placeholder="Ex: Limpeza e escritório" value="${_estEsc(n.nome)}" oninput="_ctgNova.nome=this.value">`, '',
+        'Cada card recebe o nome com o local (ex.: “nome — local”).')}
       ${_estCampo('Data da contagem *', `<input class="inp" type="date" id="cnDia" value="${info.dia}" onchange="_ctgNova.dia=this.value">`)}
       ${_estCampo('Observações', `<textarea class="inp" id="cnObs" rows="2" placeholder="Notas sobre esta contagem…" oninput="_ctgNova.obs=this.value">${_estEsc(n.obs)}</textarea>`)}`;
   }
@@ -414,13 +408,12 @@ function estExcluirRodada() {
     .forEach(c => { (porLote[c.lote || c.id] ||= []).push(c); });
   const lotes = Object.entries(porLote);
   if (!lotes.length) return toast('Nenhuma rodada em aberto para excluir', 'info');
-  _estModal('ovCtgExcluir', 'Excluir rodada de contagem', `
-    <div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:12px;line-height:1.5">Apaga todos os cards da rodada que ainda não foram aplicados ao estoque. Fica registrado no log.</div>
+  _estModal('ovCtgExcluir', 'Excluir rodada de contagem', `<div>
     ${lotes.map(([lote, cs], i) => `<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--r8);margin-bottom:8px;cursor:pointer;text-transform:none">
       <input type="radio" name="ctgLote" value="${lote}" ${i === 0 ? 'checked' : ''} style="accent-color:var(--danger-fg);margin-top:3px">
       <div><div style="font-size:var(--text-md);font-weight:700">${_estEsc(cs[0].nome)}</div>
-        <div style="font-size:var(--text-xs);color:var(--muted)">${cs.length} card(s) · ${_ctgDataBr(cs[0].data_ref)} · ${_ctgEhCmv(cs[0]) ? 'CMV' : 'Outras categorias'}</div></div></label>`).join('')}`,
-    '_ctgExcluirRodadaConfirmar()', 'Excluir rodada', 520);
+        <div style="font-size:var(--text-xs);color:var(--muted)">${cs.length} card(s) · ${_ctgDataBr(cs[0].data_ref)} · ${_ctgEhCmv(cs[0]) ? 'CMV' : 'Outras categorias'}</div></div></label>`).join('')}
+    </div>`, '_ctgExcluirRodadaConfirmar()', 'Excluir rodada', 520, 'Apaga todos os cards da rodada que ainda não foram aplicados ao estoque. Fica registrado no log.');
   const b = document.getElementById('ovCtgExcluir-salvar'); if (b) b.className = 'btn btn-red';
 }
 
@@ -829,9 +822,9 @@ async function _ctgEnviarRevisao() {
 
 function estAdicionarProdutoContagem() {
   _estModal('ovCtgAdd', 'Adicionar produto à contagem', `
-    <div style="font-size:var(--text-sm);color:var(--text2);line-height:1.5;margin:-6px 0 12px">Use para incluir um produto que apareceu no local inesperadamente, ou um processado (molho, recheio etc.) armazenado aqui.</div>
-    <input class="inp" id="ctgAddBusca" placeholder="Buscar produto…" oninput="_ctgAddLista()" style="margin-bottom:10px">
-    <div id="ctgAddLista"></div>`, `document.getElementById('ovCtgAdd').remove()`, 'Fechar', 560);
+    <input class="inp" id="ctgAddBusca" placeholder="Buscar produto…" oninput="_ctgAddLista()">
+    <div id="ctgAddLista"></div>`, `document.getElementById('ovCtgAdd').remove()`, 'Fechar', 560,
+    'Para um produto que apareceu no local inesperadamente, ou um processado (molho, recheio etc.) guardado aqui.');
   const cancelar = document.querySelector('#ovCtgAdd .btn-outline'); if (cancelar) cancelar.style.display = 'none';
   _ctgAddLista();
   setTimeout(() => document.getElementById('ctgAddBusca')?.focus(), 50);
@@ -1039,9 +1032,9 @@ function _ctgRenderDetalhe(el) {
 
 function estHistoricoContagens() {
   _estModal('ovCtgHist', 'Histórico de contagens', `
-    <div style="font-size:var(--text-sm);color:var(--text2);margin:-8px 0 12px">Visualize e compare contagens anteriores</div>
-    <input class="inp" id="ctgHistBusca" placeholder="Buscar contagem…" oninput="_ctgHistLista()" style="margin-bottom:12px">
-    <div id="ctgHistLista"></div>`, `document.getElementById('ovCtgHist').remove()`, 'Fechar', 640);
+    <input class="inp" id="ctgHistBusca" placeholder="Buscar contagem…" oninput="_ctgHistLista()">
+    <div id="ctgHistLista"></div>`, `document.getElementById('ovCtgHist').remove()`, 'Fechar', 640,
+    'Visualize e compare contagens anteriores.');
   const cancelar = document.querySelector('#ovCtgHist .btn-outline'); if (cancelar) cancelar.style.display = 'none';
   _ctgHistLista();
 }

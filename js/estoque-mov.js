@@ -398,7 +398,6 @@ function _estRenderMovConteudo() {
       ${_perRenderBar('estmov', 'estRenderAbaMov')}
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="estAbrirEntrada()">${lc('plus-circle', 14, 'currentColor')} Entrada</button>
-        <button class="btn btn-outline btn-sm" onclick="estAbrirProducao()">${lc('chef-hat', 14, 'currentColor')} Produção</button>
         <button class="btn btn-outline btn-sm" onclick="estAbrirTransferencia()">${lc('repeat', 14, 'currentColor')} Transferência</button>
         <button class="btn btn-primary btn-sm" onclick="estAbrirBaixa()">${lc('minus-circle', 14, '#fff')} Baixa</button>
       </div>
@@ -560,13 +559,18 @@ function _estAcoesHtml(idJs, grupo) {
 // POPUPS
 // ══════════════════════════════════════════════════════════════
 
-function _estModal(id, titulo, corpo, salvarFn, salvarLabel = 'Salvar', largura = 560) {
+// Modal de formulário padrão (classes fm-* em style.css): título, subtítulo
+// opcional, corpo com respiro fixo entre blocos e rodapé com as ações.
+function _estModal(id, titulo, corpo, salvarFn, salvarLabel = 'Salvar', largura = 560, sub = '') {
   document.getElementById(id)?.remove();
   const ov = document.createElement('div'); ov.className = 'overlay open'; ov.id = id;
-  ov.innerHTML = `<div class="modal" style="width:${largura}px;max-width:calc(100vw - 32px);max-height:calc(100vh - 48px);display:flex;flex-direction:column;padding:0" onclick="event.stopPropagation()">
-    <div style="padding:20px 24px 0;font-size:var(--text-lg);font-weight:800">${titulo}</div>
-    <div id="${id}-body" style="padding:16px 24px;overflow-y:auto;flex:1">${corpo}</div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 24px;border-top:1px solid var(--border)">
+  ov.innerHTML = `<div class="modal fm-modal" style="width:${largura}px" onclick="event.stopPropagation()">
+    <div class="fm-head">
+      <div style="min-width:0"><div class="fm-title">${titulo}</div>${sub ? `<div class="fm-sub">${sub}</div>` : ''}</div>
+      <button class="fm-close" title="Fechar" onclick="this.closest('.overlay').remove()">${lc('x', 18, 'currentColor')}</button>
+    </div>
+    <div id="${id}-body" class="fm-body">${corpo}</div>
+    <div class="fm-foot">
       <button class="btn btn-outline" onclick="this.closest('.overlay').remove()">Cancelar</button>
       <button class="btn btn-primary" id="${id}-salvar" onclick="${salvarFn}">${salvarLabel}</button>
     </div>
@@ -575,6 +579,14 @@ function _estModal(id, titulo, corpo, salvarFn, salvarLabel = 'Salvar', largura 
   document.body.appendChild(ov);
   return ov;
 }
+
+// Cards de escolha (ex.: Insumo / Processado / Produto)
+function _estOpcoes(lista, atual, onclick) {
+  return `<div class="fm-opcoes">${lista.map(o => `<button type="button" class="fm-opcao${o.id === atual ? ' on' : ''}" onclick="${onclick}('${o.id}')">
+    <span class="fm-opcao-t">${o.icon ? lc(o.icon, 15, 'currentColor') : ''} ${o.label}</span>
+    ${o.desc ? `<span class="fm-opcao-d">${o.desc}</span>` : ''}</button>`).join('')}</div>`;
+}
+const _estDica = txt => `<div class="fm-dica">${txt}</div>`;
 
 function _estAgora() {
   const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -596,7 +608,7 @@ function _estOptsLocais(sel, incluirSem = false) {
     + (incluirSem ? `<option value="${EST_SEM_LOCAL}"${sel === EST_SEM_LOCAL ? ' selected' : ''}>Sem local</option>` : '');
 }
 
-const _estCampo = (label, html, extra = '') => `<div class="field" style="${extra}"><label>${label}</label>${html}</div>`;
+const _estCampo = (label, html, extra = '', dica = '') => `<div class="field" style="${extra}"><label>${label}</label>${html}${dica ? _estDica(dica) : ''}</div>`;
 
 async function _estSalvarComBotao(id, fn) {
   const btn = document.getElementById(id + '-salvar');
@@ -629,78 +641,104 @@ function _estSugerirLocal(selItem, selLocal, campo) {
   if (un) un.textContent = item.unit || '';
 }
 
-// ── Entrada manual ──
-function estAbrirEntrada() {
-  _estModal('ovEstEntrada', 'Entrada manual', `
-    <div style="font-size:var(--text-sm);color:var(--muted);margin-bottom:12px">Entrada sem compra (ex.: doação, devolução, ajuste). Compras entram sozinhas ao concluir o recebimento.</div>
-    ${_estCampo('Item *', `<select class="inp" id="eeItem" onchange="_estSugerirLocal('eeItem','eeLocal','entrada');const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=it.cost||''">${_estOptsItens(() => true)}</select>`)}
-    <div class="f2">
-      ${_estCampo('Local *', `<select class="inp" id="eeLocal">${_estOptsLocais('', true)}</select>`)}
-      ${_estCampo('Quantidade * <span id="eeItem-un" style="text-transform:none"></span>', `<input class="inp" type="number" id="eeQtd" min="0" step="0.001">`)}
-    </div>
-    <div class="f2">
-      ${_estCampo('Custo unitário (R$)', `<input class="inp" type="number" id="eeCusto" min="0" step="0.01">`)}
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="eeData" value="${_estAgora()}">`)}
-    </div>
-    ${_estCampo('Motivo', `<input class="inp" id="eeMotivo" placeholder="ex: devolução do fornecedor">`)}`,
-    '_estSalvarEntrada()', 'Registrar entrada');
+const _EST_ORIGENS = [
+  { id: 'insumo',    label: 'Insumo',     icon: 'package',  desc: 'comprado ou in natura' },
+  { id: 'preparado', label: 'Processado', icon: 'chef-hat', desc: 'feito pela produção' },
+];
+const _estFiltroOrigem = o => o === 'preparado' ? (i => i.isProd) : (i => !i.isProd);
+// Guarda o que já foi digitado num modal antes de redesenhar
+function _estGuardar(estado, ids) { ids.forEach(id => { const el = document.getElementById(id); if (el) estado[id] = el.value; }); }
+
+// ── Entrada (insumo = entrada manual · processado = produção) ──
+let _estEn = { origem: 'insumo' };
+
+function estAbrirEntrada(origem = 'insumo') {
+  _estEn = { origem };
+  _estModal('ovEstEntrada', 'Registrar entrada', '', '_estSalvarEntrada()', 'Registrar entrada', 580,
+    'Compras entram sozinhas ao concluir o recebimento. Use aqui para o que entra sem compra.');
+  _estEntradaRender();
 }
-function _estSalvarEntrada() {
-  const item = _estItemDoSelect('eeItem');
-  const qtd  = parseFloat(document.getElementById('eeQtd').value);
-  if (!item) return toast('Selecione o item', 'err');
-  if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
-  _estSalvarComBotao('ovEstEntrada', () => estInserirMovs([_estMovRow(item, {
-    tipo: 'entrada_manual', sinal: 1, qtd: _estRound(qtd),
-    local_destino: document.getElementById('eeLocal').value || EST_SEM_LOCAL,
-    custo_unit: parseFloat(document.getElementById('eeCusto').value) || item.cost || 0,
-    motivo: document.getElementById('eeMotivo').value.trim() || null,
-    data_mov: _estLerData('eeData'),
-  })]).then(() => toast('Entrada registrada', 'ok')));
+const estAbrirProducao = () => estAbrirEntrada('preparado');
+
+function _estEntradaSet(origem) {
+  _estGuardar(_estEn, ['eeQtd', 'eeData', 'eeMotivo', 'eeCusto']);
+  _estEn.origem = origem; _estEn.itemId = null;
+  _estEntradaRender();
 }
 
-// ── Produção ──
-function estAbrirProducao() {
-  _estModal('ovEstProd', 'Produção de processado', `
-    <div style="font-size:var(--text-sm);color:var(--muted);margin-bottom:12px">Entrada do que a produção fez (ex.: 4 kg de Mussarela Triturada). Os insumos crus usados saem na contagem.</div>
-    ${_estCampo('Processado *', `<select class="inp" id="epItem" onchange="_estSugerirLocal('epItem','epLocal','entrada')">${_estOptsItens(i => i.isProd)}</select>`)}
+function _estEntradaRender() {
+  const body = document.getElementById('ovEstEntrada-body');
+  if (!body) return;
+  const e = _estEn, proc = e.origem === 'preparado';
+  body.innerHTML = `
+    ${_estCampo('O que entrou', _estOpcoes(_EST_ORIGENS.map(o => o.id === 'preparado' ? { ...o, desc: 'produção (ex.: molho, massa)' } : { ...o, desc: 'doação, devolução, ajuste' }), e.origem, '_estEntradaSet'))}
+    ${_estCampo(proc ? 'Processado *' : 'Insumo *', `<select class="inp" id="eeItem" onchange="_estEn.itemId=+this.value||null;_estSugerirLocal('eeItem','eeLocal','entrada');${proc ? '' : "const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=it.cost||''"}">${_estOptsItens(_estFiltroOrigem(e.origem), e.itemId)}</select>`,
+      '', proc ? 'Os insumos crus usados na produção saem do estoque na contagem.' : '')}
     <div class="f2">
-      ${_estCampo('Local *', `<select class="inp" id="epLocal">${_estOptsLocais('', true)}</select>`)}
-      ${_estCampo('Quantidade produzida * <span id="epItem-un" style="text-transform:none"></span>', `<input class="inp" type="number" id="epQtd" min="0" step="0.001">`)}
+      ${_estCampo('Local *', `<select class="inp" id="eeLocal">${_estOptsLocais(e.itemId ? estLocalEntrada(items.find(i => i.id === e.itemId)) : '', true)}</select>`)}
+      ${_estCampo(`${proc ? 'Quantidade produzida' : 'Quantidade'} * <span id="eeItem-un" style="font-weight:400;color:var(--fg-subtle)"></span>`, `<input class="inp" type="number" id="eeQtd" min="0" step="0.001" value="${_estEsc(e.eeQtd || '')}">`)}
     </div>
-    ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="epData" value="${_estAgora()}">`)}
-    ${_estCampo('Observação', `<input class="inp" id="epObs" placeholder="opcional">`)}`,
-    '_estSalvarProducao()', 'Registrar produção');
+    ${proc ? `<div class="f2">
+      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="eeData" value="${e.eeData || _estAgora()}">`)}
+      ${_estCampo('Observação', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="opcional">`)}
+    </div>` : `<div class="f2">
+      ${_estCampo('Custo unitário (R$)', `<input class="inp" type="number" id="eeCusto" min="0" step="0.01" value="${_estEsc(e.eeCusto || '')}">`)}
+      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="eeData" value="${e.eeData || _estAgora()}">`)}
+    </div>
+    ${_estCampo('Motivo', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="ex: devolução do fornecedor">`)}`}`;
+  if (e.itemId) _estSugerirLocal('eeItem', 'eeLocal', 'entrada');
 }
-function _estSalvarProducao() {
-  const item = _estItemDoSelect('epItem');
-  const qtd  = parseFloat(document.getElementById('epQtd').value);
-  if (!item) return toast('Selecione o processado', 'err');
+
+function _estSalvarEntrada() {
+  const proc = _estEn.origem === 'preparado';
+  const item = _estItemDoSelect('eeItem');
+  const qtd  = parseFloat(document.getElementById('eeQtd').value);
+  if (!item) return toast(proc ? 'Selecione o processado' : 'Selecione o insumo', 'err');
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
-  _estSalvarComBotao('ovEstProd', () => estInserirMovs([_estMovRow(item, {
-    tipo: 'producao', sinal: 1, qtd: _estRound(qtd),
-    local_destino: document.getElementById('epLocal').value || EST_SEM_LOCAL,
-    motivo: document.getElementById('epObs').value.trim() || null,
-    data_mov: _estLerData('epData'),
-  })]).then(() => toast('Produção registrada', 'ok')));
+  const comum = {
+    sinal: 1, qtd: _estRound(qtd), local_destino: document.getElementById('eeLocal').value || EST_SEM_LOCAL,
+    motivo: document.getElementById('eeMotivo').value.trim() || null, data_mov: _estLerData('eeData'),
+  };
+  const row = proc ? _estMovRow(item, { tipo: 'producao', ...comum })
+    : _estMovRow(item, { tipo: 'entrada_manual', ...comum, custo_unit: parseFloat(document.getElementById('eeCusto').value) || item.cost || 0 });
+  _estSalvarComBotao('ovEstEntrada', () => estInserirMovs([row]).then(() => toast(proc ? 'Produção registrada' : 'Entrada registrada', 'ok')));
 }
 
 // ── Transferência ──
+let _estTr = { origem: 'insumo' };
+
 function estAbrirTransferencia() {
-  _estModal('ovEstTransf', 'Transferência entre locais', `
-    <div style="font-size:var(--text-sm);color:var(--muted);margin-bottom:12px">Ex.: a gráfica entregou 500 caixas na loja. Sai de um local e entra no outro numa operação só — sem compra e sem valor financeiro.</div>
-    ${_estCampo('Item *', `<select class="inp" id="etItem" onchange="_estSugerirLocal('etItem','etDe','entrada');_estSugerirLocal('etItem','etPara','saida')">${_estOptsItens(() => true)}</select>`)}
+  _estTr = { origem: 'insumo' };
+  _estModal('ovEstTransf', 'Transferência entre locais', '', '_estSalvarTransf()', 'Transferir', 580,
+    'Sai de um local e entra no outro numa operação só, sem compra e sem valor financeiro. Ex.: a gráfica entregou 500 caixas na loja.');
+  _estTransfRender();
+}
+
+function _estTransfSet(origem) {
+  _estGuardar(_estTr, ['etQtd', 'etData', 'etMotivo']);
+  _estTr.origem = origem; _estTr.itemId = null;
+  _estTransfRender();
+}
+
+function _estTransfRender() {
+  const body = document.getElementById('ovEstTransf-body');
+  if (!body) return;
+  const t = _estTr;
+  body.innerHTML = `
+    ${_estCampo('O que vai mudar de lugar', _estOpcoes(_EST_ORIGENS, t.origem, '_estTransfSet'))}
+    ${_estCampo(t.origem === 'preparado' ? 'Processado *' : 'Insumo *', `<select class="inp" id="etItem" onchange="_estTr.itemId=+this.value||null;_estSugerirLocal('etItem','etDe','entrada');_estSugerirLocal('etItem','etPara','saida')">${_estOptsItens(_estFiltroOrigem(t.origem), t.itemId)}</select>`)}
     <div class="f2">
       ${_estCampo('De *', `<select class="inp" id="etDe">${_estOptsLocais('')}</select>`)}
       ${_estCampo('Para *', `<select class="inp" id="etPara">${_estOptsLocais('')}</select>`)}
     </div>
     <div class="f2">
-      ${_estCampo('Quantidade * <span id="etItem-un" style="text-transform:none"></span>', `<input class="inp" type="number" id="etQtd" min="0" step="0.001">`)}
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="etData" value="${_estAgora()}">`)}
+      ${_estCampo('Quantidade * <span id="etItem-un" style="font-weight:400;color:var(--fg-subtle)"></span>', `<input class="inp" type="number" id="etQtd" min="0" step="0.001" value="${_estEsc(t.etQtd || '')}">`)}
+      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="etData" value="${t.etData || _estAgora()}">`)}
     </div>
-    ${_estCampo('Motivo', `<input class="inp" id="etMotivo" placeholder="ex: reposição quinzenal">`)}`,
-    '_estSalvarTransf()', 'Transferir');
+    ${_estCampo('Motivo', `<input class="inp" id="etMotivo" value="${_estEsc(t.etMotivo || '')}" placeholder="ex: reposição quinzenal">`)}`;
+  if (t.itemId) { _estSugerirLocal('etItem', 'etDe', 'entrada'); _estSugerirLocal('etItem', 'etPara', 'saida'); }
 }
+
 function _estSalvarTransf() {
   const item = _estItemDoSelect('etItem');
   const qtd  = parseFloat(document.getElementById('etQtd').value);
@@ -719,33 +757,40 @@ function _estSalvarTransf() {
 }
 
 // ── Baixa ──
-let _estBx = { origem: 'insumo' };
+let _estBx = { origem: 'insumo', fora: new Set() };
 
 function estAbrirBaixa(origem = 'insumo') {
-  _estBx = { origem };
-  _estModal('ovEstBaixa', 'Registrar baixa', '', '_estSalvarBaixa()', 'Registrar baixa', 600);
+  _estBx = { origem, fora: new Set() };
+  _estModal('ovEstBaixa', 'Registrar baixa', '', '_estSalvarBaixa()', 'Registrar baixa', 620,
+    'Saída sem venda: cortesia, acidente, vencimento… Sai do saldo e entra como perda no CMV.');
   _estBaixaRender();
 }
 
 function _estBaixaSet(campo, v) {
-  // guarda o que já foi digitado antes de redesenhar
-  ['ebQtd', 'ebMotivo', 'ebData', 'ebTipo'].forEach(id => { const el = document.getElementById(id); if (el) _estBx[id] = el.value; });
-  _estBx[campo] = v;
+  _estGuardar(_estBx, ['ebQtd', 'ebMotivo', 'ebData', 'ebTipo']);
+  if (campo === 'origem' || campo === 'produto' || campo === 's1' || campo === 's2') _estBx.fora = new Set();
+  if (campo === 'produto') {
+    _estBx.baseId = String(v).startsWith('b') ? +String(v).slice(1) : null;
+    _estBx.produtoId = String(v).startsWith('p') ? +String(v).slice(1) : null;
+    _estBx.s1 = _estBx.s2 = null;
+  } else if (campo !== '_') _estBx[campo] = v;
+  _estBaixaRender();
+}
+
+function _estBaixaFora(itemId) {
+  _estGuardar(_estBx, ['ebQtd', 'ebMotivo', 'ebData', 'ebTipo']);
+  const f = _estBx.fora;
+  f.has(itemId) ? f.delete(itemId) : f.add(itemId);
   _estBaixaRender();
 }
 
 function _estBaixaRender() {
   const body = document.getElementById('ovEstBaixa-body');
   if (!body) return;
-  const b = _estBx;
-  const pill = (id, txt, desc) => `<button type="button" onclick="_estBaixaSet('origem','${id}')"
-    style="flex:1;padding:10px;border-radius:var(--r8);cursor:pointer;font-family:inherit;text-align:left;
-    border:1.5px solid ${b.origem === id ? 'var(--purple)' : 'var(--border)'};background:${b.origem === id ? 'var(--purple-xlight)' : 'var(--surface)'}">
-    <div style="font-size:var(--text-sm);font-weight:700;color:${b.origem === id ? 'var(--purple)' : 'var(--text)'}">${txt}</div>
-    <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${desc}</div></button>`;
+  const b = _estBx, prod = b.origem === 'produto';
 
   let alvo = '';
-  if (b.origem === 'produto') {
+  if (prod) {
     const bases = produtosPizza.filter(x => x.active !== false);
     const base  = bases.find(x => x.id === b.baseId);
     const sabs  = opcoes.filter(o => o.active !== false && (!base || !o.categoria || o.categoria === base.categoria))
@@ -753,51 +798,50 @@ function _estBaixaRender() {
     const optSab = sel => `<option value="">Selecionar…</option>` + sabs.map(o => `<option value="${o.id}"${o.id === sel ? ' selected' : ''}>${_estEsc(o.nome)}</option>`).join('');
     const avulsos = produtos.filter(p => p.active !== false && p.fichaTecnica?.ingredientes?.length);
     alvo = `
-      ${_estCampo('Produto *', `<select class="inp" onchange="const v=this.value;_estBx.baseId=v.startsWith('b')?+v.slice(1):null;_estBx.produtoId=v.startsWith('p')?+v.slice(1):null;_estBaixaSet('_','')">
+      ${_estCampo('Produto *', `<select class="inp" onchange="_estBaixaSet('produto', this.value)">
         <option value="">Selecionar…</option>
         <optgroup label="Pizza">${bases.map(x => `<option value="b${x.id}"${b.baseId === x.id ? ' selected' : ''}>${_estEsc(x.nome)}</option>`).join('')}</optgroup>
         ${avulsos.length ? `<optgroup label="Outros produtos">${avulsos.map(p => `<option value="p${p.id}"${b.produtoId === p.id ? ' selected' : ''}>${_estEsc(p.name)}</option>`).join('')}</optgroup>` : ''}
       </select>`)}
-      ${base ? (base.tamanho === 'grande' ? `<div class="f2">
-          ${_estCampo('1ª metade *', `<select class="inp" onchange="_estBaixaSet('s1',+this.value||null)">${optSab(b.s1)}</select>`)}
-          ${_estCampo('2ª metade', `<select class="inp" onchange="_estBaixaSet('s2',+this.value||null)">${optSab(b.s2)}</select>`, '')}
-        </div><div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 10px">Deixe a 2ª metade vazia se a pizza era inteira de um sabor só.</div>`
+      ${base ? (base.tamanho === 'grande' ? `<div class="field">
+          <div class="f2">
+            ${_estCampo('1ª metade *', `<select class="inp" onchange="_estBaixaSet('s1',+this.value||null)">${optSab(b.s1)}</select>`)}
+            ${_estCampo('2ª metade', `<select class="inp" onchange="_estBaixaSet('s2',+this.value||null)">${optSab(b.s2)}</select>`)}
+          </div>${_estDica('Deixe a 2ª metade vazia se a pizza era inteira de um sabor só.')}</div>`
         : _estCampo('Sabor *', `<select class="inp" onchange="_estBaixaSet('s1',+this.value||null)">${optSab(b.s1)}</select>`)) : ''}`;
   } else {
-    const filtro = b.origem === 'preparado' ? (i => i.isProd) : (i => !i.isProd);
     alvo = `<div class="f2">
-      ${_estCampo(b.origem === 'preparado' ? 'Processado *' : 'Insumo *', `<select class="inp" id="ebItem" onchange="_estBx.itemId=+this.value||null;_estSugerirLocal('ebItem','ebLocal','saida')">${_estOptsItens(filtro, b.itemId)}</select>`)}
+      ${_estCampo(b.origem === 'preparado' ? 'Processado *' : 'Insumo *', `<select class="inp" id="ebItem" onchange="_estBx.itemId=+this.value||null;_estSugerirLocal('ebItem','ebLocal','saida')">${_estOptsItens(_estFiltroOrigem(b.origem), b.itemId)}</select>`)}
       ${_estCampo('Local *', `<select class="inp" id="ebLocal">${_estOptsLocais(b.itemId ? estLocalSaida(items.find(i => i.id === b.itemId)) : '', true)}</select>`)}
     </div>`;
   }
 
-  // Prévia do que vai sair (produto)
+  // Produto: lista do que sai, com opção de tirar itens que não foram usados
   let previa = '';
-  if (b.origem === 'produto') {
-    const partes = _estBaixaPartes(parseFloat(b.ebQtd) || 1);
+  if (prod) {
+    const partes = _estBaixaPartes(parseFloat(b.ebQtd) || 1, true);
     if (partes.length) {
-      const total = partes.reduce((s, x) => s + x.qtd * (x.item.cost || 0), 0);
-      previa = `<div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden;margin-bottom:12px">
-        <div style="padding:8px 12px;background:var(--surface2);font-size:var(--text-xs);font-weight:700;color:var(--text2);display:flex;justify-content:space-between">
-          <span>Vai sair do estoque (${partes.length} itens)</span><span>Custo ${_estR(total)}</span></div>
-        <div style="max-height:180px;overflow-y:auto">${partes.sort((x, y) => y.qtd * (y.item.cost || 0) - x.qtd * (x.item.cost || 0)).map(x => `
-          <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 12px;border-top:1px solid var(--border);font-size:var(--text-sm)">
-            <span>${_estEsc(x.item.name)}</span><span style="color:var(--danger-fg);white-space:nowrap">−${_estQ(x.qtd)} ${_estEsc(x.item.unit)}</span></div>`).join('')}</div>
-      </div>`;
+      const usados = partes.filter(x => !b.fora.has(x.item.id));
+      const total = usados.reduce((s, x) => s + x.qtd * (x.item.cost || 0), 0);
+      previa = `<div class="field"><div class="fm-lista">
+        <div class="fm-lista-h"><span>Vai sair do estoque (${usados.length} de ${partes.length} itens)</span><span>Custo ${_estR(total)}</span></div>
+        <div style="max-height:240px;overflow-y:auto">${partes.sort((x, y) => y.qtd * (y.item.cost || 0) - x.qtd * (x.item.cost || 0)).map(x => {
+          const off = b.fora.has(x.item.id);
+          return `<label class="fm-lista-l${off ? ' off' : ''}" style="cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400">
+            <input type="checkbox" ${off ? '' : 'checked'} onchange="_estBaixaFora(${x.item.id})" style="accent-color:var(--purple);width:16px;height:16px;flex-shrink:0">
+            <span style="flex:1;min-width:0">${_estEsc(x.item.name)}</span>
+            <span style="white-space:nowrap;color:${off ? 'inherit' : 'var(--danger-fg)'}">−${_estQ(x.qtd)} ${_estEsc(x.item.unit)}</span></label>`;
+        }).join('')}</div>
+      </div>${_estDica('Desmarque o que não foi usado. Ex.: a pizza caiu no forno, então caixa, lacre e mesinha não saem.')}</div>`;
     }
   }
 
   body.innerHTML = `
-    <div class="field"><label>O que saiu</label>
-      <div style="display:flex;gap:8px">
-        ${pill('insumo', 'Insumo', 'comprado ou in natura')}
-        ${pill('preparado', 'Processado', 'feito pela produção')}
-        ${pill('produto', 'Produto', 'pizza pronta — baixa tudo pela ficha')}
-      </div></div>
+    ${_estCampo('O que saiu', _estOpcoes([..._EST_ORIGENS, { id: 'produto', label: 'Produto', icon: 'layers', desc: 'pizza pronta, baixa pela ficha' }], b.origem, "_estBaixaSet.bind(null,'origem')"))}
     ${alvo}
     <div class="f2">
-      ${_estCampo(b.origem === 'produto' ? 'Quantidade (unidades) *' : 'Quantidade *', `<input class="inp" type="number" id="ebQtd" min="0" step="${b.origem === 'produto' ? 1 : 0.001}" value="${b.ebQtd ?? (b.origem === 'produto' ? 1 : '')}"
-        ${b.origem === 'produto' ? `oninput="clearTimeout(window._ebT);window._ebT=setTimeout(()=>_estBaixaSet('_',''),300)"` : ''}>`)}
+      ${_estCampo(prod ? 'Quantidade (unidades) *' : 'Quantidade *', `<input class="inp" type="number" id="ebQtd" min="0" step="${prod ? 1 : 0.001}" value="${b.ebQtd ?? (prod ? 1 : '')}"
+        ${prod ? `oninput="clearTimeout(window._ebT);window._ebT=setTimeout(()=>_estBaixaSet('_',''),300)"` : ''}>`)}
       ${_estCampo('Tipo de baixa *', `<select class="inp" id="ebTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${b.ebTipo === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`)}
     </div>
     ${previa}
@@ -805,16 +849,21 @@ function _estBaixaRender() {
       ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="ebData" value="${b.ebData || _estAgora()}">`)}
       ${_estCampo('O que aconteceu', `<input class="inp" id="ebMotivo" value="${_estEsc(b.ebMotivo || '')}" placeholder="opcional">`)}
     </div>`;
-  if (b.origem !== 'produto' && b.itemId) _estSugerirLocal('ebItem', 'ebLocal', 'saida');
+  if (!prod && b.itemId) _estSugerirLocal('ebItem', 'ebLocal', 'saida');
 }
 
-function _estBaixaPartes(qtd) {
+// todos = true inclui os itens desmarcados (para a lista); false = só o que sai
+function _estBaixaPartes(qtd, todos = false) {
   const b = _estBx;
-  if (b.produtoId) return estExpandirProduto({ produtoId: b.produtoId, qtd });
-  const base = produtosPizza.find(x => x.id === b.baseId);
-  if (!base || !b.s1) return [];
-  const saborIds = base.tamanho === 'grande' ? [b.s1, b.s2 || b.s1] : [b.s1];
-  return estExpandirProduto({ baseId: base.id, saborIds, qtd });
+  let partes = [];
+  if (b.produtoId) partes = estExpandirProduto({ produtoId: b.produtoId, qtd });
+  else {
+    const base = produtosPizza.find(x => x.id === b.baseId);
+    if (!base || !b.s1) return [];
+    const saborIds = base.tamanho === 'grande' ? [b.s1, b.s2 || b.s1] : [b.s1];
+    partes = estExpandirProduto({ baseId: base.id, saborIds, qtd });
+  }
+  return todos ? partes : partes.filter(x => !b.fora.has(x.item.id));
 }
 
 function _estSalvarBaixa() {
@@ -834,8 +883,9 @@ function _estSalvarBaixa() {
       .then(() => toast('Baixa registrada', 'ok')));
   }
 
+  if (!_estBaixaPartes(qtd, true).length) return toast('Escolha o produto e o sabor', 'err');
   const partes = _estBaixaPartes(qtd);
-  if (!partes.length) return toast('Escolha o produto e o sabor', 'err');
+  if (!partes.length) return toast('Deixe pelo menos um item marcado', 'err');
   const base = produtosPizza.find(x => x.id === b.baseId);
   const nome = b.produtoId ? produtos.find(p => p.id === b.produtoId)?.name
     : `${base.nome} · ${[b.s1, base.tamanho === 'grande' ? (b.s2 || b.s1) : null].filter(Boolean)
@@ -863,7 +913,7 @@ function estEditarMovModal(id) {
   const dt = new Date(m.data_mov); dt.setMinutes(dt.getMinutes() - dt.getTimezoneOffset());
   const loc = m.sinal > 0 ? 'local_destino' : 'local_origem';
   _estModal('ovEstEdit', `Editar ${EST_MOV_TIPOS[m.tipo]?.label.toLowerCase() || 'movimentação'}`, `
-    <div style="font-size:var(--text-md);font-weight:700;margin-bottom:12px">${_estEsc(m.item_nome)}</div>
+    <div style="font-size:var(--text-md);font-weight:700">${_estEsc(m.item_nome)}</div>
     <div class="f2">
       ${_estCampo(`Quantidade (${_estEsc(m.unidade || '')})`, `<input class="inp" type="number" id="emQtd" value="${m.qtd}" min="0" step="0.001">`)}
       ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="emData" value="${dt.toISOString().slice(0, 16)}">`)}
@@ -874,7 +924,7 @@ function estEditarMovModal(id) {
       : _estCampo('Local', `<select class="inp" id="emLocal">${_estOptsLocais(m[loc], true)}</select>`)}
     ${m.tipo === 'baixa' ? _estCampo('Tipo de baixa', `<select class="inp" id="emTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${m.tipo_baixa === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`) : ''}
     ${_estCampo('Motivo', `<input class="inp" id="emMotivo" value="${_estEsc(m.motivo || '')}">`)}
-    <div style="font-size:var(--text-xs);color:var(--muted)">A alteração fica registrada no histórico com o seu nome.</div>`,
+    ${_estDica('A alteração fica registrada no histórico com o seu nome.')}`,
     `_estSalvarEdicao('${id}')`);
 }
 function _estSalvarEdicao(id) {
