@@ -52,8 +52,9 @@ async function estBuscarBasesContagem(ateISO = null) {
     let q = _estSb()
       .from('est_contagem_itens')
       .select('item_id, contado, contagem:est_contagens!inner(id, local_id, data_ref, status, excluido_em)')
-      .eq('contagem.status', 'concluida')
+      .eq('contagem.status', 'aplicada')
       .is('contagem.excluido_em', null)
+      .is('removido_em', null)
       .not('contado', 'is', null);
     if (ateISO) q = q.lte('contagem.data_ref', ateISO);
     return q;

@@ -631,19 +631,6 @@ const estLocalGuardaInsumos = l => l && l.estoque !== false;
 const estLocaisEstoque = () => inventarioLocs.filter(estLocalGuardaInsumos);
 const estLocalLabel = id => id === '_sem_local' ? 'Sem local' : (inventarioLocs.find(l => l.id === id)?.label || id || '—');
 
-// ══════════════════════════════════════════════════════════════
-// ESTOQUE — Tipos de contagem
-// ══════════════════════════════════════════════════════════════
-// freq: 'semanal' (dia = 0 dom … 6 sáb) | 'diaria' | 'livre'
-// escopo: 'todos' | 'categorias' (cats[]) | 'itens' (itemIds[])
-// fechaCiclo: a contagem completa fecha o ciclo e abre o próximo; as
-// demais só acertam o saldo dos itens contados.
-const _TIPOS_CONTAGEM_DEFAULT = [
-  { id:'semanal', label:'Semanal completa', freq:'semanal', dia:1, escopo:'todos', cats:[], itemIds:[], fechaCiclo:true  },
-  { id:'diaria',  label:'Diária — itens críticos', freq:'diaria', dia:null, escopo:'itens', cats:[], itemIds:[], fechaCiclo:false },
-];
-let TIPOS_CONTAGEM = db._get('vtp_est_tipos_contagem', null) || _TIPOS_CONTAGEM_DEFAULT.map(t => ({ ...t }));
-const saveTiposContagem = () => db._set('vtp_est_tipos_contagem', TIPOS_CONTAGEM);
 
 let inventarioCats = db._get('vtp_inv_cats', null) || {
   equipamento: { label:'Equipamento', icon:'settings',   color:'var(--orange-dark)', bg:'var(--orange-light)',  _builtin:true },
@@ -775,7 +762,6 @@ window._vtpSetGlobal = function(key, val) {
     case 'vtp_produtos_pizza': produtosPizza = val;     break;
     case 'vtp_opcoes':         opcoes = val;            break;
     case 'vtp_inv_locs':       inventarioLocs = val;    break;
-    case 'vtp_est_tipos_contagem': TIPOS_CONTAGEM = val; break;
     case 'vtp_inv_cats':       inventarioCats = val;    break;
     case 'vtp_manut_cats_cfg': manutCats = val;         break;
     case 'vtp_manut_grupos':   manutGrupos = val;       break;

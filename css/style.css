@@ -458,6 +458,7 @@ code, kbd, .mono { font-family: var(--font-mono); font-size: .92em; }
   gap: 6px;
 }
 .btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
 .btn-primary {
   background: var(--action-primary-bg);

@@ -42,7 +42,7 @@ async function _cmvItensDasContagens(ids) {
   const out = [];
   for (let i = 0; i < ids.length; i += 200) {
     out.push(...await _estSelectTodos(() => _estSb().from('est_contagem_itens')
-      .select('item_id, item_nome, unidade, categoria, contado, custo_unit, debito_auto').in('contagem_id', ids.slice(i, i + 200)).not('contado', 'is', null)));
+      .select('item_id, item_nome, unidade, categoria, contado, custo_unit, debito_auto').in('contagem_id', ids.slice(i, i + 200)).not('contado', 'is', null).is('removido_em', null)));
   }
   return out;
 }
@@ -52,7 +52,7 @@ async function estCalcularCMV(ciclo, contagens) {
   const noCmv = cat => estCatNoCMV(cat, fora);
   const inicio = ciclo.inicio;
   const ate = ciclo.fim || null;
-  const concl = contagens.filter(c => c.status === 'concluida' && _ctgTipo(c.tipo_id).fechaCiclo);
+  const concl = contagens.filter(c => c.status === 'aplicada' && c.tipo_id === 'cmv');
   // Abertura: contagens de ciclo aprovadas no instante de início do ciclo
   const abertura = concl.filter(c => Math.abs(_estMs(c.data_ref) - _estMs(inicio)) < 1000);
   const fechamento = concl.filter(c => c.ciclo_id === ciclo.id && c.fecha_ciclo);

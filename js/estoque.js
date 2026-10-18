@@ -43,6 +43,8 @@ function _renderCpEstoque() {
   _setPageTitle('Estoque');
   if (!['estoque', 'contagens', 'movimentacoes', 'cmv'].includes(_estCpAba)) _estCpAba = 'estoque';
   el.innerHTML = `<div style="padding:20px 24px">${_estTopTabsHtml()}<div id="estAbaBody"></div></div>`;
+  // Contador de contagens em andamento na aba Contagem
+  if (typeof _ctgDados !== 'undefined' && !_ctgDados && _estCpAba !== 'contagens') _ctgCarregar().catch(() => {});
   if (_estCpAba === 'movimentacoes') estRenderAbaMov();
   else if (_estCpAba === 'cmv') estRenderAbaCMV();
   else if (_estCpAba === 'contagens') estRenderAbaContagem();

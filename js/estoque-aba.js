@@ -24,7 +24,8 @@ function _estTopTabsHtml() {
         style="display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border:none;background:none;cursor:pointer;font-family:inherit;
         font-size:var(--text-md);font-weight:${on ? 700 : 500};color:${on ? 'var(--purple)' : 'var(--text2)'};
         border-bottom:2.5px solid ${on ? 'var(--purple)' : 'transparent'};margin-bottom:-1.5px">
-        ${lc(a.icon, 15, 'currentColor')} ${a.label}</button>`;
+        ${lc(a.icon, 15, 'currentColor')} ${a.label}${a.id === 'contagens' ? (() => { const n = typeof estCtgQtdAndamento === 'function' ? estCtgQtdAndamento() : 0;
+          return ` <span id="estCtgBadge" class="badge b-red" style="min-width:20px;justify-content:center;${n ? '' : 'display:none'}">${n}</span>`; })() : ''}</button>`;
     }).join('')}
   </div>`;
 }
