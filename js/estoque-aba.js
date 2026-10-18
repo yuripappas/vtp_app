@@ -14,7 +14,7 @@ const _EST_ABAS = [
   { id: 'cmv',       icon: 'bar-chart-2',    label: 'CMV do ciclo' },
 ];
 
-let _estFil = { local: '', q: '', cat: '', abaixo: false, zerados: false, sort: 'nome', dir: 1 };
+let _estFil = { local: '', q: '', cat: '', abaixo: false, zerados: false, proc: false, sort: 'nome', dir: 1 };
 
 function _estTopTabsHtml() {
   return `<div style="display:flex;gap:2px;border-bottom:1.5px solid var(--border);margin-bottom:20px">
@@ -45,7 +45,11 @@ const _estEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '
 async function estRenderAbaEstoque(forcar = false) {
   const el = document.getElementById('estAbaBody');
   if (!el) return;
-  if (!_estSaldosCache || forcar) {
+  const emSegundoPlano = !!_estSaldosCache && !forcar;
+  if (emSegundoPlano) {
+    _estRenderAbaEstoqueConteudo(_estSaldosCache);
+    forcar = true; // recalcula em segundo plano e redesenha
+  } else {
     el.innerHTML = `<div style="padding:60px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:var(--text-md)">
       ${lc('refresh-cw', 16, 'currentColor')} Calculando saldos…</div>`;
   }
@@ -53,12 +57,13 @@ async function estRenderAbaEstoque(forcar = false) {
   try {
     dados = await estSaldos(forcar);
   } catch (e) {
+    if (emSegundoPlano) return; // mantém o que já está na tela
     el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);font-size:var(--text-md)">
       Não consegui calcular o estoque: ${_estEsc(e.message)}<br>
       <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="estRenderAbaEstoque(true)">Tentar de novo</button></div>`;
     return;
   }
-  if (!document.getElementById('estAbaBody')) return; // usuário saiu da aba
+  if (!document.getElementById('estAbaBody') || _estCpAba !== 'estoque') return; // usuário saiu da aba
   _estRenderAbaEstoqueConteudo(dados);
 }
 
@@ -70,8 +75,8 @@ function _estLinhaSaldo(r, local) {
 
 function _estStatus(r, saldo, local) {
   if (saldo < -0.0005) return { id: 'negativo', label: 'Negativo',         cls: 'b-red' };
-  if (Math.abs(saldo) <= 0.0005) return { id: 'zerado', label: 'Zerado',   cls: 'b-gray' };
-  if (!local && r.item.min > 0 && saldo < r.item.min) return { id: 'abaixo', label: 'Abaixo do mínimo', cls: 'b-orange' };
+  if (Math.abs(saldo) <= 0.0005) return { id: 'zerado', label: 'Zerado',   cls: 'b-red' };
+  if (!local && r.item.min > 0 && saldo < r.item.min) return { id: 'abaixo', label: 'Abaixo', cls: 'b-yellow' };
   return { id: 'ok', label: 'OK', cls: 'b-green' };
 }
 
@@ -101,6 +106,7 @@ function _estRenderAbaEstoqueConteudo(dados) {
     .filter(r => !f.local || estLocaisDoItem(r.item).includes(f.local))
     .filter(r => !q || r.item.name.toLowerCase().includes(q) || (r.item.cat || '').toLowerCase().includes(q))
     .filter(r => !f.cat || (r.item.cat || 'Outros') === f.cat)
+    .filter(r => !f.proc || r.item.isProd)
     .map(r => { const saldo = _estLinhaSaldo(r, f.local); return { r, saldo, st: _estStatus(r, saldo, f.local) }; })
     .filter(x => !f.abaixo  || x.st.id === 'abaixo' || x.st.id === 'negativo')
     .filter(x => !f.zerados || x.st.id === 'zerado');
@@ -172,10 +178,9 @@ function _estRenderAbaEstoqueConteudo(dados) {
           <option value="">Todas as categorias</option>
           ${cats.map(c => `<option value="${_estEsc(c)}"${f.cat === c ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}
         </select>
-        ${chip(f.abaixo,  `_estFil.abaixo=!_estFil.abaixo;_estFil.zerados=false;_estRerender()`, `${lc('alert-triangle', 13, 'currentColor')} Abaixo do mínimo (${nAbaixo})`, 'var(--orange-dark)', 'var(--orange-light)')}
-        ${chip(f.zerados, `_estFil.zerados=!_estFil.zerados;_estFil.abaixo=false;_estRerender()`, `Zerados (${nZerados})`, 'var(--text)', 'var(--surface2)')}
-        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="estRenderAbaEstoque(true)" title="Recalcular com os dados mais recentes">
-          ${lc('refresh-cw', 13, 'currentColor')} Atualizar</button>
+        ${chip(f.abaixo,  `_estFil.abaixo=!_estFil.abaixo;_estFil.zerados=false;_estRerender()`, `Abaixo (${nAbaixo})`, 'var(--warning-fg)', 'var(--warning-bg)')}
+        ${chip(f.zerados, `_estFil.zerados=!_estFil.zerados;_estFil.abaixo=false;_estRerender()`, `Zerados (${nZerados})`, 'var(--danger-fg)', 'var(--danger-bg)')}
+        ${chip(f.proc,    `_estFil.proc=!_estFil.proc;_estRerender()`, `Processados (${nPrep})`)}
         </div>
       </div>
       <div style="overflow-x:auto">
@@ -192,10 +197,9 @@ function _estRenderAbaEstoqueConteudo(dados) {
               const ult = estUltimoPreco(it.id);
               const sub = r.semContagem ? `<span style="color:var(--orange-dark)">sem contagem</span>`
                         : (() => { const d = Object.values(r.porLocal).map(p => p.baseData).filter(Boolean).sort((a, b) => _estMs(a) - _estMs(b)).pop(); return d ? `contado ${_estData(d)}` : ''; })();
-              // Linha destacada: abaixo do mínimo em amarelo, zerado/negativo em vermelho
-              const fundo = st.id === 'abaixo' ? 'var(--yellow-light)' : (st.id === 'zerado' || st.id === 'negativo') ? 'var(--red-light)' : '';
-              return `<tr onclick="estAbrirDetalheItem(${it.id})" style="border-top:1px solid var(--border);cursor:pointer;background:${fundo}"
-                  onmouseover="this.style.filter='brightness(.97)'" onmouseout="this.style.filter=''">
+              const corSaldo = st.id === 'abaixo' ? 'var(--warning-fg)' : (st.id === 'zerado' || st.id === 'negativo') ? 'var(--danger-fg)' : 'var(--text)';
+              return `<tr onclick="estAbrirDetalheItem(${it.id})" style="border-top:1px solid var(--border);cursor:pointer"
+                  onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
                 <td style="padding:12px 14px">
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                     <span style="font-weight:600">${_estEsc(it.name)}</span>
@@ -209,7 +213,7 @@ function _estRenderAbaEstoqueConteudo(dados) {
                 <td style="padding:12px 14px;text-align:right;white-space:nowrap;color:var(--text2)">${ult ? _estR(ult.precoUnit) : '—'}</td>
                 <td style="padding:12px 14px;text-align:right;white-space:nowrap;color:var(--text2)">${it.min ? `${_estQ(it.min)} ${_estEsc(it.unit)}` : '—'}</td>
                 <td style="padding:12px 14px;text-align:right;white-space:nowrap">
-                  <div style="font-weight:700;color:${saldo < -0.0005 ? 'var(--red)' : 'var(--text)'}">${_estQ(saldo)} ${_estEsc(it.unit)}</div>
+                  <div style="font-weight:700;color:${corSaldo}">${_estQ(saldo)} ${_estEsc(it.unit)}</div>
                   <div style="font-size:var(--text-xs);color:var(--muted)">${sub}</div></td>
                 <td style="padding:12px 14px;text-align:right;white-space:nowrap">${_estR(Math.max(saldo, 0) * (it.cost || 0))}</td>
                 <td style="padding:12px 14px"><span class="badge ${st.cls}">${st.label}</span></td>
