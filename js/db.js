@@ -105,6 +105,7 @@ const db = (() => {
   function _set(key, value) {
     _remoteCache.set(key, value);
     _pushToSupabase(key, value);
+    try { window._vtpOnLocalWrite?.(key); } catch (_) {}
     try {
       localStorage.setItem(key, JSON.stringify(value));
       return true;

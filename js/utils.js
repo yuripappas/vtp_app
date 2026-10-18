@@ -378,6 +378,35 @@ window._vtpOwnWrites = new Set();
 // Debounce por módulo para agrupar atualizações rápidas
 const _vtpRtDebounce = {};
 
+// Algum modal visível? (os .overlay fixos do index.html ficam sempre no DOM, escondidos)
+function _vtpModalAberto() {
+  return [...document.querySelectorAll('.overlay')].some(o => getComputedStyle(o).display !== 'none');
+}
+
+// Chamado por db.js a cada gravação local: a tela aberta reflete na hora o que
+// acabou de ser salvo (ex.: excluir um insumo pelo Estoque). Se houver modal
+// aberto, espera ele fechar para não perder o que está sendo editado.
+const _vtpLocalPend = new Set();
+let _vtpLocalTimer = null;
+let _vtpRenderLocal = false; // gravação feita durante o próprio re-render não dispara outro
+window._vtpOnLocalWrite = function(key) {
+  if (_vtpRenderLocal) return;
+  if (key === 'vtp_items' && typeof estInvalidarSaldos === 'function') estInvalidarSaldos();
+  _vtpLocalPend.add(key);
+  clearTimeout(_vtpLocalTimer);
+  let tentativas = 0;
+  const tentar = () => {
+    if (_vtpModalAberto() && ++tentativas < 120) { _vtpLocalTimer = setTimeout(tentar, 500); return; }
+    const mod = location.hash.replace('#', '').split('/')[0] || 'dashboard';
+    const afeta = [..._vtpLocalPend].some(k => (_VTP_KEY_MODS[k] || []).includes(mod));
+    _vtpLocalPend.clear();
+    if (!afeta) return;
+    _vtpRenderLocal = true;
+    try { _vtpCallRender(mod); } finally { _vtpRenderLocal = false; }
+  };
+  _vtpLocalTimer = setTimeout(tentar, 250);
+};
+
 // Chamado por db.js quando kv_store recebe UPDATE de outro usuário
 window._vtpOnRealtimeUpdate = function(key) {
   if (window._vtpOwnWrites.has(key)) return; // eco do próprio write — ignora
@@ -385,9 +414,10 @@ window._vtpOnRealtimeUpdate = function(key) {
   const currentMod = location.hash.replace('#', '').split('/')[0] || 'dashboard';
   const affected = _VTP_KEY_MODS[key] || [];
   if (!affected.includes(currentMod)) return;
+  if (key === 'vtp_items' && typeof estInvalidarSaldos === 'function') estInvalidarSaldos();
 
   // Fase 3: modal aberto → avisa em vez de re-renderizar (protege formulário em edição)
-  if (document.querySelector('.overlay')) {
+  if (_vtpModalAberto()) {
     if (typeof toast === 'function') toast('Dados alterados por outro usuário — salve com atenção', 'warn');
     return;
   }
