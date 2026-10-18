@@ -5,9 +5,12 @@
  * Dois tipos de contagem (tipo_id):
  *   • 'cmv'    — rodada do ciclo semanal. Só itens das categorias que entram
  *                no CMV. Nome automático: "Ciclo dd/mm/aaaa" (data da contagem).
- *                Uma rodada por ciclo. "Fechar ciclo" (com todos os locais
- *                aplicados) fecha o ciclo na data da rodada e abre o próximo
- *                nela. A primeira rodada abre o 1º ciclo ("Abrir ciclo").
+ *                Uma rodada por ciclo (contam toda segunda; o período varia).
+ *                Cada card entra no saldo ao concluir a revisão. Com todos os
+ *                locais aplicados, "Concluir ciclo" (clique obrigatório, para
+ *                confirmar que a rodada foi feita) fecha o ciclo na data da
+ *                rodada e abre o próximo nela. A primeira rodada é o estoque
+ *                inicial e abre o 1º ciclo.
  *   • 'outras' — categorias fora do CMV (limpeza, escritório, descartáveis…).
  *                Não mexe no ciclo.
  *
@@ -243,15 +246,15 @@ function _ctgPainelCiclo() {
   const nomeRodada = rodada[0]?.nome;
   const pode = _ctgPodeAprovar();
   const msg = !rodada.length ? (ciclo ? 'Nenhuma contagem de CMV neste ciclo ainda. Use “Nova contagem” acima para começar.' : 'Use “Nova contagem” acima para criar a contagem de abertura.')
-    : podeFechar ? `Todos os locais contados e aplicados — pode ${ciclo ? 'fechar o ciclo' : 'abrir o ciclo'}.`
-    : `Faltam ${locais.length - prontos} de ${locais.length} locais para ${ciclo ? 'fechar o ciclo' : 'abrir o ciclo'}.`;
+    : podeFechar ? `Todos os locais contados e aplicados — pode concluir o ciclo.`
+    : `Faltam ${locais.length - prontos} de ${locais.length} locais para concluir o ciclo.`;
   return `
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px">
       <div>
         <div style="font-size:var(--text-xl);font-weight:800">${ciclo ? 'Ciclo atual' : 'Nenhum ciclo aberto'}</div>
         <div style="font-size:var(--text-sm);color:var(--text2);margin-top:2px">${ciclo
           ? `Iniciado em ${_ctgDataLonga(ciclo.inicio)}`
-          : 'A primeira contagem de CMV, quando aplicada, abre o primeiro ciclo.'}</div>
+          : 'A primeira contagem de CMV marca o estoque inicial. Ao concluir o ciclo, ela abre o primeiro ciclo.'}</div>
       </div>
       ${nomeRodada ? `<span class="badge b-purple">${_estEsc(nomeRodada)}</span>` : `<span class="badge b-gray">Sem contagens</span>`}
     </div>
@@ -259,7 +262,7 @@ function _ctgPainelCiclo() {
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
       <div style="font-size:var(--text-sm);color:${podeFechar ? 'var(--success-fg)' : 'var(--text2)'}">${msg}</div>
       <button class="btn ${podeFechar ? 'btn-primary' : 'btn-outline'}" ${podeFechar && pode ? '' : 'disabled'} onclick="estFecharCiclo()"
-        title="${pode ? '' : 'Só gerente ou supervisor fecha o ciclo'}">${ciclo ? 'Fechar ciclo' : 'Abrir ciclo'}</button>
+        title="${pode ? '' : 'Só gerente ou supervisor conclui o ciclo'}">${lc('check-circle', 14, 'currentColor')} Concluir ciclo</button>
     </div>`;
 }
 
@@ -337,7 +340,7 @@ function _ctgNovaRender() {
         Rodada aberta: <strong>${_estEsc(info.rodada[0].nome)}</strong>. Os cards novos entram nela, com a mesma data.</div>` : ''}
       ${blocoLocais}
       ${_estCampo('Data da contagem *', `<input class="inp" type="date" id="cnDia" value="${info.dia}" ${info.rodada.length ? 'disabled' : ''} onchange="_ctgNovaSet('dia', this.value)">`)}
-      <div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 12px;line-height:1.5">Os cards serão nomeados “${_estEsc(info.nome)} — local”. Cada card entra no estoque ao concluir a revisão. Ao fechar o ciclo, ele fecha nesta data e o próximo começa nela.</div>
+      <div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 12px;line-height:1.5">Os cards serão nomeados “${_estEsc(info.nome)} — local”. Cada card entra no estoque ao concluir a revisão. Ao concluir o ciclo, ele fecha nesta data e o próximo começa nela.</div>
       ${_estCampo('Observações', `<textarea class="inp" id="cnObs" rows="2" placeholder="Notas sobre esta contagem…" oninput="_ctgNova.obs=this.value">${_estEsc(n.obs)}</textarea>`)}`;
   } else {
     corpo = `
@@ -484,18 +487,18 @@ async function _ctgAplicar(cards) {
 }
 
 function estFecharCiclo() {
-  if (!_ctgPodeAprovar()) return toast('Só gerente ou supervisor fecha o ciclo', 'err');
+  if (!_ctgPodeAprovar()) return toast('Só gerente ou supervisor conclui o ciclo', 'err');
   const ciclo = _ctgCicloAtual();
   const rodada = _ctgRodadaCmv();
   if (!rodada.length || rodada.some(c => !['concluida', 'aplicada'].includes(c.status))) return toast('Conclua a revisão de todos os locais antes', 'err');
   const pendentes = rodada.filter(c => c.status === 'concluida');
   const dataRef = rodada[0].data_ref;
   vtpConfirm({
-    title: ciclo ? 'Fechar o ciclo?' : 'Abrir o primeiro ciclo?',
+    title: 'Concluir o ciclo?',
     message: ciclo
       ? `O ciclo de ${_ctgDataBr(ciclo.inicio)} fecha em ${_ctgDataBr(dataRef)} e o próximo começa nesta data.`
-      : `O primeiro ciclo começa em ${_ctgDataBr(dataRef)}.`,
-    confirmLabel: ciclo ? 'Fechar ciclo' : 'Abrir ciclo', danger: false,
+      : `Esta contagem vira o estoque inicial e o primeiro ciclo começa em ${_ctgDataBr(dataRef)}.`,
+    confirmLabel: 'Concluir ciclo', danger: false,
     onConfirm: async () => {
       try {
         if (pendentes.length) { toast('Aplicando as contagens…', 'info'); await _ctgAplicar(pendentes); }
@@ -512,10 +515,10 @@ function estFecharCiclo() {
             : await sb.from('est_ciclos').insert({ inicio: dataRef, criado_por: user });
           if (r.error) throw new Error(r.error.message);
         }
-        toast(ciclo ? 'Ciclo fechado. O próximo já está aberto.' : 'Primeiro ciclo aberto.', 'ok');
+        toast(ciclo ? 'Ciclo concluído. O próximo já começou.' : 'Estoque inicial registrado. Primeiro ciclo aberto.', 'ok');
         if (typeof _cmvCache !== 'undefined') _cmvCache = {};
         estRenderAbaContagem(true);
-      } catch (e) { toast('Não consegui fechar o ciclo: ' + e.message, 'err'); estRenderAbaContagem(true); }
+      } catch (e) { toast('Não consegui concluir o ciclo: ' + e.message, 'err'); estRenderAbaContagem(true); }
     },
   });
 }
