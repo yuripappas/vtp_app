@@ -5,15 +5,18 @@
  * Dois tipos de contagem (tipo_id):
  *   • 'cmv'    — rodada do ciclo semanal. Só itens das categorias que entram
  *                no CMV. Nome automático: "Ciclo dd/mm/aaaa" (data da contagem).
- *                Uma rodada por ciclo; os cards revisados só entram no saldo
- *                quando o ciclo é fechado ("Fechar ciclo"), que também abre o
- *                próximo ciclo nessa data. A primeira rodada abre o 1º ciclo.
+ *                Uma rodada por ciclo. "Fechar ciclo" (com todos os locais
+ *                aplicados) fecha o ciclo na data da rodada e abre o próximo
+ *                nela. A primeira rodada abre o 1º ciclo ("Abrir ciclo").
  *   • 'outras' — categorias fora do CMV (limpeza, escritório, descartáveis…).
- *                Não mexe no ciclo: entra no saldo ao concluir a revisão.
+ *                Não mexe no ciclo.
+ *
+ * Nos dois tipos, concluir a revisão já aplica o card ao estoque.
  *
  * Cada "Nova contagem" cria um card por local escolhido (kanban):
  *   Pendente → Em andamento (Iniciar) → Em revisão (todos conferidos) →
- *   Concluída (revisão concluída por gerente ou supervisor) → Aplicada.
+ *   Aplicada (revisão concluída por gerente ou supervisor = entra no saldo).
+ *   ('concluida' = revisada sem aplicar, só existe em cards antigos.)
  *
  * Contar: cada item é contado por embalagem (unidade de compra do cadastro)
  * + avulso e "Conferido". Quem conta vê a última contagem do item, nunca o
@@ -85,7 +88,8 @@ const _ctgCicloAbertoBruto = () => _ctgDados?.ciclos.find(c => c.status === 'abe
 // Rodada de CMV ainda não aplicada do ciclo atual (ou a de abertura, sem ciclo)
 function _ctgRodadaCmv() {
   const ciclo = _ctgCicloAtual();
-  return (_ctgDados?.contagens || []).filter(c => _ctgEhCmv(c) && _CTG_ATIVAS.includes(c.status) && (c.ciclo_id || null) === (ciclo?.id || null));
+  return (_ctgDados?.contagens || []).filter(c => _ctgEhCmv(c) && [..._CTG_ATIVAS, 'aplicada'].includes(c.status)
+    && (c.ciclo_id || null) === (ciclo?.id || null) && (!ciclo || _estMs(c.data_ref) > _estMs(ciclo.inicio) + 1000));
 }
 
 // Escopo de itens de um tipo de contagem
@@ -173,7 +177,7 @@ function _ctgRenderConteudo() {
     } else {
       extra = c.status === 'aplicada'
         ? `<div style="font-size:var(--text-sm);color:var(--text2)">Fechado em ${_ctgDataBr(c.aprovado_em || c.data_ref)}</div>`
-        : `<div style="font-size:var(--text-sm);color:var(--text2)">Entra no estoque ao fechar o ciclo.</div>`;
+        : `<div style="font-size:var(--text-sm);color:var(--text2)">Revisada, ainda não aplicada ao estoque.</div>`;
       botao = `<button class="btn btn-outline" style="width:100%;justify-content:center" onclick="estAbrirContagem('${c.id}')">Ver detalhes</button>`;
     }
     return `<div style="background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--r12);padding:14px;display:flex;flex-direction:column;gap:10px;align-items:flex-start">
@@ -225,12 +229,13 @@ function _ctgPainelCiclo() {
   // "Sem local" não é um lugar físico: não trava o fechamento, só aparece se tiver card
   const locais = _ctgLocaisCom(_ctgEscopo('cmv')).filter(l => l !== EST_SEM_LOCAL || rodada.some(c => c.local_id === l));
   const stLocal = l => rodada.find(c => c.local_id === l)?.status || null;
-  const prontos = locais.filter(l => stLocal(l) === 'concluida').length;
-  const podeFechar = locais.length > 0 && prontos === locais.length && rodada.every(c => c.status === 'concluida');
+  const feito = st => st === 'aplicada' || st === 'concluida';
+  const prontos = locais.filter(l => feito(stLocal(l))).length;
+  const podeFechar = locais.length > 0 && prontos === locais.length && rodada.every(c => feito(c.status));
   const chips = locais.map(l => {
     const st = stLocal(l);
-    const cor = st === 'concluida' ? 'var(--success-fg)' : st ? 'var(--purple)' : 'var(--muted)';
-    const txt = { concluida: 'revisado', revisao: 'em revisão', andamento: 'contando', pendente: 'pendente' }[st] || 'falta contar';
+    const cor = feito(st) ? 'var(--success-fg)' : st ? 'var(--purple)' : 'var(--muted)';
+    const txt = { aplicada: 'aplicado', concluida: 'revisado', revisao: 'em revisão', andamento: 'contando', pendente: 'pendente' }[st] || 'falta contar';
     return `<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;border:1.5px solid var(--border);font-size:var(--text-sm)">
       <span style="width:8px;height:8px;border-radius:50%;background:${cor}"></span>${_estEsc(estLocalLabel(l))}
       <span style="color:${cor};font-size:var(--text-xs)">${txt}</span></span>`;
@@ -238,7 +243,7 @@ function _ctgPainelCiclo() {
   const nomeRodada = rodada[0]?.nome;
   const pode = _ctgPodeAprovar();
   const msg = !rodada.length ? (ciclo ? 'Nenhuma contagem de CMV neste ciclo ainda. Use “Nova contagem” acima para começar.' : 'Use “Nova contagem” acima para criar a contagem de abertura.')
-    : podeFechar ? `Todos os locais revisados — pode ${ciclo ? 'fechar o ciclo' : 'abrir o ciclo'}.`
+    : podeFechar ? `Todos os locais contados e aplicados — pode ${ciclo ? 'fechar o ciclo' : 'abrir o ciclo'}.`
     : `Faltam ${locais.length - prontos} de ${locais.length} locais para ${ciclo ? 'fechar o ciclo' : 'abrir o ciclo'}.`;
   return `
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px">
@@ -332,7 +337,7 @@ function _ctgNovaRender() {
         Rodada aberta: <strong>${_estEsc(info.rodada[0].nome)}</strong>. Os cards novos entram nela, com a mesma data.</div>` : ''}
       ${blocoLocais}
       ${_estCampo('Data da contagem *', `<input class="inp" type="date" id="cnDia" value="${info.dia}" ${info.rodada.length ? 'disabled' : ''} onchange="_ctgNovaSet('dia', this.value)">`)}
-      <div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 12px;line-height:1.5">Os cards serão nomeados “${_estEsc(info.nome)} — local”. Ao fechar o ciclo, ele fecha nesta data e o próximo começa nela.</div>
+      <div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 12px;line-height:1.5">Os cards serão nomeados “${_estEsc(info.nome)} — local”. Cada card entra no estoque ao concluir a revisão. Ao fechar o ciclo, ele fecha nesta data e o próximo começa nela.</div>
       ${_estCampo('Observações', `<textarea class="inp" id="cnObs" rows="2" placeholder="Notas sobre esta contagem…" oninput="_ctgNova.obs=this.value">${_estEsc(n.obs)}</textarea>`)}`;
   } else {
     corpo = `
@@ -482,18 +487,18 @@ function estFecharCiclo() {
   if (!_ctgPodeAprovar()) return toast('Só gerente ou supervisor fecha o ciclo', 'err');
   const ciclo = _ctgCicloAtual();
   const rodada = _ctgRodadaCmv();
-  if (!rodada.length || rodada.some(c => c.status !== 'concluida')) return toast('Conclua a revisão de todos os locais antes', 'err');
+  if (!rodada.length || rodada.some(c => !['concluida', 'aplicada'].includes(c.status))) return toast('Conclua a revisão de todos os locais antes', 'err');
+  const pendentes = rodada.filter(c => c.status === 'concluida');
   const dataRef = rodada[0].data_ref;
   vtpConfirm({
     title: ciclo ? 'Fechar o ciclo?' : 'Abrir o primeiro ciclo?',
     message: ciclo
-      ? `As contagens de ${rodada.length} local(is) entram no estoque. O ciclo de ${_ctgDataBr(ciclo.inicio)} fecha em ${_ctgDataBr(dataRef)} e o próximo começa nesta data.`
-      : `As contagens de ${rodada.length} local(is) entram no estoque e o primeiro ciclo começa em ${_ctgDataBr(dataRef)}.`,
+      ? `O ciclo de ${_ctgDataBr(ciclo.inicio)} fecha em ${_ctgDataBr(dataRef)} e o próximo começa nesta data.`
+      : `O primeiro ciclo começa em ${_ctgDataBr(dataRef)}.`,
     confirmLabel: ciclo ? 'Fechar ciclo' : 'Abrir ciclo', danger: false,
     onConfirm: async () => {
       try {
-        toast('Aplicando as contagens…', 'info');
-        await _ctgAplicar(rodada);
+        if (pendentes.length) { toast('Aplicando as contagens…', 'info'); await _ctgAplicar(pendentes); }
         const sb = _estSb(), user = estUsuario();
         if (ciclo) {
           let r = await sb.from('est_ciclos').update({ status: 'fechado', fim: dataRef, fechado_por: user, atualizado_por: user }).eq('id', ciclo.id);
@@ -880,7 +885,6 @@ async function _ctgAddAlternar(itemId, adicionar) {
 
 function _ctgRenderRevisao(el) {
   const A = _ctgAtual, c = A.c;
-  const cmv = _ctgEhCmv(c);
   const naoConf = A.itens.filter(i => i.contado === null).length;
   const totalQtd = A.itens.reduce((s, i) => s + (Number(i.contado) || 0), 0);
   const kpi = (t, v) => `<div style="border:1.5px solid var(--border);border-radius:var(--r10);padding:12px 16px">
@@ -927,7 +931,7 @@ function _ctgRenderRevisao(el) {
     </div>
     <div class="card" style="padding:22px 24px;margin:0 0 18px">
       <div style="font-size:var(--text-2xl);font-weight:800;line-height:1.2">${_estEsc(_ctgTitulo(c))}</div>
-      <div style="font-size:var(--text-md);color:var(--text2);margin-top:4px;line-height:1.5">Clique em um item para corrigir a quantidade pelas apresentações. As correções são salvas na hora e ${cmv ? 'só entram no estoque quando o ciclo for fechado' : 'entram no estoque quando a revisão for concluída'}.</div>
+      <div style="font-size:var(--text-md);color:var(--text2);margin-top:4px;line-height:1.5">Clique em um item para corrigir a quantidade pelas apresentações. As correções são salvas na hora e entram no estoque quando a revisão for concluída.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px">
         ${kpi('Itens', A.itens.length)}${kpi('Contados', A.itens.length - naoConf)}${kpi('Não conferidos', naoConf)}${kpi('Quantidade total', _estQ(totalQtd))}
       </div>
@@ -966,17 +970,22 @@ async function _ctgConcluirRevisao() {
   if (!_ctgPodeAprovar()) return toast('Só gerente ou supervisor conclui a revisão', 'err');
   const c = _ctgAtual.c, user = estUsuario();
   try {
-    if (_ctgEhCmv(c)) {
-      const { error } = await _estSb().from('est_contagens').update({ status: 'concluida', aprovado_por: user, aprovado_em: new Date().toISOString(), atualizado_por: user }).eq('id', c.id);
-      if (error) throw new Error(error.message);
-      toast('Revisão concluída — entra no estoque quando o ciclo for fechado', 'ok');
-    } else {
-      toast('Aplicando ao estoque…', 'info');
-      await _ctgAplicar([c]);
-      toast('Revisão concluída — estoque atualizado', 'ok');
-    }
+    toast('Aplicando ao estoque…', 'info');
+    await _ctgAplicar([c]);
+    toast('Revisão concluída — estoque atualizado', 'ok');
     _ctgVoltar();
   } catch (e) { toast('Não consegui concluir: ' + e.message, 'err'); }
+}
+
+// Card revisado antes da regra "concluir = aplicar" (status 'concluida')
+async function _ctgAplicarAgora() {
+  if (!_ctgPodeAprovar()) return toast('Só gerente ou supervisor aplica ao estoque', 'err');
+  try {
+    toast('Aplicando ao estoque…', 'info');
+    await _ctgAplicar([_ctgAtual.c]);
+    toast('Estoque atualizado', 'ok');
+    _ctgVoltar();
+  } catch (e) { toast('Não consegui aplicar: ' + e.message, 'err'); }
 }
 
 // ── Detalhes (concluída / aplicada) ──
@@ -992,7 +1001,8 @@ function _ctgRenderDetalhe(el) {
     ${_ctgCabecalho(c, conf, A.itens.length, A.itens.length ? Math.round(conf / A.itens.length * 100) : 0,
       `<div style="font-size:var(--text-sm);color:var(--text2);margin-top:12px">${c.status === 'aplicada'
         ? `Aplicada ao estoque em ${_ctgDataBr(c.aprovado_em || c.data_ref)}${c.aprovado_por ? ' · ' + _estEsc(c.aprovado_por) : ''}`
-        : `Revisada${c.aprovado_por ? ' por ' + _estEsc(c.aprovado_por) : ''} — entra no estoque quando o ciclo for fechado`}</div>`)}
+        : `Revisada${c.aprovado_por ? ' por ' + _estEsc(c.aprovado_por) : ''}, ainda não aplicada ao estoque.
+           ${_ctgPodeAprovar() ? `<button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="_ctgAplicarAgora()">${lc('check-circle', 13, '#fff')} Aplicar ao estoque</button>` : ''}`}</div>`)}
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:18px 0 12px">
       <div class="field" style="flex:1;min-width:200px;margin:0"><label style="text-transform:none">Buscar</label>
         <input class="inp" id="ctgBusca" placeholder="Buscar produto…" value="${_estEsc(A.q)}" oninput="_ctgAtual.q=this.value;clearTimeout(window._ctgQT);window._ctgQT=setTimeout(()=>{_ctgRenderTela();const b=document.getElementById('ctgBusca');if(b){b.focus();b.setSelectionRange(b.value.length,b.value.length)}},200)"></div>
