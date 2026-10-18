@@ -103,18 +103,13 @@ function _ctgLocaisCom(escopo) {
 }
 
 function _ctgIsoDia(d) { const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset()); return x.toISOString().slice(0, 10); }
-// Contagem registrada ao meio-dia do dia escolhido: antes da loja abrir e
-// depois das vendas da madrugada do dia anterior.
-const _ctgDataRef = dia => new Date(dia + 'T12:00:00').toISOString();
+// Momento da contagem: agora, se for hoje; em outro dia, meio-dia (antes da
+// loja abrir e depois das vendas da madrugada anterior).
+const _ctgDataRef = dia => dia === _ctgIsoDia(new Date()) ? new Date().toISOString() : new Date(dia + 'T12:00:00').toISOString();
 const _ctgNomeCmv = dia => 'Ciclo ' + dia.split('-').reverse().join('/');
-function _ctgSegundaPadrao() {
-  // Segunda-feira mais próxima: de terça a quinta, a que passou; de sexta a
-  // domingo, a que vem (a rodada costuma ser criada na véspera).
-  const hoje = new Date(); const dow = hoje.getDay();
-  const seg = new Date(hoje); seg.setDate(hoje.getDate() + (dow === 0 ? 1 : dow >= 5 ? 8 - dow : 1 - dow));
-  const ciclo = _ctgCicloAtual();
-  if (ciclo && _ctgIsoDia(seg) <= _ctgIsoDia(ciclo.inicio)) seg.setDate(seg.getDate() + 7);
-  return _ctgIsoDia(seg);
+// Data sugerida: hoje (a contagem é feita no dia em que a rodada é criada).
+function _ctgDiaPadrao() {
+  return _ctgIsoDia(new Date());
 }
 
 function _ctgAtualizarBadge() {
@@ -227,7 +222,8 @@ function _ctgRenderConteudo() {
 function _ctgPainelCiclo() {
   const ciclo = _ctgCicloAtual();
   const rodada = _ctgRodadaCmv();
-  const locais = _ctgLocaisCom(_ctgEscopo('cmv'));
+  // "Sem local" não é um lugar físico: não trava o fechamento, só aparece se tiver card
+  const locais = _ctgLocaisCom(_ctgEscopo('cmv')).filter(l => l !== EST_SEM_LOCAL || rodada.some(c => c.local_id === l));
   const stLocal = l => rodada.find(c => c.local_id === l)?.status || null;
   const prontos = locais.filter(l => stLocal(l) === 'concluida').length;
   const podeFechar = locais.length > 0 && prontos === locais.length && rodada.every(c => c.status === 'concluida');
@@ -292,7 +288,7 @@ function _ctgNovaInfo() {
     const rodada = _ctgRodadaCmv();
     const jaTem = new Set(rodada.map(c => c.local_id));
     const locais = _ctgLocaisCom(_ctgEscopo('cmv')).filter(l => !jaTem.has(l));
-    const dia = rodada.length ? _ctgIsoDia(rodada[0].data_ref) : (n.dia || _ctgSegundaPadrao());
+    const dia = rodada.length ? _ctgIsoDia(rodada[0].data_ref) : (n.dia || _ctgDiaPadrao());
     return { escopo: _ctgEscopo('cmv'), locais, rodada, dia, nome: _ctgNomeCmv(dia) };
   }
   const escopo = _ctgEscopo('outras', [...n.cats]);
@@ -302,7 +298,7 @@ function _ctgNovaInfo() {
 function _ctgNovaRender() {
   const n = _ctgNova;
   const info = _ctgNovaInfo();
-  if (!n.locais) n.locais = new Set(info.locais);
+  if (!n.locais) n.locais = new Set(info.locais.filter(l => l !== EST_SEM_LOCAL)); // "Sem local" vem desmarcado
   for (const l of [...n.locais]) if (!info.locais.includes(l)) n.locais.delete(l);
   const opcao = (id, icon, titulo, sub) => {
     const on = n.tipo === id;
