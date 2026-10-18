@@ -14,7 +14,7 @@ const _EST_ABAS = [
   { id: 'cmv',       icon: 'bar-chart-2',    label: 'CMV do ciclo' },
 ];
 
-let _estFil = { local: '', q: '', cat: '', tipo: '', abaixo: false, zerados: false, sort: 'nome', dir: 1 };
+let _estFil = { local: '', q: '', cat: '', abaixo: false, zerados: false, sort: 'nome', dir: 1 };
 
 function _estTopTabsHtml() {
   return `<div style="display:flex;gap:2px;border-bottom:1.5px solid var(--border);margin-bottom:20px">
@@ -91,7 +91,6 @@ function _estRenderAbaEstoqueConteudo(dados) {
   const valorCmv = todas.filter(r => estItemNoCMV(r.item, foraCmv)).reduce((s, r) => s + valorItem(r), 0);
   const nIns  = todas.filter(r => !r.item.isProd).length;
   const nPrep = todas.filter(r => r.item.isProd).length;
-  const nSemContagem = todas.filter(r => r.semContagem).length;
   const porCat = {};
   todas.forEach(r => { const c = r.item.cat || 'Outros'; porCat[c] = (porCat[c] || 0) + valorItem(r); });
   const topCats = Object.entries(porCat).sort((a, b) => b[1] - a[1]).slice(0, 5);
@@ -102,7 +101,6 @@ function _estRenderAbaEstoqueConteudo(dados) {
     .filter(r => !f.local || estLocaisDoItem(r.item).includes(f.local))
     .filter(r => !q || r.item.name.toLowerCase().includes(q) || (r.item.cat || '').toLowerCase().includes(q))
     .filter(r => !f.cat || (r.item.cat || 'Outros') === f.cat)
-    .filter(r => !f.tipo || estTipoItem(r.item) === f.tipo)
     .map(r => { const saldo = _estLinhaSaldo(r, f.local); return { r, saldo, st: _estStatus(r, saldo, f.local) }; })
     .filter(x => !f.abaixo  || x.st.id === 'abaixo' || x.st.id === 'negativo')
     .filter(x => !f.zerados || x.st.id === 'zerado');
@@ -146,17 +144,15 @@ function _estRenderAbaEstoqueConteudo(dados) {
         <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:var(--text-sm);margin-top:6px">
           <span><span style="color:var(--muted)">Entra no CMV</span> <strong>${_estR(valorCmv)}</strong></span>
           <span><span style="color:var(--muted)">Outras despesas</span> <strong>${_estR(valorTotal - valorCmv)}</strong></span>
-        </div>
-        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:4px">Saldo × custo de referência de cada item</div>`)}
+        </div>`)}
       ${card('Itens por tipo', 'layers', `
         <div style="display:flex;gap:22px;align-items:baseline">
           <div><span style="font-size:var(--text-2xl);font-weight:800">${nIns}</span> <span style="font-size:var(--text-sm);color:var(--text2)">insumos</span></div>
           <div><span style="font-size:var(--text-2xl);font-weight:800">${nPrep}</span> <span style="font-size:var(--text-sm);color:var(--text2)">processados</span></div>
-        </div>
-        ${nSemContagem ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);margin-top:6px">${nSemContagem} ainda sem contagem de ciclo — mostrando o saldo antigo</div>` : ''}`)}
+        </div>`)}
       ${card('Top categorias', 'bar-chart-2', topCats.length ? topCats.map(([c, v]) => `
         <div style="display:flex;justify-content:space-between;gap:10px;font-size:var(--text-sm);padding:2px 0">
-          <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_estEsc(c)}${estCatNoCMV(c, foraCmv) ? '' : ' <span style="font-size:var(--text-2xs);color:var(--muted)">· fora do CMV</span>'}</span>
+          <span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_estEsc(c)}</span>
           <strong style="white-space:nowrap">${_estR(v)}</strong></div>`).join('') : `<div style="color:var(--muted);font-size:var(--text-sm)">Sem valor em estoque</div>`)}
     </div>
 
@@ -167,23 +163,20 @@ function _estRenderAbaEstoqueConteudo(dados) {
     </div>
 
     <div class="card" style="margin-bottom:0">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:14px 16px;border-bottom:1.5px solid var(--border)">
-        <div style="font-size:var(--text-lg);font-weight:800;margin-right:8px">Produtos em estoque</div>
+      <div style="padding:14px 16px;border-bottom:1.5px solid var(--border)">
+        <div style="font-size:var(--text-lg);font-weight:800;margin-bottom:12px">Produtos em estoque</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <input class="inp" placeholder="Buscar produto…" value="${_estEsc(f.q)}" style="flex:1;min-width:200px;max-width:340px;font-size:var(--text-md)"
           oninput="_estFil.q=this.value;clearTimeout(window._estQT);window._estQT=setTimeout(_estRerender,180)" id="estBusca">
         <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_estFil.cat=this.value;_estRerender()">
           <option value="">Todas as categorias</option>
           ${cats.map(c => `<option value="${_estEsc(c)}"${f.cat === c ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}
         </select>
-        <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_estFil.tipo=this.value;_estRerender()">
-          <option value="">Insumos e processados</option>
-          <option value="insumo"${f.tipo === 'insumo' ? ' selected' : ''}>Só insumos</option>
-          <option value="preparado"${f.tipo === 'preparado' ? ' selected' : ''}>Só processados</option>
-        </select>
         ${chip(f.abaixo,  `_estFil.abaixo=!_estFil.abaixo;_estFil.zerados=false;_estRerender()`, `${lc('alert-triangle', 13, 'currentColor')} Abaixo do mínimo (${nAbaixo})`, 'var(--orange-dark)', 'var(--orange-light)')}
         ${chip(f.zerados, `_estFil.zerados=!_estFil.zerados;_estFil.abaixo=false;_estRerender()`, `Zerados (${nZerados})`, 'var(--text)', 'var(--surface2)')}
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="estRenderAbaEstoque(true)" title="Recalcular com os dados mais recentes">
           ${lc('refresh-cw', 13, 'currentColor')} Atualizar</button>
+        </div>
       </div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
@@ -199,8 +192,10 @@ function _estRenderAbaEstoqueConteudo(dados) {
               const ult = estUltimoPreco(it.id);
               const sub = r.semContagem ? `<span style="color:var(--orange-dark)">sem contagem</span>`
                         : (() => { const d = Object.values(r.porLocal).map(p => p.baseData).filter(Boolean).sort((a, b) => _estMs(a) - _estMs(b)).pop(); return d ? `contado ${_estData(d)}` : ''; })();
-              return `<tr onclick="estAbrirDetalheItem(${it.id})" style="border-top:1px solid var(--border);cursor:pointer"
-                  onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+              // Linha destacada: abaixo do mínimo em amarelo, zerado/negativo em vermelho
+              const fundo = st.id === 'abaixo' ? 'var(--yellow-light)' : (st.id === 'zerado' || st.id === 'negativo') ? 'var(--red-light)' : '';
+              return `<tr onclick="estAbrirDetalheItem(${it.id})" style="border-top:1px solid var(--border);cursor:pointer;background:${fundo}"
+                  onmouseover="this.style.filter='brightness(.97)'" onmouseout="this.style.filter=''">
                 <td style="padding:12px 14px">
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                     <span style="font-weight:600">${_estEsc(it.name)}</span>
