@@ -1921,7 +1921,7 @@ function abrirCadastroNaConfig(tab) {
 const _CFG_ALL_PERMS = [
   'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
   'Pré-produção','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
-  'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','Alertas',
+  'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','CMV','Alertas',
   'Gerenciar usuários','Configurações',
 ];
 
@@ -1959,6 +1959,7 @@ const _CFG_PERMS_TREE = [
   { id:'RH',                 label:'RH',                  icon:'users'           },
   { id:'Performance',        label:'Performance',         icon:'trending-up'     },
   { id:'Vendas',             label:'Vendas',              icon:'dollar-sign'     },
+  { id:'CMV',                label:'CMV',                 icon:'pie-chart'       },
   { id:'Alertas',            label:'Alertas',             icon:'bell'            },
   { id:'Gerenciar usuários', label:'Gerenciar usuários',  icon:'user-cog'        },
   { id:'Configurações',      label:'Configurações',       icon:'settings'        },

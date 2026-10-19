@@ -1,6 +1,6 @@
 /**
  * VTP Compras — Vai Ter Pizza!
- * estoque-cmv.js — CMV real e GAP por ciclo (aba "CMV do ciclo")
+ * estoque-cmv.js — CMV real e GAP por ciclo (módulo CMV › aba "CMV do ciclo")
  *
  *   CMV real     = estoque inicial + compras − estoque final      (R$)
  *   CMV teórico  = vendas do período × fichas técnicas (débito automático)
@@ -114,17 +114,25 @@ async function estCalcularCMV(ciclo, contagens) {
   const consumoTop = temIni && temFim ? lista.map(r => ({ ...r, consumoV: r.iniV + r.comprasV - r.fimV }))
     .filter(r => r.consumoV > 0.005).sort((a, b) => b.consumoV - a.consumoV).slice(0, 10) : [];
 
+  // Todos os itens com movimento: consumo real (contagem) × digital (vendas + saídas)
+  const itens = [...porItem.values()].map(r => {
+    const real = temIni && temFim ? r.ini + r.compras + r.producao - r.fim : null;
+    const digital = r.vendas + r.perdas;
+    return { ...r, noCmv: noCmv(r.cat), real, realV: real !== null ? real * r.custo : null, digital, digitalV: digital * r.custo,
+      dif: real !== null ? real - digital : null, difV: real !== null ? (real - digital) * r.custo : null };
+  });
+
   return {
-    ciclo, inicio, fim: fimReal, aberto: !fimReal, temIni, temFim, aberturaCount: abertura.length,
+    ciclo, inicio, fim: fimReal, aberto: !fimReal, temIni, temFim, aberturaCount: abertura.length, itens,
     ei, compras, ef, real, teorico, perdas, gap, fat: fat.total, pedidos: fat.pedidos,
-    divergencias, consumoTop, geradoEm: new Date().toISOString(),
+    divergencias, consumoTop, custos: _cmvVariacaoCustos(inicio, fimReal), geradoEm: new Date().toISOString(),
   };
 }
 
 // ── Render ─────────────────────────────────────────────────────
 
 async function estRenderAbaCMV(forcar = false) {
-  const el = document.getElementById('estAbaBody');
+  const el = document.getElementById('cmvAbaBody');
   if (!el) return;
   try {
     if (!_ctgDados || forcar) await _ctgCarregar();
@@ -138,7 +146,7 @@ async function estRenderAbaCMV(forcar = false) {
       <div style="font-size:var(--text-lg);font-weight:800;margin-bottom:6px">Nenhum ciclo ainda</div>
       <div style="font-size:var(--text-md);color:var(--text2);max-width:560px;margin:0 auto 16px;line-height:1.5">
         O CMV real precisa de duas contagens: a de abertura (estoque inicial) e a de fechamento (estoque final). Comece pela contagem de abertura na aba Contagem.</div>
-      <button class="btn btn-primary" onclick="_estSetAba('contagens')">Ir para Contagem</button></div>`;
+      <button class="btn btn-primary" onclick="_estCpAba='contagens';goModule('estoque')">Ir para Contagem</button></div>`;
     return;
   }
   if (!_cmvCicloId || !ciclos.some(c => c.id === _cmvCicloId)) _cmvCicloId = ciclos[0].id;
@@ -154,12 +162,12 @@ async function estRenderAbaCMV(forcar = false) {
       return;
     }
   }
-  if (!document.getElementById('estAbaBody')) return;
+  if (!document.getElementById('cmvAbaBody')) return;
   _cmvRender(_cmvCache[ciclo.id]);
 }
 
 function _cmvRender(r) {
-  const el = document.getElementById('estAbaBody');
+  const el = document.getElementById('cmvAbaBody');
   const ciclos = _ctgDados.ciclos;
   const pct = (v, base) => base > 0 && v !== null ? (v / base * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '—';
   const meta = (typeof _vdMetaCMV !== 'undefined' ? _vdMetaCMV : 30);
@@ -225,12 +233,144 @@ function _cmvRender(r) {
       <div style="padding:10px 16px;font-size:var(--text-xs);color:var(--muted);border-top:1.5px solid var(--border)">Diferença positiva = saiu mais do que as vendas explicam (ficha pesando menos que o real, porção acima, perda não registrada). Negativa = sobrou (ficha pesando mais que o real).</div>
     </div>` : ''}
 
-    ${r.consumoTop.length ? `<div class="card" style="margin-bottom:0">
-      <div style="padding:14px 16px;border-bottom:1.5px solid var(--border);font-size:var(--text-lg);font-weight:800">Top consumo do ciclo (R$)</div>
-      <div style="padding:8px 16px 14px">${(() => { const max = r.consumoTop[0].consumoV; return r.consumoTop.map(x => `
-        <div style="display:grid;grid-template-columns:minmax(140px,240px) 1fr 110px;gap:12px;align-items:center;padding:6px 0;font-size:var(--text-sm)">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_estEsc(x.nome)}</span>
-          <div style="height:10px;background:var(--surface2);border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.max(2, x.consumoV / max * 100)}%;background:var(--purple);border-radius:99px"></div></div>
-          <strong style="text-align:right">${_estR(x.consumoV)}</strong></div>`).join(''); })()}</div>
-    </div>` : ''}`;
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;margin-bottom:14px">
+      <div class="card" style="margin:0;padding:16px 18px">
+        <div style="font-size:var(--text-lg);font-weight:800">Top 5 itens consumidos</div>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin:2px 0 10px">${r.temFim ? 'Consumo real do ciclo (contagem), em R$' : 'Consumo digital até agora (vendas + saídas), em R$'}</div>
+        <div style="height:220px"><canvas id="cmvTopChart"></canvas></div>
+      </div>
+      <div class="card" style="margin:0;padding:16px 18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div><div style="font-size:var(--text-lg);font-weight:800">Linha do tempo do CMV</div>
+            <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">Real por ciclo fechado · projetado por semana (vendas × fichas)</div></div>
+          <select class="inp" style="width:auto;font-size:var(--text-sm)" onchange="_cmvLtMeses=+this.value;_cmvDesenharLinhaTempo()">
+            ${[1, 3, 6, 12].map(m => `<option value="${m}"${m === _cmvLtMeses ? ' selected' : ''}>Últimos ${m} ${m === 1 ? 'mês' : 'meses'}</option>`).join('')}
+          </select>
+        </div>
+        <div style="height:220px;margin-top:10px"><canvas id="cmvLinhaChart"></canvas></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px">
+      ${_cmvTabelaCustos('Maiores aumentos de custo no ciclo', r.custos.aumentos, 'var(--danger-fg)')}
+      ${_cmvTabelaCustos('Maiores reduções de custo no ciclo', r.custos.reducoes, 'var(--success-fg)')}
+    </div>`;
+  _cmvDesenharTop(r);
+  _cmvDesenharLinhaTempo();
+}
+
+// ── Painéis do ciclo ──────────────────────────────────────────
+
+let _cmvLtMeses = 3;
+let _cmvCharts = {};
+
+// Custo de cada item no início do ciclo × no fim (ou agora), pelas compras
+// registradas (histórico de preços). Só itens que entram no CMV.
+function _cmvVariacaoCustos(inicioISO, fimISO) {
+  const fora = estCatsForaCMV();
+  const ph = typeof priceHistory !== 'undefined' ? priceHistory : [];
+  const ini = (inicioISO || '').slice(0, 10), fim = (fimISO || new Date().toISOString()).slice(0, 10);
+  const porItem = {};
+  for (const p of ph) { if (p.itemId != null && p.precoUnit > 0 && p.data) (porItem[p.itemId] ||= []).push(p); }
+  const linhas = [];
+  for (const [id, ps] of Object.entries(porItem)) {
+    const it = items.find(i => i.id === Number(id));
+    if (!it || !estItemNoCMV(it, fora)) continue;
+    ps.sort((a, b) => String(a.data).localeCompare(String(b.data)));
+    const antes = [...ps].reverse().find(p => String(p.data).slice(0, 10) < ini);
+    const depois = [...ps].reverse().find(p => String(p.data).slice(0, 10) <= fim && String(p.data).slice(0, 10) >= ini);
+    if (!antes || !depois) continue;
+    const de = Number(antes.precoUnit), para = Number(depois.precoUnit);
+    if (!(de > 0) || Math.abs(para - de) < 0.005) continue;
+    linhas.push({ id: it.id, nome: it.name, de, para, pct: (para - de) / de * 100 });
+  }
+  return {
+    aumentos: linhas.filter(x => x.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, 5),
+    reducoes: linhas.filter(x => x.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, 5),
+  };
+}
+
+function _cmvTabelaCustos(titulo, lista, cor) {
+  const th = (t, a = 'right') => `<th style="padding:9px 12px;text-align:${a};font-size:var(--text-xs);font-weight:700;color:var(--muted);white-space:nowrap">${t}</th>`;
+  return `<div class="card" style="margin:0">
+    <div style="padding:14px 16px;font-size:var(--text-lg);font-weight:800">${titulo}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
+      <thead><tr style="border-top:1px solid var(--border)">${th('Produto', 'left')}${th('Custo anterior')}${th('Custo atual')}${th('Variação')}</tr></thead>
+      <tbody>${lista.length ? lista.map(x => `<tr style="border-top:1px solid var(--border);cursor:pointer" onclick="cmvDetalheInsumo(${x.id})">
+        <td style="padding:10px 12px;font-weight:600">${_estEsc(x.nome)}</td>
+        <td style="padding:10px 12px;text-align:right;color:var(--text2)">${_estR(x.de)}</td>
+        <td style="padding:10px 12px;text-align:right">${_estR(x.para)}</td>
+        <td style="padding:10px 12px;text-align:right;font-weight:700;color:${cor}">${x.pct > 0 ? '+' : ''}${x.pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</td></tr>`).join('')
+        : `<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--muted);border-top:1px solid var(--border)">Sem compras com preço diferente no ciclo</td></tr>`}</tbody>
+    </table></div>`;
+}
+
+function _cmvChart(id, cfg) {
+  if (typeof Chart === 'undefined') return;
+  const cv = document.getElementById(id);
+  if (!cv) return;
+  _cmvCharts[id]?.destroy();
+  _cmvCharts[id] = new Chart(cv, cfg);
+}
+const _cmvCor = (v, def) => getComputedStyle(document.body).getPropertyValue(v).trim() || def;
+
+function _cmvDesenharTop(r) {
+  const val = x => r.temFim ? (x.realV || 0) : x.digitalV;
+  const top = r.itens.filter(x => x.noCmv && val(x) > 0.005).sort((a, b) => val(b) - val(a)).slice(0, 5);
+  if (!top.length) {
+    const cv = document.getElementById('cmvTopChart');
+    if (cv) cv.parentElement.innerHTML = `<div style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:var(--text-sm)">Nenhum consumo no ciclo ainda</div>`;
+    return;
+  }
+  _cmvChart('cmvTopChart', {
+    type: 'bar',
+    data: { labels: top.map(x => x.nome), datasets: [{ data: top.map(x => +val(x).toFixed(2)), backgroundColor: _cmvCor('--chart-1', '#6B21D4'), borderRadius: 4 }] },
+    options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => _estR(c.parsed.x) } } },
+      scales: { x: { ticks: { callback: v => 'R$ ' + Number(v).toLocaleString('pt-BR') } }, y: { ticks: { autoSkip: false, font: { size: 11 } } } } },
+  });
+}
+
+// Linha do tempo: CMV real (ciclos fechados) × projetado por semana
+async function _cmvDesenharLinhaTempo() {
+  if (!document.getElementById('cmvLinhaChart')) return;
+  const fim = new Date();
+  const ini = new Date(); ini.setMonth(ini.getMonth() - _cmvLtMeses); ini.setHours(0, 0, 0, 0);
+  // semanas começando na segunda
+  const seg = d => { const x = new Date(d); const w = x.getDay(); x.setDate(x.getDate() - (w === 0 ? 6 : w - 1)); x.setHours(0, 0, 0, 0); return x; };
+  const semanas = [];
+  for (let d = seg(ini); d <= fim; d = new Date(d.getTime() + 7 * 864e5)) semanas.push(d);
+  let linhas = [];
+  try { linhas = await vendasCarregarPeriodo(semanas[0].toISOString(), fim.toISOString()); } catch (e) { console.warn('[cmv] linha do tempo:', e.message); }
+  const proj = semanas.map((s, i) => {
+    const prox = semanas[i + 1] || new Date(fim.getTime() + 1);
+    const ls = linhas.filter(l => _estMs(l.ts) >= s.getTime() && _estMs(l.ts) < prox.getTime());
+    const c = vendasPorCategoria(ls);
+    let rec = 0, cus = 0; Object.values(c).forEach(x => { rec += x.receita; cus += x.custo; });
+    return rec > 0 ? +(cus / rec * 100).toFixed(1) : null;
+  });
+  // Real: cada ciclo fechado cai na semana em que fechou
+  const real = semanas.map(() => null);
+  for (const ci of (_ctgDados?.ciclos || []).filter(c => c.status === 'fechado' && c.fim && _estMs(c.fim) >= semanas[0].getTime())) {
+    try {
+      const r = _cmvCache[ci.id] || (_cmvCache[ci.id] = await estCalcularCMV(ci, _ctgDados.contagens));
+      if (r.real === null || !(r.fat > 0)) continue;
+      const k = semanas.findIndex((s, i) => _estMs(ci.fim) >= s.getTime() && (!semanas[i + 1] || _estMs(ci.fim) < semanas[i + 1].getTime()));
+      if (k >= 0) real[k] = +(r.real / r.fat * 100).toFixed(1);
+    } catch (e) { console.warn('[cmv] ciclo', ci.id, e.message); }
+  }
+  const meta = typeof _vdMetaCMV !== 'undefined' ? _vdMetaCMV : 30;
+  _cmvChart('cmvLinhaChart', {
+    type: 'line',
+    data: {
+      labels: semanas.map(s => s.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
+      datasets: [
+        { label: 'CMV real (ciclo)', data: real, borderColor: _cmvCor('--chart-3', '#F5A800'), backgroundColor: _cmvCor('--chart-3', '#F5A800'), spanGaps: true, pointRadius: 5, tension: .25 },
+        { label: 'CMV projetado (semana)', data: proj, borderColor: _cmvCor('--chart-1', '#6B21D4'), backgroundColor: _cmvCor('--chart-1', '#6B21D4'), spanGaps: true, pointRadius: 2, tension: .25 },
+        { label: `Meta ${meta}%`, data: semanas.map(() => meta), borderColor: _cmvCor('--muted', '#999'), borderDash: [5, 5], pointRadius: 0, borderWidth: 1 },
+      ],
+    },
+    options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => c.parsed.y === null ? '' : `${c.dataset.label}: ${c.parsed.y.toLocaleString('pt-BR')}%` } } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => v + '%' } } } },
+  });
 }

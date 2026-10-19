@@ -105,19 +105,6 @@ const _OPERACAO_SUBMENU_ITEMS = [
 ];
 
 // Submenu items de Vendas
-const _VENDAS_SUBMENU_ITEMS = [
-  { id: 'cmv',           icon: 'dollar-sign', label: 'CMV'                     },
-  { id: 'produtos',      icon: 'bar-chart-2', label: 'Produtos (Curva ABC)'    },
-  { id: 'insumos',       icon: 'package',     label: 'Consumo de Insumos'      },
-  { id: 'canais',        icon: 'link',        label: 'Vendas'                  },
-  { id: 'precos',        icon: 'tag',         label: 'Precificação'            },
-];
-
-function _handleNavVendas() {
-  const action = (id) => `_vdTab='${id}'; goModule('vendas');`;
-  _openMobileSubmenu(_VENDAS_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })), 'Vendas');
-}
-
 function _openMobileSubmenu(items, parentLabel) {
   const sidebar = document.getElementById('sidebar');
   const nav     = sidebar.querySelector('.sb-nav');
@@ -290,7 +277,8 @@ const modInfo = {
   preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
   compras:        { title: 'Compras',               sub: 'Lista · Cotação · Aprovação · OC · Recebimento · Fornecedores' },
-  vendas:         { title: 'Vendas',                sub: 'CMV · Produtos · Consumo de Insumos · Vendas · Precificação — interpretado dos pedidos' },
+  vendas:         { title: 'Vendas',                sub: 'Vendas por canal · Curva ABC — interpretado dos pedidos' },
+  cmv:            { title: 'CMV',                   sub: 'CMV do ciclo · CMV projetado · Consumo de insumos · Precificação' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
   previsao:       { title: 'Previsão de Demanda',   sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },
@@ -317,7 +305,7 @@ let _vtpNavFromPop = false; // flag para evitar loop no popstate
 
 // Chave → módulos que a usam (para saber quem re-renderizar)
 const _VTP_KEY_MODS = {
-  'vtp_items':          ['estoque','compras','cadastros','dashboard','inventario'],
+  'vtp_items':          ['estoque','compras','cadastros','dashboard','inventario','cmv'],
   'vtp_listas':         ['compras','dashboard'],
   'vtp_suppliers':      ['compras','cadastros'],
   'vtp_funcionarios':   ['rh','dashboard','configuracoes'],
@@ -365,6 +353,7 @@ function _vtpCallRender(mod) {
     case 'inventario':    typeof renderInventario   === 'function' && renderInventario();   break;
     case 'etiquetagem':   typeof renderEtiquetagem  === 'function' && renderEtiquetagem();  break;
     case 'cadastros':     typeof renderCadastros    === 'function' && renderCadastros();    break;
+    case 'cmv':           typeof renderCMVModulo    === 'function' && renderCMVModulo();    break;
     case 'configuracoes': typeof renderConfiguracoes === 'function' && renderConfiguracoes(); break;
     case 'desperdicio':   typeof renderDesperdicio  === 'function' && renderDesperdicio();  break;
     case 'auditoria':     typeof renderAuditoria    === 'function' && renderAuditoria();    break;
@@ -555,6 +544,7 @@ function goModule(mod) {
   else if (mod === 'preproducao') renderPreproducao();
   else if (mod === 'compras')    renderComprasModule();
   else if (mod === 'vendas')     renderVendas();
+  else if (mod === 'cmv')        renderCMVModulo();
   else if (mod === 'cadastros')  renderCadastros();
   else if (mod === 'desperdicio')   renderDesperdicio();
   else if (mod === 'previsao')      renderPrevisao();

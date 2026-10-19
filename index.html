@@ -143,10 +143,14 @@
           <span class="sb-label">Etiquetagem</span>
         </button>
 
-        <button class="sb-item" id="nav-vendas" onclick="_handleNavVendas()">
+        <button class="sb-item" id="nav-vendas" onclick="goModule('vendas')">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
           <span class="sb-label">Vendas</span>
-          <span class="sb-caret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+        </button>
+
+        <button class="sb-item" id="nav-cmv" onclick="goModule('cmv')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span>
+          <span class="sb-label">CMV</span>
         </button>
 
         <button class="sb-item" id="nav-rh" onclick="goModule('rh')">
@@ -443,6 +447,11 @@
       <!-- VENDAS -->
       <div class="page" id="page-vendas" style="padding:0">
         <div id="vendasContent" style="padding:24px"></div>
+      </div>
+
+      <!-- CMV -->
+      <div class="page" id="page-cmv" style="padding:0">
+        <div id="cmvContent"></div>
       </div>
 
       <!-- RELATÓRIOS -->
@@ -1312,7 +1321,7 @@
 <script src="js/icons.js?v=2"></script>
 <script src="js/db.js?v=118"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=243"></script>
+<script src="js/init.js?v=244"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">

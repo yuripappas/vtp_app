@@ -2,14 +2,20 @@
  * VTP Compras — Vai Ter Pizza!
  * vendas-ui.js — UI do módulo Vendas. Consome o motor js/vendas.js.
  *
- * Filhos: CMV · Produtos/Curva ABC · Insumos · Canais · Precificação.
- * Navegação entre filhos é pelo sub-panel do sidebar (padrão da
- * plataforma, igual Compras/Operação) — não por abas dentro da página.
- * Ver _handleNavVendas() / _VENDAS_SUBMENU_ITEMS em js/utils.js.
+ * Módulo Vendas: abas no topo Vendas (canais) · Curva ABC (produtos).
+ * CMV projetado, Consumo de insumos e Precificação moraram aqui e foram
+ * para o módulo CMV (js/cmv.js), que reaproveita as funções deste arquivo
+ * desenhando no mesmo #vendasTabContent.
  * Nenhuma lógica de interpretação aqui — tudo vem do motor (vendas.js).
  */
 
-let _vdTab     = 'cmv';
+let _vdTab     = 'canais';   // 'canais' | 'produtos'
+const _VD_ABAS = [
+  { id: 'canais',   icon: 'link',        label: 'Vendas'     },
+  { id: 'produtos', icon: 'bar-chart-2', label: 'Curva ABC'  },
+];
+window._vtpGetTab_vendas = () => _vdTab;
+window._vtpSetTab_vendas = v => { if (_VD_ABAS.some(a => a.id === v)) _vdTab = v; };
 let _vdCanal   = '';   // '' = todos
 let _vdMetaCMV = 30;   // % meta de CMV
 let _vdCatOpen = null; // categoria expandida no drill-down (aba Por Insumo)
@@ -24,19 +30,29 @@ let _vdProdOpen  = null;    // categoria expandida na aba Geral
 function renderVendas() {
   const el = document.getElementById('vendasContent');
   if (!el) return;
-  const item = (typeof _VENDAS_SUBMENU_ITEMS !== 'undefined' && _VENDAS_SUBMENU_ITEMS.find(i => i.id === _vdTab)) || { icon: 'bar-chart-2', label: 'Vendas' };
-  _setPageTitle(item.label);
-  el.innerHTML = `<div id="vendasTabContent"></div>`;
+  const cm = document.getElementById('cmvContent'); if (cm) cm.innerHTML = ''; // evita #vendasTabContent duplicado
+  if (!_VD_ABAS.some(a => a.id === _vdTab)) _vdTab = 'canais';
+  _setPageTitle('Vendas');
+  el.innerHTML = `<div style="display:flex;gap:2px;border-bottom:1.5px solid var(--border);margin-bottom:20px">
+      ${_VD_ABAS.map(a => { const on = _vdTab === a.id; return `<button onclick="_vdSetAba('${a.id}')"
+        style="display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border:none;background:none;cursor:pointer;font-family:inherit;
+        font-size:var(--text-md);font-weight:${on ? 700 : 500};color:${on ? 'var(--purple)' : 'var(--text2)'};
+        border-bottom:2.5px solid ${on ? 'var(--purple)' : 'transparent'};margin-bottom:-1.5px">${lc(a.icon, 15, 'currentColor')} ${a.label}</button>`; }).join('')}
+    </div>
+    <div id="vendasTabContent"></div>`;
   _vdRerender();
+}
+
+function _vdSetAba(id) {
+  _vdTab = id;
+  if (typeof _vtpPushRoute === 'function') _vtpPushRoute('vendas');
+  renderVendas();
 }
 
 // Re-renderiza o filho atual (usado pelos filtros compartilhados)
 function _vdRerender() {
-  if (_vdTab === 'cmv')          renderVendasCMV();
-  else if (_vdTab === 'insumos') renderVendasInsumos();
-  else if (_vdTab === 'canais')  renderVendasCanais();
-  else if (_vdTab === 'precos')  renderVendasPrecos();
-  else                           renderVendasProdutos();
+  if (_vdTab === 'produtos') renderVendasProdutos();
+  else                       renderVendasCanais();
 }
 
 // ══════════════════════════════════════════════════════════════

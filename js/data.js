@@ -450,7 +450,7 @@ let PERMS = {
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
       'Manutenção','Inventário','RH','Performance',
-      'Vendas','Alertas',
+      'Vendas','CMV','Alertas',
       'Gerenciar usuários','Configurações',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
@@ -465,7 +465,7 @@ let PERMS = {
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
       'Manutenção','Inventário','RH','Performance',
-      'Vendas','Alertas',
+      'Vendas','CMV','Alertas',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
     ]
   },
@@ -505,6 +505,17 @@ let PERMS = {
       };
     }
   });
+})();
+// Módulo CMV (19/10/2026): quem já tinha Vendas ganha CMV uma vez — sem
+// isso, os perfis salvos (que substituem o padrão) ficariam sem o módulo.
+(function() {
+  const cfg = db._get('vtp_config', {}) || {};
+  if (cfg.permCmvMigrado) return;
+  let mudou = false;
+  Object.values(PERMS).forEach(p => { if (p.perms?.includes('Vendas') && !p.perms.includes('CMV')) { p.perms.push('CMV'); mudou = true; } });
+  cfg.permCmvMigrado = true;
+  db._set('vtp_config', cfg);
+  if (mudou) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
 })();
 const savePerms = () => db._set('vtp_perms',
   Object.fromEntries(Object.entries(PERMS).map(([k, v]) => [k, {
