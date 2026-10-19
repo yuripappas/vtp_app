@@ -94,7 +94,22 @@ function normalizarTelefone(c: CwCustomer | null | undefined): string | null {
 
 // ── Handler ─────────────────────────────────────────────────────────────
 
-Deno.serve(async (_req) => {
+// Campos financeiros do pedido (taxas, descontos com quem pagou, pagamentos)
+function camposFinanceiros(det: any) {
+  return {
+    delivery_fee:        det.delivery_fee ?? null,
+    driver_fee:          det.driver_fee ?? null,
+    service_fee:         det.service_fee ?? null,
+    additional_fee:      det.additional_fee ?? null,
+    delivered_by:        det.delivered_by ?? null,
+    discounts:           det.discounts ?? [],
+    payments:            det.payments ?? [],
+    external_display_id: det.external_display_id ?? null,
+    financeiro_em:       new Date().toISOString(),
+  };
+}
+
+Deno.serve(async (req) => {
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const sb = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -105,6 +120,34 @@ Deno.serve(async (_req) => {
     return new Response(JSON.stringify({ error: 'Token CW não configurado (vtp_config.codLoja)' }), { status: 400 });
   }
   const CW_TOKEN = cfgRow.value.codLoja as string;
+
+  // Backfill: ?backfill=N lê o detalhe de até N pedidos antigos que ainda não
+  // têm os campos financeiros (só atualiza esses campos e o status).
+  const url = new URL(req.url);
+  const lote = Number(url.searchParams.get('backfill') || 0);
+  if (lote > 0) {
+    const desde = url.searchParams.get('desde') || new Date(Date.now() - 120 * 864e5).toISOString();
+    const { data: faltam } = await sb.from('cw_pedidos').select('id').is('financeiro_em', null)
+      .gte('cw_created_at', desde).order('cw_created_at', { ascending: false }).limit(Math.min(lote, 300));
+    let ok = 0, falhas = 0, limite = false;
+    // Devagar (5 por vez) e para no primeiro 429: o limite da API é por minuto
+    // e o sync normal (a cada 2 min) também precisa dele.
+    for (let i = 0; i < (faltam || []).length && !limite; i += 5) {
+      await Promise.all((faltam || []).slice(i, i + 5).map(async (r: any) => {
+        try {
+          const d = await fetch(`${CW_API_BASE}/orders/${r.id}`, { headers: { 'X-API-KEY': CW_TOKEN, 'Accept': 'application/json' } });
+          if (d.status === 429) { limite = true; return; }
+          if (d.status === 404) { await sb.from('cw_pedidos').update({ financeiro_em: new Date().toISOString() }).eq('id', r.id); falhas++; return; }
+          if (!d.ok) { falhas++; return; }
+          const det = await d.json();
+          const { error } = await sb.from('cw_pedidos').update({ ...camposFinanceiros(det), status: det.status }).eq('id', r.id);
+          if (error) falhas++; else ok++;
+        } catch (_e) { falhas++; }
+      }));
+    }
+    const { count } = await sb.from('cw_pedidos').select('id', { count: 'exact', head: true }).is('financeiro_em', null).gte('cw_created_at', desde);
+    return new Response(JSON.stringify({ backfill: ok, falhas, limite, restantes: count }), { headers: { 'Content-Type': 'application/json' } });
+  }
 
   const ordersRes = await fetch(`${CW_API_BASE}/orders`, { headers: { 'X-API-KEY': CW_TOKEN, 'Accept': 'application/json' } });
   if (!ordersRes.ok) {
@@ -163,6 +206,7 @@ Deno.serve(async (_req) => {
         // teve esse campo confirmado; tentamos os formatos mais prováveis e
         // gravamos null se nenhum existir (não impede o resto do sync).
         coupon_code:       det.coupon_code ?? det.coupon?.code ?? det.discount?.code ?? null,
+        ...camposFinanceiros(det),
       };
     } catch (_e) { erros++; return null; }
   }))).filter((l): l is NonNullable<typeof l> => l !== null);

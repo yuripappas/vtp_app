@@ -62,13 +62,13 @@
   const APP_SCRIPTS = [
     'js/data.js', 'js/utils.js', 'js/cw-api.js', 'js/dashboard.js', 'js/estoque.js', 'js/estoque-saldo.js', 'js/estoque-aba.js', 'js/estoque-mov.js', 'js/estoque-contagem.js', 'js/estoque-cmv.js',
     'js/compras.js', 'js/cp-base.js', 'js/cp-compras.js', 'js/cp-listas.js', 'js/cp-cotacao.js', 'js/cp-recebimento.js', 'js/relatorios.js', 'js/modules.js', 'js/previsao-dados.js', 'js/previsao.js',
-    'js/cadastros.js', 'js/vendas.js', 'js/vendas-ui.js', 'js/cmv.js', 'js/configuracoes.js', 'js/desperdicio.js',
+    'js/cadastros.js', 'js/vendas.js', 'js/vendas-ui.js', 'js/vendas-canais.js', 'js/cmv.js', 'js/configuracoes.js', 'js/desperdicio.js',
     'js/checklist.js', 'js/manutencao.js', 'js/inventario.js',
     'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/etiquetagem.js',
     'js/atendimento.js', 'js/marketing.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=245');
+    await loadScript(src + '?v=246');
   }
 
   // First run: push all initialized data to Supabase

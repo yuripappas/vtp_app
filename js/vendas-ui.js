@@ -2,17 +2,19 @@
  * VTP Compras — Vai Ter Pizza!
  * vendas-ui.js — UI do módulo Vendas. Consome o motor js/vendas.js.
  *
- * Módulo Vendas: abas no topo Vendas (canais) · Curva ABC (produtos).
+ * Módulo Vendas: abas no topo Geral · Por canal · Repasses (vendas-canais.js) · Curva ABC.
  * CMV projetado, Consumo de insumos e Precificação moraram aqui e foram
  * para o módulo CMV (js/cmv.js), que reaproveita as funções deste arquivo
  * desenhando no mesmo #vendasTabContent.
  * Nenhuma lógica de interpretação aqui — tudo vem do motor (vendas.js).
  */
 
-let _vdTab     = 'canais';   // 'canais' | 'produtos'
+let _vdTab     = 'geral';   // 'geral' | 'canal' | 'repasses' | 'produtos'
 const _VD_ABAS = [
-  { id: 'canais',   icon: 'link',        label: 'Vendas'     },
-  { id: 'produtos', icon: 'bar-chart-2', label: 'Curva ABC'  },
+  { id: 'geral',    icon: 'bar-chart-2', label: 'Geral'      },
+  { id: 'canal',    icon: 'link',        label: 'Por canal'  },
+  { id: 'repasses', icon: 'calendar',    label: 'Repasses'   },
+  { id: 'produtos', icon: 'pie-chart',   label: 'Curva ABC'  },
 ];
 window._vtpGetTab_vendas = () => _vdTab;
 window._vtpSetTab_vendas = v => { if (_VD_ABAS.some(a => a.id === v)) _vdTab = v; };
@@ -31,7 +33,7 @@ function renderVendas() {
   const el = document.getElementById('vendasContent');
   if (!el) return;
   const cm = document.getElementById('cmvContent'); if (cm) cm.innerHTML = ''; // evita #vendasTabContent duplicado
-  if (!_VD_ABAS.some(a => a.id === _vdTab)) _vdTab = 'canais';
+  if (!_VD_ABAS.some(a => a.id === _vdTab)) _vdTab = 'geral';
   _setPageTitle('Vendas');
   el.innerHTML = `<div style="display:flex;gap:2px;border-bottom:1.5px solid var(--border);margin-bottom:20px">
       ${_VD_ABAS.map(a => { const on = _vdTab === a.id; return `<button onclick="_vdSetAba('${a.id}')"
@@ -51,8 +53,10 @@ function _vdSetAba(id) {
 
 // Re-renderiza o filho atual (usado pelos filtros compartilhados)
 function _vdRerender() {
-  if (_vdTab === 'produtos') renderVendasProdutos();
-  else                       renderVendasCanais();
+  if (_vdTab === 'produtos')      renderVendasProdutos();
+  else if (_vdTab === 'canal')    renderVendasPorCanal();
+  else if (_vdTab === 'repasses') renderVendasRepasses();
+  else                            renderVendasGeral();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -686,144 +690,6 @@ async function renderVendasProdutos() {
         <div style="text-align:right;color:var(--muted)">${fmt(x.pct)}%</div>
       </div>`).join('') || '<div class="ft-empty-list" style="padding:14px">Sem dados no período</div>'}
     </div>`;
-}
-
-// ══════════════════════════════════════════════════════════════
-// Filho VENDAS (ex-"Canais") — receita, CMV, comissão, impostos e
-// margem líquida por canal. Comissão e imposto % são cadastro editável
-// aqui mesmo (persistido, por canal). Período próprio (não usa o filtro
-// 30/60/90 compartilhado) — dropdown de período com atalhos + calendário
-// personalizado, default "Hoje".
-// ══════════════════════════════════════════════════════════════
-
-let _cnChart = null;
-function _cnComissoes() {
-  return db._get('vtp_canais_comissao', { ifood: 23, '99food': 20, site: 0, outro: 0 });
-}
-function _cnSetComissao(canal, pct) {
-  const c = _cnComissoes();
-  c[canal] = parseFloat(pct) || 0;
-  db._set('vtp_canais_comissao', c);
-  renderVendasCanais();
-}
-function _cnImpostos() {
-  return db._get('vtp_canais_imposto', { ifood: 6, '99food': 6, site: 4, outro: 0 });
-}
-function _cnSetImposto(canal, pct) {
-  const c = _cnImpostos();
-  c[canal] = parseFloat(pct) || 0;
-  db._set('vtp_canais_imposto', c);
-  renderVendasCanais();
-}
-
-function _cnReload() {
-  const r = _perRange('canais');
-  delete _vCache[r.inicioISO + '|' + r.fimISO];
-  renderVendasCanais();
-}
-
-function _cnFiltros() {
-  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-    ${_perRenderBar('canais', 'renderVendasCanais')}
-    <button class="btn btn-outline btn-xs" onclick="_cnReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
-  </div>`;
-}
-
-async function renderVendasCanais() {
-  const el = document.getElementById('vendasTabContent');
-  if (!el) return;
-  el.innerHTML = _cnFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
-
-  const range = _perRange('canais');
-  let linhas;
-  try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
-  catch (e) { el.innerHTML = _cnFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
-
-  const porCanal = vendasPorCanal(linhas);
-  const com = _cnComissoes();
-  const imp = _cnImpostos();
-  const canais = Object.values(porCanal).sort((a, b) => b.receita - a.receita).map(c => {
-    const pct = com[c.canal] ?? 0;
-    const pctImp = imp[c.canal] ?? 0;
-    const comissao = c.receita * pct / 100;
-    const imposto = c.receita * pctImp / 100;
-    const margem = c.receita - c.custo - comissao - imposto;
-    return { ...c, pct, pctImp, comissao, imposto, margem, margemPct: c.receita > 0 ? margem / c.receita * 100 : 0 };
-  });
-
-  const tot = canais.reduce((a, c) => ({ receita: a.receita + c.receita, custo: a.custo + c.custo, comissao: a.comissao + c.comissao, imposto: a.imposto + c.imposto, margem: a.margem + c.margem }), { receita: 0, custo: 0, comissao: 0, imposto: 0, margem: 0 });
-  const cmvPct = tot.receita > 0 ? tot.custo / tot.receita * 100 : 0;
-
-  const kpi = (lbl, v, sub, cor) => `<div style="background:var(--surface2);border-radius:var(--r10,8px);padding:14px 16px">
-    <div style="font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">${lbl}</div>
-    <div style="font-size:1.4rem;font-weight:800;${cor?'color:'+cor:''}">${v}</div>${sub?`<div style="font-size:.72rem;color:var(--muted)">${sub}</div>`:''}</div>`;
-
-  el.innerHTML = _cnFiltros() + `
-    <div style="font-size:.82rem;color:var(--muted);margin-bottom:16px">Rentabilidade por canal — receita real do canal menos custo (ficha), comissão e imposto. Ajuste comissão e imposto de cada canal abaixo.</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
-      ${kpi('Receita bruta', 'R$ ' + fmt(tot.receita))}
-      ${kpi('Comissão total', 'R$ ' + fmt(tot.comissao), tot.receita>0?fmt(tot.comissao/tot.receita*100)+'% da receita':'')}
-      ${kpi('CMV', tot.receita>0?fmt(cmvPct)+'%':'—', 'R$ ' + fmt(tot.custo))}
-      ${kpi('Impostos', 'R$ ' + fmt(tot.imposto), tot.receita>0?fmt(tot.imposto/tot.receita*100)+'% da receita':'')}
-      ${kpi('Margem líquida', 'R$ ' + fmt(tot.margem), '', tot.margem<0?'var(--red)':'var(--green)')}
-    </div>
-
-    <div class="card" style="padding:16px;margin-bottom:20px">
-      <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Composição da receita por canal (R$)</div>
-      <div style="height:${Math.max(160, canais.length*48)}px"><canvas id="cnChart"></canvas></div>
-    </div>
-
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="overflow-x:auto">
-      <div style="display:grid;grid-template-columns:1fr 60px 1fr 1fr 80px 1fr 80px 1fr 1fr 80px;gap:10px;padding:10px 16px;background:var(--surface2);font-size:.64rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;min-width:920px">
-        <div>Canal</div><div style="text-align:right">Vendas</div><div style="text-align:right">Receita</div><div style="text-align:right">Custo</div><div style="text-align:center">Comissão %</div><div style="text-align:right">Comissão R$</div><div style="text-align:center">Imposto %</div><div style="text-align:right">Imposto R$</div><div style="text-align:right">Margem líq.</div><div style="text-align:right">Margem %</div>
-      </div>
-      ${canais.map(c => `<div style="display:grid;grid-template-columns:1fr 60px 1fr 1fr 80px 1fr 80px 1fr 1fr 80px;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:.84rem;min-width:920px">
-        <div style="font-weight:700">${c.canal}</div>
-        <div style="text-align:right;color:var(--muted)">${c.vendas}</div>
-        <div style="text-align:right;font-weight:600">R$ ${fmt(c.receita)}</div>
-        <div style="text-align:right;color:var(--muted)">R$ ${fmt(c.custo)}</div>
-        <div style="text-align:center"><input type="number" class="inp" value="${c.pct}" min="0" max="100" step="0.5" onchange="_cnSetComissao('${c.canal}',this.value)" style="width:60px;text-align:right;font-size:.8rem;padding:4px 6px"></div>
-        <div style="text-align:right;color:var(--orange-dark)">R$ ${fmt(c.comissao)}</div>
-        <div style="text-align:center"><input type="number" class="inp" value="${c.pctImp}" min="0" max="100" step="0.5" onchange="_cnSetImposto('${c.canal}',this.value)" style="width:60px;text-align:right;font-size:.8rem;padding:4px 6px"></div>
-        <div style="text-align:right;color:var(--orange-dark)">R$ ${fmt(c.imposto)}</div>
-        <div style="text-align:right;font-weight:800;color:${c.margem<0?'var(--red)':'var(--green)'}">R$ ${fmt(c.margem)}</div>
-        <div style="text-align:right;font-weight:700;color:${c.margemPct<0?'var(--red)':'var(--text)'}">${fmt(c.margemPct)}%</div>
-      </div>`).join('') || '<div class="ft-empty-list" style="padding:14px">Sem vendas no período</div>'}
-      </div>
-    </div>`;
-
-  _cnRenderChart(canais);
-}
-
-function _cnRenderChart(canais) {
-  if (typeof Chart === 'undefined') return;
-  const cv = document.getElementById('cnChart');
-  if (!cv) return;
-  if (_cnChart) { _cnChart.destroy(); _cnChart = null; }
-  const css = getComputedStyle(document.body);
-  const txt = css.getPropertyValue('--muted').trim() || '#888';
-  const cCusto = '#B4B2A9', cCom = css.getPropertyValue('--chart-3').trim() || '#D97706', cImp = css.getPropertyValue('--chart-2').trim() || '#DC7A9E', cMarg = css.getPropertyValue('--chart-4').trim() || '#16A34A';
-  _cnChart = new Chart(cv, {
-    type: 'bar',
-    data: {
-      labels: canais.map(c => c.canal),
-      datasets: [
-        { label: 'Custo', data: canais.map(c => +c.custo.toFixed(2)), backgroundColor: cCusto, borderRadius: 3 },
-        { label: 'Comissão', data: canais.map(c => +c.comissao.toFixed(2)), backgroundColor: cCom, borderRadius: 3 },
-        { label: 'Imposto', data: canais.map(c => +c.imposto.toFixed(2)), backgroundColor: cImp, borderRadius: 3 },
-        { label: 'Margem', data: canais.map(c => +Math.max(0, c.margem).toFixed(2)), backgroundColor: cMarg, borderRadius: 3 },
-      ],
-    },
-    options: {
-      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { stacked: true, ticks: { color: txt, callback: v => 'R$ ' + v }, grid: { color: 'rgba(0,0,0,.06)' } },
-        y: { stacked: true, ticks: { color: txt }, grid: { display: false } },
-      },
-      plugins: { legend: { labels: { color: txt, boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: c => `${c.dataset.label}: R$ ${fmt(c.raw)}` } } },
-    },
-  });
 }
 
 // ══════════════════════════════════════════════════════════════
