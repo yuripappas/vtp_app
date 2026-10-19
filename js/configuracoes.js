@@ -623,7 +623,7 @@ function _cfgRenderGrupoContent() {
          <button class="btn btn-primary btn-sm" onclick="_cfgAddInvLoc()">${lc('check',12,'#fff')} Salvar</button>
          <button class="btn btn-ghost btn-sm" onclick="_cfgToggleAddRow('invLoc')">Cancelar</button>`,
         'cfgInvLocaisList') +
-      _sb('Tipos de baixa', '_cfgResetTiposDesp', 'tiposDesp',
+      _sb('Tipos de saída', '_cfgResetTiposDesp', 'tiposDesp',
         `<input class="inp" id="cfgNewDespNome" placeholder="Nome do tipo (ex: Cortesia)" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddTipoDesp()">
          <select class="inp" id="cfgNewDespIcon" style="padding:7px 8px;font-size:var(--text-sm);width:auto">${iconOpts}</select>
          <button class="btn btn-primary btn-sm" onclick="_cfgAddTipoDesp()">${lc('check',12,'#fff')} Salvar</button>
@@ -1192,7 +1192,7 @@ function _cfgResetTiposDesp() {
       TIPOS_DESPERDICIO.splice(0, TIPOS_DESPERDICIO.length, ...JSON.parse(JSON.stringify(_TIPOS_DESPERDICIO_DEFAULT)));
       saveTiposDesperdicio();
       _cfgRenderTiposDesp();
-      toast('Tipos de baixa restaurados.');
+      toast('Tipos de saída restaurados.');
     }
   });
 }
@@ -1919,7 +1919,7 @@ function abrirCadastroNaConfig(tab) {
 
 // Todos os IDs de permissão (folhas da árvore) — mantido para compatibilidade
 const _CFG_ALL_PERMS = [
-  'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
+  'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
   'Pré-produção','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
   'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','Alertas',
   'Gerenciar usuários','Configurações',
@@ -1936,6 +1936,7 @@ const _CFG_PERMS_TREE = [
       { id:'Estoque: Contagem Diária',   label:'Contagem diária'            },
       { id:'Estoque: Contagem Semanal',  label:'Contagem semanal'           },
       { id:'Estoque: Movimentações',     label:'Registrar movimentações'    },
+      { id:'Estoque: Editar movimentações', label:'Editar e excluir movimentações' },
     ]},
   { id:'Pré-produção',       label:'Pré-produção',        icon:'chef-hat'        },
   { id:'Desperdício',        label:'Desperdício',         icon:'trash-2'         },

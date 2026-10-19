@@ -107,12 +107,40 @@ function _estAcumBebida(nome, qtd, acc) {
 
 // Linhas de venda (vendas.js) → um registro por pedido com o que ele debitou.
 // → [{ pedidoId, ts, canal, produtos:[nome…], itens:{ itemId: qtd } }]
+// Nome do sabor para exibição: "1/2 Calabresa" → "Calabresa"
+function _estNomeSabor(k) {
+  const nome = (typeof vendasOpcaoDeSabor === 'function' ? vendasOpcaoDeSabor(k)?.nome : null)
+    || String(k).replace(/\b\w/g, c => c.toUpperCase());
+  return nome.replace(/^\s*1\/2\s*/i, '').trim();
+}
+
+// O que o cliente pediu, legível: "Pizza Grande | 1/2 Calabresa + 1/2 Mussarela",
+// "Pizza Pequena | Frango", "2× Coca-Cola 1L". Combos listam cada pizza.
+function _estDescPedido(linhas) {
+  const partes = [];
+  for (const l of linhas) {
+    for (const pz of (l.pizzas || [])) {
+      const tam = pz.tamanho === 'grande' ? 'Pizza Grande' : 'Pizza Pequena';
+      const ks = Object.entries(pz.meias || {});
+      const sab = ks.length <= 1 ? (ks[0] ? _estNomeSabor(ks[0][0]) : '—')
+        : ks.map(([k, n]) => `${pz.tamanho === 'grande' && n === 1 ? '1/2 ' : ''}${_estNomeSabor(k)}`).join(' + ');
+      partes.push(`${tam} | ${sab}`);
+    }
+    for (const b of (l.bebidas || [])) for (let i = 0; i < (b.qtd || 1); i++) partes.push(b.nome);
+  }
+  // Agrupa iguais: "2× Pizza Grande | Calabresa"
+  const cont = new Map();
+  partes.forEach(x => cont.set(x, (cont.get(x) || 0) + 1));
+  return [...cont.entries()].map(([x, n]) => n > 1 ? `${n}× ${x}` : x);
+}
+
 function estDebitosPorPedido(linhas) {
   const porPedido = new Map();
   for (const l of linhas) {
     let p = porPedido.get(l.pedidoId);
-    if (!p) { p = { pedidoId: l.pedidoId, ts: l.ts, canal: l.canal, produtos: [], itens: {} }; porPedido.set(l.pedidoId, p); }
+    if (!p) { p = { pedidoId: l.pedidoId, ts: l.ts, canal: l.canal, produtos: [], linhas: [], itens: {} }; porPedido.set(l.pedidoId, p); }
     p.produtos.push(l.qtd > 1 ? `${l.qtd}× ${l.nome}` : l.nome);
+    p.linhas.push(l);
     for (const pz of (l.pizzas || [])) {
       const base = produtosPizza.find(b => new RegExp(pz.tamanho, 'i').test(b.nome));
       if (base) _estAcumFicha(base.fichaTecnica, 1, p.itens);
@@ -123,6 +151,7 @@ function estDebitosPorPedido(linhas) {
     }
     for (const b of (l.bebidas || [])) _estAcumBebida(b.nome, b.qtd || 1, p.itens);
   }
+  for (const p of porPedido.values()) { p.desc = _estDescPedido(p.linhas); delete p.linhas; }
   return [...porPedido.values()].sort((a, b) => _estMs(b.ts) - _estMs(a.ts));
 }
 

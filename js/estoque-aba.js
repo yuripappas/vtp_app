@@ -287,7 +287,7 @@ function estAbrirDetalheItem(itemId) {
       <span style="line-height:0;margin-top:2px">${lc('zap', 14, origens.length ? 'var(--green)' : 'var(--muted)')}</span>
       <div>${origens.length
         ? `<strong style="color:var(--green)">Débito automático</strong> — sai do saldo na venda de ${_estEsc(origens.slice(0, 6).join(', '))}${origens.length > 6 ? ` e mais ${origens.length - 6}` : ''}.`
-        : `<strong>Sem débito automático</strong> — não está na ficha de nenhum produto vendido. Sai do saldo só na contagem ou por baixa.`}</div>
+        : `<strong>Sem débito automático</strong> — não está na ficha de nenhum produto vendido. Sai do saldo só na contagem ou por uma saída manual.`}</div>
     </div>
 
     ${r.semContagem ? `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--orange-light);color:var(--orange-dark);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">
@@ -298,16 +298,17 @@ function estAbrirDetalheItem(itemId) {
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
         <thead style="background:var(--surface2)"><tr>
-          ${['Local', 'Base', 'Entradas', 'Vendas', 'Baixas', 'Transf.', 'Saldo'].map((h, i) =>
+          ${['Local', 'Base', 'Entradas', 'Vendas', 'Saídas', 'Transf.', 'Saldo'].map((h, i) =>
             `<th style="padding:9px 12px;text-align:${i ? 'right' : 'left'};font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">${h}</th>`).join('')}
         </tr></thead>
         <tbody>${linhasLocal}</tbody>
       </table>
     </div>
     <div style="font-size:var(--text-xs);color:var(--muted);margin-top:8px;line-height:1.5">
-      Saldo = última contagem do local + entradas (compras, produção, manuais) − vendas automáticas − baixas ± transferências, tudo depois da contagem.
+      Saldo = última contagem do local + entradas (compras, produção, manuais) − vendas automáticas − saídas ± transferências, tudo depois da contagem.
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+      ${estLocaisReaisDoItem(it).length > 1 ? `<button class="btn btn-outline" onclick="estAbrirTransferencia(${it.id})">${lc('repeat', 13, 'currentColor')} Transferir entre locais</button>` : ''}
       <button class="btn btn-outline" onclick="${it.isProd ? `openEditPreparo(${it.id})` : `openEditItem(${it.id})`};document.getElementById('ovEstItem')?.remove()">${lc('edit-2', 13, 'currentColor')} Editar cadastro</button>
       <button class="btn btn-primary" onclick="this.closest('.overlay').remove()">Fechar</button>
     </div>

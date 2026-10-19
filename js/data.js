@@ -444,7 +444,7 @@ let PERMS = {
     label: 'Gestor', icon: 'crown', color: '#6B21D4', bg: '#EDE9FE', mutavel: false,
     perms: [
       'Ver Dashboard','Omnichannel',
-      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
+      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
       'Pré-produção','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
@@ -459,7 +459,7 @@ let PERMS = {
     label: 'Supervisor', icon: 'key', color: '#D97706', bg: '#FEF3C7', mutavel: true,
     perms: [
       'Ver Dashboard','Omnichannel',
-      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações',
+      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
       'Pré-produção','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',

@@ -27,7 +27,7 @@ const EST_MOV_TIPOS = {
   producao:        { label: 'Produção',        icon: 'chef-hat',          cor: 'var(--orange-fg)',  bg: 'var(--orange-bg)'  },
   entrada_manual:  { label: 'Entrada manual',  icon: 'plus-circle',       cor: 'var(--info-fg)',    bg: 'var(--info-bg)'    },
   transferencia:   { label: 'Transferência',   icon: 'repeat',            cor: 'var(--text2)',      bg: 'var(--surface2)'   },
-  baixa:           { label: 'Baixa',           icon: 'minus-circle',      cor: 'var(--danger-fg)',  bg: 'var(--danger-bg)'  },
+  baixa:           { label: 'Saída',           icon: 'minus-circle',      cor: 'var(--danger-fg)',  bg: 'var(--danger-bg)'  },
   ajuste_contagem: { label: 'Ajuste contagem', icon: 'clipboard-check',   cor: 'var(--warning-fg)', bg: 'var(--warning-bg)' },
 };
 
@@ -38,6 +38,15 @@ const EST_MOV_TIPOS = {
 function estUsuario() {
   const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
   return u?.name || 'Sistema';
+}
+
+// Editar/excluir/histórico de movimentações: gerente sempre; demais perfis
+// precisam da permissão "Estoque: Editar movimentações" (Configurações › Perfis).
+function estPodeEditarMov() {
+  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  if (!u) return false;
+  if (u.role === 'gerente') return true;
+  return (typeof getUserPerms === 'function' ? getUserPerms(u) : []).includes('Estoque: Editar movimentações');
 }
 
 const _estRound = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -250,7 +259,7 @@ function _estExpandirDesperdicioProduto(d) {
 // ABA MOVIMENTAÇÕES
 // ══════════════════════════════════════════════════════════════
 
-let _estMovFil = { tipo: '', tipoBaixa: '', local: '', q: '', excluidas: false };
+let _estMovFil = { tipo: '', tipoBaixa: '', q: '' };
 let _estMovAbertos = new Set();
 let _estMovDados = null;   // { chave, movs, debitos, nums }
 let _estMovLimite = 150;
@@ -260,7 +269,9 @@ async function estRenderAbaMov(forcar = false) {
   if (!el) return;
   if (!_per('estmov').de) _perSetPresetSilencioso('estmov', 'semana');
   const { inicioISO, fimISO } = _perRange('estmov');
-  const chave = inicioISO + '|' + fimISO + '|' + _estMovFil.excluidas;
+  const chave = inicioISO + '|' + fimISO;
+  // Recarrega sozinho: pedidos cancelados no Cardápio Web somem do débito
+  if (_estMovDados && Date.now() - (_estMovDados.em || 0) > 60000) forcar = true;
 
   if (!_estMovDados || _estMovDados.chave !== chave || forcar) {
     el.innerHTML = `<div style="padding:60px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:var(--text-md)">
@@ -269,11 +280,11 @@ async function estRenderAbaMov(forcar = false) {
       const migrados = await estMigrarDesperdicioLegado().catch(e => { console.warn('[estoque] migração desperdício:', e); return 0; });
       if (migrados) toast(`${migrados} registro(s) do antigo Desperdício agora estão nas Movimentações como Baixa`, 'ok');
       const [movs, debitos] = await Promise.all([
-        estBuscarMovimentacoes({ desde: inicioISO, ate: fimISO, incluirExcluidas: _estMovFil.excluidas }),
+        estBuscarMovimentacoes({ desde: inicioISO, ate: fimISO }),
         estBuscarDebitos(inicioISO, fimISO),
       ]);
       const nums = await _estNumerosPedidos(debitos.map(d => d.pedidoId));
-      _estMovDados = { chave, movs, debitos, nums };
+      _estMovDados = { chave, movs, debitos, nums, em: Date.now() };
     } catch (e) {
       el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red);font-size:var(--text-md)">
         Não consegui carregar as movimentações: ${_estEsc(e.message)}<br>
@@ -315,9 +326,8 @@ function _estMovEntradas() {
         const item = items.find(i => i.id === Number(id));
         return item ? { item, qtd, local: estLocalSaida(item), valor: qtd * (item.cost || 0) } : null;
       }).filter(Boolean);
-      if (f.local) itens = itens.filter(x => x.local === f.local);
       if (!itens.length) continue;
-      if (q && !itens.some(x => casaItem(x.item.name)) && !p.produtos.some(casaItem)) continue;
+      if (q && !itens.some(x => casaItem(x.item.name)) && !p.produtos.some(casaItem) && !(p.desc || []).some(casaItem) && !casaItem(String(nums[p.pedidoId] || ''))) continue;
       out.push({ kind: 'venda', id: 'p' + p.pedidoId, ts: p.ts, p, num: nums[p.pedidoId], itens,
                  valor: itens.reduce((s, x) => s + x.valor, 0) });
     }
@@ -328,7 +338,6 @@ function _estMovEntradas() {
     if (f.tipo && f.tipo !== 'venda' && m.tipo !== f.tipo) continue;
     if (f.tipo === 'venda') continue;
     if (f.tipoBaixa && m.tipo_baixa !== f.tipoBaixa) continue;
-    if (f.local && m.local_origem !== f.local && m.local_destino !== f.local) continue;
     if (!casaItem(m.item_nome) && !casaItem(m.produto_nome)) continue;
     const g = m.grupo_id && m.produto_nome ? m.grupo_id : null;
     if (g) {
@@ -390,7 +399,6 @@ function _estRenderMovConteudo() {
       <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${sub}</div>
     </div>`;
 
-  const locais = estLocaisEstoque();
   const th = (txt, align = 'left') => `<th style="text-align:${align};padding:11px 12px;font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">${txt}</th>`;
 
   el.innerHTML = `
@@ -398,15 +406,14 @@ function _estRenderMovConteudo() {
       ${_perRenderBar('estmov', 'estRenderAbaMov')}
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="estAbrirEntrada()">${lc('plus-circle', 14, 'currentColor')} Entrada</button>
-        <button class="btn btn-outline btn-sm" onclick="estAbrirTransferencia()">${lc('repeat', 14, 'currentColor')} Transferência</button>
-        <button class="btn btn-primary btn-sm" onclick="estAbrirBaixa()">${lc('minus-circle', 14, '#fff')} Baixa</button>
+        <button class="btn btn-primary btn-sm" onclick="estAbrirBaixa()">${lc('minus-circle', 14, '#fff')} Saída</button>
       </div>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
       ${kpi('Entradas', _estR(vEnt), 'compras, produção e manuais', 'var(--info-fg)')}
       ${kpi('Vendas (débito automático)', _estR(vVenda), `${nPed} pedido(s) · a custo`, 'var(--success-fg)')}
-      ${kpi('Baixas', _estR(vBaixa), 'saídas sem venda, a custo', 'var(--danger-fg)')}
+      ${kpi('Saídas', _estR(vBaixa), 'sem venda (perdas, cortesias…), a custo', 'var(--danger-fg)')}
       ${kpi('Transferências', nTransf, 'entre locais, sem valor')}
     </div>
 
@@ -419,24 +426,17 @@ function _estRenderMovConteudo() {
           ${Object.entries(EST_MOV_TIPOS).map(([id, t]) => `<option value="${id}"${f.tipo === id ? ' selected' : ''}>${t.label}</option>`).join('')}
         </select>
         ${f.tipo === 'baixa' ? `<select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_estMovFil.tipoBaixa=this.value;_estRenderMovConteudo()">
-          <option value="">Todos os tipos de baixa</option>
+          <option value="">Todos os tipos de saída</option>
           ${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${f.tipoBaixa === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}
         </select>` : ''}
-        <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_estMovFil.local=this.value;_estRenderMovConteudo()">
-          <option value="">Todos os locais</option>
-          ${locais.map(l => `<option value="${l.id}"${f.local === l.id ? ' selected' : ''}>${_estEsc(l.label)}</option>`).join('')}
-        </select>
-        <label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--text2);cursor:pointer;white-space:nowrap">
-          <input type="checkbox" ${f.excluidas ? 'checked' : ''} onchange="_estMovFil.excluidas=this.checked;estRenderAbaMov()" style="accent-color:var(--purple)"> Mostrar excluídas
-        </label>
         <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="estRenderAbaMov(true)" title="Recarregar">${lc('refresh-cw', 13, 'currentColor')}</button>
       </div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
           <thead style="background:var(--surface2)"><tr>
-            ${th('Tipo')}${th('Item')}${th('Local')}${th('Qtd', 'right')}${th('Custo un.', 'right')}${th('Valor', 'right')}${th('Data')}${th('Descrição')}${th('Usuário')}${th('', 'right')}
+            ${th('Tipo')}${th('Item')}${th('Qtd', 'right')}${th('Custo un.', 'right')}${th('Valor', 'right')}${th('Data')}${th('Descrição')}${th('Usuário')}${th('', 'right')}
           </tr></thead>
-          <tbody>${visiveis.length ? visiveis.map(_estMovLinhaHtml).join('') : `<tr><td colspan="10" style="padding:44px;text-align:center;color:var(--muted)">Nenhuma movimentação no período com esses filtros</td></tr>`}</tbody>
+          <tbody>${visiveis.length ? visiveis.map(_estMovLinhaHtml).join('') : `<tr><td colspan="9" style="padding:44px;text-align:center;color:var(--muted)">Nenhuma movimentação no período com esses filtros</td></tr>`}</tbody>
         </table>
       </div>
       <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1.5px solid var(--border);font-size:var(--text-xs);color:var(--muted)">
@@ -465,12 +465,11 @@ function _estMovLinhaHtml(e) {
 
   if (e.kind === 'venda') {
     const p = e.p;
-    const produtos = p.produtos.slice(0, 2).join(', ') + (p.produtos.length > 2 ? ` +${p.produtos.length - 2}` : '');
+    const produtos = (p.desc && p.desc.length ? p.desc : p.produtos).join(' · ');
     let html = `<tr onclick="_estMovToggle('${e.id}')" style="border-top:1px solid var(--border);cursor:pointer">
       ${td(_estSelo('venda'))}
       ${td(`<div style="display:flex;align-items:center;gap:6px">${chev}<strong>Pedido ${e.num ? '#' + e.num : ''}</strong></div>
-            <div style="font-size:var(--text-xs);color:var(--muted);margin-left:19px">${_estEsc(produtos)}</div>`)}
-      ${td((() => { const ls = [...new Set(e.itens.map(x => x.local))]; return ls.length === 1 ? _estEsc(estLocalLabel(ls[0])) : `<span style="color:var(--muted)">${ls.length} locais</span>`; })(), 'font-size:var(--text-sm)')}
+            <div style="font-size:var(--text-sm);color:var(--text2);margin:2px 0 0 19px;line-height:1.4">${_estEsc(produtos)}</div>`)}
       ${td(`${e.itens.length} item(ns)`, 'text-align:right;white-space:nowrap')}
       ${td('—', 'text-align:right;color:var(--muted)')}
       ${td(_estR(e.valor), 'text-align:right;white-space:nowrap')}
@@ -481,7 +480,6 @@ function _estMovLinhaHtml(e) {
     </tr>`;
     if (aberto) html += e.itens.sort((a, b) => b.valor - a.valor).map(x => sub(
       td('') + td(`<span style="margin-left:19px">${_estEsc(x.item.name)}</span>${x.item.isProd ? ' <span class="badge b-orange" style="font-size:var(--text-2xs)">Processado</span>' : ''}`, 'font-size:var(--text-sm)')
-      + td(_estEsc(estLocalLabel(x.local)), 'font-size:var(--text-sm);color:var(--text2)')
       + td(`<span style="color:var(--danger-fg);font-weight:700">−${_estQ(x.qtd)}</span> ${_estEsc(x.item.unit)}`, 'text-align:right;white-space:nowrap;font-size:var(--text-sm)')
       + td(x.item.cost ? _estR(x.item.cost) : '—', 'text-align:right;font-size:var(--text-sm)')
       + td(_estR(x.valor), 'text-align:right;font-size:var(--text-sm)')
@@ -489,6 +487,7 @@ function _estMovLinhaHtml(e) {
     return html;
   }
 
+  const pode = estPodeEditarMov();
   if (e.kind === 'grupo') {
     const ms = e.movs, m0 = ms[0];
     const excl = ms.every(m => m.excluido_em);
@@ -497,18 +496,16 @@ function _estMovLinhaHtml(e) {
       ${td(_estSelo(m0.tipo))}
       ${td(`<div style="display:flex;align-items:center;gap:6px">${chev}<strong>${_estEsc(m0.produto_nome)}</strong></div>
             <div style="font-size:var(--text-xs);color:var(--muted);margin-left:19px">Produto · ${ms.length} insumo(s)/processado(s)</div>`)}
-      ${td(_estLocalMov(m0), 'font-size:var(--text-sm)')}
       ${td(`${ms.length} item(ns)`, 'text-align:right;white-space:nowrap')}
       ${td('—', 'text-align:right;color:var(--muted)')}
       ${td(_estR(valor), 'text-align:right;white-space:nowrap')}
       ${td(_estDH(m0.data_mov), 'white-space:nowrap;font-size:var(--text-sm)')}
       ${td(_estDescMov(m0), 'font-size:var(--text-sm);color:var(--text2)')}
       ${td(_estUsuarioMov(m0), 'font-size:var(--text-sm)')}
-      ${td(excl ? '' : _estAcoesHtml(`'${m0.grupo_id}'`, true), 'text-align:right;white-space:nowrap')}
+      ${td(excl || !pode ? '' : _estAcoesHtml(`'${m0.grupo_id}'`, true), 'text-align:right;white-space:nowrap')}
     </tr>`;
     if (aberto) html += ms.map(m => sub(
       td('') + td(`<span style="margin-left:19px">${_estEsc(m.item_nome)}</span>`, 'font-size:var(--text-sm)')
-      + td(_estLocalMov(m), 'font-size:var(--text-sm);color:var(--text2)')
       + td(_estQtdSinal(m), 'text-align:right;white-space:nowrap;font-size:var(--text-sm)')
       + td(m.custo_unit ? _estR(m.custo_unit) : '—', 'text-align:right;font-size:var(--text-sm)')
       + td(_estR((Number(m.qtd) || 0) * (Number(m.custo_unit) || 0)), 'text-align:right;font-size:var(--text-sm)')
@@ -522,15 +519,15 @@ function _estMovLinhaHtml(e) {
   return `<tr style="border-top:1px solid var(--border);${excl ? 'opacity:.55' : ''}">
     ${td(_estSelo(m.tipo))}
     ${td(`<span style="font-weight:600;${excl ? 'text-decoration:line-through' : ''}">${_estEsc(m.item_nome)}</span>
-          ${m.item_tipo === 'preparado' ? ' <span class="badge b-orange" style="font-size:var(--text-2xs)">Processado</span>' : ''}`)}
-    ${td(_estLocalMov(m), 'font-size:var(--text-sm)')}
+          ${m.item_tipo === 'preparado' ? ' <span class="badge b-orange" style="font-size:var(--text-2xs)">Processado</span>' : ''}
+          ${m.tipo === 'transferencia' ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${_estLocalMov(m)}</div>` : ''}`)}
     ${td(_estQtdSinal(m), 'text-align:right;white-space:nowrap')}
     ${td(m.custo_unit ? _estR(m.custo_unit) : '—', 'text-align:right;white-space:nowrap')}
     ${td(valor === null ? '<span style="color:var(--muted)">—</span>' : _estR(valor), 'text-align:right;white-space:nowrap')}
     ${td(_estDH(m.data_mov), 'white-space:nowrap;font-size:var(--text-sm)')}
     ${td(_estDescMov(m), 'font-size:var(--text-sm);color:var(--text2);max-width:280px')}
     ${td(_estUsuarioMov(m), 'font-size:var(--text-sm)')}
-    ${td(excl ? `<span style="font-size:var(--text-xs);color:var(--danger-fg)">excluída por ${_estEsc(m.excluido_por || '')}</span>` : _estAcoesHtml(`'${m.id}'`, false), 'text-align:right;white-space:nowrap')}
+    ${td(excl || !pode ? '' : _estAcoesHtml(`'${m.id}'`, false), 'text-align:right;white-space:nowrap')}
   </tr>`;
 }
 
@@ -704,55 +701,57 @@ function _estSalvarEntrada() {
   _estSalvarComBotao('ovEstEntrada', () => estInserirMovs([row]).then(() => toast(proc ? 'Produção registrada' : 'Entrada registrada', 'ok')));
 }
 
-// ── Transferência ──
-let _estTr = { origem: 'insumo' };
+// ── Transferência (aberta pelo detalhe do item na aba Estoque) ──
+// Só entre os locais em que o item é guardado (cadastro do item).
+function estLocaisReaisDoItem(item) { return estLocaisDoItem(item).filter(l => l !== EST_SEM_LOCAL); }
 
-function estAbrirTransferencia() {
-  _estTr = { origem: 'insumo' };
-  _estModal('ovEstTransf', 'Transferência entre locais', '', '_estSalvarTransf()', 'Transferir', 580,
-    'Sai de um local e entra no outro numa operação só, sem compra e sem valor financeiro. Ex.: a gráfica entregou 500 caixas na loja.');
-  _estTransfRender();
-}
-
-function _estTransfSet(origem) {
-  _estGuardar(_estTr, ['etQtd', 'etData', 'etMotivo']);
-  _estTr.origem = origem; _estTr.itemId = null;
-  _estTransfRender();
-}
-
-function _estTransfRender() {
-  const body = document.getElementById('ovEstTransf-body');
-  if (!body) return;
-  const t = _estTr;
-  body.innerHTML = `
-    ${_estCampo('O que vai mudar de lugar', _estOpcoes(_EST_ORIGENS, t.origem, '_estTransfSet'))}
-    ${_estCampo(t.origem === 'preparado' ? 'Processado *' : 'Insumo *', `<select class="inp" id="etItem" onchange="_estTr.itemId=+this.value||null;_estSugerirLocal('etItem','etDe','entrada');_estSugerirLocal('etItem','etPara','saida')">${_estOptsItens(_estFiltroOrigem(t.origem), t.itemId)}</select>`)}
-    <div class="f2">
-      ${_estCampo('De *', `<select class="inp" id="etDe">${_estOptsLocais('')}</select>`)}
-      ${_estCampo('Para *', `<select class="inp" id="etPara">${_estOptsLocais('')}</select>`)}
+function estAbrirTransferencia(itemId) {
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  const locais = estLocaisReaisDoItem(item);
+  if (locais.length < 2) return toast('O item precisa estar cadastrado em pelo menos 2 locais', 'err');
+  const saldoLocal = l => _estSaldosCache?.porItem.get(item.id)?.porLocal[l]?.saldo;
+  const opts = sel => locais.map(l => {
+    const sl = saldoLocal(l);
+    return `<option value="${l}"${l === sel ? ' selected' : ''}>${_estEsc(estLocalLabel(l))}${sl != null ? ` · ${_estQ(sl)} ${_estEsc(item.unit || 'un')}` : ''}</option>`;
+  }).join('');
+  const de = estLocalEntrada(item) && locais.includes(estLocalEntrada(item)) ? estLocalEntrada(item) : locais[0];
+  const para = locais.find(l => l !== de);
+  _estModal('ovEstTransf', 'Transferir entre locais', `
+    <input type="hidden" id="etItem" value="${item.id}">
+    <div class="fm-box" style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <div><div style="font-size:var(--text-md);font-weight:700">${_estEsc(item.name)}</div>
+        <div style="font-size:var(--text-xs);color:var(--fg-muted)">${_estEsc(item.cat || '')} · ${item.isProd ? 'Processado' : 'Insumo'}</div></div>
+      ${lc('repeat', 18, 'var(--purple)')}
     </div>
     <div class="f2">
-      ${_estCampo('Quantidade * <span id="etItem-un" style="font-weight:400;color:var(--fg-subtle)"></span>', `<input class="inp" type="number" id="etQtd" min="0" step="0.001" value="${_estEsc(t.etQtd || '')}">`)}
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="etData" value="${t.etData || _estAgora()}">`)}
+      ${_estCampo('De *', `<select class="inp" id="etDe">${opts(de)}</select>`)}
+      ${_estCampo('Para *', `<select class="inp" id="etPara">${opts(para)}</select>`)}
     </div>
-    ${_estCampo('Motivo', `<input class="inp" id="etMotivo" value="${_estEsc(t.etMotivo || '')}" placeholder="ex: reposição quinzenal">`)}`;
-  if (t.itemId) { _estSugerirLocal('etItem', 'etDe', 'entrada'); _estSugerirLocal('etItem', 'etPara', 'saida'); }
+    <div class="f2">
+      ${_estCampo(`Quantidade (${_estEsc(item.unit || 'un')}) *`, `<input class="inp" type="number" id="etQtd" min="0" step="0.001">`)}
+      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="etData" value="${_estAgora()}">`)}
+    </div>
+    ${_estCampo('Motivo', `<input class="inp" id="etMotivo" placeholder="ex: reposição da loja">`)}`,
+    '_estSalvarTransf()', 'Transferir', 540,
+    'Sai de um local e entra no outro numa operação só, sem valor financeiro.');
+  setTimeout(() => document.getElementById('etQtd')?.focus(), 50);
 }
 
 function _estSalvarTransf() {
   const item = _estItemDoSelect('etItem');
   const qtd  = parseFloat(document.getElementById('etQtd').value);
   const de = document.getElementById('etDe').value, para = document.getElementById('etPara').value;
-  if (!item) return toast('Selecione o item', 'err');
+  if (!item) return toast('Item não encontrado', 'err');
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
   if (!de || !para || de === para) return toast('Escolha locais de origem e destino diferentes', 'err');
   _estSalvarComBotao('ovEstTransf', () => estInserirMovs([_estMovRow(item, {
     tipo: 'transferencia', sinal: 0, qtd: _estRound(qtd), local_origem: de, local_destino: para,
     motivo: document.getElementById('etMotivo').value.trim() || null, data_mov: _estLerData('etData'),
   })]).then(() => {
-    // Item passa a ficar guardado também no destino (aparece na contagem dele)
-    if (!(item.locais || []).includes(para)) { item.locais = [...new Set([...(item.locais || []), para])]; saveI(); }
     toast('Transferência registrada', 'ok');
+    // Reabre o detalhe do item já com o saldo novo de cada local
+    if (document.getElementById('ovEstItem')) estSaldos(true).then(() => estAbrirDetalheItem(item.id)).catch(() => {});
   }));
 }
 
@@ -761,7 +760,7 @@ let _estBx = { origem: 'insumo', fora: new Set() };
 
 function estAbrirBaixa(origem = 'insumo') {
   _estBx = { origem, fora: new Set() };
-  _estModal('ovEstBaixa', 'Registrar baixa', '', '_estSalvarBaixa()', 'Registrar baixa', 620,
+  _estModal('ovEstBaixa', 'Registrar saída', '', '_estSalvarBaixa()', 'Registrar saída', 620,
     'Saída sem venda: cortesia, acidente, vencimento… Sai do saldo e entra como perda no CMV.');
   _estBaixaRender();
 }
@@ -837,12 +836,12 @@ function _estBaixaRender() {
   }
 
   body.innerHTML = `
-    ${_estCampo('O que saiu', _estOpcoes([..._EST_ORIGENS, { id: 'produto', label: 'Produto', icon: 'layers', desc: 'pizza pronta, baixa pela ficha' }], b.origem, "_estBaixaSet.bind(null,'origem')"))}
+    ${_estCampo('O que saiu', _estOpcoes([..._EST_ORIGENS, { id: 'produto', label: 'Produto', icon: 'layers', desc: 'pizza pronta, sai pela ficha' }], b.origem, "_estBaixaSet.bind(null,'origem')"))}
     ${alvo}
     <div class="f2">
       ${_estCampo(prod ? 'Quantidade (unidades) *' : 'Quantidade *', `<input class="inp" type="number" id="ebQtd" min="0" step="${prod ? 1 : 0.001}" value="${b.ebQtd ?? (prod ? 1 : '')}"
         ${prod ? `oninput="clearTimeout(window._ebT);window._ebT=setTimeout(()=>_estBaixaSet('_',''),300)"` : ''}>`)}
-      ${_estCampo('Tipo de baixa *', `<select class="inp" id="ebTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${b.ebTipo === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`)}
+      ${_estCampo('Tipo de saída *', `<select class="inp" id="ebTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${b.ebTipo === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`)}
     </div>
     ${previa}
     <div class="f2">
@@ -873,14 +872,14 @@ function _estSalvarBaixa() {
   const obs   = document.getElementById('ebMotivo').value.trim();
   const data  = _estLerData('ebData');
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
-  if (!tipo) return toast('Escolha o tipo de baixa', 'err');
+  if (!tipo) return toast('Escolha o tipo de saída', 'err');
 
   if (b.origem !== 'produto') {
     const item = _estItemDoSelect('ebItem');
     if (!item) return toast('Selecione o item', 'err');
     const local = document.getElementById('ebLocal').value || EST_SEM_LOCAL;
     return _estSalvarComBotao('ovEstBaixa', () => estRegistrarBaixaItem(item, qtd, tipo, { local, obs, data })
-      .then(() => toast('Baixa registrada', 'ok')));
+      .then(() => toast('Saída registrada', 'ok')));
   }
 
   if (!_estBaixaPartes(qtd, true).length) return toast('Escolha o produto e o sabor', 'err');
@@ -900,7 +899,7 @@ function _estSalvarBaixa() {
   const custo = partes.reduce((s, x) => s + x.qtd * (x.item.cost || 0), 0);
   _estSalvarComBotao('ovEstBaixa', () => estInserirMovs(rows).then(() => {
     _estEspelharBaixa({ grupoId, origem: 'produto', itemId: null, nome: produtoNome, unidade: 'un', qtd, tipo, custo, data, obs });
-    toast('Baixa registrada', 'ok');
+    toast('Saída registrada', 'ok');
   }));
 }
 
@@ -922,7 +921,7 @@ function estEditarMovModal(id) {
         ${_estCampo('De', `<select class="inp" id="emDe">${_estOptsLocais(m.local_origem)}</select>`)}
         ${_estCampo('Para', `<select class="inp" id="emPara">${_estOptsLocais(m.local_destino)}</select>`)}</div>`
       : _estCampo('Local', `<select class="inp" id="emLocal">${_estOptsLocais(m[loc], true)}</select>`)}
-    ${m.tipo === 'baixa' ? _estCampo('Tipo de baixa', `<select class="inp" id="emTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${m.tipo_baixa === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`) : ''}
+    ${m.tipo === 'baixa' ? _estCampo('Tipo de saída', `<select class="inp" id="emTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${m.tipo_baixa === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`) : ''}
     ${_estCampo('Motivo', `<input class="inp" id="emMotivo" value="${_estEsc(m.motivo || '')}">`)}
     ${_estDica('A alteração fica registrada no histórico com o seu nome.')}`,
     `_estSalvarEdicao('${id}')`);
