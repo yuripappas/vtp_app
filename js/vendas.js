@@ -119,9 +119,12 @@ function _vInterpretarItem(it) {
     if (chaves.length) pizzas = [{ tamanho, meias }];
   }
 
-  // Layout C: tudo embutido no nome do item ("Sabor1 + Sabor2 | Pizza Grande"),
-  // sem nenhuma opção — variante de combo que o CW manda com options:[].
-  if (!pizzas.length && !opts.length) {
+  // Layout C: tudo embutido no nome do item ("Sabor1 + Sabor2 | Pizza Grande").
+  // Normalmente vem com options:[], mas pode trazer adicionais que não são
+  // sabor (ex.: pedido 74 de 18/10 — "1/2 Frango Cremoso + 1/2 Calabresa |
+  // Pizza Grande" com a opção "Coca-cola Zero 1l"). Vale sempre que nenhuma
+  // opção virou pizza; as bebidas continuam contando à parte.
+  if (!pizzas.length && !soltas.length) {
     const parteTam = ((it.name || '').split('|')[1] || '').trim();
     if (_RE_SIZE_OPT.test(parteTam)) {
       const meias = {};
