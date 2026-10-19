@@ -198,7 +198,7 @@ function _clRender() {
         <div style="font-size:var(--text-sm);color:var(--muted);margin-top:2px">${a.cats.length ? _estEsc(a.cats.join(', ')) : 'Todas as categorias'}${l ? ` · semana de ${cpDataBr(l.semana_inicio)} · criada por ${_estEsc(l.criado_por)}` : ''}</div>
       </div>
       <div style="display:flex;gap:14px;align-items:center">
-        <div style="text-align:right"><div style="font-size:var(--text-xs);color:var(--muted)">${marcadas.length} ${marcadas.length === 1 ? 'item' : 'itens'} · estimado</div><div style="font-size:var(--text-xl);font-weight:800">${_estR(valor)}</div></div>
+        <div style="text-align:right"><div style="font-size:var(--text-xs);color:var(--muted)">${marcadas.length} ${marcadas.length === 1 ? 'item' : 'itens'} · estimado</div><div id="clTotal" style="font-size:var(--text-xl);font-weight:800">${_estR(valor)}</div></div>
         <button class="btn btn-ghost btn-sm" onclick="_clFechar()">${lc('x', 16, 'currentColor')}</button>
       </div>
     </div>
@@ -252,7 +252,7 @@ function _clRender() {
       <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${it.min ? _estQ(it.min) : '—'} / ${it.ideal ? _estQ(it.ideal) : '—'}</td>
       <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:${x.sugerida > 0 ? 'var(--purple)' : 'var(--muted)'};font-weight:600">${x.sugerida > 0 ? _estQ(x.sugerida) + ' ' + u : '—'}</td>
       <td style="padding:8px 10px;min-width:170px">${qtdCel}</td>
-      <td style="padding:8px 10px;text-align:right;white-space:nowrap">${_estR((Number(a.modo === 'editar' ? x.qtd : x.qtdAprov) || 0) * (it.cost || 0))}</td>
+      <td id="clEst${id}" style="padding:8px 10px;text-align:right;white-space:nowrap">${_estR((Number(a.modo === 'editar' ? x.qtd : x.qtdAprov) || 0) * (it.cost || 0))}</td>
     </tr>`;
   };
   document.getElementById('clBody').innerHTML = `
@@ -347,12 +347,25 @@ function _clToggle(id, on) {
   if (on && !(x.qtd > 0)) x.qtd = x.sugerida > 0 ? x.sugerida : (x.item.qtdEmb > 0 ? x.item.qtdEmb : 1);
   _clRender();
 }
+// Atualiza o estimado da linha e o total do topo sem redesenhar (mantém o foco)
+function _clAtualizarValores(id) {
+  const a = _clAtual, x = a.linhas.get(id);
+  const q = Number(a.modo === 'editar' ? x.qtd : x.qtdAprov) || 0;
+  const cel = document.getElementById('clEst' + id); if (cel) cel.textContent = _estR(q * (x.item.cost || 0));
+  const total = [...a.linhas.values()].filter(l => l.marcado)
+    .reduce((s, l) => s + (Number(a.modo === 'editar' ? l.qtd : l.qtdAprov) || 0) * (l.item.cost || 0), 0);
+  const t = document.getElementById('clTotal'); if (t) t.textContent = _estR(total);
+}
 function _clSetQtd(id, v) {
   const x = _clAtual.linhas.get(id);
   x.qtd = v === '' ? null : parseFloat(v);
   const e = document.getElementById('clEmb' + id); if (e) e.innerHTML = _clEmb(x.item, x.qtd);
+  _clAtualizarValores(id);
 }
-function _clSetAprov(id, v) { _clAtual.linhas.get(id).qtdAprov = v === '' ? 0 : parseFloat(v); }
+function _clSetAprov(id, v) {
+  _clAtual.linhas.get(id).qtdAprov = v === '' ? 0 : parseFloat(v);
+  _clAtualizarValores(id);
+}
 
 // ── Salvar / enviar ──
 async function _clSalvar(enviar) {
@@ -420,6 +433,12 @@ async function _clDevolver() {
   const comentario = document.getElementById('clComentario')?.value.trim();
   if (!comentario) return toast('Escreva o que precisa mudar antes de devolver', 'err');
   try {
+    // O que o aprovador ajustou volta como quantidade da lista (zero tira o item)
+    for (const x of [..._clAtual.linhas.values()].filter(l => l.marcado && l.rowId)) {
+      const q = _estRound(x.qtdAprov ?? x.qtd ?? 0);
+      if (Math.abs(q - (x.qtd || 0)) <= 0.0005) continue;
+      await cpUpdate('cp_lista_itens', x.rowId, q > 0 ? { qtd_solicitada: q, qtd_aprovada: null } : { removido_em: new Date().toISOString() });
+    }
     await cpUpdate('cp_listas', _clAtual.lista.id, { status: 'devolvida', aprovado_por: estUsuario(), comentario_aprovacao: comentario });
     toast('Lista devolvida ao comprador', 'ok');
     _clFechar();

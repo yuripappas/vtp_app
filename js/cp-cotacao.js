@@ -168,7 +168,10 @@ async function cpAbrirLote(id) {
     if (i.fornecedor_id) forns.add(i.fornecedor_id);
   }
   precos.forEach(p => forns.add(p.fornecedor_id));
-  _ctAtual = { lote, itens, precos: mapa, forns: [...forns].filter(f => _ctForn(f)).sort((a, b) => _ctNomeForn(a).localeCompare(_ctNomeForn(b))), vista: 'planilha' };
+  // Se a planilha já foi montada à mão (adicionar/remover fornecedor), vale a lista salva
+  let lista = Array.isArray(lote.fornecedores) && lote.fornecedores.length ? [...lote.fornecedores] : [...forns];
+  itens.forEach(i => { if (i.fornecedor_id && !lista.includes(i.fornecedor_id)) lista.push(i.fornecedor_id); });
+  _ctAtual = { lote, itens, precos: mapa, forns: lista.filter(f => _ctForn(f)).sort((a, b) => _ctNomeForn(a).localeCompare(_ctNomeForn(b))), vista: 'planilha' };
 
   document.getElementById('ovCtLote')?.remove();
   const ov = document.createElement('div'); ov.className = 'overlay open'; ov.id = 'ovCtLote';
@@ -190,6 +193,9 @@ function _ctFechar() {
 const _ctEditavel = () => _ctAtual?.lote.status === 'aberto';
 const _ctPreco = (li, f) => { const p = _ctAtual.precos.get(li.id + '|' + f); return p && p.preco !== null ? Number(p.preco) : null; };
 
+const _ctFrete = f => Number(_ctAtual?.lote.fretes?.[f]) || 0;
+
+// Por fornecedor: total dos itens escolhidos (total), entrega e total com entrega
 function _ctTotais() {
   const t = {};
   for (const li of _ctAtual.itens) {
@@ -198,7 +204,42 @@ function _ctTotais() {
     const r = t[li.fornecedor_id] || (t[li.fornecedor_id] = { total: 0, itens: [] });
     r.total += v; r.itens.push(li);
   }
+  for (const [f, r] of Object.entries(t)) { r.frete = _ctFrete(f); r.comFrete = r.total + r.frete; }
   return t;
+}
+
+async function _ctSalvarColunas() {
+  _ctAtual.lote = await cpUpdate('cp_lotes', _ctAtual.lote.id, { fornecedores: _ctAtual.forns });
+}
+async function _ctAddForn(f) {
+  if (!f || _ctAtual.forns.includes(f)) return;
+  _ctAtual.forns.push(f);
+  _ctAtual.forns.sort((a, b) => _ctNomeForn(a).localeCompare(_ctNomeForn(b)));
+  try { await _ctSalvarColunas(); } catch (e) { toast(e.message, 'err'); }
+  _ctRender();
+}
+function _ctRemoverForn(f) {
+  const escolhidos = _ctAtual.itens.filter(li => li.fornecedor_id === f);
+  vtpConfirm({
+    title: `Tirar ${_ctNomeForn(f)} da planilha?`,
+    message: escolhidos.length ? `${escolhidos.length} item(ns) estavam com este fornecedor e ficam sem fornecedor escolhido.` : 'Os preços digitados ficam guardados se ele voltar.',
+    confirmLabel: 'Tirar da planilha',
+    onConfirm: async () => {
+      try {
+        for (const li of escolhidos) Object.assign(li, await cpUpdate('cp_lote_itens', li.id, { fornecedor_id: null, preco: null }));
+        _ctAtual.forns = _ctAtual.forns.filter(x => x !== f);
+        await _ctSalvarColunas();
+        _ctRender();
+      } catch (e) { toast(e.message, 'err'); }
+    },
+  });
+}
+async function _ctSetFrete(f, v) {
+  const fretes = { ...(_ctAtual.lote.fretes || {}) };
+  const n = parseFloat(String(v).replace(',', '.'));
+  if (n > 0) fretes[f] = Math.round(n * 100) / 100; else delete fretes[f];
+  try { _ctAtual.lote = await cpUpdate('cp_lotes', _ctAtual.lote.id, { fretes }); _ctRender(); }
+  catch (e) { toast('Não salvou a entrega: ' + e.message, 'err'); }
 }
 
 function _ctRender() {
@@ -206,7 +247,7 @@ function _ctRender() {
   if (!a) return;
   const decididos = a.itens.filter(i => i.fornecedor_id).length;
   const totais = _ctTotais();
-  const valor = Object.values(totais).reduce((s, x) => s + x.total, 0);
+  const valor = Object.values(totais).reduce((s, x) => s + x.comFrete, 0);
   const aba = (id, t) => `<button onclick="_ctAtual.vista='${id}';_ctRender()" style="padding:8px 14px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:var(--text-md);font-weight:${a.vista === id ? 700 : 500};color:${a.vista === id ? 'var(--purple)' : 'var(--text2)'};border-bottom:2.5px solid ${a.vista === id ? 'var(--purple)' : 'transparent'}">${t}</button>`;
   document.getElementById('ctHead').innerHTML = `
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -238,7 +279,8 @@ function _ctRenderPlanilha(totais) {
     return `<th style="padding:10px 8px;min-width:150px;vertical-align:bottom;border-left:1px solid var(--border)">
       <div style="display:flex;align-items:center;justify-content:center;gap:6px">
         <span style="width:30px;height:30px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-size:var(--text-xs);font-weight:800">${_estEsc(s.name.split(/\s+/).map(w => w[0]).slice(0, 2).join(''))}</span>
-        ${ed ? `<button class="btn btn-ghost btn-xs" title="Copiar pedido de cotação para ${_estEsc(s.name)}" onclick="_ctCopiar(_ctMsgCotacao(${f}))">${lc('copy', 12, 'currentColor')}</button>` : ''}
+        ${ed ? `<button class="btn btn-ghost btn-xs" title="Copiar pedido de cotação para ${_estEsc(s.name)}" onclick="_ctCopiar(_ctMsgCotacao(${f}))">${lc('copy', 12, 'currentColor')}</button>
+          <button class="btn btn-ghost btn-xs" title="Tirar ${_estEsc(s.name)} da planilha" style="color:var(--danger-fg)" onclick="_ctRemoverForn(${f})">${lc('x', 12, 'currentColor')}</button>` : ''}
       </div>
       <div style="font-size:var(--text-xs);font-weight:700;color:var(--text);margin-top:4px;text-transform:none;letter-spacing:0">${_estEsc(s.name)}</div>
       ${s.seller ? `<div style="font-size:var(--text-2xs);color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0">${_estEsc(s.seller)}</div>` : ''}
@@ -276,11 +318,14 @@ function _ctRenderPlanilha(totais) {
     </tr>`;
   }).join('');
   const foot = a.forns.map(f => {
-    const t = totais[f]?.total || 0, min = _ctMin(f);
+    const t = totais[f]?.total || 0, min = _ctMin(f), fr = _ctFrete(f);
     const abaixo = min > 0 && t > 0 && t < min;
     return `<td style="padding:8px;border-left:1px solid var(--border)">
+      <label style="display:block;font-size:var(--text-2xs);font-weight:700;color:var(--text2);margin-bottom:3px;text-transform:none;letter-spacing:0">Entrega (R$)</label>
+      <input class="inp" type="number" min="0" step="0.01" value="${fr || ''}" placeholder="0,00" ${ed ? '' : 'disabled'} style="width:100%;text-align:right;padding:6px 8px;margin-bottom:6px" onchange="_ctSetFrete(${f}, this.value)">
       <div style="border-radius:var(--r8);padding:8px 10px;background:${t > 0 ? (abaixo ? 'var(--danger-bg)' : 'var(--success-bg)') : 'var(--surface2)'};color:${t > 0 ? (abaixo ? 'var(--danger-fg)' : 'var(--success-fg)') : 'var(--muted)'}">
-        <div style="font-size:var(--text-2xs);font-weight:700">Total selecionado</div><div style="font-size:var(--text-md);font-weight:800">${_estR(t)}</div></div>
+        <div style="font-size:var(--text-2xs);font-weight:700">Itens selecionados</div><div style="font-size:var(--text-md);font-weight:800">${_estR(t)}</div>
+        ${t > 0 && fr ? `<div style="font-size:var(--text-2xs);font-weight:700;margin-top:2px">com entrega ${_estR(t + fr)}</div>` : ''}</div>
       ${min ? `<div style="border-radius:var(--r8);padding:6px 10px;margin-top:4px;background:var(--warning-bg);color:var(--warning-fg)"><div style="font-size:var(--text-2xs);font-weight:700">Pedido mínimo</div><div style="font-size:var(--text-sm);font-weight:800">${_estR(min)}</div></div>` : ''}
     </td>`;
   }).join('');
@@ -288,9 +333,9 @@ function _ctRenderPlanilha(totais) {
   document.getElementById('ctBody').innerHTML = `
     ${ed ? `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0 12px">
       <button class="btn btn-outline btn-sm" onclick="_ctMelhores()">${lc('star', 13, 'currentColor')} Selecionar os melhores preços</button>
-      ${outros.length ? `<select class="inp" style="width:auto;font-size:var(--text-sm)" onchange="if(this.value){_ctAtual.forns.push(+this.value);_ctRender()}">
-        <option value="">+ Adicionar fornecedor à planilha</option>${outros.map(s => `<option value="${s.id}">${_estEsc(s.name)}</option>`).join('')}</select>` : ''}
-      <span style="font-size:var(--text-xs);color:var(--muted)">Preço por unidade do insumo (kg, un…). Digite o preço e marque o círculo do fornecedor escolhido.</span>
+      ${outros.length ? `<select class="inp" style="width:auto;font-size:var(--text-sm);font-weight:600;color:var(--purple);border-color:var(--purple)" onchange="_ctAddForn(+this.value)">
+        <option value="">+ Adicionar fornecedor</option>${outros.map(s => `<option value="${s.id}">${_estEsc(s.name)}</option>`).join('')}</select>` : ''}
+      <span style="font-size:var(--text-xs);color:var(--muted)">Preço por unidade do insumo (kg, un…). Marque o círculo do fornecedor escolhido. Para tirar um fornecedor, use o × no topo da coluna.</span>
     </div>` : ''}
     ${a.forns.length ? `<div style="overflow:auto;border:1.5px solid var(--border);border-radius:var(--r8)">
       <table style="border-collapse:collapse;font-size:var(--text-md);width:100%">
@@ -315,12 +360,14 @@ function _ctRenderResumo(totais) {
           <div style="padding:12px 14px;background:var(--surface2);display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
             <div><div style="font-size:var(--text-md);font-weight:800">${_estEsc(s?.name || '')}</div>
               <div style="font-size:var(--text-xs);color:var(--muted)">${[s?.seller, s?.phone].filter(Boolean).map(_estEsc).join(' · ') || 'sem contato cadastrado'}</div></div>
-            <div style="text-align:right"><div style="font-size:var(--text-lg);font-weight:800">${_estR(r.total)}</div>
+            <div style="text-align:right"><div style="font-size:var(--text-lg);font-weight:800">${_estR(r.comFrete)}</div>
+              ${r.frete ? `<div style="font-size:var(--text-xs);color:var(--muted)">itens ${_estR(r.total)} + entrega ${_estR(r.frete)}</div>` : ''}
               ${min ? `<div style="font-size:var(--text-xs);font-weight:700;color:${abaixo ? 'var(--danger-fg)' : 'var(--success-fg)'}">${abaixo ? `abaixo do mínimo de ${_estR(min)}` : `mínimo ${_estR(min)} ok`}</div>` : ''}</div>
           </div>
           ${r.itens.map(li => { const it = items.find(x => x.id === li.item_id); return `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 14px;border-top:1px solid var(--border);font-size:var(--text-sm)">
             <span>${_estEsc(li.item_nome)}<div style="font-size:var(--text-xs);color:var(--muted)">${_estQ(li.qtd)} ${_estEsc(li.unidade || '')} ${_clEmb(it, li.qtd)} × ${_estR(li.preco)}</div></span>
             <strong style="white-space:nowrap">${_estR(li.qtd * li.preco)}</strong></div>`; }).join('')}
+          ${r.frete ? `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 14px;border-top:1px solid var(--border);font-size:var(--text-sm)"><span>Entrega</span><strong>${_estR(r.frete)}</strong></div>` : ''}
           <div style="padding:10px 14px;border-top:1px solid var(--border)">
             <button class="btn btn-outline btn-sm" style="width:100%" onclick="_ctCopiar(_ctMsgPedido(${f}))">${lc('copy', 13, 'currentColor')} Copiar mensagem do pedido</button></div>
         </div>`;
@@ -403,8 +450,9 @@ function _ctMsgCotacao(f) {
 function _ctMsgPedido(f) {
   const s = _ctForn(f);
   const its = _ctAtual.itens.filter(li => li.fornecedor_id === f);
-  const total = its.reduce((t, li) => t + li.qtd * li.preco, 0);
-  return `${_ctSaudacao(s)}\nSegue nosso pedido:\n\n${its.map(li => _ctLinhaMsg(li, true)).join('\n')}\n\nTotal estimado: ${_estR(total)}\nPode confirmar o pedido e a previsão de entrega? Obrigado!`;
+  const fr = _ctFrete(f);
+  const total = its.reduce((t, li) => t + li.qtd * li.preco, 0) + fr;
+  return `${_ctSaudacao(s)}\nSegue nosso pedido:\n\n${its.map(li => _ctLinhaMsg(li, true)).join('\n')}\n\n${fr ? `Entrega: ${_estR(fr)}\n` : ''}Total estimado: ${_estR(total)}\nPode confirmar o pedido e a previsão de entrega? Obrigado!`;
 }
 
 async function _ctCopiar(texto) {
@@ -436,7 +484,7 @@ function _ctConcluir() {
           const s = _ctForn(+f);
           const [ped] = await cpInsert('cp_pedidos', {
             lote_id: a.lote.id, fornecedor_id: +f, fornecedor_nome: s?.name || _ctNomeForn(+f),
-            mensagem: _ctMsgPedido(+f), total_previsto: Math.round(r.total * 100) / 100,
+            mensagem: _ctMsgPedido(+f), total_previsto: Math.round(r.comFrete * 100) / 100, frete: r.frete || 0,
             previsao_entrega: s?.prazoEntregaDias > 0 ? cpIso(new Date(Date.now() + s.prazoEntregaDias * 864e5)) : null,
             criado_por: user,
           });
