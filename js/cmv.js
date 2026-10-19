@@ -54,7 +54,10 @@ function _cmvSetAba(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// CONSUMO DE INSUMOS — real × digital por ciclo
+// CONSUMO DE INSUMOS — duas visões
+//   • Por período: só o consumo digital, dia a dia, em qualquer período
+//     (não depende de ciclo nem de contagem).
+//   • Por ciclo:   real (contagem) × digital, diferença e alertas.
 // ══════════════════════════════════════════════════════════════
 //   Digital = o que o sistema sabe que saiu: vendas (débito automático pela
 //             ficha) + saídas registradas (perdas, cortesias…).
@@ -63,6 +66,7 @@ function _cmvSetAba(id) {
 // Itens sem débito automático (ex.: Mussarela em Barra, que vira Mussarela
 // Triturada na produção) só têm consumo real: não entram em alerta.
 
+let _csModo = 'periodo';   // 'periodo' | 'ciclo'
 let _csCicloId = null;
 let _csFil = { tipo: '', cat: '', q: '', alertas: false, soCmv: true, sort: 'impacto' };
 let _csDados = null;
@@ -73,15 +77,25 @@ function _csSetAlerta(v) {
   db._set('vtp_config', cfg); _csRender();
 }
 
+function _csModoHtml() {
+  const b = (id, icon, t) => { const on = _csModo === id; return `<button onclick="_csModo='${id}';cmvRenderConsumo()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;cursor:pointer;font-family:inherit;font-size:var(--text-sm);font-weight:700;border-radius:var(--r8);
+    background:${on ? 'var(--purple)' : 'transparent'};color:${on ? '#fff' : 'var(--text2)'}">${lc(icon, 14, 'currentColor')} ${t}</button>`; };
+  return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="display:inline-flex;gap:3px;background:var(--surface2);border-radius:var(--r10);padding:3px">${b('periodo', 'calendar', 'Por período')}${b('ciclo', 'refresh-cw', 'Por ciclo')}</div>
+    <span style="font-size:var(--text-sm);color:var(--muted)">${_csModo === 'periodo' ? 'Consumo digital (vendas pela ficha + saídas), dia a dia.' : 'Real (contagem) × digital no ciclo: diferença e alertas.'}</span>
+  </div>`;
+}
+
 async function cmvRenderConsumo(forcar = false) {
   const el = document.getElementById('cmvAbaBody');
   if (!el) return;
-  el.innerHTML = `<div style="padding:60px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted)">${lc('refresh-cw', 16, 'currentColor')} Calculando o consumo…</div>`;
+  if (_csModo === 'periodo') return _csRenderPeriodo(forcar);
+  el.innerHTML = _csModoHtml() + `<div style="padding:60px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted)">${lc('refresh-cw', 16, 'currentColor')} Calculando o consumo…</div>`;
   try {
     if (!_ctgDados || forcar) await _ctgCarregar();
     const ciclos = _ctgDados.ciclos;
     if (!ciclos.length) {
-      el.innerHTML = `<div class="card" style="padding:40px;text-align:center">
+      el.innerHTML = _csModoHtml() + `<div class="card" style="padding:40px;text-align:center">
         <div style="font-size:var(--text-lg);font-weight:800;margin-bottom:6px">Nenhum ciclo ainda</div>
         <div style="font-size:var(--text-md);color:var(--text2);max-width:560px;margin:0 auto 16px;line-height:1.5">O consumo real vem das contagens. Faça a contagem de abertura do primeiro ciclo na aba Contagem do Estoque.</div>
         <button class="btn btn-primary" onclick="_estCpAba='contagens';goModule('estoque')">Ir para Contagem</button></div>`;
@@ -146,7 +160,7 @@ function _csRender() {
   const fmtPct = p => p === null ? '—' : `${p > 0 ? '+' : ''}${p.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
   const periodo = `${new Date(r.inicio).toLocaleDateString('pt-BR')} → ${r.fim ? new Date(r.fim).toLocaleDateString('pt-BR') : 'agora'}`;
 
-  el.innerHTML = `
+  el.innerHTML = _csModoHtml() + `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
       <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_csCicloId=this.value;cmvRenderConsumo()">
         ${ciclos.map(c => `<option value="${c.id}"${c.id === _csCicloId ? ' selected' : ''}>${c.status === 'aberto' ? 'Ciclo atual (tempo real)' : 'Ciclo fechado'} · ${new Date(c.inicio).toLocaleDateString('pt-BR')} → ${c.fim ? new Date(c.fim).toLocaleDateString('pt-BR') : 'agora'}</option>`).join('')}
@@ -206,9 +220,131 @@ function _csRender() {
     </div>`;
 }
 
-// ── Detalhe do item: variação de preço (compras) e de consumo (ciclos) ──
+// ── Por período: consumo digital dia a dia ──
 
-async function cmvDetalheInsumo(itemId) {
+let _csPer = null;            // { chave, porItem: Map, dias: [iso], totalDia: {iso: R$} }
+let _csPerFil = { tipo: '', cat: '', q: '', soCmv: true, sort: 'valor' };
+
+const _csDia = iso => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+async function _csCarregarPeriodo(forcar) {
+  const r = _perRange('csper');
+  const chave = r.inicioISO + '|' + r.fimISO;
+  if (_csPer && _csPer.chave === chave && !forcar) return _csPer;
+  const [debitos, movs] = await Promise.all([estBuscarDebitos(r.inicioISO, r.fimISO), estBuscarMovimentacoes({ desde: r.inicioISO, ate: r.fimISO })]);
+  const fora = estCatsForaCMV();
+  const porItem = new Map();
+  const reg = id => {
+    if (!porItem.has(id)) {
+      const it = items.find(i => i.id === id);
+      porItem.set(id, { id, nome: it?.name || `Item ${id}`, cat: it?.cat, unid: it?.unit || '', custo: Number(it?.cost) || 0,
+        isProd: !!it?.isProd, noCmv: estItemNoCMV(it, fora), vendas: 0, saidas: 0, porDia: {} });
+    }
+    return porItem.get(id);
+  };
+  for (const p of debitos) {
+    const dia = _csDia(p.ts);
+    for (const [id, q] of Object.entries(p.itens)) { const x = reg(Number(id)); x.vendas += q; x.porDia[dia] = (x.porDia[dia] || 0) + q; }
+  }
+  for (const m of movs) {
+    if (m.tipo !== 'baixa' || m.excluido_em) continue;
+    const x = reg(m.item_id), q = Number(m.qtd) || 0, dia = _csDia(m.data_mov);
+    x.saidas += q; x.porDia[dia] = (x.porDia[dia] || 0) + q;
+  }
+  const dias = [];
+  for (let d = new Date(r.inicioISO); d <= new Date(r.fimISO) && d <= new Date(); d.setDate(d.getDate() + 1)) dias.push(_csDia(d));
+  _csPer = { chave, porItem, dias, periodoLabel: _perLabel('csper') };
+  return _csPer;
+}
+
+async function _csRenderPeriodo(forcar = false) {
+  const el = document.getElementById('cmvAbaBody');
+  if (!el) return;
+  if (!_per('csper').de) _perSetPresetSilencioso('csper', 'semana');
+  const barra = () => `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+    ${_perRenderBar('csper', '_csRenderPeriodo')}
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="_csRenderPeriodo(true)" title="Recalcular">${lc('refresh-cw', 13, 'currentColor')}</button></div>`;
+  el.innerHTML = _csModoHtml() + barra() + `<div style="padding:50px;text-align:center;color:var(--muted)">${lc('refresh-cw', 16, 'currentColor')} Somando o consumo do período…</div>`;
+  try { await _csCarregarPeriodo(forcar); }
+  catch (e) { el.innerHTML = _csModoHtml() + barra() + `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui calcular: ${_estEsc(e.message)}</div>`; return; }
+  if (!document.getElementById('cmvAbaBody') || _cmvAba !== 'consumo' || _csModo !== 'periodo') return;
+
+  const f = _csPerFil, P = _csPer;
+  const q = f.q.trim().toLowerCase();
+  const todas = [...P.porItem.values()].filter(x => !f.soCmv || x.noCmv);
+  const linhas = todas
+    .filter(x => !f.tipo || (f.tipo === 'preparado' ? x.isProd : !x.isProd))
+    .filter(x => !f.cat || (x.cat || 'Outros') === f.cat)
+    .filter(x => !q || x.nome.toLowerCase().includes(q))
+    .map(x => ({ ...x, qtd: x.vendas + x.saidas, valor: (x.vendas + x.saidas) * x.custo }))
+    .filter(x => x.qtd > 0.0005)
+    .sort((a, b) => f.sort === 'nome' ? a.nome.localeCompare(b.nome) : f.sort === 'qtd' ? b.qtd - a.qtd : b.valor - a.valor);
+  const total = linhas.reduce((s, x) => s + x.valor, 0);
+  const nDias = Math.max(1, P.dias.length);
+  const porDia = P.dias.map(d => linhas.reduce((s, x) => s + (x.porDia[d] || 0) * x.custo, 0));
+  const cats = [...new Set(todas.map(x => x.cat || 'Outros'))].sort();
+  const kpi = (t, v, sub) => `<div style="background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--r12);padding:14px 18px">
+    <div style="font-size:var(--text-sm);font-weight:700;color:var(--text2)">${t}</div>
+    <div style="font-size:var(--text-2xl);font-weight:800;margin-top:4px">${v}</div><div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${sub}</div></div>`;
+  const chip = (on, onclick, txt) => `<button onclick="${onclick}" style="padding:7px 14px;border-radius:99px;font-size:var(--text-sm);font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;
+    border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};background:${on ? 'var(--purple-xlight)' : 'var(--card-bg)'};color:${on ? 'var(--purple)' : 'var(--text2)'}">${txt}</button>`;
+  const th = (t, sort, al = 'right') => `<th ${sort ? `onclick="_csPerFil.sort='${sort}';_csRenderPeriodo()"` : ''} style="padding:10px 12px;text-align:${al};font-size:var(--text-xs);font-weight:700;color:${f.sort === sort ? 'var(--purple)' : 'var(--muted)'};white-space:nowrap;${sort ? 'cursor:pointer' : ''}">${t}</th>`;
+  const maiorDia = porDia.length ? Math.max(...porDia) : 0;
+  const diaMaior = P.dias[porDia.indexOf(maiorDia)];
+
+  el.innerHTML = _csModoHtml() + barra() + `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
+      ${kpi('Consumo digital', _estR(total), `${linhas.length} itens · ${P.periodoLabel}`)}
+      ${kpi('Média por dia', _estR(total / nDias), `${nDias} dia(s)`)}
+      ${kpi('Dia de maior consumo', maiorDia > 0 ? _estR(maiorDia) : '—', diaMaior && maiorDia > 0 ? new Date(diaMaior + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' }) : '')}
+    </div>
+    <div class="card" style="padding:16px 18px;margin-bottom:14px">
+      <div style="font-size:var(--text-md);font-weight:800;margin-bottom:8px">Consumo por dia (R$)</div>
+      <div style="height:200px"><canvas id="csPerChart"></canvas></div>
+    </div>
+    <div class="card" style="margin:0">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:14px 16px;border-bottom:1.5px solid var(--border)">
+        <input class="inp" id="csPerBusca" placeholder="Buscar insumo…" value="${_estEsc(f.q)}" style="flex:1;min-width:180px;max-width:280px"
+          oninput="_csPerFil.q=this.value;clearTimeout(window._csPQT);window._csPQT=setTimeout(()=>{_csRenderPeriodo();const b=document.getElementById('csPerBusca');b.focus();b.setSelectionRange(b.value.length,b.value.length)},250)">
+        <select class="inp" style="width:auto" onchange="_csPerFil.cat=this.value;_csRenderPeriodo()">
+          <option value="">Todas as categorias</option>${cats.map(c => `<option value="${_estEsc(c)}"${f.cat === c ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}
+        </select>
+        ${chip(!f.tipo, `_csPerFil.tipo='';_csRenderPeriodo()`, 'Todos')}
+        ${chip(f.tipo === 'insumo', `_csPerFil.tipo='insumo';_csRenderPeriodo()`, 'Insumos')}
+        ${chip(f.tipo === 'preparado', `_csPerFil.tipo='preparado';_csRenderPeriodo()`, 'Processados')}
+        <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--text2);text-transform:none;letter-spacing:0;font-weight:500;cursor:pointer">
+          <input type="checkbox" ${f.soCmv ? 'checked' : ''} onchange="_csPerFil.soCmv=this.checked;_csRenderPeriodo()" style="accent-color:var(--purple)"> Só o que entra no CMV</label>
+      </div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
+        <thead style="background:var(--surface2)"><tr>${th('Item', 'nome', 'left')}${th('Vendas (ficha)')}${th('Saídas')}${th('Consumo', 'qtd')}${th('Custo un.')}${th('Consumo R$', 'valor')}${th('% do total')}${th('Média/dia')}</tr></thead>
+        <tbody>${linhas.length ? linhas.map(x => { const u = _estEsc(x.unid); return `<tr onclick="cmvDetalheInsumo(${x.id}, 'periodo')" style="border-top:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+          <td style="padding:10px 12px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">${_estEsc(x.nome)}</span>${x.isProd ? '<span class="badge b-purple" style="font-size:var(--text-2xs)">Processado</span>' : ''}</div>
+            <div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(x.cat || '')}</div></td>
+          <td style="padding:10px 12px;text-align:right;white-space:nowrap">${_estQ(x.vendas)} ${u}</td>
+          <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--text2)">${x.saidas ? `${_estQ(x.saidas)} ${u}` : '—'}</td>
+          <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-weight:700">${_estQ(x.qtd)} ${u}</td>
+          <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--text2)">${x.custo ? _estR(x.custo) : '—'}</td>
+          <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-weight:700">${_estR(x.valor)}</td>
+          <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--purple);font-weight:600">${total > 0 ? (x.valor / total * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '—'}</td>
+          <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--text2)">${_estQ(x.qtd / nDias)} ${u}</td></tr>`; }).join('')
+          : `<tr><td colspan="8" style="padding:40px;text-align:center;color:var(--muted)">Nenhum consumo no período com esses filtros</td></tr>`}</tbody>
+      </table></div>
+      <div style="padding:10px 16px;border-top:1.5px solid var(--border);font-size:var(--text-xs);color:var(--muted);line-height:1.5">
+        Digital = o que as vendas tiraram pela ficha técnica (débito automático) + as saídas registradas. Para comparar com o real (contagem), use a visão Por ciclo. Clique no item para ver o consumo dia a dia e o preço.</div>
+    </div>`;
+
+  _cmvChart('csPerChart', {
+    type: 'bar',
+    data: { labels: P.dias.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
+      datasets: [{ label: 'Consumo R$', data: porDia.map(v => +v.toFixed(2)), backgroundColor: _cmvCor('--chart-1', '#6B21D4'), borderRadius: 3 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => _estR(c.parsed.y) } } },
+      scales: { y: { ticks: { callback: v => 'R$ ' + Number(v).toLocaleString('pt-BR') } } } },
+  });
+}
+
+// ── Detalhe do item: variação de preço (compras) e de consumo (ciclos ou dia a dia) ──
+
+async function cmvDetalheInsumo(itemId, modo = 'ciclo') {
   const it = items.find(i => i.id === itemId);
   if (!it) return;
   const u = _estEsc(it.unit || 'un');
@@ -235,7 +371,7 @@ async function cmvDetalheInsumo(itemId) {
       ${compras.length ? `<div style="height:200px"><canvas id="cmvItemPreco"></canvas></div>` : `<div class="fm-box" style="font-size:var(--text-sm);color:var(--fg-muted)">Nenhuma compra registrada com preço nos últimos 12 meses.</div>`}
     </div>
     <div>
-      <div style="font-size:var(--text-md);font-weight:700;margin-bottom:6px">Variação de consumo · ciclos</div>
+      <div style="font-size:var(--text-md);font-weight:700;margin-bottom:6px">${modo === 'periodo' ? `Consumo por dia · ${_estEsc(_csPer?.periodoLabel || '')}` : 'Variação de consumo · ciclos (real × digital)'}</div>
       <div id="cmvItemConsumo" class="fm-box" style="font-size:var(--text-sm);color:var(--fg-muted)">${lc('refresh-cw', 13, 'currentColor')} Calculando…</div>
     </div>
     ${compras.length ? `<div class="fm-lista">
@@ -252,6 +388,22 @@ async function cmvDetalheInsumo(itemId) {
     options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => _estR(c.parsed.y) } } },
       scales: { y: { ticks: { callback: v => 'R$ ' + Number(v).toLocaleString('pt-BR') } } } },
   });
+
+  // Visão por período: consumo digital do item dia a dia
+  if (modo === 'periodo' && _csPer) {
+    const x = _csPer.porItem.get(itemId);
+    const box = document.getElementById('cmvItemConsumo');
+    if (!box) return;
+    if (!x) { box.textContent = 'Sem consumo no período.'; return; }
+    box.outerHTML = `<div style="height:200px"><canvas id="cmvItemCons"></canvas></div>`;
+    _cmvChart('cmvItemCons', {
+      type: 'bar',
+      data: { labels: _csPer.dias.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
+        datasets: [{ label: `Consumo (${it.unit || 'un'})`, data: _csPer.dias.map(d => +(x.porDia[d] || 0).toFixed(3)), backgroundColor: _cmvCor('--chart-1', '#6B21D4'), borderRadius: 3 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false } } },
+    });
+    return;
+  }
 
   // Consumo por ciclo: real × digital (últimos 8 ciclos)
   try {
