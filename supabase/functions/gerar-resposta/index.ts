@@ -47,6 +47,16 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'nenhuma mensagem do cliente nesta conversa ainda' }), { status: 400, headers: CORS_HEADERS });
   }
 
+  // Mídia sem texto (imagem, áudio, vídeo, sticker, documento, localização) — bot não tem como responder
+  const tiposSoMidia = ['imagem', 'audio', 'video', 'sticker', 'documento', 'localizacao'];
+  const ultimaEhSoMidia = tiposSoMidia.includes(ultimaDoCliente.tipo) ||
+    (ultimaDoCliente.tipo === 'texto' && !(ultimaDoCliente.conteudo?.texto?.trim()));
+  if (ultimaEhSoMidia) {
+    return new Response(JSON.stringify({ needs_human: true, resposta: '' }), {
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+
   const { data: tomVoz } = await sb
     .from('atd_base_conhecimento')
     .select('conteudo')
