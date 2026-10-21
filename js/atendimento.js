@@ -2260,7 +2260,7 @@ function _atdAbrirBuscaPedido() {
 
   const popup = document.createElement('div');
   popup.id = 'popupAtdBuscaPedido';
-  popup.className = 'overlay';
+  popup.className = 'overlay open';
   popup.style.zIndex = '900';
   popup.innerHTML = `
     <div class="modal" style="max-width:480px;max-height:82vh;display:flex;flex-direction:column">
