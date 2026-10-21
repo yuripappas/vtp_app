@@ -165,11 +165,6 @@ function renderOmnichannel() {
       @keyframes atd-pulse-aguard { 0%,100%{opacity:1}50%{opacity:.5} }
       .atd-badge-aguard.atrasado { color:var(--danger);background:var(--danger-bg);animation:atd-pulse-aguard 1.2s infinite; }
       @media (max-width:900px) { .atd-panel { display:none !important; } }
-      @media (max-width:640px) {
-        .atd-layout { flex-direction:column; height:auto; min-height:calc(100vh - 64px); }
-        .atd-sidebar { width:100%; max-height:200px; }
-        .atd-chat { min-height:400px; }
-      }
     `;
     document.head.appendChild(s);
   }
@@ -1082,6 +1077,10 @@ async function _atdAbrirConversa(conversaId) {
   chatVazio.style.display = 'none';
   chatAtivo.style.display  = 'flex';
   if (painelContato) painelContato.style.display = 'block';
+  // Mobile: slide para tela do chat
+  if (window.innerWidth <= 768) {
+    document.querySelector('.atd-layout')?.setAttribute('data-mobile-chat', 'aberto');
+  }
 
   const sb = _atdGetSbClient();
   const { data: conversa } = await sb
@@ -1397,13 +1396,18 @@ function _atdRenderChat(conversa) {
     <!-- HEADER -->
     <div style="padding:10px 16px 8px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="min-width:0;flex:1">
-          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-            ${nomeHtml}
-            ${influencerBadge}
+        <div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">
+          <button class="btn btn-ghost btn-xs atd-btn-voltar" onclick="_atdVoltarLista()" style="flex-shrink:0;padding:6px">
+            ${lc('arrow-left', 18, 'var(--text)')}
+          </button>
+          <div style="min-width:0;flex:1">
+            <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+              ${nomeHtml}
+              ${influencerBadge}
+            </div>
+            ${igStatsHtml}
+            ${canalHtml}
           </div>
-          ${igStatsHtml}
-          ${canalHtml}
         </div>
         <div style="display:flex;align-items:center;gap:6px;padding-top:2px;flex-shrink:0">
           <div id="atdHeaderTags">${tagBtnHtml}</div>
@@ -1923,6 +1927,7 @@ async function _atdConcluirConversa(conversaId) {
   if (error) { toast('Erro ao concluir conversa', 'err'); return; }
   toast('Conversa concluída!', 'ok');
   _atdState.conversaAtivaId = null;
+  _atdVoltarLista();
   document.getElementById('atdChatVazio').style.display = 'flex';
   document.getElementById('atdChatAtivo').style.display  = 'none';
   document.getElementById('atdPainelContato').style.display = 'none';
@@ -2174,6 +2179,7 @@ async function _atdConfirmarTransferencia(conversaId, atendenteId, atendenteNome
 
   toast(`Transferido para ${atendenteNome}`, 'ok');
   _atdState.conversaAtivaId = null;
+  _atdVoltarLista();
   document.getElementById('atdChatVazio').style.display = 'flex';
   document.getElementById('atdChatAtivo').style.display  = 'none';
   const painel = document.getElementById('atdPainelContato');
@@ -2240,6 +2246,11 @@ function _atdAssinarRealtime() {
 
 // ══════════════════════════════════════════════════════════════
 // BUSCAR PEDIDO / CLIENTE — F04-B
+// Mobile: volta para a lista de conversas (remove slide do chat)
+function _atdVoltarLista() {
+  document.querySelector('.atd-layout')?.removeAttribute('data-mobile-chat');
+}
+
 // Abre (ou cria) a conversa de WhatsApp já vinculada a um pedido do
 // CardápioWeb. Caso de uso principal: motoboy não acha o endereço.
 // ══════════════════════════════════════════════════════════════
