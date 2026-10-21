@@ -4,7 +4,7 @@
 --
 -- Lógica:
 --   1. Busca conversa aberta existente (com FOR UPDATE para serializar)
---   2. Se não há aberta, reabre a mais recente com mensagens
+--   2. Se não há aberta, reabre a mais recente (qualquer status — concluir é só filtro)
 --   3. Se não há nenhuma, cria conversa nova
 --
 -- Retorna o UUID da conversa.
@@ -33,12 +33,11 @@ BEGIN
     RETURN v_id;
   END IF;
 
-  -- Tenta reabrir a conversa mais recente que tem mensagens
+  -- Reabre a conversa mais recente (qualquer status — concluir é só filtro)
   SELECT id INTO v_id
   FROM atd_conversas
   WHERE contato_id = p_contato_id
     AND canal_tipo = p_canal_tipo
-    AND ultima_mensagem IS NOT NULL
   ORDER BY atualizado_em DESC
   LIMIT 1
   FOR UPDATE SKIP LOCKED;

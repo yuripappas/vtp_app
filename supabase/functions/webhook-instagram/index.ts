@@ -182,6 +182,7 @@ Deno.serve(async (req) => {
 
   // ── Busca ou cria conversa ────────────────────────────────────────────────
   async function upsertConversa(contatoId: string) {
+    // 1. Busca conversa aberta
     const { data: ex } = await sb
       .from('atd_conversas').select('id')
       .eq('contato_id', contatoId).eq('canal_tipo', 'instagram')
@@ -191,6 +192,18 @@ Deno.serve(async (req) => {
       await sb.from('atd_conversas').update({ atualizado_em: new Date().toISOString() }).eq('id', ex.id);
       return ex.id as string;
     }
+    // 2. Reabre a mais recente (concluída ou qualquer status) — "concluir" é só filtro
+    const { data: recente } = await sb
+      .from('atd_conversas').select('id')
+      .eq('contato_id', contatoId).eq('canal_tipo', 'instagram')
+      .order('atualizado_em', { ascending: false }).limit(1).maybeSingle();
+    if (recente) {
+      await sb.from('atd_conversas')
+        .update({ status: 'aberta', atendente_id: null, precisa_humano: false, atualizado_em: new Date().toISOString() })
+        .eq('id', recente.id);
+      return recente.id as string;
+    }
+    // 3. Cria conversa nova (primeiro contato)
     const { data: nova, error } = await sb.from('atd_conversas')
       .insert({ contato_id: contatoId, canal_id: canal?.id ?? null, canal_tipo: 'instagram', status: 'aberta' })
       .select('id').single();
