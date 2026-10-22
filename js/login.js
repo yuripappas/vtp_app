@@ -261,8 +261,11 @@ function _updateSections() {
 }
 
 function canAccess(mod) {
-  const user = getCurrentUser();
-  if (!user) return false;
+  const sessao = getCurrentUser();
+  if (!sessao) return false;
+  // A sessão guarda o usuário do momento do login; permissões alteradas depois
+  // (Configurações → Usuários) só valem com o cadastro atual.
+  const user = (typeof users !== 'undefined' && users.find(u => u.id === sessao.id)) || sessao;
   const perms    = typeof getUserPerms === 'function' ? getUserPerms(user) : [];
   const viaPerms = _hasModPerm(perms, mod);
   if (viaPerms !== null) return viaPerms;
