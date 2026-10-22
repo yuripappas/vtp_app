@@ -1,0 +1,54 @@
+feature,area,priority,original,clone,notes
+Base de clientes unificada por telefone a partir dos pedidos do CW,dados,must,yes,no,cw_pedidos já tem customer_phone; backfill + atualização a cada cw-sync
+Perfil derivado (pedidos gasto ticket intervalo última compra melhor dia),dados,must,yes,no,campos do CrmCustomerItem público
+Produtos favoritos e canal preferido no perfil,dados,must,yes,no,a partir de cw_pedidos.items e sales_channel
+Classificação RFV automática em 11 grupos e 5 macro-segmentos,crm,must,yes,no,recalcular diariamente e a cada pedido
+Faixas de RFV configuráveis com prévia,crm,must,yes,no,S05
+Lista de clientes com busca filtros e exportação,crm,must,yes,no,S02
+Perfil 360 do cliente com linha do tempo,crm,must,yes,no,S03
+Segmentos salvos com regras E/OU e alcance ao vivo,segmentação,must,yes,no,S07
+Registro de opt-in/opt-out por canal,compliance,must,yes,no,obrigatório pela Meta e pela LGPD
+Opt-out automático quando o cliente responde SAIR/PARAR,compliance,must,yes,no,no webhook-whatsapp
+Gestão de templates do WhatsApp (criar e sincronizar status da Meta),whatsapp,must,no,no,não é tela da Repediu mas é pré-requisito da API oficial
+Envio de template com variáveis (nome cupom),whatsapp,must,yes,no,estender enviar-mensagem
+Campanha em assistente de 6 etapas,campanhas,must,yes,no,S09
+Agendamento de campanha,campanhas,must,yes,no,pg_cron
+Fila de disparo em lotes com retry e sem duplicar,campanhas,must,yes,no,respeitar tier de envio da Meta
+Status por envio (enviada entregue lida falhou) via webhook,campanhas,must,yes,no,webhook-whatsapp já lê statuses; gravar por wamid
+Funil e custo por campanha,campanhas,must,yes,no,S10
+Atribuição de conversão com janela por grupo RFV,atribuição,must,yes,no,meta.attributionWindow da API pública
+Marcar conversão de reativação vs recorrente,atribuição,must,yes,no,isReactivation
+Visão geral com receita gerada conversões recuperados e mensagens,relatórios,must,yes,no,S01
+Leitura de dados pessoais só para usuário logado com perfil de gestor,segurança,must,n/a,no,cw_pedidos hoje está aberto para anon
+Respostas da campanha caem no Atendimento com contexto,integração,should,yes,no,VTP já tem omnichannel
+Painel do perfil do cliente dentro da conversa do Atendimento,integração,should,yes,no,F09
+Limite de mensagens de campanha por cliente por semana,compliance,should,yes,no,protege a qualidade do número
+Estimativa de custo antes de enviar,campanhas,should,yes,no,alcance x preço da categoria marketing
+Cupom vinculado à campanha e análise de uso de cupom,cupons,should,yes,no,cw_pedidos.coupon_code
+Automação: reativar clientes inativos após N dias,automações,should,yes,no,modelo pronto
+Automação: boas-vindas e segunda compra,automações,should,yes,no,modelo pronto
+Automação: aniversário,automações,should,yes,no,depende de coletar data de nascimento
+Automação: avaliação ruim avisa o gerente,automações,should,yes,no,usa ifood-reviews existente
+Editor de automação em formulário (gatilho espera condição ação),automações,should,yes,no,versão simples do builder visual
+Taxa de recompra LTV médio clientes ativos e tempo entre compras,relatórios,should,yes,no,fórmulas da doc pública
+Curva de retenção por coorte,relatórios,should,yes,no,S14
+Melhores bairros,relatórios,should,yes,no,delivery_address.neighborhood
+Evolução da distribuição RFV no tempo,relatórios,should,yes,no,snapshot diário
+Coleta de data de nascimento e e-mail pelo WhatsApp,dados,should,no,no,o CW não traz aniversário
+Editor visual de fluxos por nós (arrastar e conectar),automações,could,yes,no,substituído pelo formulário no início
+Automação por previsão de chuva,automações,could,yes,no,API de clima pública
+Teste A/B de mensagem na campanha,campanhas,could,unknown,no,
+Envio de público para Meta Ads (Custom Audience),anúncios,could,yes,no,Facebook Audience no plano
+Assistente de IA que monta a campanha a partir de um objetivo,ia,could,yes,no,VTP já usa Claude em gerar-resposta
+Análise de catálogo e venda cruzada,relatórios,could,yes,no,parte já existe no módulo Vendas
+Avaliações do Google no mesmo painel,avaliações,could,yes,no,API do Perfil da Empresa
+Campanhas por e-mail,canais,could,yes,no,
+Resposta automática de comentários e directs do Instagram,automações,could,yes,no,webhook-instagram existe
+Marketing de voz,canais,skip,yes,skip,precisa de outro provedor e contrato
+RCS e SMS,canais,skip,yes,skip,outros provedores; foco no WhatsApp oficial
+Tracker de carrinho abandonado e pixel no cardápio,dados,skip,yes,skip,o cardápio é do CardápioWeb; não dá para instalar script
+120+ integrações e marketplace de parceiros,integrações,skip,yes,skip,a rede de parceiros é da Repediu; VTP só precisa do CW e do iFood
+Módulo Marketplace (repasse e cancelamento do iFood),marketplace,skip,yes,skip,o módulo Vendas do VTP já cobre extrato e repasse
+Unificação de base com IA e inferência de gênero,dados,skip,yes,skip,unificação por telefone basta para uma loja
+Multi-loja / redes e franquias,conta,skip,yes,skip,uma loja só
+Créditos de comunicação e de IA (revenda),cobrança,skip,yes,skip,a WABA própria é cobrada direto pela Meta

@@ -125,7 +125,9 @@ function _openMobileSubmenu(items, parentLabel) {
       Voltar
     </button>
     <div class="sb-mobile-submenu-label">${parentLabel}</div>
-    ${items.map(item => `
+    ${items.map(item => item.secao ? `
+      <div class="sb-mobile-submenu-label">${item.secao}</div>
+    ` : `
       <button class="sb-item sb-item-plain" onclick="${item.action}">
         <span class="sb-label" style="opacity:1;width:auto">${item.label}</span>
       </button>
@@ -230,22 +232,18 @@ function _handleNavOmnichannel() {
   );
 }
 
-// Submenu items de Marketing (Rede de Criadores/Afiliados)
+// Submenu items de Marketing
+// Itens com "secao" viram títulos no submenu (sem ação).
 const _MKT_SUBMENU_ITEMS = [
-  { id: 'criadores',    icon: 'users',          label: 'Criadores'            },
-  { id: 'cupons',       icon: 'tag',            label: 'Cupons'                },
-  { id: 'conteudo',     icon: 'file-text',      label: 'Aprovação de Conteúdo' },
-  { id: 'compliance',   icon: 'shield-check',   label: 'Auditoria de Marca'    },
-  { id: 'mencoes',      icon: 'bell',           label: 'Menções'               },
-  { id: 'pagamentos',   icon: 'dollar-sign',    label: 'Pagamentos'            },
-  { id: 'resgates',     icon: 'gift',           label: 'Resgates'              },
-  { id: 'ranking',      icon: 'award',          label: 'Ranking & Desafios'    },
+  { secao: 'Relacionamento · Contatos' },
+  { id: 'rel-clientes', icon: 'users',          label: 'Clientes'              },
+  { id: 'rel-base',     icon: 'pie-chart',      label: 'Base de clientes'      },
 ];
 
 function _handleNavMarketing() {
   const action = (id) => `_mktPaginaAtiva='${id}'; goModule('marketing');`;
   _openMobileSubmenu(
-    _MKT_SUBMENU_ITEMS.map(item => ({ ...item, action: action(item.id) })),
+    _MKT_SUBMENU_ITEMS.map(item => item.secao ? item : ({ ...item, action: action(item.id) })),
     'Marketing'
   );
 }
