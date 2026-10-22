@@ -9,11 +9,12 @@
  * Nenhuma lógica de interpretação aqui — tudo vem do motor (vendas.js).
  */
 
-let _vdTab     = 'geral';   // 'geral' | 'canal' | 'repasses' | 'produtos'
+let _vdTab     = 'geral';   // 'geral' | 'canal' | 'repasses' | 'paridade' | 'produtos'
 const _VD_ABAS = [
   { id: 'geral',    icon: 'bar-chart-2', label: 'Geral'      },
   { id: 'canal',    icon: 'link',        label: 'Por canal'  },
   { id: 'repasses', icon: 'calendar',    label: 'Repasses'   },
+  { id: 'paridade', icon: 'trending-up', label: 'Paridade com o site' },
   { id: 'produtos', icon: 'pie-chart',   label: 'Curva ABC'  },
 ];
 window._vtpGetTab_vendas = () => _vdTab;
@@ -56,6 +57,7 @@ function _vdRerender() {
   if (_vdTab === 'produtos')      renderVendasProdutos();
   else if (_vdTab === 'canal')    renderVendasPorCanal();
   else if (_vdTab === 'repasses') renderVendasRepasses();
+  else if (_vdTab === 'paridade') renderVendasParidade();
   else                            renderVendasGeral();
 }
 
