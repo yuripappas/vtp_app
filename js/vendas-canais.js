@@ -378,14 +378,22 @@ async function renderVendasPorCanal() {
   if (!_per('vcanal').de) _perSetPresetSilencioso('vcanal', 'semana');
   const chips = () => VC_CANAIS_PADRAO.map(c => { const on = _vcCanalSel === c; return `<button onclick="_vcCanalSel='${c}';_vcPedLimite=100;renderVendasPorCanal()" style="padding:7px 14px;border-radius:99px;font-size:var(--text-sm);font-weight:600;font-family:inherit;cursor:pointer;
     border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};background:${on ? 'var(--purple-xlight)' : 'var(--card-bg)'};color:${on ? 'var(--purple)' : 'var(--text2)'}">${_vcEsc(vcNomeCanal(c))}</button>`; }).join('');
-  const barra = () => _vcFiltros('vcanal', 'renderVendasPorCanal', chips() + `<button class="btn btn-outline btn-xs" onclick="vcConfigurarCanal('${_vcCanalSel}')">${lc('settings', 12, 'currentColor')} Configurar canal</button>`);
-  el.innerHTML = barra() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw', 18, 'currentColor')} Montando o extrato…</div>`;
-  const r = _perRange('vcanal');
-  let todos;
-  try { todos = await vcCarregarPedidos(r.inicioISO, r.fimISO); }
-  catch (e) { el.innerHTML = barra() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${_vcEsc(e.message)}</div>`; return; }
-  const peds = todos.filter(p => p.canal === _vcCanalSel);
   const c = vcCanalCfg(_vcCanalSel), mkt = c.tipo === 'marketplace';
+  // Marketplaces trabalham por ciclo (seg–dom), o mesmo do extrato da plataforma
+  const barra = (temExtrato = false) => mkt
+    ? `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">${chips()}${vxCicloSelect('renderVendasPorCanal')}
+        <button class="btn btn-outline btn-xs" onclick="vcConfigurarCanal('${_vcCanalSel}')">${lc('settings', 12, 'currentColor')} Configurar canal</button>
+        ${vxBotaoAnexar(temExtrato)}
+        <button class="btn btn-outline btn-xs" style="margin-left:auto" onclick="Object.keys(_vcCache).forEach(k=>delete _vcCache[k]);renderVendasPorCanal()">${lc('refresh-cw', 12, 'currentColor')} Atualizar</button></div>`
+    : _vcFiltros('vcanal', 'renderVendasPorCanal', chips() + `<button class="btn btn-outline btn-xs" onclick="vcConfigurarCanal('${_vcCanalSel}')">${lc('settings', 12, 'currentColor')} Configurar canal</button>`);
+  el.innerHTML = barra() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw', 18, 'currentColor')} Montando o extrato…</div>`;
+  const r = mkt ? vxCicloRange(_vcCiclo) : _perRange('vcanal');
+  let todos, rep = null;
+  try {
+    [todos, rep] = await Promise.all([vcCarregarPedidos(r.inicioISO, r.fimISO), mkt ? vxCarregarRepasse(_vcCanalSel, _vcCiclo) : null]);
+  } catch (e) { el.innerHTML = barra() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${_vcEsc(e.message)}</div>`; return; }
+  const cons = mkt ? vxConsolidar(rep?.extrato) : null;
+  const peds = todos.filter(p => p.canal === _vcCanalSel);
   const s = vcResumoCanal(todos, _vcCanalSel, r.inicioISO, r.fimISO);
   const f = s.fixos;
   const pct = v => _n(v).toLocaleString('pt-BR');
@@ -394,7 +402,7 @@ async function renderVendasPorCanal() {
   const porMod = m => vcSomar(peds.filter(p => p.modalidade === m));
   const mP = porMod('propria'), mR = porMod('retirada'), mE = porMod('plataforma');
 
-  const blocos = mkt ? `
+  const blocos = cons ? vxHtmlOficial(cons, c, rep) : mkt ? `
       ${_vcBloco('Vendas', [['Itens', s.itens, 'antes dos descontos'], s.entregaRecebida ? ['Taxa de entrega (entregas próprias)', s.entregaRecebida] : null], s.itens + s.entregaRecebida)}
       ${_vcBloco('Promoções', [['Pagas pela loja', -s.descLoja, c.modelo === '99food' ? 'inclui frete grátis e cupons' : ''], s.descPlat ? [`Pagas pelo ${_vcEsc(c.nome)}`, s.descPlat, 'não saem do seu bolso', 'info'] : null], -s.descLoja)}
       ${_vcBloco('Comissão e pagamento', c.modelo === 'ifood' ? [
@@ -425,13 +433,21 @@ async function renderVendasPorCanal() {
       <div style="display:flex;justify-content:space-between;gap:10px;padding:12px 0 0;border-top:1.5px solid var(--text);font-weight:800;font-size:var(--text-lg)">
         <span>Valor recebido</span><span>${_vcR(s.liquidoFinal - s.motoboy)}</span></div>`;
 
-  el.innerHTML = barra() + `
+  // Com extrato, o resultado usa o valor oficial (ou o que caiu na conta)
+  const recOficial = cons ? (rep?.valor_pago != null ? Number(rep.valor_pago) : cons.total * (1 - _n(c.antecipacaoPct) / 100)) : 0;
+  const recebido = cons ? recOficial + s.direto - s.motoboy : s.liquidoFinal - s.motoboy;
+  const resultado = recebido - s.cmv - s.imposto;
+  el.innerHTML = barra(!!cons) + `
     ${_vcAvisoBackfill(s)}
+    ${mkt && !cons ? vxAvisoSemExtrato(c) : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;margin-bottom:14px">
       <div class="card" style="margin:0;padding:18px 20px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
-          <div style="font-size:var(--text-lg);font-weight:800">Extrato · ${_vcEsc(c.nome)}</div>
-          <span style="font-size:var(--text-sm);color:var(--muted)">${s.pedidos} pedidos · ${_perLabel('vcanal')}</span></div>
+          <div style="font-size:var(--text-lg);font-weight:800">Extrato ${cons ? 'oficial' : mkt ? 'estimado' : ''} · ${_vcEsc(c.nome)}
+            ${cons ? `<span class="badge b-green" style="font-size:var(--text-2xs);vertical-align:middle">do arquivo</span>` : ''}</div>
+          <span style="font-size:var(--text-sm);color:var(--muted)">${s.pedidos} pedidos · ${mkt ? `${_vxDdMm(r.ini)} a ${_vxDdMm(r.fim)}` : _perLabel('vcanal')}</span></div>
+        ${cons ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${cons.periodos.map(p => `${_vcEsc(p.arquivo)} · apuração ${_vcBr(p.ini)} a ${_vcBr(p.fim)}`).join('<br>')}
+          ${cons.periodos[0].arquivo_path ? ` · <a href="#" onclick="vcAbrirExtrato('${_vcEsc(cons.periodos[0].arquivo_path)}');return false">abrir arquivo</a>` : ''}</div>` : ''}
         ${blocos}
       </div>
       <div style="display:flex;flex-direction:column;gap:14px">
@@ -443,17 +459,18 @@ async function renderVendasPorCanal() {
         </div>
         <div class="card" style="margin:0;padding:18px 20px">
           <div style="font-size:var(--text-lg);font-weight:800;margin-bottom:6px">Resultado do canal</div>
-          ${_vcBloco('Valor recebido', [], s.liquidoFinal - s.motoboy)}
+          ${_vcBloco('Valor recebido', cons ? [['Extrato oficial' + (rep?.valor_pago != null ? ' (caiu na conta)' : ' − antecipação estimada'), recOficial, '', 'info'], s.direto ? ['Recebido direto (dinheiro)', s.direto, '', 'info'] : null, s.motoboy ? ['Motoboy próprio', -s.motoboy, '', 'info'] : null] : [], recebido)}
           ${_vcBloco('Custos da loja', [['CMV (ficha técnica)', -s.cmv, _vcPct(s.cmv, s.faturamento)], [`Impostos (${pct(c.impostoPct)}%)`, -s.imposto]], -(s.cmv + s.imposto))}
-          ${_vcBloco('Resultado', [], s.resultadoFinal, `color:${s.resultadoFinal < 0 ? 'var(--danger-fg)' : 'var(--success-fg)'}`)}
-          <div style="font-size:var(--text-sm);color:var(--text2)">margem ${_vcPct(s.resultadoFinal, s.faturamento)} · ${_vcR(s.pedidos ? s.resultadoFinal / s.pedidos : 0)} por pedido</div>
+          ${_vcBloco('Resultado', [], resultado, `color:${resultado < 0 ? 'var(--danger-fg)' : 'var(--success-fg)'}`)}
+          <div style="font-size:var(--text-sm);color:var(--text2)">margem ${_vcPct(resultado, s.faturamento)} · ${_vcR(s.pedidos ? resultado / s.pedidos : 0)} por pedido</div>
         </div>
+        ${cons ? vxConferencia(cons, peds, s) : ''}
       </div>
     </div>
     <div class="card" style="margin:0;overflow-x:auto">
       <div style="padding:14px 16px;font-size:var(--text-md);font-weight:800;border-bottom:1.5px solid var(--border)">Pedidos</div>
       <table style="width:100%;border-collapse:collapse;font-size:var(--text-sm);min-width:1100px">
-        <thead style="background:var(--surface2)"><tr>${['Pedido', 'Data', 'Entrega', 'Pagamento', 'Itens', 'Promo loja', 'Comissão', 'Pagamento', 'Produto líq.', 'Logística', 'CMV', 'Resultado'].map((h, i) =>
+        <thead style="background:var(--surface2)"><tr>${['Pedido', 'Data', 'Entrega', 'Pagamento', 'Itens', 'Promo loja', 'Comissão', 'Pagamento', 'Produto líq.', 'Logística', 'CMV', 'Resultado', ...(cons ? ['Repasse app', 'Repasse extrato'] : [])].map((h, i) =>
           `<th style="padding:9px 10px;text-align:${i < 4 ? 'left' : 'right'};font-size:var(--text-xs);font-weight:700;color:var(--muted);white-space:nowrap">${h}</th>`).join('')}</tr></thead>
         <tbody>${peds.slice(0, _vcPedLimite).map(p => `<tr style="border-top:1px solid var(--border)">
           <td style="padding:8px 10px;font-weight:600;white-space:nowrap">#${p.num}${p.numExterno ? `<div style="font-size:var(--text-2xs);color:var(--muted);font-weight:400">${_vcEsc(c.nome)} ${_vcEsc(p.numExterno)}</div>` : ''}</td>
@@ -462,7 +479,10 @@ async function renderVendasPorCanal() {
           <td style="padding:8px 10px;color:var(--text2)">${_vcEsc(p.pagamentos || '—')}</td>
           ${[p.itens, -p.descLoja, -p.comissao, -p.taxaPag, p.produto, p.logistica, -p.cmv, p.resultado].map((v, i) =>
             `<td style="padding:8px 10px;text-align:right;white-space:nowrap;${i === 4 || i === 7 ? 'font-weight:700' : ''};color:${v < -0.004 ? 'var(--danger-fg)' : 'inherit'}">${Math.abs(v) < 0.005 ? '—' : _vcR(v)}</td>`).join('')}
-        </tr>`).join('') || `<tr><td colspan="12" style="padding:30px;text-align:center;color:var(--muted)">Sem pedidos no período</td></tr>`}</tbody>
+          ${cons ? (() => { const o = cons.pedidos[_vxChave(p.numExterno, p.ts)]; const d = o ? o.v - p.repasse : null;
+            return `<td style="padding:8px 10px;text-align:right;white-space:nowrap">${_vcR(p.repasse)}</td>
+              <td style="padding:8px 10px;text-align:right;white-space:nowrap;font-weight:700;color:${d === null ? 'var(--danger-fg)' : Math.abs(d) > 0.05 ? 'var(--warning-fg)' : 'var(--success-fg)'}" title="${d === null ? 'Pedido não está no extrato' : 'Diferença ' + _vcR(d)}">${o ? _vcR(o.v) : 'fora'}</td>`; })() : ''}
+        </tr>`).join('') || `<tr><td colspan="${cons ? 14 : 12}" style="padding:30px;text-align:center;color:var(--muted)">Sem pedidos no período</td></tr>`}</tbody>
       </table>
       ${peds.length > _vcPedLimite ? `<div style="padding:10px 16px;border-top:1.5px solid var(--border)"><button class="btn btn-ghost btn-xs" onclick="_vcPedLimite+=200;renderVendasPorCanal()">Mostrar mais (${peds.length - _vcPedLimite})</button></div>` : ''}
     </div>`;
@@ -720,7 +740,7 @@ async function renderVendasRepasses(forcar = false) {
             <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--orange-dark)">${x.fx.anuncios + x.fx.mensalidade ? _vcR(x.fx.anuncios + x.fx.mensalidade) : '—'}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--orange-dark)">${x.fx.antecipacao ? _vcR(x.fx.antecipacao) : '—'}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--text2)">${x.t.direto ? _vcR(x.t.direto) : '—'}</td>
-            <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-weight:700">${_vcR(x.estimado)}</td>
+            <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-weight:700">${_vcR(x.estimado)}${x.salvo?.extrato?.periodos ? `<div style="font-size:var(--text-2xs);color:var(--success-fg);font-weight:600">oficial ${_vcR(vxConsolidar(x.salvo.extrato).total)}</div>` : ''}</td>
             <td style="padding:10px 12px;text-align:right">${x.futuro ? '<span style="color:var(--muted);font-size:var(--text-sm)">a receber</span>'
               : `<input class="inp" type="text" inputmode="decimal" value="${x.pago != null ? String(x.pago).replace('.', ',') : ''}" placeholder="R$" style="width:110px;text-align:right" onchange="vcSalvarRepasse(${k}, this.value)">`}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-weight:700;color:${dif === null ? 'var(--muted)' : Math.abs(dif) > 1 ? 'var(--danger-fg)' : 'var(--success-fg)'}">${dif === null ? '—' : _vcR(dif)}</td>
