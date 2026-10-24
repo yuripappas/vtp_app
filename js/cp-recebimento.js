@@ -47,7 +47,13 @@ async function cpRenderAbaRecebimento(forcar = false) {
       const itens = ids.length ? (await cpSelect('cp_pedido_itens', q => q.select('*').in('pedido_id', ids))).filter(_rcAtivo) : [];
       const porPedido = new Map();
       itens.forEach(i => { if (!porPedido.has(i.pedido_id)) porPedido.set(i.pedido_id, []); porPedido.get(i.pedido_id).push(i); });
-      _rcDados = { pedidos, porPedido };
+      // Compras avulsas (lançadas direto na aba Compras) também são recebimentos
+      const avulsas = await cpSelect('cp_compras', q => q.select('*').is('excluido_em', null).neq('origem', 'pedido')
+        .gte('created_at', r.inicioISO).lte('created_at', r.fimISO));
+      const nAvulsa = new Map();
+      if (avulsas.length) (await cpSelect('cp_compra_itens', q => q.select('compra_id').in('compra_id', avulsas.map(c => c.id))))
+        .forEach(i => nAvulsa.set(i.compra_id, (nAvulsa.get(i.compra_id) || 0) + 1));
+      _rcDados = { pedidos, porPedido, avulsas, nAvulsa };
     } catch (e) {
       el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui carregar os pedidos: ${_estEsc(e.message)}
         <br><button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="cpRenderAbaRecebimento(true)">Tentar de novo</button></div>`;
@@ -71,22 +77,34 @@ function _rcAlerta(p) {
 
 function _rcRenderLista() {
   const el = document.getElementById('cpAbaBody');
-  const { pedidos, porPedido } = _rcDados;
+  const { pedidos, porPedido, avulsas = [], nAvulsa = new Map() } = _rcDados;
   // Lista única: em aberto primeiro (rascunho → solicitado → parcial), depois recebidos e cancelados
   const ordem = { rascunho: 0, solicitado: 1, parcial: 2, recebido: 3, cancelado: 4 };
-  const lista = [...pedidos].sort((x, y) => (ordem[x.status] - ordem[y.status]) || (_estMs(y.created_at) - _estMs(x.created_at)));
+  // Em aberto primeiro; depois recebidos, compras avulsas e cancelados, do mais recente para o mais antigo
+  const lista = [...pedidos.map(p => ({ k: 'p', p, t: _estMs(_rcAberto(p) ? p.created_at : _rcDataFech(p)) })),
+                 ...avulsas.map(c => ({ k: 'c', c, t: _estMs(c.created_at) }))]
+    .sort((x, y) => ((x.k === 'p' && _rcAberto(x.p) ? 0 : 1) - (y.k === 'p' && _rcAberto(y.p) ? 0 : 1)) || (y.t - x.t));
   const btn = (icon, txt, fn, extra = '') => `<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();${fn}" ${extra}>${lc(icon, 12, 'currentColor')} ${txt}</button>`;
   el.innerHTML = `
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
       ${_perRenderBar('cprec', '_rcRecarregar')}
-      <span style="font-size:var(--text-sm);color:var(--text2)">${pedidos.filter(_rcAberto).length} em aberto (sempre aparecem) · ${pedidos.filter(p => !_rcAberto(p)).length} recebido(s) ou cancelado(s) no período</span>
+      <span style="font-size:var(--text-sm);color:var(--text2)">${pedidos.filter(_rcAberto).length} em aberto (sempre aparecem) · ${pedidos.filter(p => !_rcAberto(p)).length} pedido(s) recebido(s) ou cancelado(s) · ${avulsas.length} compra(s) avulsa(s) no período</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="cpRenderAbaRecebimento(true)" title="Recarregar">${lc('refresh-cw', 13, 'currentColor')}</button>
     </div>
     <div class="card" style="margin-bottom:0">
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
         <thead style="background:var(--surface2)"><tr>${['Fornecedor', 'Status', 'Previsão', 'Itens', 'Total', 'Ações'].map((h, i) =>
           `<th style="padding:11px 14px;text-align:${[3, 4].includes(i) ? 'right' : 'left'};font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">${h}</th>`).join('')}</tr></thead>
-        <tbody>${lista.length ? lista.map(p => {
+        <tbody>${lista.length ? lista.map(({ k, p, c }) => {
+          if (k === 'c') return `<tr style="border-top:1px solid var(--border);background:color-mix(in srgb, var(--info-bg) 25%, transparent)">
+            <td style="padding:12px 14px"><div style="font-weight:700">${_estEsc(c.fornecedor_nome || '—')}</div>
+              <div style="font-size:var(--text-xs);color:var(--muted)">nota de ${cpDataBr(c.data_compra)}${c.numero_nota ? ' · NF ' + _estEsc(c.numero_nota) : ''}</div></td>
+            <td style="padding:12px 14px"><span class="badge" style="background:var(--info-bg);color:var(--info-fg);font-size:var(--text-xs);padding:4px 10px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${lc('shopping-cart', 11, 'currentColor')} Compra avulsa</span>
+              <div style="font-size:var(--text-xs);color:var(--text2);margin-top:3px">registrada ${_estDH(c.created_at)}${c.criado_por ? ' por ' + _estEsc(c.criado_por) : ''}</div></td>
+            <td style="padding:12px 14px;color:var(--muted)">—</td>
+            <td style="padding:12px 14px;text-align:right">${nAvulsa.get(c.id) || 0}</td>
+            <td style="padding:12px 14px;text-align:right;font-weight:700;white-space:nowrap">${_estR(c.total)}</td>
+            <td style="padding:12px 14px">${btn('eye', 'Ver', `_rcVerCompra('${c.id}')`)}</td></tr>`;
           const its = porPedido.get(p.id) || [];
           const st = RC_STATUS[p.status];
           const aberto = ['rascunho', 'solicitado', 'parcial'].includes(p.status);
@@ -114,6 +132,13 @@ function _rcRenderLista() {
         }).join('') : `<tr><td colspan="6" style="padding:44px;text-align:center;color:var(--muted)">Nenhum pedido em aberto nem recebido no período. Os pedidos chegam aqui quando um lote de cotação é concluído.</td></tr>`}</tbody>
       </table></div>
     </div>`;
+}
+
+function _rcVerCompra(id) {
+  const c = _rcDados?.avulsas?.find(x => x.id === id);
+  if (!c) return;
+  if (!_cpComprasDados?.compras?.some(x => x.id === id)) _cpComprasDados = { chave: null, compras: [...(_cpComprasDados?.compras || []), c] };
+  cpVerCompra(id);
 }
 
 const _rcPedido = id => _rcDados?.pedidos.find(p => p.id === id);

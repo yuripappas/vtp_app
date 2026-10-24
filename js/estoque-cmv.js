@@ -84,7 +84,7 @@ async function estCalcularCMV(ciclo, contagens) {
     if (_estMs(m.data_mov) <= _estMs(inicio)) continue;
     const r = reg(m.item_id, m.item_nome, m.categoria, m.unidade);
     const v = (Number(m.qtd) || 0) * (Number(m.custo_unit) || 0);
-    if (m.tipo === 'recebimento') { r.compras += +m.qtd; r.comprasV += v; }
+    if (m.tipo === 'recebimento' || m.tipo === 'compra_avulsa') { r.compras += +m.qtd; r.comprasV += v; }
     else if (m.tipo === 'producao') { r.producao += +m.qtd; }
     else if (m.tipo === 'baixa') { r.perdas += +m.qtd; r.perdasV += v; }
   }

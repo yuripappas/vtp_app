@@ -4,7 +4,8 @@
  *
  * Tipos (selo na lista):
  *   Venda (auto)      — calculada dos pedidos do CW pelas fichas, 1 linha por pedido
- *   Recebimento       — entrada automática ao concluir o recebimento da compra
+ *   Recebimento       — entrada automática ao conferir o pedido da cotação
+ *   Compra avulsa     — entrada automática da compra lançada direto na aba Compras
  *   Produção          — entrada de processado lançada pela produção
  *   Entrada manual    — entrada sem compra
  *   Transferência     — sai de um local e entra em outro (sem valor financeiro)
@@ -24,6 +25,7 @@
 const EST_MOV_TIPOS = {
   venda:           { label: 'Venda',           icon: 'shopping-bag',      cor: 'var(--success-fg)', bg: 'var(--success-bg)' },
   recebimento:     { label: 'Recebimento',     icon: 'truck',             cor: 'var(--info-fg)',    bg: 'var(--info-bg)'    },
+  compra_avulsa:   { label: 'Compra avulsa',   icon: 'shopping-cart',     cor: 'var(--info-fg)',    bg: 'var(--info-bg)'    },
   producao:        { label: 'Produção',        icon: 'chef-hat',          cor: 'var(--orange-fg)',  bg: 'var(--orange-bg)'  },
   entrada_manual:  { label: 'Entrada manual',  icon: 'plus-circle',       cor: 'var(--info-fg)',    bg: 'var(--info-bg)'    },
   transferencia:   { label: 'Transferência',   icon: 'repeat',            cor: 'var(--text2)',      bg: 'var(--surface2)'   },
@@ -387,7 +389,7 @@ function _estRenderMovConteudo() {
     for (const m of (e.kind === 'grupo' ? e.movs : [e.m])) {
       if (m.excluido_em) continue;
       const v = (Number(m.qtd) || 0) * (Number(m.custo_unit) || 0);
-      if (['recebimento', 'producao', 'entrada_manual'].includes(m.tipo)) vEnt += v;
+      if (['recebimento', 'compra_avulsa', 'producao', 'entrada_manual'].includes(m.tipo)) vEnt += v;
       else if (m.tipo === 'baixa') vBaixa += v;
       else if (m.tipo === 'transferencia') nTransf++;
     }

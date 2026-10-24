@@ -197,7 +197,7 @@ function estEfeitoMov(m) {
 }
 
 const _EST_GRUPO_MOV = {
-  recebimento: 'entradas', producao: 'entradas', entrada_manual: 'entradas',
+  recebimento: 'entradas', compra_avulsa: 'entradas', producao: 'entradas', entrada_manual: 'entradas',
   baixa: 'baixas', ajuste_contagem: 'ajustes', transferencia: 'transferencias',
 };
 

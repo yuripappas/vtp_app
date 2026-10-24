@@ -151,7 +151,7 @@ async function cpVerCompra(id) {
         <strong style="white-space:nowrap">${_estR(i.total)}</strong></div>`).join('')}
       <div style="display:flex;justify-content:space-between;padding:12px;background:var(--surface2);font-weight:800"><span>Total da compra</span><span>${_estR(c.total)}</span></div>
     </div>
-    <div style="font-size:var(--text-xs);color:var(--muted);margin-top:10px">Os itens entraram no estoque como Recebimento no dia da compra.</div>`,
+    <div style="font-size:var(--text-xs);color:var(--muted);margin-top:10px">Os itens entraram no estoque como ${c.origem === 'pedido' ? 'Recebimento' : 'Compra avulsa'} em ${_estDH(c.created_at)}, quando a compra foi registrada.</div>`,
     `cpExcluirCompra('${c.id}')`, 'Excluir compra', 620);
   const btn = document.getElementById('ovCpVer-salvar');
   if (btn) { btn.className = 'btn btn-outline'; btn.style.color = 'var(--danger-fg)'; }
@@ -423,11 +423,13 @@ async function _cpNCSalvar() {
 // Usada também pelo Recebimento (pedido conferido).
 async function cpDarEntradaEstoque(compra, linhas) {
   const forn = compra.fornecedor_nome || '';
-  const dataMov = new Date(compra.data_compra + 'T12:00:00').toISOString();
+  // Horário real do registro (a data da nota fica na compra); pedido da cotação = recebimento
+  const dataMov = new Date().toISOString();
+  const tipo = compra.origem === 'pedido' ? 'recebimento' : 'compra_avulsa';
   await estInserirMovs(linhas.map(l => {
     const it = items.find(i => i.id === l.item_id);
     return _estMovRow(it || { id: l.item_id, name: l.item_nome, unit: l.unidade, cat: l.categoria }, {
-      tipo: 'recebimento', sinal: 1, qtd: l.qtd, custo_unit: l.preco_unit,
+      tipo, sinal: 1, qtd: l.qtd, custo_unit: l.preco_unit,
       local_destino: (it && estLocalEntrada(it)) || EST_SEM_LOCAL,
       motivo: [forn, compra.numero_nota ? 'NF ' + compra.numero_nota : null].filter(Boolean).join(' · ') || null,
       ref_tipo: 'compra', ref_id: l.id, data_mov: dataMov,
