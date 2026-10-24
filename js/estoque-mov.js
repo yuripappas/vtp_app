@@ -792,9 +792,13 @@ function _estBaixaRender() {
   if (prod) {
     const bases = produtosPizza.filter(x => x.active !== false);
     const base  = bases.find(x => x.id === b.baseId);
-    const sabs  = opcoes.filter(o => o.active !== false && (!base || !o.categoria || o.categoria === base.categoria))
-                        .sort((x, y) => x.nome.localeCompare(y.nome));
-    const optSab = sel => `<option value="">Selecionar…</option>` + sabs.map(o => `<option value="${o.id}"${o.id === sel ? ' selected' : ''}>${_estEsc(o.nome)}</option>`).join('');
+    // Todos os sabores ativos do cadastro (a base é só massa + embalagem; meia doce cabe em qualquer pizza)
+    const sabs  = opcoes.filter(o => o.active !== false).sort((x, y) => x.nome.localeCompare(y.nome));
+    const cats  = [...new Set(sabs.map(o => o.categoria || 'outros'))]
+                    .sort((x, y) => (x === 'salgada' ? -1 : y === 'salgada' ? 1 : x.localeCompare(y)));
+    const rotCat = c => ({ salgada: 'Salgadas', doce: 'Doces', outros: 'Outros' }[c] || c.charAt(0).toUpperCase() + c.slice(1));
+    const optSab = sel => `<option value="">Selecionar…</option>` + cats.map(c => `<optgroup label="${_estEsc(rotCat(c))}">${sabs.filter(o => (o.categoria || 'outros') === c)
+      .map(o => `<option value="${o.id}"${o.id === sel ? ' selected' : ''}>${_estEsc(o.nome)}</option>`).join('')}</optgroup>`).join('');
     const avulsos = produtos.filter(p => p.active !== false && p.fichaTecnica?.ingredientes?.length);
     alvo = `
       ${_estCampo('Produto *', `<select class="inp" onchange="_estBaixaSet('produto', this.value)">
