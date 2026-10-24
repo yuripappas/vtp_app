@@ -26,15 +26,23 @@ const RC_STATUS = {
 const _rcAtivo = i => !i.removido_em;
 const _rcHoje = () => cpIso(new Date());
 
+const _rcAberto = p => ['rascunho', 'solicitado', 'parcial'].includes(p.status);
+const _rcDataFech = p => (p.status === 'cancelado' ? p.cancelado_em : p.recebido_em) || p.updated_at || p.created_at;
+function _rcRecarregar() { cpRenderAbaRecebimento(true); }
+
 async function cpRenderAbaRecebimento(forcar = false) {
   const el = document.getElementById('cpAbaBody');
   if (!el) return;
+  if (!_per('cprec').de) _perSetPresetSilencioso('cprec', 'ciclo');
   if (!_rcDados || forcar) {
     el.innerHTML = `<div style="padding:60px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:var(--text-md)">${lc('refresh-cw', 16, 'currentColor')} Carregando pedidos…</div>`;
     try {
-      const desde = new Date(Date.now() - 30 * 864e5).toISOString();
-      const pedidos = await cpSelect('cp_pedidos', q => q.select('*').is('excluido_em', null)
-        .or(`status.in.(rascunho,solicitado,parcial),updated_at.gte.${desde}`).order('created_at', { ascending: false }));
+      // Em aberto sempre aparecem; recebidos e cancelados pela data em que foram fechados, dentro do período
+      const r = _perRange('cprec');
+      const ini = _estMs(r.inicioISO), fim = _estMs(r.fimISO);
+      const pedidos = (await cpSelect('cp_pedidos', q => q.select('*').is('excluido_em', null)
+        .or(`status.in.(rascunho,solicitado,parcial),and(updated_at.gte.${r.inicioISO},created_at.lte.${r.fimISO})`).order('created_at', { ascending: false })))
+        .filter(p => _rcAberto(p) || (t => t >= ini && t <= fim)(_estMs(_rcDataFech(p))));
       const ids = pedidos.map(p => p.id);
       const itens = ids.length ? (await cpSelect('cp_pedido_itens', q => q.select('*').in('pedido_id', ids))).filter(_rcAtivo) : [];
       const porPedido = new Map();
@@ -70,7 +78,8 @@ function _rcRenderLista() {
   const btn = (icon, txt, fn, extra = '') => `<button class="btn btn-outline btn-xs" onclick="event.stopPropagation();${fn}" ${extra}>${lc(icon, 12, 'currentColor')} ${txt}</button>`;
   el.innerHTML = `
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-      <span style="font-size:var(--text-sm);color:var(--text2)">${pedidos.filter(p => ['rascunho', 'solicitado', 'parcial'].includes(p.status)).length} em aberto · recebidos e cancelados dos últimos 30 dias</span>
+      ${_perRenderBar('cprec', '_rcRecarregar')}
+      <span style="font-size:var(--text-sm);color:var(--text2)">${pedidos.filter(_rcAberto).length} em aberto (sempre aparecem) · ${pedidos.filter(p => !_rcAberto(p)).length} recebido(s) ou cancelado(s) no período</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="cpRenderAbaRecebimento(true)" title="Recarregar">${lc('refresh-cw', 13, 'currentColor')}</button>
     </div>
     <div class="card" style="margin-bottom:0">
@@ -89,6 +98,7 @@ function _rcRenderLista() {
               <div style="font-size:var(--text-xs);color:var(--muted)">gerado ${_estDH(p.created_at)} por ${_estEsc(p.criado_por)}</div></td>
             <td style="padding:12px 14px"><span class="badge ${st.cls}" style="font-size:var(--text-xs);padding:4px 10px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${lc(st.icon, 11, 'currentColor')} ${st.label}</span>
               ${p.solicitado_em ? `<div style="font-size:var(--text-xs);color:var(--text2);margin-top:3px">enviado ${_estDH(p.solicitado_em)} por ${_estEsc(p.solicitado_por || '')}</div>` : ''}
+              ${p.recebido_em ? `<div style="font-size:var(--text-xs);color:var(--text2);margin-top:3px">recebido ${_estDH(p.recebido_em)}${p.recebido_por ? ' por ' + _estEsc(p.recebido_por) : ''}</div>` : ''}
               ${p.status === 'cancelado' && p.cancelado_motivo ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:3px">"${_estEsc(p.cancelado_motivo)}"</div>` : ''}
               <div>${_rcAlerta(p)}</div></td>
             <td style="padding:12px 14px;white-space:nowrap">${p.previsao_entrega ? cpDataBr(p.previsao_entrega) : '<span style="color:var(--muted)">—</span>'}</td>
@@ -101,7 +111,7 @@ function _rcRenderLista() {
               ${btn('printer', 'Imprimir', `_rcImprimir('${p.id}')`)}
               ${aberto ? btn('x', 'Cancelar', `_rcCancelar('${p.id}')`, 'style="color:var(--danger-fg)"') : ''}
             </div></td></tr>`;
-        }).join('') : `<tr><td colspan="6" style="padding:44px;text-align:center;color:var(--muted)">Nenhum pedido. Os pedidos chegam aqui quando um lote de cotação é concluído.</td></tr>`}</tbody>
+        }).join('') : `<tr><td colspan="6" style="padding:44px;text-align:center;color:var(--muted)">Nenhum pedido em aberto nem recebido no período. Os pedidos chegam aqui quando um lote de cotação é concluído.</td></tr>`}</tbody>
       </table></div>
     </div>`;
 }

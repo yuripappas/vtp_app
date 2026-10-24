@@ -93,6 +93,10 @@ function _perPresets() {
   const domEsta = new Date(hoje); domEsta.setDate(hoje.getDate() - hoje.getDay());
   const domPassada = new Date(domEsta); domPassada.setDate(domPassada.getDate() - 7);
   const sabPassado = new Date(domEsta); sabPassado.setDate(sabPassado.getDate() - 1);
+  // Ciclo VTP: segunda a domingo
+  const segCiclo = new Date(hoje); segCiclo.setDate(hoje.getDate() - (hoje.getDay() === 0 ? 6 : hoje.getDay() - 1));
+  const segAnt = new Date(segCiclo); segAnt.setDate(segAnt.getDate() - 7);
+  const domAnt = new Date(segCiclo); domAnt.setDate(domAnt.getDate() - 1);
   const primEsteMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   const primMesPassado = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
   const ultMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
@@ -104,6 +108,8 @@ function _perPresets() {
   return [
     { id: 'hoje', label: 'Hoje', de: hoje, ate: fimHoje },
     { id: 'ontem', label: 'Ontem', de: _perIni(ontem), ate: _perFim(ontem) },
+    { id: 'ciclo', label: 'Ciclo atual', de: segCiclo, ate: fimHoje },
+    { id: 'ciclo_anterior', label: 'Ciclo anterior', de: segAnt, ate: _perFim(domAnt) },
     { id: 'semana', label: 'Esta semana', de: domEsta, ate: fimHoje },
     { id: 'semana_passada', label: 'Semana passada', de: domPassada, ate: _perFim(sabPassado) },
     { id: 'mes', label: 'Este mês', de: primEsteMes, ate: fimHoje },
