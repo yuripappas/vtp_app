@@ -547,7 +547,7 @@ function _estUsuarioMov(m) {
 function _estAcoesHtml(idJs, grupo) {
   const b = (icon, title, fn, cor = 'var(--muted)') => `<button onclick="event.stopPropagation();${fn}" title="${title}"
     style="background:none;border:none;cursor:pointer;padding:5px;border-radius:6px;line-height:0;color:${cor}">${lc(icon, 14, 'currentColor')}</button>`;
-  return (grupo ? '' : b('edit-2', 'Editar', `estEditarMovModal(${idJs})`))
+  return b('edit-2', 'Editar', grupo ? `estEditarGrupoModal(${idJs})` : `estEditarMovModal(${idJs})`)
     + b('clock', 'Histórico', `estHistoricoMov(${idJs}, ${grupo})`)
     + b('trash-2', 'Excluir', `estExcluirMovConfirmar(${idJs}, ${grupo})`, 'var(--danger-fg)');
 }
@@ -943,6 +943,53 @@ function _estSalvarEdicao(id) {
   }
   if (m.tipo === 'baixa') campos.tipo_baixa = document.getElementById('emTipo').value;
   _estSalvarComBotao('ovEstEdit', () => estEditarMov(m, campos).then(() => toast('Movimentação atualizada', 'ok')));
+}
+
+// Saída de produto (grupo): tipo, quantidade, data e motivo valem para todos os itens da ficha
+const _estQtdProduto = nome => { const m = String(nome || '').match(/^(\d+(?:[.,]\d+)?)×\s+/); return m ? parseFloat(m[1].replace(',', '.')) : 1; };
+
+function estEditarGrupoModal(grupoId) {
+  const ms = _estMovsDoAlvo(grupoId, true);
+  if (!ms.length) return;
+  const m0 = ms[0];
+  const dt = new Date(m0.data_mov); dt.setMinutes(dt.getMinutes() - dt.getTimezoneOffset());
+  _estModal('ovEstEdit', 'Editar saída', `
+    <div style="font-size:var(--text-md);font-weight:700">${_estEsc(m0.produto_nome)}</div>
+    <div style="font-size:var(--text-sm);color:var(--muted);margin-top:-8px">${ms.length} insumo(s)/processado(s) da ficha</div>
+    <div class="f2">
+      ${_estCampo('Quantidade (unidades)', `<input class="inp" type="number" id="egQtd" value="${_estQtdProduto(m0.produto_nome)}" min="1" step="1">`)}
+      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="egData" value="${dt.toISOString().slice(0, 16)}">`)}
+    </div>
+    ${_estCampo('Tipo de saída', `<select class="inp" id="egTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${m0.tipo_baixa === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`)}
+    ${_estCampo('O que aconteceu', `<input class="inp" id="egMotivo" value="${_estEsc(m0.motivo || '')}">`)}
+    ${_estDica('Mudar a quantidade ajusta todos os itens na mesma proporção. A alteração fica registrada no histórico com o seu nome.')}`,
+    `_estSalvarEdicaoGrupo('${grupoId}')`);
+}
+
+function _estSalvarEdicaoGrupo(grupoId) {
+  const ms = _estMovsDoAlvo(grupoId, true);
+  if (!ms.length) return;
+  const qtd = parseFloat(document.getElementById('egQtd').value);
+  if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
+  const antes = _estQtdProduto(ms[0].produto_nome), fator = qtd / antes;
+  const base = String(ms[0].produto_nome).replace(/^\d+(?:[.,]\d+)?×\s+/, '');
+  const comum = { data_mov: _estLerData('egData'), tipo_baixa: document.getElementById('egTipo').value,
+    motivo: document.getElementById('egMotivo').value.trim() || null, produto_nome: (qtd > 1 ? `${qtd}× ` : '') + base };
+  _estSalvarComBotao('ovEstEdit', async () => {
+    let custo = 0;
+    for (const m of ms) {
+      const q = _estRound(Number(m.qtd) * fator);
+      custo += q * (Number(m.custo_unit) || 0);
+      await estEditarMov(m, { ...comum, qtd: q });
+    }
+    // espelho em Relatórios
+    const d = typeof desperdicios !== 'undefined' && desperdicios.find(x => x.movGrupoId === grupoId);
+    if (d) {
+      Object.assign(d, { nome: comum.produto_nome, qty: qtd, tipo: comum.tipo_baixa, custo, date: comum.data_mov.slice(0, 10), obs: comum.motivo || '' });
+      if (typeof saveD === 'function') saveD();
+    }
+    toast('Saída atualizada', 'ok');
+  });
 }
 
 function _estMovsDoAlvo(idOuGrupo, grupo) {
