@@ -85,6 +85,18 @@ sudo systemctl enable --now vtp-print-agent
 sudo systemctl status vtp-print-agent   # confirma "active (running)"
 ```
 
+### Atualizar o agent.js (com overlay ativo)
+
+```bash
+# no Raspberry: desliga o overlay e reinicia
+sudo raspi-config nonint do_overlayfs 1 && sudo reboot
+# no Mac, dentro de print-agent/:
+scp agent.js SEU_USUARIO@IP_DO_RASPBERRY:~/print-agent/
+# no Raspberry: confere, religa o overlay e reinicia
+sudo systemctl restart vtp-print-agent && journalctl -u vtp-print-agent -n 20
+sudo raspi-config nonint do_overlayfs 0 && sudo reboot
+```
+
 ### Wi-Fi só pega 2.4GHz
 
 O Pi 3B (o original, não B+) só enxerga redes **2.4GHz** — se o roteador
@@ -159,7 +171,11 @@ aparece na fila e é impressa automaticamente.
    registro é gravado em `etiq_print_jobs` (status `pendente`).
 2. Ao iniciar, o agente processa qualquer job que já esteja `pendente`
    (catch-up — cobre jobs criados enquanto ele estava desligado).
-3. Depois disso, escuta novos jobs em tempo real via Supabase Realtime.
-4. Pra cada job: reivindica atomicamente (evita imprimir duplicado se dois
+3. Depois disso, escuta novos jobs em tempo real via Supabase Realtime. Se a
+   conexão cair (ex: banco instável), reconecta sozinho em 10s e, ao voltar,
+   processa o que ficou pendente.
+4. Rede de segurança: a cada 30s varre a fila atrás de jobs `pendente` que
+   o Realtime não entregou ou que falharam ao ser reivindicados.
+5. Pra cada job: reivindica atomicamente (evita imprimir duplicado se dois
    agentes estiverem rodando por engano), imprime via `lp -d <fila> -o raw`,
    e atualiza o status pra `impresso` ou `erro`.

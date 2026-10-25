@@ -78,34 +78,60 @@ async function processarJob(job) {
   });
 }
 
+let _buscando = false;
 async function processarPendentes() {
-  const { data, error } = await sb
-    .from('etiq_print_jobs')
-    .select('*')
-    .eq('status', 'pendente')
-    .order('created_at', { ascending: true });
+  if (_buscando) return; // evita duas varreduras ao mesmo tempo
+  _buscando = true;
+  try {
+    const { data, error } = await sb
+      .from('etiq_print_jobs')
+      .select('*')
+      .eq('status', 'pendente')
+      .order('created_at', { ascending: true });
 
-  if (error) {
-    console.error('[print-agent] Erro ao buscar jobs pendentes:', error.message);
-    return;
-  }
-  for (const job of (data || [])) {
-    await processarJob(job);
+    if (error) {
+      console.error('[print-agent] Erro ao buscar jobs pendentes:', error.message);
+      return;
+    }
+    for (const job of (data || [])) {
+      await processarJob(job);
+    }
+  } catch (e) {
+    console.error('[print-agent] Falha na varredura de pendentes:', e.message);
+  } finally {
+    _buscando = false;
   }
 }
 
+// Rede de segurança: se o Realtime cair (ex: banco instável) ou um job
+// falhar ao ser reivindicado, ele continua 'pendente' e é pego aqui.
+const POLL_MS = 30 * 1000;
+const RECONNECT_MS = 10 * 1000;
+
+let _canal = null;
 function assinarRealtime() {
-  sb.channel('etiq-print-agent')
+  if (_canal) sb.removeChannel(_canal);
+  _canal = sb.channel('etiq-print-agent')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'etiq_print_jobs' }, payload => {
       processarJob(payload.new);
     })
-    .subscribe();
+    .subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        console.log('[print-agent] Realtime conectado');
+        processarPendentes(); // pega o que chegou enquanto estava desconectado
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        console.error(`[print-agent] Realtime caiu (${status}) — reconectando em ${RECONNECT_MS / 1000}s`);
+        const canalCaido = _canal;
+        setTimeout(() => { if (_canal === canalCaido) assinarRealtime(); }, RECONNECT_MS);
+      }
+    });
 }
 
 async function main() {
   console.log(`[print-agent] Iniciando — imprimindo na fila "${PRINTER_NAME}"`);
   await processarPendentes(); // catch-up: jobs criados enquanto o agente estava offline
   assinarRealtime();
+  setInterval(processarPendentes, POLL_MS);
   console.log('[print-agent] Aguardando novos jobs...');
 }
 
