@@ -827,11 +827,12 @@ function _etqImprimir() {
   // Manda pra fila de impressão (Supabase) — o print-agent, rodando onde a
   // Zebra estiver conectada, escuta via Realtime e imprime. Funciona de
   // qualquer dispositivo/lugar, não só da máquina com a impressora.
-  // Fire-and-forget: nunca bloqueia a UI nem falha visivelmente se a fila
-  // estiver indisponível (o registro da etiqueta já foi salvo de qualquer forma).
+  // Não bloqueia a UI (o registro da etiqueta já foi salvo de qualquer forma),
+  // mas avisa se a fila estiver indisponível — senão parece que imprimiu.
   _etqEnfileirarImpressao(novasEtiquetas, _etqConfigEmpresa())
     .then(ok => {
       if (ok) toast(`${lc('printer',14,'#fff')} Etiqueta${novasEtiquetas.length>1?'s':''} enviada${novasEtiquetas.length>1?'s':''} para impressão`, 'ok');
+      else    toast(`${lc('printer',14,'#fff')} Falha ao enviar para a impressora — etiqueta salva, mas não impressa. Tente novamente.`, 'err');
     });
 
   _etqWizardStep = 6;
