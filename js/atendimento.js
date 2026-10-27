@@ -1422,8 +1422,9 @@ function _atdRenderChat(conversa) {
     <!-- TOOLBAR compacta: textarea em cima, ícones + ações embaixo -->
     <div style="padding:10px 14px 12px;border-top:1px solid var(--border);position:relative">
       <div id="atdRespostasRapidasDropdown" style="display:none;position:absolute;bottom:100%;left:14px;right:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.1);max-height:180px;overflow-y:auto;margin-bottom:4px;z-index:10"></div>
-      <input type="file" id="atdInputArquivo" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-        onchange="_atdUploadArquivo('${conversa.id}', this)">
+      <input type="file" id="atdInputArquivo" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,*/*"
+        onchange="_atdPreviewArquivo('${conversa.id}', this)">
+      <div id="atdPreviewAnexo" style="display:none;padding:6px 14px 0"></div>
       <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
         style="width:100%;resize:none;box-sizing:border-box;margin-bottom:7px" oninput="_atdCampoOnInput()"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_atdEnviarMensagem('${conversa.id}')}"></textarea>
@@ -1432,9 +1433,22 @@ function _atdRenderChat(conversa) {
           <button id="atdBtnNotaInterna" class="btn btn-ghost btn-xs" title="Nota interna (só a equipe vê)" onclick="_atdToggleNotaInterna('${conversa.id}')" style="padding:4px 7px">
             ${lc('lock', 13, 'var(--fg-muted)')}
           </button>
-          <button class="btn btn-ghost btn-xs" title="Enviar arquivo/imagem" onclick="document.getElementById('atdInputArquivo').click()" style="padding:4px 7px">
+          <button class="btn btn-ghost btn-xs" title="Enviar arquivo (imagem, vídeo, PDF, documento...)" onclick="document.getElementById('atdInputArquivo').click()" style="padding:4px 7px">
             ${lc('paperclip', 13, 'var(--fg-muted)')}
           </button>
+          <div style="position:relative;display:inline-block">
+            <button class="btn btn-ghost btn-xs" title="Inserir emoji" onclick="_atdToggleEmojiPicker()" style="padding:4px 7px">
+              ${lc('smile', 13, 'var(--fg-muted)')}
+            </button>
+            <div id="atdEmojiPicker" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.12);padding:8px;width:252px;max-height:260px;overflow-y:auto;z-index:100">
+              <div style="display:flex;gap:4px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:6px">
+                ${['😊','😂','❤️','👍','🙏','😍','🎉','😭'].map(e => `<button onclick="_atdInsertEmoji('${e}')" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px;border-radius:4px;line-height:1" title="${e}">${e}</button>`).join('')}
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px">
+                ${['😀','😃','😄','😁','😆','🥹','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🫣','🤭','🫡','🤫','🤥','😶','🫠','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🫥','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','💀','💩','🤡','👹','👺','👻','👽','🤖','😺','😸','😹','😻','🙌','👏','🤝','👍','👎','✊','👊','🤛','🤜','🤞','✌️','🤟','🤘','👌','🤌','🤏','👈','👉','👆','👇','☝️','👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','💪','🦾','🖕','✍️','🙏','🫶','💅','🤳','💋','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','⭐','✨','🎉','🎊','🎈','🎂','🎁','🏆','🥇','❓','❗','💯','✅','❌','⚠️','🔔','📢','📣','💬','💭','🗯️','📝','📌','🔑','🔒','🔓','👁️','👀','🫀','🧠','💡','🌟','⚡','🌈','☀️','🌙','⛅','🌧️','❄️','🍕','🍔','🌮','🍜','🍣','🍰','🎂','☕','🍺','🥂','🚗','✈️','⚽','🏀','🎮','📱','💻','🏠','🌍'].map(e => `<button onclick="_atdInsertEmoji('${e}')" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px;border-radius:4px;line-height:1" title="${e}">${e}</button>`).join('')}
+              </div>
+            </div>
+          </div>
           <button id="atdBtnGerarResposta" class="btn btn-ghost btn-xs" title="Gerar resposta ideal com IA" onclick="_atdGerarResposta('${conversa.id}')" style="padding:4px 7px">
             ${lc('zap', 13, 'var(--purple)')}
           </button>
@@ -1867,6 +1881,17 @@ function _atdAbrirEndereco(addr) {
 // ══════════════════════════════════════════════════════════════
 
 async function _atdEnviarMensagem(conversaId) {
+  // Se há arquivo pendente (e sem texto), envia o arquivo
+  if (_atdArquivoPendente && _atdArquivoPendente.conversaId === conversaId) {
+    const campo = document.getElementById('atdCampoTexto');
+    if (!campo?.value.trim()) {
+      const { file } = _atdArquivoPendente;
+      _atdCancelarAnexo();
+      await _atdUploadArquivo(conversaId, file);
+      return;
+    }
+  }
+
   const campo = document.getElementById('atdCampoTexto');
   let texto = campo?.value.trim();
   if (!texto) return;
@@ -2063,13 +2088,95 @@ async function _atdMudarStatus(conversaId, novoStatus) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// PREVIEW E UPLOAD DE ARQUIVO (antes de enviar)
+// ══════════════════════════════════════════════════════════════
+
+let _atdArquivoPendente = null; // { conversaId, file }
+
+function _atdPreviewArquivo(conversaId, input) {
+  const file = input?.files?.[0];
+  const preview = document.getElementById('atdPreviewAnexo');
+  if (!file || !preview) return;
+  _atdArquivoPendente = { conversaId, file };
+
+  let icone = '📎';
+  let extra = '';
+  if (file.type.startsWith('image/')) {
+    icone = '🖼️';
+    const url = URL.createObjectURL(file);
+    extra = `<img src="${url}" style="max-height:80px;max-width:160px;border-radius:6px;display:block;margin-top:4px;object-fit:cover">`;
+  } else if (file.type.startsWith('video/')) {
+    icone = '🎬';
+  } else if (file.type.startsWith('audio/')) {
+    icone = '🎵';
+  } else if (file.type === 'application/pdf') {
+    icone = '📄';
+  }
+
+  const sizeKb = (file.size / 1024).toFixed(0);
+  preview.style.display = 'block';
+  preview.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r8);padding:8px 10px;font-size:var(--text-sm)">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:5px">
+          <span>${icone}</span>
+          <span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${file.name}</span>
+          <span style="color:var(--fg-subtle);flex-shrink:0">${sizeKb} KB</span>
+        </div>
+        ${extra}
+      </div>
+      <button onclick="_atdCancelarAnexo()" title="Remover anexo" style="background:none;border:none;cursor:pointer;color:var(--fg-muted);padding:0;flex-shrink:0;font-size:16px;line-height:1">✕</button>
+    </div>`;
+}
+
+function _atdCancelarAnexo() {
+  _atdArquivoPendente = null;
+  const preview = document.getElementById('atdPreviewAnexo');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  const input = document.getElementById('atdInputArquivo');
+  if (input) input.value = '';
+}
+
+// EMOJI PICKER
+// ══════════════════════════════════════════════════════════════
+
+function _atdToggleEmojiPicker() {
+  const picker = document.getElementById('atdEmojiPicker');
+  if (!picker) return;
+  const isOpen = picker.style.display !== 'none';
+  picker.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    const close = (e) => {
+      if (!picker.contains(e.target) && !e.target.closest('[title="Inserir emoji"]')) {
+        picker.style.display = 'none';
+        document.removeEventListener('click', close, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', close, true), 0);
+  }
+}
+
+function _atdInsertEmoji(emoji) {
+  const campo = document.getElementById('atdCampoTexto');
+  if (!campo) return;
+  const start = campo.selectionStart;
+  const end = campo.selectionEnd;
+  const val = campo.value;
+  campo.value = val.slice(0, start) + emoji + val.slice(end);
+  campo.selectionStart = campo.selectionEnd = start + emoji.length;
+  campo.focus();
+  document.getElementById('atdEmojiPicker').style.display = 'none';
+}
+
 // UPLOAD DE ARQUIVO
 // ══════════════════════════════════════════════════════════════
 
 async function _atdUploadArquivo(conversaId, input) {
-  const file = input?.files?.[0];
+  // Aceita tanto <input type="file"> quanto { files: [File] }
+  const file = (input instanceof File) ? input : input?.files?.[0];
   if (!file) return;
-  input.value = '';
+  if (!(input instanceof File)) input.value = '';
+  _atdCancelarAnexo();
 
   const user = getCurrentUser();
   const sb = _atdGetSbClient();
