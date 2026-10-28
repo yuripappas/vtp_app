@@ -448,6 +448,18 @@ async function _atdCarregarConversas() {
   _atdRenderLista();
 }
 
+function _atdMudarParaAtivos(conversaId) {
+  // Muda aba para Ativos sem fechar o chat atual (conversa acabou de reabrir)
+  _atdState.viewMode = 'ativos';
+  _atdState.buscaRapidaTermo = '';
+  const inp = document.getElementById('atdBuscaRapida');
+  if (inp) inp.value = '';
+  document.getElementById('atdTabAtivos')?.classList.add('active');
+  document.getElementById('atdTabConcluidos')?.classList.remove('active');
+  // Mantém conversaAtivaId para não fechar o chat
+  if (conversaId) _atdState.conversaAtivaId = conversaId;
+}
+
 function _atdSetViewMode(mode) {
   _atdState.viewMode = mode;
   _atdState.buscaRapidaTermo = '';
@@ -1881,12 +1893,16 @@ function _atdAbrirEndereco(addr) {
 // ══════════════════════════════════════════════════════════════
 
 async function _atdEnviarMensagem(conversaId) {
+  // Se estava em "Concluídos" e vai enviar, muda para "Ativos" (a conversa vai reabrir)
+  const eraConcluido = _atdState.viewMode === 'concluidos';
+
   // Se há arquivo pendente (e sem texto), envia o arquivo
   if (_atdArquivoPendente && _atdArquivoPendente.conversaId === conversaId) {
     const campo = document.getElementById('atdCampoTexto');
     if (!campo?.value.trim()) {
       const { file } = _atdArquivoPendente;
       _atdCancelarAnexo();
+      if (eraConcluido) _atdMudarParaAtivos(conversaId);
       await _atdUploadArquivo(conversaId, file);
       return;
     }
@@ -1895,6 +1911,8 @@ async function _atdEnviarMensagem(conversaId) {
   const campo = document.getElementById('atdCampoTexto');
   let texto = campo?.value.trim();
   if (!texto) return;
+
+  if (eraConcluido) _atdMudarParaAtivos(conversaId);
 
   const user = getCurrentUser();
   const visibilidade = _atdState.modoNotaInterna ? 'interna' : 'publica';
