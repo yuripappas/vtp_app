@@ -130,8 +130,14 @@ Deno.serve(async (req) => {
         conteudo:     { url: body.url, texto: body.texto || '', nome: body.nome_arquivo || '' },
         external_id:  externalId,
       });
+      const { data: convMidia } = await sb.from('atd_conversas').select('status').eq('id', body.conversa_id).single();
       const upd: Record<string, unknown> = { atualizado_em: new Date().toISOString() };
       if (body.atendente_id) upd.atendente_id = body.atendente_id;
+      if (convMidia?.status === 'concluida' || convMidia?.status === 'expirada') {
+        upd.status = 'em_atendimento';
+        upd.concluida_em = null;
+        upd.concluida_por_id = null;
+      }
       await sb.from('atd_conversas').update(upd).eq('id', body.conversa_id);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
     }
@@ -184,9 +190,15 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: 'mensagem enviada mas falhou ao salvar', detalhe: msgErr }), { status: 500, headers: CORS_HEADERS });
   }
 
-  // Atualiza conversa: timestamp + registra primeiro atendente que respondeu
+  // Atualiza conversa: timestamp + reabre se estava concluída + registra atendente
+  const { data: convAtual } = await sb.from('atd_conversas').select('status').eq('id', body.conversa_id).single();
   const updateData: Record<string, unknown> = { atualizado_em: new Date().toISOString() };
   if (body.atendente_id) updateData.atendente_id = body.atendente_id;
+  if (convAtual?.status === 'concluida' || convAtual?.status === 'expirada') {
+    updateData.status = 'em_atendimento';
+    updateData.concluida_em = null;
+    updateData.concluida_por_id = null;
+  }
   await sb.from('atd_conversas').update(updateData).eq('id', body.conversa_id);
 
   return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });

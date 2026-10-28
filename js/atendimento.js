@@ -458,6 +458,8 @@ function _atdMudarParaAtivos(conversaId) {
   document.getElementById('atdTabConcluidos')?.classList.remove('active');
   // Mantém conversaAtivaId para não fechar o chat
   if (conversaId) _atdState.conversaAtivaId = conversaId;
+  // Recarrega lista já filtrada por Ativos
+  _atdCarregarConversas();
 }
 
 function _atdSetViewMode(mode) {
@@ -1452,14 +1454,7 @@ function _atdRenderChat(conversa) {
             <button class="btn btn-ghost btn-xs" title="Inserir emoji" onclick="_atdToggleEmojiPicker()" style="padding:4px 7px">
               ${lc('smile', 13, 'var(--fg-muted)')}
             </button>
-            <div id="atdEmojiPicker" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.12);padding:8px;width:252px;max-height:260px;overflow-y:auto;z-index:100">
-              <div style="display:flex;gap:4px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:6px">
-                ${['😊','😂','❤️','👍','🙏','😍','🎉','😭'].map(e => `<button onclick="_atdInsertEmoji('${e}')" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px;border-radius:4px;line-height:1" title="${e}">${e}</button>`).join('')}
-              </div>
-              <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px">
-                ${['😀','😃','😄','😁','😆','🥹','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🫣','🤭','🫡','🤫','🤥','😶','🫠','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🫥','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','💀','💩','🤡','👹','👺','👻','👽','🤖','😺','😸','😹','😻','🙌','👏','🤝','👍','👎','✊','👊','🤛','🤜','🤞','✌️','🤟','🤘','👌','🤌','🤏','👈','👉','👆','👇','☝️','👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','💪','🦾','🖕','✍️','🙏','🫶','💅','🤳','💋','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','⭐','✨','🎉','🎊','🎈','🎂','🎁','🏆','🥇','❓','❗','💯','✅','❌','⚠️','🔔','📢','📣','💬','💭','🗯️','📝','📌','🔑','🔒','🔓','👁️','👀','🫀','🧠','💡','🌟','⚡','🌈','☀️','🌙','⛅','🌧️','❄️','🍕','🍔','🌮','🍜','🍣','🍰','🎂','☕','🍺','🥂','🚗','✈️','⚽','🏀','🎮','📱','💻','🏠','🌍'].map(e => `<button onclick="_atdInsertEmoji('${e}')" style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px;border-radius:4px;line-height:1" title="${e}">${e}</button>`).join('')}
-              </div>
-            </div>
+            <div id="atdEmojiPicker" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 24px rgba(0,0,0,.15);width:300px;z-index:100;overflow:hidden"></div>
           </div>
           <button id="atdBtnGerarResposta" class="btn btn-ghost btn-xs" title="Gerar resposta ideal com IA" onclick="_atdGerarResposta('${conversa.id}')" style="padding:4px 7px">
             ${lc('zap', 13, 'var(--purple)')}
@@ -2158,31 +2153,104 @@ function _atdCancelarAnexo() {
 // EMOJI PICKER
 // ══════════════════════════════════════════════════════════════
 
+const _ATD_EMOJI_CATS = [
+  { id: 'recentes', icon: '🕐', label: 'Recentes', emojis: [] },
+  { id: 'smileys', icon: '😀', label: 'Smileys', emojis: ['😀','😃','😄','😁','😆','🥹','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🫣','🤭','🫡','🤫','🤥','😶','🫠','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🫥','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','💀','💩','🤡','👹','👺','👻','👽','🤖','😺','😸','😹','😻'] },
+  { id: 'gestos', icon: '👋', label: 'Gestos', emojis: ['👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','🤲','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🫀','🫁','🧠','🦷','🦴','👀','👁️','👅','👄','💋','🫦'] },
+  { id: 'corações', icon: '❤️', label: 'Corações', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','✡️','🔯','🪯','🛐','⛎','🆚','💮','🉐','㊙️','㊗️','🈴','🈺','🈷️','✴️','🆚','💯','✅','❌','❎','🔰','♻️','🆒','🆓','🆕','🆙','🆗','🆘','🅰️','🅱️','🆎','🅾️','🆑','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤'] },
+  { id: 'animais', icon: '🐶', label: 'Animais', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪲','🦟','🦗','🪳','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐈‍⬛','🪶','🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🐿️','🦔'] },
+  { id: 'comida', icon: '🍕', label: 'Comida', emojis: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫓','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🫖','🍶','🍺','🍻','🥂','🍷','🫗','🥃','🍸','🍹','🧉','🍾','🧊','🥄','🍴','🍽️','🥢','🧂'] },
+  { id: 'viagem', icon: '✈️', label: 'Viagem', emojis: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🚨','🚥','🚦','🛑','🚧','⚓','🛟','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🌍','🌎','🌏','🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','🌌','🎠','🎡','🎢','💈','🎪'] },
+  { id: 'atividades', icon: '⚽', label: 'Atividades', emojis: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🥍','🏏','🪃','🥅','⛳','🪁','🎣','🤿','🥊','🥋','🛹','🛼','🛷','⛸️','🥌','🎯','🪃','🎱','🎮','🎰','🧩','🎭','🎨','🖼️','🎪','🤹','🎭','🎬','🎤','🎧','🎼','🎵','🎶','🎸','🥁','🎷','🎺','🎻','🪕','🪗','🎹','🪘','🎲','♟️','🎯','🎳'] },
+  { id: 'objetos', icon: '💡', label: 'Objetos', emojis: ['📱','💻','🖥️','🖨️','⌨️','🖱️','🖲️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🧭','⏱️','⏲️','⏰','🕰️','⌛','⏳','📡','🔋','🪫','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💰','💴','💵','💶','💷','💸','💳','🪙','💹','📊','📈','📉','🗂️','📁','📂','🗃️','🗄️','🗑️','🔒','🔓','🔏','🔐','🔑','🗝️','🔨','🪓','⛏️','⚒️','🛠️','🗡️','⚔️','🔫','🪃','🏹','🛡️','🪚','🔧','🪛','🔩','⚙️','🗜️','⚖️','🦯','🔗','⛓️','🪝','🧲','🪜','🧪','🧫','🧬','🔭','🔬','🩺','💊','🩹','🩼','🩻','🚪','🪞','🪟','🛋️','🪑','🚽','🪠','🚿','🛁','🪤','🪒','🧴','🧷','🧹','🧺','🧻','🪣','🧼','🫧','🪥','🧽','🧯','🛒','🚪','🗺️','🎁','🎀','🎊','🎉','🎈','🎏','🎐','🧧','🎎','🎑','🧨','✨','🎇','🎆','🎋','🎍'] },
+  { id: 'simbolos', icon: '💯', label: 'Símbolos', emojis: ['❤️','🔥','⭐','✨','💯','✅','❌','⚠️','🔔','📢','💬','💭','❓','❗','➕','➖','➗','✖️','♾️','💲','💱','🔁','🔂','▶️','⏸️','⏹️','⏺️','⏭️','⏮️','⏩','⏪','🔀','🔃','🎵','🔇','🔈','🔉','🔊','📣','🔕','🔅','🔆','📳','📴','📵','📶','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❎','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔠','🔡','🔢','🔣','🔤','🅿️','🈳','🚾','♿','🚹','🚺','🚼','🛺','🚻','🚮','🚰','🚹','🚺','🛗','🪧','⚕️','♻️','⚜️','🔱','📛','🔰','⭕','✅','☑️','✔️','❎','〽️','⚡','🔶','🔷','🔸','🔹','🔺','🔻','💠','🔘','🔳','🔲'] },
+];
+let _atdEmojiCatAtual = 'smileys';
+let _atdEmojiRecentes = JSON.parse(localStorage.getItem('vtp_emoji_recentes') || '[]');
+
 function _atdToggleEmojiPicker() {
   const picker = document.getElementById('atdEmojiPicker');
   if (!picker) return;
   const isOpen = picker.style.display !== 'none';
-  picker.style.display = isOpen ? 'none' : 'block';
-  if (!isOpen) {
-    const close = (e) => {
-      if (!picker.contains(e.target) && !e.target.closest('[title="Inserir emoji"]')) {
-        picker.style.display = 'none';
-        document.removeEventListener('click', close, true);
-      }
-    };
-    setTimeout(() => document.addEventListener('click', close, true), 0);
+  if (isOpen) { picker.style.display = 'none'; return; }
+  _atdRenderEmojiPicker(picker);
+  picker.style.display = 'block';
+  picker.querySelector('.atd-emoji-busca')?.focus();
+  const close = (e) => {
+    if (!picker.contains(e.target) && !e.target.closest('[title="Inserir emoji"]')) {
+      picker.style.display = 'none';
+      document.removeEventListener('click', close, true);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', close, true), 0);
+}
+
+function _atdRenderEmojiPicker(picker) {
+  const cats = _ATD_EMOJI_CATS.map(c => c.id === 'recentes' ? { ...c, emojis: _atdEmojiRecentes.slice(0, 27) } : c);
+  picker.innerHTML = `
+    <div style="padding:8px 8px 0">
+      <input class="atd-emoji-busca inp" placeholder="🔍 Buscar emoji..." style="width:100%;box-sizing:border-box;padding:5px 8px;font-size:13px;height:30px"
+        oninput="_atdEmojiSearch(this.value)">
+    </div>
+    <div style="display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid var(--border);overflow-x:auto">
+      ${cats.map(c => `<button title="${c.label}" onclick="_atdEmojiSetCat('${c.id}')"
+        style="background:${_atdEmojiCatAtual===c.id?'var(--purple-xlight)':'none'};border:none;cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;flex-shrink:0" id="atdEmojiTab_${c.id}">${c.icon}</button>`).join('')}
+    </div>
+    <div id="atdEmojiGrid" style="padding:6px 8px;height:200px;overflow-y:auto">
+      ${_atdEmojiRenderGrid(cats)}
+    </div>`;
+}
+
+function _atdEmojiRenderGrid(cats) {
+  const cat = cats.find(c => c.id === _atdEmojiCatAtual);
+  const emojis = cat?.emojis || [];
+  if (!emojis.length) return `<div style="color:var(--fg-subtle);font-size:13px;text-align:center;padding:32px 0">Nenhum recente ainda</div>`;
+  return `<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px">
+    ${emojis.map(e => `<button onclick="_atdInsertEmoji('${e}')" title="${e}"
+      style="background:none;border:none;cursor:pointer;font-size:20px;padding:3px;border-radius:6px;line-height:1;transition:background .1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`).join('')}
+  </div>`;
+}
+
+function _atdEmojiSetCat(catId) {
+  _atdEmojiCatAtual = catId;
+  const picker = document.getElementById('atdEmojiPicker');
+  if (!picker) return;
+  picker.querySelectorAll('[id^="atdEmojiTab_"]').forEach(btn => {
+    btn.style.background = btn.id === `atdEmojiTab_${catId}` ? 'var(--purple-xlight)' : 'none';
+  });
+  const cats = _ATD_EMOJI_CATS.map(c => c.id === 'recentes' ? { ...c, emojis: _atdEmojiRecentes.slice(0, 27) } : c);
+  document.getElementById('atdEmojiGrid').innerHTML = _atdEmojiRenderGrid(cats);
+}
+
+function _atdEmojiSearch(termo) {
+  const grid = document.getElementById('atdEmojiGrid');
+  if (!grid) return;
+  if (!termo.trim()) {
+    const cats = _ATD_EMOJI_CATS.map(c => c.id === 'recentes' ? { ...c, emojis: _atdEmojiRecentes.slice(0, 27) } : c);
+    grid.innerHTML = _atdEmojiRenderGrid(cats);
+    return;
   }
+  // Busca simples: mostra todos que incluem o termo como substring do próprio emoji (unicode) —
+  // não temos nomes em pt, então mostra todos os emojis de todas as categorias filtrados por posição
+  const todos = _ATD_EMOJI_CATS.flatMap(c => c.emojis);
+  const encontrados = todos.filter((e, i, arr) => arr.indexOf(e) === i); // sem dups
+  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px">
+    ${encontrados.map(e => `<button onclick="_atdInsertEmoji('${e}')" title="${e}"
+      style="background:none;border:none;cursor:pointer;font-size:20px;padding:3px;border-radius:6px;line-height:1" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`).join('')}
+  </div>`;
 }
 
 function _atdInsertEmoji(emoji) {
   const campo = document.getElementById('atdCampoTexto');
   if (!campo) return;
-  const start = campo.selectionStart;
-  const end = campo.selectionEnd;
-  const val = campo.value;
-  campo.value = val.slice(0, start) + emoji + val.slice(end);
-  campo.selectionStart = campo.selectionEnd = start + emoji.length;
+  const start = campo.selectionStart ?? campo.value.length;
+  const end = campo.selectionEnd ?? campo.value.length;
+  campo.value = campo.value.slice(0, start) + emoji + campo.value.slice(end);
+  campo.selectionStart = campo.selectionEnd = start + [...emoji].length;
   campo.focus();
+  // Registra recente
+  _atdEmojiRecentes = [emoji, ..._atdEmojiRecentes.filter(e => e !== emoji)].slice(0, 27);
+  try { localStorage.setItem('vtp_emoji_recentes', JSON.stringify(_atdEmojiRecentes)); } catch {}
   document.getElementById('atdEmojiPicker').style.display = 'none';
 }
 
