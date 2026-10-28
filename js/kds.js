@@ -13,8 +13,9 @@
  * combo não aparecem na cozinha. O primeiro tablet que vê o pedido grava as
  * pizzas (kds_gerar_pizzas, idempotente).
  *
- * Cada tablet guarda no localStorage a tela escolhida e quem está logado
- * (nome + PIN → jornada). Atualiza por realtime (kds_pizzas, kds_pedidos,
+ * Só entra quem tem login na plataforma: o operador é o usuário logado no
+ * app (kds_entrar_usuario abre a jornada). Cada tablet guarda no
+ * localStorage a tela escolhida e a jornada aberta. Atualiza por realtime (kds_pizzas, kds_pedidos,
  * cw_pedidos), com uma recarga a cada 20 s de rede de segurança.
  */
 
@@ -67,7 +68,6 @@ const _kds = {
   modal: null,         // { tipo, pizzaId, meia, ... }
   carregou: false, carregando: false, recarregar: false,
   canal: null, tick: null, poll: null, debounce: null,
-  pin: '', busca: '',
 };
 
 // ── Utilidades ─────────────────────────────────────────────────
@@ -163,7 +163,7 @@ async function _kdsCarregar() {
     const campos = 'id,display_id,status,order_type,order_timing,sales_channel,external_display_id,customer_id,customer_name,items,observation,schedule,cw_created_at';
     const [cwRes, opsRes] = await Promise.all([
       sb.from('cw_pedidos').select(campos).or(`cw_created_at.gte.${desde},status.in.(confirmed,scheduled_confirmed)`).order('cw_created_at').limit(400),
-      sb.from('kds_operadores').select('id,nome,funcao,diarista,ativo').order('nome'),
+      sb.from('kds_operadores').select('id,nome,usuario_id').order('nome'),
     ]);
     if (cwRes.error) throw cwRes.error;
     const cw = cwRes.data || [];
@@ -292,21 +292,26 @@ function _kdsFilaPizzaiolo() {
 function renderKds() {
   _kds.tela    = _kdsLs('vtp_kds_tela');
   _kds.sessao  = _kdsLs('vtp_kds_sessao');
+  // jornada aberta por outro usuário neste aparelho não vale para quem entrou agora
+  if (_kds.sessao && _kds.sessao.usuario_id !== String(getCurrentUser()?.id)) _kds.sessao = null;
+  _kds.erroEntrada = false;
   _kdsLigar();
   _kdsRender();
   _kdsCarregar();
 }
 
 // A lista e o modal têm containers separados: a recarga (realtime / 20 s)
-// redesenha a lista, mas não mexe num modal com formulário (PIN, diarista,
-// configuração) — senão apagaria o que a pessoa está digitando.
+// redesenha a lista, mas não mexe num modal com formulário (configuração) — senão apagaria o que a pessoa está digitando.
 function _kdsRender() {
   const el = document.getElementById('page-kds');
   if (!el) return;
   if (!document.getElementById('kdsMain')) el.innerHTML = '<div id="kdsMain"></div><div id="kdsModal"></div>';
   let html;
   if (!_kds.tela) html = _kdsHtmlTelas();
-  else if (!_kds.sessao) html = _kdsHtmlLogin();
+  else if (!_kds.sessao) {
+    html = `<div class="kds">${_kdsHtmlTop('KDS Pizzaiolo')}<div class="kds-vazio">${_kds.erroEntrada ? 'Não foi possível abrir sua jornada. <button class="kds-btn kds-btn-roxo" onclick="_kds.erroEntrada=false;_kdsRender()">Tentar de novo</button>' : 'Entrando…'}</div></div>`;
+    if (!_kds.erroEntrada) _kdsEntrarUsuario();
+  }
   else html = _kdsHtmlPizzaiolo();
   document.getElementById('kdsMain').innerHTML = html;
   _kdsConferirModal();
@@ -349,36 +354,6 @@ function _kdsHtmlTelas() {
       <button class="kds-tela" disabled><em>Em breve</em><b>KDS Pedido</b><span>Fila completa, reordenação, pedidos internos e capacidade.</span></button>
     </div>
   </div>`;
-}
-
-function _kdsHtmlLogin() {
-  const q = _kdsFrase(_kds.busca).toLowerCase();
-  const ops = _kds.operadores.filter(o => o.ativo && o.funcao !== 'finalizacao' && (!q || o.nome.toLowerCase().includes(q)));
-  const lista = !_kds.carregou ? '<div class="kds-vazio">Carregando…</div>'
-    : ops.length ? ops.map(o => `
-        <button class="kds-op" onclick="_kdsAbrirPin('${o.id}')">
-          <span class="kds-op-av">${_kdsEsc(o.nome.trim().charAt(0).toUpperCase())}</span>
-          <span>${_kdsEsc(o.nome)}${o.diarista ? '<small>Diarista</small>' : ''}</span>
-        </button>`).join('')
-    : `<div class="kds-vazio" style="grid-column:1/-1;padding:24px">${q ? 'Ninguém com esse nome.' : 'Nenhum pizzaiolo cadastrado ainda.'}</div>`;
-  return `<div class="kds">
-    ${_kdsHtmlTop('KDS Pizzaiolo')}
-    <div class="kds-login-card">
-      <h2>Quem está no posto?</h2>
-      <p>Toque no seu nome e digite seu PIN.</p>
-      <input class="kds-input" placeholder="Buscar pelo nome" value="${_kdsEsc(_kds.busca)}" oninput="_kds.busca=this.value;_kdsRefazerLista()">
-      <div class="kds-ops" id="kdsOps">${lista}</div>
-      <button class="kds-link" onclick="_kdsAbrirDiarista()">Sou diarista — primeiro acesso</button>
-    </div>
-  </div>`;
-}
-
-function _kdsRefazerLista() {
-  const box = document.getElementById('kdsOps');
-  if (!box) return;
-  const tmp = document.createElement('div');
-  tmp.innerHTML = _kdsHtmlLogin();
-  box.innerHTML = tmp.querySelector('#kdsOps').innerHTML;
 }
 
 function _kdsHtmlPizzaiolo() {
@@ -483,7 +458,7 @@ function _kdsHtmlPizza(z, cw, cancelado) {
 // ── Modais ─────────────────────────────────────────────────────
 
 function _kdsAbrirModal(m) { _kds.modal = m; _kdsRefazerModal(); }
-function _kdsFecharModal() { _kds.modal = null; _kds.pin = ''; _kdsRefazerModal(); }
+function _kdsFecharModal() { _kds.modal = null; _kdsRefazerModal(); }
 function _kdsRefazerModal() {
   const box = document.getElementById('kdsModal');
   if (box) box.innerHTML = _kdsHtmlModal();
@@ -510,9 +485,7 @@ function _kdsHtmlModal() {
   }
   if (m.tipo === 'montagem' && z && cw) return fundo(_kdsHtmlMontagem(z, cw));
   if (m.tipo === 'ficha' && z) return fundo(_kdsHtmlFicha(z, m.meia));
-  if (m.tipo === 'pin')       return fundo(_kdsHtmlPin(m));
-  if (m.tipo === 'diarista')  return fundo(_kdsHtmlDiarista());
-  if (m.tipo === 'config')    return fundo(_kdsHtmlConfig(m));
+  if (m.tipo === 'config')    return fundo(_kdsHtmlConfig());
   return '';
 }
 
@@ -666,10 +639,10 @@ function _kdsMenu(btn) {
   const r = btn.getBoundingClientRect();
   const full = document.body.classList.contains('kds-full');
   const itens = [
-    _kds.sessao && ['Trocar de usuário (encerrar jornada)', '_kdsSair()'],
+    _kds.sessao && ['Sair (trocar de usuário)', '_kdsSair()'],
     [full ? 'Sair da tela cheia' : 'Tela cheia', `_kdsTelaCheia(${!full})`],
     _kds.tela && ['Trocar a tela deste aparelho', '_kdsEscolherTela(null)'],
-    _kdsGestor() && ['Configurar KDS (pizzaiolos e tempos)', "_kdsAbrirModal({tipo:'config',aba:'operadores'})"],
+    _kdsGestor() && ['Configurar tempos', "_kdsAbrirModal({tipo:'config'})"],
   ].filter(Boolean);
   const menu = document.createElement('div');
   menu.className = 'kds-menu';
@@ -686,148 +659,41 @@ async function _kdsSair() {
   const s = _kds.sessao;
   if (s?.jornada_id) await _kdsDb().rpc('kds_sair', { p_jornada: s.jornada_id });
   _kds.sessao = null; _kds.perf = null; _kdsLs('vtp_kds_sessao', null);
-  _kdsRender();
+  // trocar de pessoa = sair da plataforma; quem entrar depois abre a própria jornada
+  _kdsTelaCheia(false);
+  doLogout();
 }
 
-// ── PIN e diarista ─────────────────────────────────────────────
+// ── Entrada: o operador é o usuário logado na plataforma ──────
 
-function _kdsAbrirPin(operadorId) { _kds.pin = ''; _kdsAbrirModal({ tipo: 'pin', operadorId, erro: '' }); }
-
-function _kdsHtmlPin(m) {
-  const op = _kds.operadores.find(o => o.id === m.operadorId);
-  return `<div class="kds-dlg kds-dlg-sm">
-    <button class="kds-dlg-x" onclick="_kdsFecharModal()">${KDS_SVG.x}</button>
-    <p class="kds-dlg-txt" style="margin:8px 0 0">Olá, <b>${_kdsEsc(op?.nome || '')}</b><br>Digite seu PIN</p>
-    <div class="kds-pin-dots">${[0, 1, 2, 3].map(i => `<i class="${i < _kds.pin.length ? 'on' : ''}"></i>`).join('')}</div>
-    <div class="kds-pin-pad">
-      ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button onclick="_kdsPinTecla('${n}')">${n}</button>`).join('')}
-      <button onclick="_kdsPinTecla('apagar')">⌫</button><button onclick="_kdsPinTecla('0')">0</button><button onclick="_kdsFecharModal()" style="font-size:1rem">Sair</button>
-    </div>
-    <div class="kds-pin-erro">${_kdsEsc(m.erro || '')}</div>
-  </div>`;
-}
-
-async function _kdsPinTecla(t) {
-  const m = _kds.modal;
-  if (!m || m.tipo !== 'pin' || m.enviando) return;
-  if (t === 'apagar') _kds.pin = _kds.pin.slice(0, -1);
-  else if (_kds.pin.length < 4) _kds.pin += t;
-  m.erro = '';
-  _kdsRefazerModal();
-  if (_kds.pin.length < 4) return;
-  m.enviando = true;
-  const ok = await _kdsEntrar(m.operadorId, _kds.pin);
-  m.enviando = false;
-  if (!ok) { _kds.pin = ''; m.erro = 'PIN incorreto'; _kdsRefazerModal(); }
-}
-
-async function _kdsEntrar(operadorId, pin) {
-  const { data, error } = await _kdsDb().rpc('kds_entrar', { p_operador: operadorId, p_pin: pin, p_posto: 'pizzaiolo', p_dispositivo: _kdsDispositivo() });
-  if (error || !data) return false;
-  const op = _kds.operadores.find(o => o.id === operadorId);
-  _kds.sessao = { operador_id: operadorId, nome: op?.nome || 'Pizzaiolo', jornada_id: data };
+async function _kdsEntrarUsuario() {
+  const u = getCurrentUser();
+  if (!u || _kds.entrando) return;
+  _kds.entrando = true;
+  const { data, error } = await _kdsDb().rpc('kds_entrar_usuario', { p_usuario_id: String(u.id), p_nome: u.name, p_posto: 'pizzaiolo', p_dispositivo: _kdsDispositivo() });
+  _kds.entrando = false;
+  if (error || !data) { _kdsAviso('Não foi possível abrir sua jornada no KDS', 'err'); _kds.erroEntrada = true; _kdsRender(); return; }
+  _kds.sessao = { usuario_id: String(u.id), operador_id: data.operador_id, nome: u.name, jornada_id: data.jornada_id };
   _kdsLs('vtp_kds_sessao', _kds.sessao);
-  _kds.pin = ''; _kds.modal = null; _kds.busca = '';
   _kdsRender(); _kdsCarregar();
-  return true;
 }
 
-function _kdsAbrirDiarista() { _kdsAbrirModal({ tipo: 'diarista' }); }
+// ── Configuração (gestor): tempos ──────────────────────────────
 
-function _kdsHtmlDiarista() {
-  return `<div class="kds-dlg">
+function _kdsHtmlConfig() {
+  const c = _kdsCfg();
+  return `<div class="kds-dlg" style="max-width:560px">
     <button class="kds-dlg-x" onclick="_kdsFecharModal()">${KDS_SVG.x}</button>
-    <h3 style="margin:0 40px 6px 0;font-size:1.3rem">Primeiro acesso — diarista</h3>
-    <p style="color:var(--kds-lilas);margin:0 0 16px">Crie seu acesso para hoje. A sua produção fica registrada no seu nome.</p>
+    <h3 style="margin:0 40px 14px 0;font-size:1.3rem">Tempos do KDS</h3>
     <div class="kds-form">
-      <label>Seu nome<input class="kds-input" id="kdsDiaNome" autocomplete="off" placeholder="Nome e sobrenome"></label>
-      <label>Crie um PIN de 4 números<input class="kds-input" id="kdsDiaPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••"></label>
-      <button class="kds-btn kds-btn-sim kds-btn-bloco" id="kdsDiaBtn" onclick="_kdsSalvarDiarista()">Criar acesso e entrar</button>
-    </div>
-  </div>`;
-}
-
-async function _kdsSalvarDiarista() {
-  const nome = document.getElementById('kdsDiaNome')?.value.trim();
-  const pin  = document.getElementById('kdsDiaPin')?.value.trim();
-  if (!nome) { _kdsAviso('Informe seu nome', 'err'); return; }
-  if (!/^\d{4}$/.test(pin || '')) { _kdsAviso('O PIN deve ter 4 números', 'err'); return; }
-  const btn = document.getElementById('kdsDiaBtn'); if (btn) btn.disabled = true;
-  const { data: id, error } = await _kdsDb().rpc('kds_operador_salvar', {
-    p_id: null, p_nome: nome, p_funcao: 'pizzaiolo', p_diarista: true, p_pin: pin, p_ativo: true, p_criado_por: 'tablet ' + _kdsDispositivo(),
-  });
-  if (error) { if (btn) btn.disabled = false; _kdsAviso(error.message, 'err'); return; }
-  _kds.operadores.push({ id, nome, funcao: 'pizzaiolo', diarista: true, ativo: true });
-  if (!(await _kdsEntrar(id, pin))) _kdsAviso('Acesso criado, mas não foi possível entrar — tente pelo seu nome', 'err');
-}
-
-// ── Configuração (gestor): pizzaiolos e tempos ─────────────────
-
-function _kdsHtmlConfig(m) {
-  const abas = `<div class="kds-cfg-tabs">
-    <button class="${m.aba === 'operadores' ? 'on' : ''}" onclick="_kdsAbrirModal({tipo:'config',aba:'operadores'})">Pizzaiolos e finalização</button>
-    <button class="${m.aba === 'tempos' ? 'on' : ''}" onclick="_kdsAbrirModal({tipo:'config',aba:'tempos'})">Tempos</button>
-  </div>`;
-  let corpo;
-  if (m.aba === 'tempos') {
-    const c = _kdsCfg();
-    corpo = `<div class="kds-form">
       <div class="kds-form-2">
         <label>Tempo de preparo (min)<input class="kds-input" id="kdsCfgPrep" type="number" min="1" value="${c.metaPreparo}"></label>
         <label>Tempo de entrega (min)<input class="kds-input" id="kdsCfgEnt" type="number" min="0" value="${c.metaEntrega}"></label>
       </div>
       <p style="color:var(--kds-lilas);font-size:.85rem;margin:0">O pedido fica com o alerta 🔴 quando passa do tempo de preparo. Os agendados entram na fila com preparo + entrega de antecedência. Ajuste aqui sempre que mudar o tempo no CW/iFood/99.</p>
       <button class="kds-btn kds-btn-roxo kds-btn-bloco" onclick="_kdsSalvarTempos()">Salvar tempos</button>
-    </div>`;
-  } else if (m.editando !== undefined) {
-    const o = m.editando ? _kds.operadores.find(x => x.id === m.editando) : null;
-    corpo = `<div class="kds-form">
-      <label>Nome<input class="kds-input" id="kdsOpNome" value="${_kdsEsc(o?.nome || '')}"></label>
-      <div class="kds-form-2">
-        <label>Função<select class="kds-input" id="kdsOpFuncao">
-          ${[['pizzaiolo', 'Pizzaiolo'], ['finalizacao', 'Finalização'], ['ambos', 'Pizzaiolo e finalização']].map(([v, t]) => `<option value="${v}"${(o?.funcao || 'pizzaiolo') === v ? ' selected' : ''}>${t}</option>`).join('')}
-        </select></label>
-        <label>${o ? 'Novo PIN (vazio = manter)' : 'PIN (4 números)'}<input class="kds-input" id="kdsOpPin" type="password" inputmode="numeric" maxlength="4" autocomplete="off"></label>
-      </div>
-      <label class="kds-check"><input type="checkbox" id="kdsOpDiarista"${o?.diarista ? ' checked' : ''}> Diarista</label>
-      ${o ? `<label class="kds-check"><input type="checkbox" id="kdsOpAtivo"${o.ativo ? ' checked' : ''}> Ativo (aparece no login dos tablets)</label>` : ''}
-      <div class="kds-dlg-btns" style="justify-content:flex-end">
-        <button class="kds-btn kds-btn-nao" onclick="_kdsAbrirModal({tipo:'config',aba:'operadores'})">Cancelar</button>
-        <button class="kds-btn kds-btn-roxo" onclick="_kdsSalvarOperador(${o ? `'${o.id}'` : 'null'})">Salvar</button>
-      </div>
-    </div>`;
-  } else {
-    const funcao = { pizzaiolo: 'Pizzaiolo', finalizacao: 'Finalização', ambos: 'Pizzaiolo e finalização' };
-    corpo = `<button class="kds-btn kds-btn-roxo" onclick="_kdsAbrirModal({tipo:'config',aba:'operadores',editando:null})">+ Novo</button>
-      <div style="margin-top:8px">${_kds.operadores.map(o => `
-        <div class="kds-cfg-ln${o.ativo ? '' : ' off'}">
-          <div><b>${_kdsEsc(o.nome)}</b><small>${funcao[o.funcao] || o.funcao}${o.diarista ? ' · Diarista' : ''}${o.ativo ? '' : ' · Inativo'}</small></div>
-          <button class="kds-btn kds-btn-nao" style="min-width:0;padding:8px 14px" onclick="_kdsAbrirModal({tipo:'config',aba:'operadores',editando:'${o.id}'})">Editar</button>
-        </div>`).join('') || '<div class="kds-ficha-vazia">Nenhum cadastrado.</div>'}</div>`;
-  }
-  return `<div class="kds-dlg" style="max-width:560px">
-    <button class="kds-dlg-x" onclick="_kdsFecharModal()">${KDS_SVG.x}</button>
-    ${abas}${corpo}
+    </div>
   </div>`;
-}
-
-async function _kdsSalvarOperador(id) {
-  const nome = document.getElementById('kdsOpNome')?.value.trim();
-  const pin  = document.getElementById('kdsOpPin')?.value.trim() || null;
-  if (!nome) { _kdsAviso('Informe o nome', 'err'); return; }
-  if (pin && !/^\d{4}$/.test(pin)) { _kdsAviso('O PIN deve ter 4 números', 'err'); return; }
-  if (!id && !pin) { _kdsAviso('Informe o PIN', 'err'); return; }
-  const { error } = await _kdsDb().rpc('kds_operador_salvar', {
-    p_id: id, p_nome: nome, p_funcao: document.getElementById('kdsOpFuncao').value,
-    p_diarista: document.getElementById('kdsOpDiarista').checked, p_pin: pin,
-    p_ativo: id ? document.getElementById('kdsOpAtivo').checked : true, p_criado_por: getCurrentUser()?.name || null,
-  });
-  if (error) { _kdsAviso(error.message, 'err'); return; }
-  _kdsAviso('Salvo');
-  const { data } = await _kdsDb().from('kds_operadores').select('id,nome,funcao,diarista,ativo').order('nome');
-  _kds.operadores = data || _kds.operadores;
-  _kdsAbrirModal({ tipo: 'config', aba: 'operadores' });
-  if (!_kds.sessao) _kdsRender();
 }
 
 function _kdsSalvarTempos() {

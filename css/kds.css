@@ -153,24 +153,12 @@ body.kds-full .kds { min-height: 100vh; }
 
 .kds-obs { border: 1.5px solid var(--kds-lilas-claro); border-radius: 8px; background: #FAF7FF; padding: 8px 14px; color: var(--kds-vermelho); font-weight: 600; font-size: .95rem; }
 
-/* ── Login (quem está no posto) ────────────────────────────── */
-.kds-login-card { background: #fff; border: 1.5px solid var(--kds-lilas-claro); border-radius: 18px; padding: 22px 18px; max-width: 720px; margin: 0 auto; }
-.kds-login-card h2 { font-size: 1.35rem; font-weight: 800; margin: 0 0 4px; }
-.kds-login-card p  { color: var(--kds-lilas); margin: 0 0 16px; }
+/* ── Formulários ───────────────────────────────────────────── */
 .kds-input {
   width: 100%; box-sizing: border-box; border: 1.5px solid var(--kds-lilas-claro); border-radius: 10px;
   padding: 12px 14px; font: inherit; font-size: 1rem; color: #2b2b2b; outline: none; background: #fff; user-select: text;
 }
 .kds-input:focus { border-color: var(--kds-preparo); }
-.kds-ops { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
-.kds-op {
-  display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--kds-lilas-claro); border-radius: 12px;
-  background: var(--kds-bg); padding: 12px; text-align: left; color: var(--kds-roxo-kds); font-size: 1rem; font-weight: 600;
-}
-.kds-op-av { width: 38px; height: 38px; border-radius: 50%; background: var(--kds-roxo-kds); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
-.kds-op small { display: block; font-size: .72rem; font-weight: 500; color: var(--kds-laranja); }
-.kds-link { background: none; border: none; color: var(--kds-preparo); font-weight: 600; font-size: .95rem; padding: 8px 0; }
-
 /* ── Modais ────────────────────────────────────────────────── */
 .kds-ov {
   position: fixed; inset: 0; z-index: 900; background: rgba(40, 40, 46, .72);
@@ -245,14 +233,6 @@ body.kds-full .kds { min-height: 100vh; }
 .kds-ficha-ln.fin b { background: var(--kds-creme-num); }
 .kds-ficha-vazia { color: var(--kds-lilas); text-align: center; padding: 20px 0; }
 
-/* PIN */
-.kds-pin-dots { display: flex; justify-content: center; gap: 14px; margin: 16px 0 18px; }
-.kds-pin-dots i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--kds-preparo); }
-.kds-pin-dots i.on { background: var(--kds-preparo); }
-.kds-pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 280px; margin: 0 auto; }
-.kds-pin-pad button { height: 60px; border-radius: 12px; border: 1.5px solid var(--kds-lilas-claro); background: var(--kds-bg); font-size: 1.4rem; font-weight: 600; color: var(--kds-roxo-kds); }
-.kds-pin-erro { color: var(--kds-vermelho); text-align: center; font-weight: 600; min-height: 1.3em; margin-top: 10px; }
-
 /* Menu do engrenagem */
 .kds-menu {
   position: fixed; z-index: 950; background: #fff; border: 1.5px solid var(--kds-lilas-claro); border-radius: 14px;
@@ -276,16 +256,8 @@ body.kds-full .kds { min-height: 100vh; }
 .kds-tela em { font-style: normal; font-size: .72rem; font-weight: 700; color: var(--kds-laranja); text-transform: uppercase; letter-spacing: .04em; }
 
 /* Configuração (gestor) */
-.kds-cfg-tabs { display: flex; gap: 6px; margin: 0 40px 16px 0; }
-.kds-cfg-tabs button { border: none; border-radius: 8px; padding: 9px 14px; background: var(--kds-bg); color: var(--kds-lilas); font-weight: 600; }
-.kds-cfg-tabs button.on { background: var(--kds-preparo); color: #fff; }
-.kds-cfg-ln { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--kds-lilas-claro); }
-.kds-cfg-ln > div { flex: 1; min-width: 0; }
-.kds-cfg-ln small { display: block; color: var(--kds-lilas); }
-.kds-cfg-ln.off { opacity: .5; }
 .kds-form { display: flex; flex-direction: column; gap: 10px; }
 .kds-form label { font-size: .82rem; font-weight: 600; color: var(--kds-lilas); display: flex; flex-direction: column; gap: 4px; }
-.kds-form .kds-check { flex-direction: row; align-items: center; gap: 8px; color: var(--kds-roxo-kds); font-size: .95rem; }
 .kds-form-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 /* ── Tablet / desktop ──────────────────────────────────────── */
