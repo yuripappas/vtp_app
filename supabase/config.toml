@@ -18,3 +18,9 @@ verify_jwt = false
 # conferido dentro do código da function contra a tabela atd_cron_tokens.
 [functions.ig-token-refresh]
 verify_jwt = false
+
+# cw-webhook recebe os webhooks do Cardápio Web, que não mandam JWT do
+# Supabase — confere o próprio token (header X-Webhook-Token, secret
+# CW_WEBHOOK_TOKEN) dentro do código.
+[functions.cw-webhook]
+verify_jwt = false

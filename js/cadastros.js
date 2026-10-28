@@ -926,21 +926,53 @@ function _ftRenderTable() {
   `;
 }
 
+// Etapa em que o insumo entra na pizza — o KDS mostra na ficha técnica
+// (Montagem / Finalização). Sem etapa salva, vale a regra da casa: orégano
+// (ou manjericão, na Marguerita) nas salgadas; brigadeiros, Nutella e geleias
+// nas doces — tudo isso vai depois do forno.
+const _FT_FINALIZACAO_RE = /oregano|manjericao|brigadeiro|nutella|geleia/;
+function fichaEtapaIngrediente(row) {
+  if (row?.etapa) return row.etapa;
+  const ins = items.find(i => i.id === row?.item_id);
+  return _FT_FINALIZACAO_RE.test(_cwNorm(ins?.name || '')) ? 'finalizacao' : 'montagem';
+}
+
+// Só a ficha dos sabores (Opções) tem etapa — produto base e "outros" não vão pro KDS.
+function _ftComEtapa() {
+  return _ftMode === 'flat' && !!_fichaSel && !['produto', 'outro'].includes(_fichaSel.tipo);
+}
+
+function _ftEtapaBtn(i) {
+  const e = fichaEtapaIngrediente(_ftRows[i]);
+  return `<button type="button" class="ft-etapa ft-etapa-${e}" id="${_ftId('ftEtapa')}-${i}" onclick="_ftToggleEtapa(${i})"
+    title="Clique para trocar">${e === 'finalizacao' ? 'Finalização' : 'Montagem'}</button>`;
+}
+
+function _ftToggleEtapa(i) {
+  if (!_ftRows[i]) return;
+  _ftRows[i].etapa = fichaEtapaIngrediente(_ftRows[i]) === 'finalizacao' ? 'montagem' : 'finalizacao';
+  document.getElementById(`${_ftId('ftEtapa')}-${i}`)?.replaceWith(
+    Object.assign(document.createElement('template'), { innerHTML: _ftEtapaBtn(i) }).content);
+}
+
 // Tabela do modo 'flat' (Produto/Opção) — 3 colunas (Insumo, Qtde, Custo),
-// busca por texto em vez de dropdown, sem assumir unidade de medida.
+// busca por texto em vez de dropdown, sem assumir unidade de medida. Na ficha
+// de sabor entra a 4ª coluna, Etapa (Montagem/Finalização), usada pelo KDS.
 function _ftRenderTableFlat(el) {
   const total = _ftCalcTotalCusto();
+  const etapa = _ftComEtapa();
+  const cls   = etapa ? ' ft-com-etapa' : '';
 
   el.innerHTML = `
-    <div class="ft-table-head">
-      <span>Insumo</span><span style="text-align:right">Qtde</span><span style="text-align:right">Custo</span><span></span>
+    <div class="ft-table-head${cls}">
+      <span>Insumo</span><span style="text-align:right">Qtde</span>${etapa ? '<span>Etapa</span>' : ''}<span style="text-align:right">Custo</span><span></span>
     </div>
     ${_ftRows.map((row, i) => {
       const ins   = items.find(x => x.id === row.item_id);
       const custo = ins ? (row.peso_g || 0) * ins.cost : 0;
       const pct   = total > 0 ? (custo / total) * 100 : 0;
       return `
-        <div class="ft-table-row">
+        <div class="ft-table-row${cls}">
           <div class="ft-ac-wrap">
             <input type="text" id="${_ftId('ftSearch')}-${i}" class="inp" placeholder="Pesquise um insumo ou processado..."
               value="${ins?.name ? ins.name.replace(/"/g,'&quot;') : ''}"
@@ -955,6 +987,7 @@ function _ftRenderTableFlat(el) {
               oninput="_ftUpdateQtdFlat(${i})">
             <span class="ft-qtd-unit" id="${_ftId('ftUnit')}-${i}">${ins?.unit || ''}</span>
           </div>
+          ${etapa ? `<div>${_ftEtapaBtn(i)}</div>` : ''}
           <div class="ft-custo-cell">
             <div id="${_ftId('ftCustoLn')}-${i}" style="font-weight:700;color:${custo > 0 ? 'var(--text)' : 'var(--muted)'}">${custo > 0 ? 'R$ ' + fmt(custo) : '—'}</div>
             <span class="ft-custo-pct" id="${_ftId('ftCustoPct')}-${i}">${custo > 0 ? fmt(pct) + '%' : ''}</span>
@@ -965,8 +998,8 @@ function _ftRenderTableFlat(el) {
         </div>
       `;
     }).join('')}
-    <div class="ft-table-total">
-      <span>TOTAL</span><span></span>
+    <div class="ft-table-total${cls}">
+      <span>TOTAL</span><span></span>${etapa ? '<span></span>' : ''}
       <span id="${_ftId('ftTotalCusto')}" style="text-align:right;color:var(--purple)">R$ ${fmt(total)}</span>
       <span></span>
     </div>
@@ -1815,6 +1848,8 @@ function _salvarFicha() {
     saveP();
   } else {
     const categoria = document.getElementById('xCategoria')?.value || 'salgada';
+    // Grava a etapa de cada insumo (a sugerida pela regra da casa, se não mexeram)
+    fichaTecnica.ingredientes = fichaTecnica.ingredientes.map(r => ({ ...r, etapa: fichaEtapaIngrediente(r) }));
     if (_fichaSel.id) {
       const idx = opcoes.findIndex(o => o.id === _fichaSel.id);
       if (idx >= 0) opcoes[idx] = { ...opcoes[idx], nome, categoria, fichaTecnica };

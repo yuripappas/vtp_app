@@ -60,10 +60,16 @@ Deno.serve(async (req) => {
     : { data: [] as any[] };
   const existentesMap = new Map((existentes || []).map(r => [r.id, r]));
 
-  // Sincroniza TODOS os pedidos retornados pela API (a API já retorna só os
-  // recentes/ativos, volume pequeno). Remover o filtro por cw_updated_at evita
-  // perder pedidos quando o sync ficou parado por algum período.
-  const pendentes = summaries;
+  // Só busca o detalhe do pedido novo ou que mudou desde a última gravação.
+  // Com o sync a cada minuto (e o webhook do KDS), buscar todos os ~8h de
+  // pedidos toda vez estourava o limite da API (300 req / 3 min). Comparar
+  // com o que já está GRAVADO (e não com a hora do último sync) continua
+  // seguro se o sync ficar parado: o que mudou nesse meio-tempo é buscado.
+  const pendentes = summaries.filter(s => {
+    const ex = existentesMap.get(s.id);
+    return !ex || ex.status !== s.status || !ex.cw_updated_at
+      || new Date(s.updated_at).getTime() > new Date(ex.cw_updated_at).getTime();
+  });
 
   let processados = 0, erros = 0;
 
@@ -84,7 +90,7 @@ Deno.serve(async (req) => {
     if (upsertErr) { erros += linhas.length; } else { processados = linhas.length; }
   }
 
-  return new Response(JSON.stringify({ total: summaries.length, processados, erros }), {
+  return new Response(JSON.stringify({ total: summaries.length, pendentes: pendentes.length, processados, erros }), {
     headers: { 'Content-Type': 'application/json' },
   });
 });

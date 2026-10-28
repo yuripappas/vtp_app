@@ -289,6 +289,7 @@ const modInfo = {
   rh:             { title: 'RH',                     sub: 'Escala · Presença · Horas Extras · Materiais · Indicadores' },
   auditoria:      { title: 'Auditoria',              sub: 'Log de ações · Rastreabilidade · Histórico do sistema' },
   etiquetagem:    { title: 'Etiquetagem',             sub: 'Impressão · Validades · Produção · Cadastros' },
+  kds:            { title: 'KDS',                     sub: 'Pizzaiolo · Finalização · Pedido' },
 };
 
 // ─── Hash-based routing ────────────────────────────────────────
@@ -511,6 +512,8 @@ function goModule(mod) {
 
   // Mostra widget iFood apenas no Omnichannel
   document.body.classList.toggle('vtp-omnichannel', mod === 'omnichannel');
+  // Tela cheia do KDS (esconde sidebar/topbar) só vale dentro do KDS
+  if (mod !== 'kds') document.body.classList.remove('kds-full');
 
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
   // Submódulos de Operação destacam o item "Operação" no sidebar
@@ -570,6 +573,7 @@ function goModule(mod) {
   else if (mod === 'rh')           renderRh();
   else if (mod === 'auditoria')    renderAuditoria();
   else if (mod === 'etiquetagem')  renderEtiquetagem();
+  else if (mod === 'kds')          renderKds();
 
   // Fase 1: re-fetch em background — atualiza se dados mudaram desde o último acesso
   if (mod !== 'omnichannel') _vtpRefreshMod(mod);

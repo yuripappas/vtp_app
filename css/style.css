@@ -1256,6 +1256,16 @@ svg { display: block; }
   padding: 12px 14px; background: var(--surface2); border-radius: 0 0 var(--r8) var(--r8);
   font-size: .92rem; font-weight: 700;
 }
+.ft-table-head.ft-com-etapa, .ft-table-row.ft-com-etapa, .ft-table-total.ft-com-etapa {
+  grid-template-columns: 1fr 140px 120px 130px 36px;
+}
+.ft-etapa {
+  border: none; border-radius: var(--radius-pill); padding: 5px 12px; cursor: pointer;
+  font: inherit; font-size: .76rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+}
+.ft-etapa::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.ft-etapa-montagem    { background: #F3EEFF; color: #B854F8; }
+.ft-etapa-finalizacao { background: #F6E7C5; color: #C98A0B; }
 .ft-qtd-cell { display: flex; align-items: center; gap: 6px; }
 .ft-qtd-cell input { text-align: right; }
 .ft-qtd-unit { font-size: .78rem; color: var(--muted); min-width: 22px; }
@@ -1283,7 +1293,7 @@ svg { display: block; }
     grid-template-columns: 1fr; gap: 8px; padding: 14px;
     border-radius: var(--r8); border: 1.5px solid var(--border); margin-bottom: 8px;
   }
-  .ft-table-total { grid-template-columns: 1fr; }
+  .ft-table-total, .ft-table-total.ft-com-etapa, .ft-table-row.ft-com-etapa { grid-template-columns: 1fr; }
   .ft-list-row { padding: 13px 14px; }
   .ft-list-name { font-size: .92rem; }
 }

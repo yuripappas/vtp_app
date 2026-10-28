@@ -1,0 +1,322 @@
+/* ============================================================
+   VTP — KDS (Kitchen Display)
+   Cores e proporções do mockup DS/KDS_v3.pdf. As cores de status são
+   mais vivas que as semânticas do app de propósito: a tela é lida de
+   longe, na cozinha, com luz forte.
+   ============================================================ */
+
+/* Variáveis no :root porque modais e o menu ficam fora do .kds */
+:root {
+  --kds-bg:          #F3EEFF;
+  --kds-roxo:        var(--brand-purple, #6B21D4);
+  --kds-roxo-kds:    #7518CD;
+  --kds-lilas:       #BFB3F4;   /* aguardando · textos apagados */
+  --kds-lilas-claro: #DFD6FA;   /* bordas · chips */
+  --kds-card-off:    #F3EEFF;   /* pizza já montada */
+  --kds-preparo:     #B854F8;
+  --kds-final:       #3FA9F5;
+  --kds-laranja:     #FFA500;
+  --kds-verde:       #7AC943;
+  --kds-vermelho:    #FF1D25;
+  --kds-cinza:       #999999;
+  --kds-creme:       #F6E7C5;
+  --kds-creme-num:   #FCB333;
+}
+
+.kds, #kdsModal, .kds-menu { font-family: var(--font-sans); -webkit-tap-highlight-color: transparent; }
+#kdsModal button, .kds-menu button { font-family: inherit; cursor: pointer; }
+
+.kds {
+  background: var(--kds-bg);
+  min-height: calc(100vh - 56px);
+  padding: 16px;
+  font-family: var(--font-sans);
+  color: var(--kds-roxo-kds);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+body.kds-full .global-topbar,
+body.kds-full .sidebar-wrap,
+body.kds-full #sbToggle,
+body.kds-full #mobileTopbar { display: none !important; }
+body.kds-full .app { margin-top: 0 !important; }
+body.kds-full .kds { min-height: 100vh; }
+
+.kds button { font-family: inherit; cursor: pointer; }
+.kds svg { flex-shrink: 0; }
+
+/* ── Cabeçalho ─────────────────────────────────────────────── */
+.kds-top {
+  display: flex; align-items: center; gap: 14px;
+  background: #fff; border: 1.5px solid var(--kds-lilas-claro); border-radius: 18px;
+  padding: 10px 12px; margin-bottom: 14px;
+}
+.kds-ico-btn {
+  width: 46px; height: 46px; border-radius: 10px; border: 1.5px solid var(--kds-lilas-claro);
+  background: var(--kds-bg); color: var(--kds-roxo-kds);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.kds-top-title { flex: 1; font-size: 1.15rem; font-weight: 500; color: #2b2b2b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kds-top-counts { display: flex; gap: 18px; }
+.kds-count { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.kds-count b { font-size: 1.15rem; font-weight: 600; }
+.kds-count span { font-size: .78rem; }
+.kds-count-ag { color: var(--kds-lilas); }
+.kds-count-in { color: var(--kds-laranja); }
+
+/* ── Performance do pizzaiolo ──────────────────────────────── */
+.kds-perf { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 0 2px 16px; flex-wrap: wrap; }
+.kds-perf-nome { font-size: 1.25rem; font-weight: 700; color: var(--kds-roxo-kds); line-height: 1.1; }
+.kds-perf-sub  { font-size: .95rem; color: var(--kds-lilas); }
+.kds-perf-kpis { display: flex; gap: 8px; }
+.kds-kpi { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.kds-kpi > span { font-size: .7rem; color: var(--kds-lilas); }
+.kds-kpi > b {
+  display: inline-flex; align-items: center; gap: 6px; background: #fff; border-radius: 10px;
+  padding: 6px 10px; font-size: 1.15rem; font-weight: 600; color: var(--kds-roxo-kds); min-width: 74px; justify-content: center;
+}
+
+/* ── Lista de pedidos ──────────────────────────────────────── */
+.kds-lista { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+.kds-vazio { text-align: center; padding: 60px 20px; color: var(--kds-lilas); font-size: 1rem; }
+.kds-vazio b { display: block; font-size: 1.2rem; color: var(--kds-roxo-kds); margin: 10px 0 4px; }
+
+.kds-ped { background: #fff; border: 1.5px solid var(--kds-lilas-claro); border-radius: 18px; overflow: hidden; }
+.kds-ped-head { background: var(--kds-roxo-kds); color: #fff; padding: 10px 14px 10px; position: relative; }
+.kds-ped-l1, .kds-ped-l2 { display: flex; align-items: center; gap: 10px; }
+.kds-ped-l2 { margin-top: 2px; }
+.kds-ped-tipo { color: var(--kds-preparo); display: inline-flex; width: 26px; justify-content: center; }
+.kds-ped-num  { font-size: 1.35rem; font-weight: 800; letter-spacing: -.01em; }
+.kds-ped-cancel-tag { font-size: 1.35rem; font-weight: 800; }
+.kds-ped-cli  { flex: 1; display: inline-flex; align-items: center; gap: 8px; font-size: .95rem; min-width: 0; }
+.kds-ped-cli > span:not(.kds-novo) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kds-ped-cli svg { color: var(--kds-preparo); }
+.kds-novo {
+  display: inline-flex; align-items: center; gap: 3px; border: 1.5px solid var(--kds-preparo); color: var(--kds-preparo);
+  border-radius: 5px; padding: 0 6px; font-size: .8rem; flex-shrink: 0;
+}
+.kds-canal {
+  margin-left: auto; border-radius: 5px; padding: 1px 8px; font-size: .9rem; font-weight: 600; white-space: nowrap;
+  background: #fff; color: var(--kds-vermelho); border: 2px solid var(--kds-vermelho);
+}
+.kds-canal-99food { color: #111; border-color: #FFCD00; }
+.kds-canal-99food em { color: #FFCD00; font-style: normal; }
+.kds-canal-keeta  { background: #FFCD00; border-color: #FFCD00; color: #111; }
+.kds-ped-tempo { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 1.2rem; font-weight: 700; white-space: nowrap; }
+.kds-ped-tempo i { width: 12px; height: 12px; border-radius: 50%; background: var(--kds-vermelho); box-shadow: 0 0 0 3px rgba(255,29,37,.35); display: none; }
+.kds-ped-tempo.atraso i { display: inline-block; }
+
+.kds-ped-cancel .kds-ped-head { background: var(--kds-vermelho); }
+.kds-ped-cancel .kds-ped-tipo, .kds-ped-cancel .kds-ped-num, .kds-ped-cancel .kds-ped-cli { color: rgba(255,255,255,.55); }
+.kds-ped-cancel .kds-ped-cli svg { color: rgba(255,255,255,.55); }
+.kds-ped-fechar {
+  position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,.22); color: #fff; display: inline-flex; align-items: center; justify-content: center;
+}
+.kds-ped-cancel .kds-canal { display: none; }
+.kds-ped-cancel-msg { background: #FFE8E9; color: var(--kds-vermelho); font-weight: 700; padding: 10px 14px; font-size: .92rem; }
+
+.kds-ped-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Pizza */
+.kds-pz {
+  display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center;
+  border: 1.5px solid var(--kds-lilas-claro); border-radius: 12px; padding: 12px 12px 12px 8px; background: #fff;
+  text-align: left; width: 100%; color: inherit;
+}
+.kds-pz-num {
+  width: 44px; height: 44px; border-radius: 50%; background: var(--kds-lilas); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem; font-weight: 500;
+}
+.kds-pz-info { border-left: 1.5px solid var(--kds-preparo); padding-left: 10px; min-width: 0; }
+.kds-pz-nome { font-size: 1.45rem; font-weight: 800; color: var(--kds-roxo-kds); line-height: 1.1; margin-bottom: 6px; white-space: nowrap; }
+.kds-pz-sabores { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.kds-chip { background: var(--kds-lilas-claro); color: var(--kds-roxo-kds); border-radius: 4px; padding: 2px 8px; font-size: .95rem; font-weight: 600; }
+.kds-chip-inteira { font-weight: 500; opacity: .75; margin-left: 4px; }
+.kds-pz-obs { color: var(--kds-vermelho); font-size: .85rem; font-weight: 600; margin-top: 6px; }
+.kds-pz-acao { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 96px; }
+.kds-pz-ico { width: 62px; height: 62px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; margin-bottom: 4px; }
+.kds-pz-tempo { font-size: 1rem; font-weight: 600; color: var(--kds-roxo-kds); font-variant-numeric: tabular-nums; }
+.kds-pz-st { font-size: .88rem; color: var(--kds-roxo-kds); text-align: center; line-height: 1.15; }
+
+.kds-pz-aguardando .kds-pz-ico { background: var(--kds-lilas); }
+.kds-pz-em_preparo .kds-pz-ico { background: var(--kds-preparo); }
+.kds-pz-outro .kds-pz-ico { background: var(--kds-lilas-claro); color: var(--kds-preparo); }
+.kds-pz-feita { background: var(--kds-card-off); }
+.kds-pz-feita .kds-pz-num  { background: var(--kds-lilas-claro); }
+.kds-pz-feita .kds-pz-nome, .kds-pz-feita .kds-pz-tempo, .kds-pz-feita .kds-pz-st { color: var(--kds-lilas); }
+.kds-pz-feita .kds-chip { color: var(--kds-lilas); }
+.kds-pz-feita .kds-pz-ico { background: var(--kds-lilas-claro); }
+.kds-pz-feita .kds-pz-info { border-left-color: var(--kds-lilas); }
+.kds-pz-bloq { opacity: .55; }
+.kds-pz:active:not(.kds-pz-feita) { transform: scale(.99); }
+
+.kds-obs { border: 1.5px solid var(--kds-lilas-claro); border-radius: 8px; background: #FAF7FF; padding: 8px 14px; color: var(--kds-vermelho); font-weight: 600; font-size: .95rem; }
+
+/* ── Login (quem está no posto) ────────────────────────────── */
+.kds-login-card { background: #fff; border: 1.5px solid var(--kds-lilas-claro); border-radius: 18px; padding: 22px 18px; max-width: 720px; margin: 0 auto; }
+.kds-login-card h2 { font-size: 1.35rem; font-weight: 800; margin: 0 0 4px; }
+.kds-login-card p  { color: var(--kds-lilas); margin: 0 0 16px; }
+.kds-input {
+  width: 100%; box-sizing: border-box; border: 1.5px solid var(--kds-lilas-claro); border-radius: 10px;
+  padding: 12px 14px; font: inherit; font-size: 1rem; color: #2b2b2b; outline: none; background: #fff; user-select: text;
+}
+.kds-input:focus { border-color: var(--kds-preparo); }
+.kds-ops { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+.kds-op {
+  display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--kds-lilas-claro); border-radius: 12px;
+  background: var(--kds-bg); padding: 12px; text-align: left; color: var(--kds-roxo-kds); font-size: 1rem; font-weight: 600;
+}
+.kds-op-av { width: 38px; height: 38px; border-radius: 50%; background: var(--kds-roxo-kds); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+.kds-op small { display: block; font-size: .72rem; font-weight: 500; color: var(--kds-laranja); }
+.kds-link { background: none; border: none; color: var(--kds-preparo); font-weight: 600; font-size: .95rem; padding: 8px 0; }
+
+/* ── Modais ────────────────────────────────────────────────── */
+.kds-ov {
+  position: fixed; inset: 0; z-index: 900; background: rgba(40, 40, 46, .72);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+.kds-dlg {
+  background: #fff; border-radius: 28px; width: 100%; max-width: 440px; max-height: calc(100vh - 36px);
+  overflow-y: auto; padding: 26px 22px; position: relative; color: var(--kds-roxo-kds);
+}
+.kds-dlg-sm { max-width: 340px; text-align: center; padding: 24px 22px; }
+.kds-dlg-x {
+  position: absolute; top: 14px; right: 14px; width: 36px; height: 36px; border-radius: 50%; border: none;
+  background: var(--kds-bg); color: var(--kds-roxo-kds); display: inline-flex; align-items: center; justify-content: center;
+}
+.kds-dlg-ico { width: 92px; height: 92px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; color: #fff; }
+.kds-dlg-txt { font-size: 1.05rem; line-height: 1.45; margin: 0 0 20px; }
+.kds-dlg-btns { display: flex; gap: 12px; justify-content: center; }
+.kds-btn { border: none; border-radius: 6px; padding: 12px 18px; font-size: 1rem; font-weight: 500; color: #fff; min-width: 108px; }
+.kds-btn-nao  { background: var(--kds-cinza); }
+.kds-btn-sim  { background: var(--kds-verde); }
+.kds-btn-roxo { background: var(--kds-roxo-kds); }
+.kds-btn-bloco { width: 100%; }
+.kds-btn:disabled { opacity: .6; }
+.kds-bg-preparo { background: var(--kds-preparo); }
+
+/* Montagem (Tela 3) */
+.kds-mont-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; border-bottom: 1.5px solid var(--kds-lilas-claro); padding-bottom: 8px; margin: 0 40px 14px 0; }
+.kds-mont-head h3 { margin: 0; font-size: 1.45rem; font-weight: 500; }
+.kds-mont-head span { font-size: 1.7rem; font-weight: 700; color: var(--kds-lilas); white-space: nowrap; }
+.kds-mont-head span small { font-weight: 400; }
+.kds-mont-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.kds-mont-tabs.um { grid-template-columns: 1fr; }
+.kds-mont-tab {
+  background: var(--kds-roxo-kds); color: #fff; border: none; border-radius: 6px; padding: 10px 12px;
+  font-size: .98rem; font-weight: 600; text-align: left; line-height: 1.25; min-height: 50px;
+}
+.kds-foto { position: relative; aspect-ratio: 1 / 1; width: min(100%, 42vh); margin: 0 auto; background: var(--kds-bg); border-radius: 14px; overflow: hidden; }
+.kds-foto-meia { position: absolute; inset: 4%; border: none; padding: 0; background: none; }
+.kds-foto-meia img, .kds-foto-meia .kds-foto-vazia { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+.kds-foto.meio .kds-foto-esq { clip-path: inset(0 50% 0 0); transform: translateX(-1.2%); }
+.kds-foto.meio .kds-foto-dir { clip-path: inset(0 0 0 50%); transform: translateX(1.2%); }
+.kds-foto.meio::after { content: ''; position: absolute; top: 3%; bottom: 3%; left: calc(50% - 2px); width: 4px; background: #fff; }
+.kds-foto-vazia {
+  border-radius: 50%; background: radial-gradient(circle, #F6D9A8 0 58%, #E8B46E 59% 64%, #DFD6FA 65%);
+  display: flex !important; align-items: center; justify-content: center; text-align: center;
+  color: var(--kds-roxo-kds); font-weight: 700; font-size: 1rem; padding: 18%; box-sizing: border-box;
+}
+.kds-foto.meio .kds-foto-esq .kds-foto-vazia { padding-right: 54%; }
+.kds-foto.meio .kds-foto-dir .kds-foto-vazia { padding-left: 54%; }
+.kds-foto-dica { text-align: center; font-size: .78rem; color: var(--kds-lilas); margin: 6px 0 0; }
+.kds-mont-obs { margin: 14px 0 4px; }
+.kds-mont-obs span { display: block; color: var(--kds-lilas); font-size: .95rem; }
+.kds-mont-obs b { color: var(--kds-vermelho); font-size: 1.45rem; font-weight: 700; line-height: 1.2; }
+.kds-btn-montagem {
+  display: flex; align-items: center; justify-content: center; gap: 12px; margin: 22px auto 8px; width: 82%;
+  background: var(--kds-verde); color: #fff; border: none; border-radius: 6px; padding: 14px; font-size: 1.25rem;
+}
+.kds-mont-timer { text-align: center; font-size: 2.6rem; font-weight: 500; color: var(--kds-roxo-kds); font-variant-numeric: tabular-nums; }
+.kds-mont-devolver { display: block; margin: 6px auto 0; background: none; border: none; color: var(--kds-lilas); font-size: .85rem; text-decoration: underline; }
+
+/* Ficha técnica (Tela 4) */
+.kds-ficha-head { display: flex; align-items: flex-end; gap: 10px; border-bottom: 1.5px solid var(--kds-lilas-claro); padding-bottom: 8px; margin-bottom: 18px; }
+.kds-ficha-head h4 { margin: 0; flex: 1; font-size: 1.15rem; font-weight: 600; color: var(--kds-lilas); }
+.kds-ficha-porcao { color: var(--kds-lilas); font-size: .9rem; }
+.kds-ficha-leg { display: flex; flex-direction: column; font-size: .85rem; color: var(--kds-lilas); line-height: 1.2; }
+.kds-ficha-leg i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.kds-ficha-nome { font-size: 1.4rem; font-weight: 700; margin: 0 0 14px; }
+.kds-ficha-lista { display: flex; flex-direction: column; gap: 8px; }
+.kds-ficha-ln { display: flex; align-items: center; gap: 12px; background: var(--kds-bg); border-radius: 8px; padding: 10px 12px; color: #1f1f1f; font-size: 1rem; }
+.kds-ficha-ln b { width: 32px; height: 32px; border-radius: 50%; background: var(--kds-lilas); color: #fff; font-weight: 400; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.kds-ficha-ln.fin { background: var(--kds-creme); }
+.kds-ficha-ln.fin b { background: var(--kds-creme-num); }
+.kds-ficha-vazia { color: var(--kds-lilas); text-align: center; padding: 20px 0; }
+
+/* PIN */
+.kds-pin-dots { display: flex; justify-content: center; gap: 14px; margin: 16px 0 18px; }
+.kds-pin-dots i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--kds-preparo); }
+.kds-pin-dots i.on { background: var(--kds-preparo); }
+.kds-pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 280px; margin: 0 auto; }
+.kds-pin-pad button { height: 60px; border-radius: 12px; border: 1.5px solid var(--kds-lilas-claro); background: var(--kds-bg); font-size: 1.4rem; font-weight: 600; color: var(--kds-roxo-kds); }
+.kds-pin-erro { color: var(--kds-vermelho); text-align: center; font-weight: 600; min-height: 1.3em; margin-top: 10px; }
+
+/* Menu do engrenagem */
+.kds-menu {
+  position: fixed; z-index: 950; background: #fff; border: 1.5px solid var(--kds-lilas-claro); border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(40, 20, 80, .18); padding: 6px; min-width: 230px;
+}
+.kds-menu button {
+  display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; border-radius: 10px;
+  padding: 12px; font-size: .98rem; color: var(--kds-roxo-kds); text-align: left;
+}
+.kds-menu button:hover { background: var(--kds-bg); }
+
+/* Escolha da tela */
+.kds-telas { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; max-width: 900px; margin: 0 auto; }
+.kds-tela {
+  background: #fff; border: 1.5px solid var(--kds-lilas-claro); border-radius: 18px; padding: 22px 18px; text-align: left;
+  display: flex; flex-direction: column; gap: 8px; color: var(--kds-roxo-kds);
+}
+.kds-tela b { font-size: 1.25rem; }
+.kds-tela span { color: var(--kds-lilas); font-size: .92rem; }
+.kds-tela:disabled { opacity: .55; cursor: default; }
+.kds-tela em { font-style: normal; font-size: .72rem; font-weight: 700; color: var(--kds-laranja); text-transform: uppercase; letter-spacing: .04em; }
+
+/* Configuração (gestor) */
+.kds-cfg-tabs { display: flex; gap: 6px; margin: 0 40px 16px 0; }
+.kds-cfg-tabs button { border: none; border-radius: 8px; padding: 9px 14px; background: var(--kds-bg); color: var(--kds-lilas); font-weight: 600; }
+.kds-cfg-tabs button.on { background: var(--kds-preparo); color: #fff; }
+.kds-cfg-ln { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--kds-lilas-claro); }
+.kds-cfg-ln > div { flex: 1; min-width: 0; }
+.kds-cfg-ln small { display: block; color: var(--kds-lilas); }
+.kds-cfg-ln.off { opacity: .5; }
+.kds-form { display: flex; flex-direction: column; gap: 10px; }
+.kds-form label { font-size: .82rem; font-weight: 600; color: var(--kds-lilas); display: flex; flex-direction: column; gap: 4px; }
+.kds-form .kds-check { flex-direction: row; align-items: center; gap: 8px; color: var(--kds-roxo-kds); font-size: .95rem; }
+.kds-form-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ── Tablet / desktop ──────────────────────────────────────── */
+@media (min-width: 760px) {
+  .kds { padding: 20px; }
+  .kds-top-title { font-size: 1.35rem; }
+  .kds-count b { font-size: 1.4rem; }
+  .kds-count span { font-size: .9rem; }
+  .kds-perf-nome { font-size: 1.5rem; }
+  .kds-kpi > b { font-size: 1.4rem; min-width: 100px; padding: 8px 14px; }
+  .kds-kpi > span { font-size: .8rem; }
+  .kds-lista { grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); }
+}
+@media (max-width: 420px) {
+  .kds { padding: 12px; }
+  .kds-top { gap: 8px; padding: 8px; }
+  .kds-ico-btn { width: 40px; height: 40px; }
+  .kds-top-title { font-size: .9rem; }
+  .kds-top-counts { gap: 8px; }
+  .kds-count b { font-size: 1rem; }
+  .kds-count span { font-size: .68rem; }
+  .kds-perf-kpis { width: 100%; }
+  .kds-kpi { flex: 1; }
+  .kds-kpi > b { min-width: 0; width: 100%; box-sizing: border-box; font-size: 1.05rem; padding: 6px; }
+  .kds-pz { grid-template-columns: 40px 1fr auto; padding: 10px 8px 10px 6px; }
+  .kds-pz-num { width: 36px; height: 36px; font-size: 1rem; }
+  .kds-pz-nome { font-size: 1.2rem; }
+  .kds-pz-acao { min-width: 78px; }
+  .kds-pz-ico { width: 52px; height: 52px; }
+  .kds-chip { font-size: .85rem; }
+  .kds-mont-head span { font-size: 1.35rem; }
+  .kds-mont-timer { font-size: 2.1rem; }
+  .kds-btn-montagem { width: 100%; font-size: 1.1rem; }
+}

@@ -9,7 +9,8 @@
   <title>VTP360 — Vai Ter Pizza!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/tokens.css?v=118">
-  <link rel="stylesheet" href="css/style.css?v=126">
+  <link rel="stylesheet" href="css/style.css?v=127">
+  <link rel="stylesheet" href="css/kds.css?v=1">
 </head>
 <body>
 
@@ -134,6 +135,11 @@
         <button class="sb-item" id="nav-etiquetagem" onclick="goModule('etiquetagem')">
           <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
           <span class="sb-label">Etiquetagem</span>
+        </button>
+
+        <button class="sb-item" id="nav-kds" onclick="goModule('kds')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><path d="M7 8h4M7 12h7"/></svg></span>
+          <span class="sb-label">KDS</span>
         </button>
 
         <button class="sb-item" id="nav-checklist" onclick="goModule('checklist')">
@@ -505,6 +511,9 @@
 
       <!-- ETIQUETAGEM -->
       <div class="page" id="page-etiquetagem" style="padding:0"><div id="etqContent"></div></div>
+
+      <!-- KDS (Kitchen Display) -->
+      <div class="page" id="page-kds" style="padding:0"></div>
 
     </div>
   </div>
@@ -1321,7 +1330,7 @@
 <script src="js/icons.js?v=2"></script>
 <script src="js/db.js?v=118"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=258"></script>
+<script src="js/init.js?v=259"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">

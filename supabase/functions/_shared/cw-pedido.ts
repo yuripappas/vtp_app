@@ -124,6 +124,12 @@ export function montarLinha(det: any, existente: any, carimbarStatus = true) {
     customer_name:     det.customer?.name ?? null,
     customer_phone:    normalizarTelefone(det.customer),
     delivery_address:  det.delivery_address ?? null,
+    // Usados pelo KDS: previsão prometida ao cliente, observação geral,
+    // horário do agendamento e motivo do cancelamento.
+    estimated_time:      det.estimated_time ?? null,
+    observation:         det.observation ?? null,
+    schedule:            det.schedule ?? null,
+    cancellation_reason: det.cancellation_reason ?? null,
     // Cupom usado no pedido (atribuição de campanhas) — a API do CW ainda não
     // teve esse campo confirmado; tentamos os formatos mais prováveis e
     // gravamos null se nenhum existir (não impede o resto do sync).

@@ -30,6 +30,7 @@ const MODULE_PERMISSIONS = {
   rh:            ['gerente', 'supervisor'],
   auditoria:     ['gerente', 'supervisor'],
   etiquetagem:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
+  kds:           ['gerente', 'supervisor', 'comprador', 'funcionario'],
 };
 
 // Módulo → label de permissão granular (árvore de Perfis de Acesso em Configurações → Usuários).
