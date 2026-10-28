@@ -1,6 +1,7 @@
 /**
  * VTP Compras — Vai Ter Pizza!
- * kds.js — KDS (Kitchen Display) · Fase 1: KDS Pizzaiolo
+ * kds.js — KDS (Kitchen Display): núcleo + KDS Pizzaiolo
+ *   (KDS Finalização em kds-finalizacao.js; KDS Pedido e Desempenho em kds-pedido.js)
  *
  * O CW controla o PEDIDO; o KDS controla cada PIZZA (ver migration
  * 20261028120000_kds_base.sql). Fluxo do pizzaiolo:
@@ -50,6 +51,11 @@ const KDS_SVG = {
   cronometro:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#F5A800" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2M10 2.5h4M18.5 6l1.5-1.5"/></svg>',
   chapeu:  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#F5A800" stroke-width="1.8" stroke-linejoin="round"><path d="M7 14.5v5h10v-5M7 14.5A4.5 4.5 0 1 1 8.5 6a4.5 4.5 0 0 1 7 0 4.5 4.5 0 1 1 1.5 8.5Z"/></svg>',
   x:       '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  casa:    '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M3 9.5h18v3.5H3zM4.5 13h15v8h-15z"/><path fill="#fff" d="M11 9.5h2V21h-2z"/><path d="M12 9.5C10.5 5.5 6.5 5 6.5 7.3S10 9.5 12 9.5c2 0 5.5-.2 5.5-2.2S13.5 5.5 12 9.5Z"/></svg>',
+  copo:    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 3h12l-1.6 17.2a2 2 0 0 1-2 1.8H9.6a2 2 0 0 1-2-1.8Zm2.2 5 .3 3h7l.3-3Z"/></svg>',
+  filtro:  '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 4h18l-7 8.5V20l-4-2v-5.5Z"/></svg>',
+  borracha:'<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="m14.5 3.5 6 6-9 9H6l-3-3Zm-8 12 2 2h2l1.2-1.2-4-4L5.5 14Z"/><path d="M11 20h10v1.5H11z"/></svg>',
+  seta:    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>',
   estrela: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.6L12 17l-5.9 3.4 1.3-6.6-4.9-4.5 6.6-.8Z"/></svg>',
 };
 
@@ -57,8 +63,8 @@ let _kdsSb = null;
 function _kdsDb() { return _kdsSb || (_kdsSb = window._vtpSb || supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY)); }
 
 const _kds = {
-  tela: null,          // 'pizzaiolo' (Finalização e Pedido nas próximas fases)
-  sessao: null,        // { operador_id, nome, jornada_id }
+  tela: null,          // 'pizzaiolo' | 'finalizacao' | 'pedido' | 'desempenho'
+  sessao: null,        // { usuario_id, operador_id, nome, jornada_id, posto }
   operadores: [],
   cw: new Map(),       // cw_pedidos.id → pedido
   pedidos: new Map(),  // kds_pedidos.id → pedido do KDS
@@ -104,6 +110,25 @@ function _kdsNomeSabor(nome) {
 }
 function _kdsFrase(s) { const t = String(s || '').toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); }
 function _kdsAviso(msg, tipo = 'ok') { typeof toast === 'function' ? toast(msg, tipo) : alert(msg); }
+
+const KDS_MODAIS = {};  // tipo → (modal, pizza, pedido) => html — preenchido pelas outras telas
+const KDS_TITULOS = { pizzaiolo: 'KDS Pizzaiolo', finalizacao: 'KDS Finalização', pedido: 'KDS Pedido', desempenho: 'Desempenho' };
+
+function _kdsCancelado(cw) { return ['canceled', 'canceling'].includes(cw?.status); }
+function _kdsMotivoLabel(id) { return (typeof TIPOS_DESPERDICIO !== 'undefined' ? TIPOS_DESPERDICIO.find(t => t.id === id)?.label : null) || id || 'Interno'; }
+
+// O pedido do CW, ou — no pedido interno — um "pedido" com os mesmos campos,
+// para as telas tratarem os dois do mesmo jeito.
+function _kdsCwDe(ped) {
+  if (!ped) return null;
+  if (ped.origem !== 'interno') return _kds.cw.get(ped.cw_pedido_id) || null;
+  return {
+    id: 'int-' + ped.id, interno: true, display_id: ped.numero, order_type: 'interno', sales_channel: 'interno',
+    status: ped.cancelado_em ? 'canceled' : ped.concluido_em ? 'closed' : 'confirmed',
+    customer_name: ped.descricao || _kdsMotivoLabel(ped.motivo), observation: ped.observacao,
+    cw_created_at: ped.created_at, items: [], total: null, motivo: ped.motivo,
+  };
+}
 
 // ── Pedido CW → pizzas ─────────────────────────────────────────
 
@@ -160,7 +185,7 @@ async function _kdsCarregar() {
   try {
     const sb = _kdsDb();
     const desde = new Date(Date.now() - KDS_JANELA_H * 3600e3).toISOString();
-    const campos = 'id,display_id,status,order_type,order_timing,sales_channel,external_display_id,customer_id,customer_name,items,observation,schedule,cw_created_at';
+    const campos = 'id,display_id,status,order_type,order_timing,sales_channel,external_display_id,customer_id,customer_name,items,observation,schedule,cw_created_at,total,status_timestamps';
     const [cwRes, opsRes] = await Promise.all([
       sb.from('cw_pedidos').select(campos).or(`cw_created_at.gte.${desde},status.in.(confirmed,scheduled_confirmed)`).order('cw_created_at').limit(400),
       sb.from('kds_operadores').select('id,nome,usuario_id').order('nome'),
@@ -172,14 +197,20 @@ async function _kdsCarregar() {
 
     const lerPedidos = async () => {
       const ids = cw.map(p => p.id);
-      const { data, error } = ids.length ? await sb.from('kds_pedidos').select('*').in('cw_pedido_id', ids) : { data: [] };
-      if (error) throw error;
-      return data || [];
+      const [porCw, internos] = await Promise.all([
+        ids.length ? sb.from('kds_pedidos').select('*').in('cw_pedido_id', ids) : { data: [] },
+        // internos do turno, mais os que ainda estão abertos
+        sb.from('kds_pedidos').select('*').eq('origem', 'interno')
+          .or(`created_at.gte.${desde},and(cancelado_em.is.null,concluido_em.is.null)`).limit(200),
+      ]);
+      if (porCw.error) throw porCw.error;
+      if (internos.error) throw internos.error;
+      return [...(porCw.data || []), ...(internos.data || [])];
     };
     let peds = await lerPedidos();
 
     // Pedido ativo que ainda não entrou na cozinha → grava as pizzas
-    const jaTem = new Set(peds.map(x => x.cw_pedido_id));
+    const jaTem = new Set(peds.map(x => x.cw_pedido_id).filter(Boolean));
     let gerou = false;
     for (const p of cw) {
       if (jaTem.has(p.id) || !KDS_CW_ATIVOS.includes(p.status)) continue;
@@ -210,7 +241,8 @@ async function _kdsCarregar() {
       }).map(p => p.id));
     }
 
-    if (_kds.sessao) {
+    if (typeof _kdsCarregarExtra === 'function') await _kdsCarregarExtra(sb);
+    if (_kds.sessao && _kds.tela === 'pizzaiolo') {
       const { data: minhas } = await sb.from('kds_pizzas').select('iniciado_em,montagem_fim_em')
         .eq('iniciado_por', _kds.sessao.operador_id).gte('iniciado_em', _kdsInicioTurno().toISOString())
         .not('montagem_fim_em', 'is', null);
@@ -255,7 +287,10 @@ function _kdsTick() {
   const meta = _kdsCfg().metaPreparo * 60;
   document.querySelectorAll('#page-kds [data-kds-desde]').forEach(el => {
     const seg = _kdsSeg(el.dataset.kdsDesde);
-    if (el.dataset.kdsFmt === 'min') {
+    if (el.dataset.kdsFmt === 'pmin') {        // KDS Pedido: minutos, vermelho acima do limite da coluna
+      el.querySelector('span').textContent = `${Math.max(0, Math.floor(seg / 60))} min`;
+      el.classList.toggle('atraso', seg > Number(el.dataset.kdsLimite || 0) * 60);
+    } else if (el.dataset.kdsFmt === 'min') {
       el.querySelector('span').textContent = `${Math.max(0, Math.floor(seg / 60))} min`;
       el.classList.toggle('atraso', seg > meta);
     } else {
@@ -275,12 +310,12 @@ function _kdsFilaPizzaiolo() {
   const ocultos = new Set(_kdsLs('vtp_kds_cancel_ocultos') || []);
   const fila = [];
   for (const ped of _kds.pedidos.values()) {
-    const cw = _kds.cw.get(ped.cw_pedido_id);
+    const cw = _kdsCwDe(ped);
     if (!cw || new Date(ped.entra_fila_em).getTime() > agora) continue;
-    const cancelado = ['canceled', 'canceling'].includes(cw.status);
+    const cancelado = _kdsCancelado(cw);
     if (!cancelado && !KDS_CW_ATIVOS.includes(cw.status)) continue;    // já saiu da cozinha no CW
     if (cancelado && ocultos.has(ped.id)) continue;
-    const pizzas = _kdsPizzasDoPedido(ped.id);
+    const pizzas = _kdsPizzasDoPedido(ped.id).filter(z => z.status !== 'cancelada');
     if (!pizzas.some(z => z.status === 'aguardando' || z.status === 'em_preparo')) continue;
     fila.push({ ped, cw, pizzas, cancelado });
   }
@@ -307,12 +342,14 @@ function _kdsRender() {
   if (!el) return;
   if (!document.getElementById('kdsMain')) el.innerHTML = '<div id="kdsMain"></div><div id="kdsModal"></div>';
   let html;
+  if (_kds.tela === 'desempenho' && !_kdsGestor()) _kds.tela = null;
   if (!_kds.tela) html = _kdsHtmlTelas();
-  else if (!_kds.sessao) {
-    html = `<div class="kds">${_kdsHtmlTop('KDS Pizzaiolo')}<div class="kds-vazio">${_kds.erroEntrada ? 'Não foi possível abrir sua jornada. <button class="kds-btn kds-btn-roxo" onclick="_kds.erroEntrada=false;_kdsRender()">Tentar de novo</button>' : 'Entrando…'}</div></div>`;
+  else if (_kds.tela === 'desempenho') html = _kdsHtmlDesempenho();
+  else if (!_kds.sessao || _kds.sessao.posto !== _kds.tela) {
+    html = `<div class="kds">${_kdsHtmlTop(KDS_TITULOS[_kds.tela])}<div class="kds-vazio">${_kds.erroEntrada ? 'Não foi possível abrir sua jornada. <button class="kds-btn kds-btn-roxo" onclick="_kds.erroEntrada=false;_kdsRender()">Tentar de novo</button>' : 'Entrando…'}</div></div>`;
     if (!_kds.erroEntrada) _kdsEntrarUsuario();
   }
-  else html = _kdsHtmlPizzaiolo();
+  else html = _kds.tela === 'finalizacao' ? _kdsHtmlFinalizacao() : _kds.tela === 'pedido' ? _kdsHtmlPedidoTela() : _kdsHtmlPizzaiolo();
   document.getElementById('kdsMain').innerHTML = html;
   _kdsConferirModal();
   _kdsTick();
@@ -326,7 +363,10 @@ function _kdsConferirModal() {
   if (!m?.pizzaId) { if (!m) _kdsRefazerModal(); return; }
   const z = _kds.pizzas.get(m.pizzaId);
   const meu = z?.iniciado_por === _kds.sessao?.operador_id;
-  const valido = m.tipo === 'iniciar' ? z?.status === 'aguardando' : z?.status === 'em_preparo' && meu;
+  // modais da Finalização: cada um vale enquanto a pizza estiver no estado em que foi aberto
+  const fin = { 'fin-ok': ['finalizacao'], 'fin-refazer': ['finalizacao', 'pronto'], 'fin-destino': ['finalizacao', 'pronto'] }[m.tipo];
+  const valido = fin ? fin.includes(z?.status) && !z?.destino
+    : m.tipo === 'iniciar' ? z?.status === 'aguardando' : z?.status === 'em_preparo' && meu;
   if (valido) return;
   _kdsFecharModal();
   if (m.tipo === 'iniciar' && z?.status === 'em_preparo') {
@@ -350,8 +390,9 @@ function _kdsHtmlTelas() {
     <p style="text-align:center;color:var(--kds-lilas);margin:6px 0 18px">Qual tela este aparelho vai mostrar?</p>
     <div class="kds-telas">
       <button class="kds-tela" onclick="_kdsEscolherTela('pizzaiolo')"><b>KDS Pizzaiolo</b><span>Fila de pizzas para montar, ficha técnica e performance de cada pizzaiolo.</span></button>
-      <button class="kds-tela" disabled><em>Em breve</em><b>KDS Finalização</b><span>Pizzas saindo do forno: cortar, embalar e liberar o pedido.</span></button>
-      <button class="kds-tela" disabled><em>Em breve</em><b>KDS Pedido</b><span>Fila completa, reordenação, pedidos internos e capacidade.</span></button>
+      <button class="kds-tela" onclick="_kdsEscolherTela('finalizacao')"><b>KDS Finalização</b><span>Pizzas saindo do forno: finalizar, cortar, embalar e liberar o pedido.</span></button>
+      <button class="kds-tela" onclick="_kdsEscolherTela('pedido')"><b>KDS Pedido</b><span>Fila completa, reordenação, pedidos internos e capacidade da cozinha.</span></button>
+      ${_kdsGestor() ? `<button class="kds-tela" onclick="_kdsEscolherTela('desempenho')"><b>Desempenho</b><span>Produção, tempos e erros de cada pessoa e de cada sabor.</span></button>` : ''}
     </div>
   </div>`;
 }
@@ -385,8 +426,13 @@ function _kdsHtmlPizzaiolo() {
   </div>`;
 }
 
+function _kdsIcoTipo(cw) {
+  return cw.interno ? KDS_SVG.casa : cw.order_type === 'delivery' ? KDS_SVG.capacete : cw.order_type === 'takeout' ? KDS_SVG.correndo : KDS_SVG.mesa;
+}
+
 function _kdsHtmlCanal(cw) {
   const cod = _kdsEsc(cw.external_display_id || '');
+  if (cw.interno) return `<span class="kds-canal kds-canal-interno">Interno · ${_kdsEsc(_kdsMotivoLabel(cw.motivo))}</span>`;
   if (cw.sales_channel === 'ifood')  return `<span class="kds-canal">Ifood ${cod}</span>`;
   if (cw.sales_channel === 'food99') return `<span class="kds-canal kds-canal-99food"><em>99food</em> ${cod}</span>`;
   if (/keeta/i.test(cw.sales_channel || '')) return `<span class="kds-canal kds-canal-keeta">Keeta ${cod}</span>`;
@@ -394,7 +440,7 @@ function _kdsHtmlCanal(cw) {
 }
 
 function _kdsHtmlPedido({ ped, cw, pizzas, cancelado }) {
-  const tipo = cw.order_type === 'delivery' ? KDS_SVG.capacete : cw.order_type === 'takeout' ? KDS_SVG.correndo : KDS_SVG.mesa;
+  const tipo = _kdsIcoTipo(cw);
   const obs = [(cw.observation || '').trim(), ...pizzas.filter(z => z.observacao).map(z => pizzas.length > 1 ? `${_kdsPad(z.seq)} · ${z.observacao}` : z.observacao)]
     .filter(Boolean);
   return `
@@ -445,7 +491,7 @@ function _kdsHtmlPizza(z, cw, cancelado) {
     ico = KDS_SVG.play; tempo = '<span class="kds-pz-tempo">00:00</span>'; st = 'Aguardando';
     if (cancelado) cls += ' kds-pz-bloq';
   }
-  const nome = z.tamanho === 'grande' ? 'Pizza Grande' : 'Pizza Pequena';
+  const nome = (z.tamanho === 'grande' ? 'Pizza Grande' : 'Pizza Pequena') + (z.refeita_de ? ' <span class="kds-tag-refazer">Refazer</span>' : '');
   const chips = _kdsSabores(z).map(m => `<span class="kds-chip">${_kdsEsc(m.nome)}${m.inteira ? '<span class="kds-chip-inteira">inteira</span>' : ''}</span>`).join('');
   return `
     <button class="${cls}" onclick="_kdsTocarPizza('${z.id}')">
@@ -470,7 +516,7 @@ function _kdsHtmlModal() {
   if (!m) return '';
   const fundo = conteudo => `<div class="kds-ov" onclick="if(event.target===this)_kdsFecharModal()">${conteudo}</div>`;
   const z = m.pizzaId ? _kds.pizzas.get(m.pizzaId) : null;
-  const cw = z ? _kds.cw.get(_kds.pedidos.get(z.pedido_id)?.cw_pedido_id) : null;
+  const cw = z ? _kdsCwDe(_kds.pedidos.get(z.pedido_id)) : null;
 
   if ((m.tipo === 'iniciar' || m.tipo === 'finalizar') && z && cw) {
     const txt = m.tipo === 'iniciar' ? 'Confirma o início da preparação' : 'Confirma a finalização do preparo';
@@ -486,7 +532,9 @@ function _kdsHtmlModal() {
   if (m.tipo === 'montagem' && z && cw) return fundo(_kdsHtmlMontagem(z, cw));
   if (m.tipo === 'ficha' && z) return fundo(_kdsHtmlFicha(z, m.meia));
   if (m.tipo === 'config')    return fundo(_kdsHtmlConfig());
-  return '';
+  // modais das outras telas (kds-finalizacao.js, kds-pedido.js)
+  const html = KDS_MODAIS[m.tipo]?.(m, z, cw);
+  return html ? fundo(html) : '';
 }
 
 function _kdsFotoMeia(meia, lado) {
@@ -497,7 +545,7 @@ function _kdsFotoMeia(meia, lado) {
 }
 
 function _kdsHtmlMontagem(z, cw) {
-  const total = _kdsPizzasDoPedido(z.pedido_id).length;
+  const total = _kdsPizzasDoPedido(z.pedido_id).filter(x => x.status !== 'cancelada').length;
   const meias = z.meias || [];
   const meio = meias.length === 2 && meias[0].nome !== meias[1].nome;
   const abas = meio ? meias : meias.slice(0, 1);
@@ -557,9 +605,9 @@ function _kdsTocarPizza(id) {
   const z = _kds.pizzas.get(id);
   if (!z) return;
   const ped = _kds.pedidos.get(z.pedido_id);
-  const cw = _kds.cw.get(ped?.cw_pedido_id);
+  const cw = _kdsCwDe(ped);
   if (z.status === 'aguardando') {
-    if (['canceled', 'canceling'].includes(cw?.status)) { _kdsAviso('Pedido cancelado — não monte esta pizza', 'err'); return; }
+    if (_kdsCancelado(cw)) { _kdsAviso('Pedido cancelado — não monte esta pizza', 'err'); return; }
     const minha = [..._kds.pizzas.values()].find(x => x.status === 'em_preparo' && x.iniciado_por === _kds.sessao?.operador_id);
     if (minha) { _kdsAviso('Finalize a pizza que você está montando antes de iniciar outra', 'err'); _kdsAbrirModal({ tipo: 'montagem', pizzaId: minha.id }); return; }
     _kdsAbrirModal({ tipo: 'iniciar', pizzaId: id });
@@ -586,8 +634,8 @@ async function _kdsIniciar(id) {
   _kdsRender();
 
   // Agendado no CW sai de "agendado" e vai para "em preparo" junto com a 1ª pizza
-  const cw = _kds.cw.get(_kds.pedidos.get(z.pedido_id)?.cw_pedido_id);
-  if (cw?.status === 'scheduled_confirmed') {
+  const cw = _kdsCwDe(_kds.pedidos.get(z.pedido_id));
+  if (!cw?.interno && cw?.status === 'scheduled_confirmed') {
     _kdsDb().functions.invoke('cw-status', { body: { order_id: cw.id, acao: 'start_preparation' } })
       .then(({ data: r }) => { if (r && !r.ok) console.warn('[kds] CW start_preparation', r); })
       .catch(e => console.warn('[kds] CW start_preparation', e));
@@ -670,10 +718,10 @@ async function _kdsEntrarUsuario() {
   const u = getCurrentUser();
   if (!u || _kds.entrando) return;
   _kds.entrando = true;
-  const { data, error } = await _kdsDb().rpc('kds_entrar_usuario', { p_usuario_id: String(u.id), p_nome: u.name, p_posto: 'pizzaiolo', p_dispositivo: _kdsDispositivo() });
+  const { data, error } = await _kdsDb().rpc('kds_entrar_usuario', { p_usuario_id: String(u.id), p_nome: u.name, p_posto: _kds.tela, p_dispositivo: _kdsDispositivo() });
   _kds.entrando = false;
   if (error || !data) { _kdsAviso('Não foi possível abrir sua jornada no KDS', 'err'); _kds.erroEntrada = true; _kdsRender(); return; }
-  _kds.sessao = { usuario_id: String(u.id), operador_id: data.operador_id, nome: u.name, jornada_id: data.jornada_id };
+  _kds.sessao = { usuario_id: String(u.id), operador_id: data.operador_id, nome: u.name, jornada_id: data.jornada_id, posto: _kds.tela };
   _kdsLs('vtp_kds_sessao', _kds.sessao);
   _kdsRender(); _kdsCarregar();
 }
@@ -705,4 +753,95 @@ function _kdsSalvarTempos() {
   db._set('vtp_config', cfg);
   _kdsAviso('Tempos salvos');
   _kdsFecharModal(); _kdsRender();
+}
+
+// ── Status do pedido (Finalização › histórico e KDS Pedido) ─────
+
+const KDS_ST = {
+  agendado:    { label: 'Agendado',      cor: 'var(--kds-lilas)',    col: 'cozinha' },
+  aguardando:  { label: 'Aguardando',    cor: 'var(--kds-lilas)',    col: 'cozinha' },
+  em_preparo:  { label: 'Em preparação', cor: 'var(--kds-preparo)',  col: 'cozinha' },
+  finalizacao: { label: 'Finalização',   cor: 'var(--kds-final)',    col: 'cozinha' },
+  pronto:      { label: 'Pronto',        cor: 'var(--kds-roxo-kds)', col: 'prontos' },
+  entrega:     { label: 'Entrega',       cor: 'var(--kds-laranja)',  col: 'rota' },
+  retirada:    { label: 'Retirada',      cor: 'var(--kds-laranja)',  col: 'rota' },
+  concluido:   { label: 'Concluído',     cor: 'var(--kds-verde)',    col: 'rota' },
+  cancelado:   { label: 'Cancelado',     cor: 'var(--kds-vermelho)', col: 'rota' },
+};
+
+// Onde o pedido está: o CW manda depois que sai da cozinha (pronto, rota,
+// concluído, cancelado); dentro da cozinha manda o estado das pizzas.
+function _kdsStatusPedido(cw, ped, pizzas) {
+  if (_kdsCancelado(cw)) return 'cancelado';
+  if (['closed', 'delivered'].includes(cw.status)) return 'concluido';
+  if (cw.status === 'released') return 'entrega';
+  if (cw.status === 'waiting_to_catch') return 'retirada';
+  if (cw.status === 'ready') return 'pronto';
+  if (ped && new Date(ped.entra_fila_em).getTime() > Date.now()) return 'agendado';
+  const vivas = (pizzas || []).filter(z => z.status !== 'cancelada');
+  if (!vivas.length || vivas.every(z => z.status === 'pronto')) return 'pronto';
+  if (vivas.every(z => ['finalizacao', 'pronto'].includes(z.status))) return 'finalizacao';
+  if (vivas.some(z => z.status !== 'aguardando')) return 'em_preparo';
+  return 'aguardando';
+}
+
+function _kdsBadgeSt(st) { return `<span class="kds-st" style="background:${KDS_ST[st].cor}">${KDS_ST[st].label}</span>`; }
+
+// Ingredientes que entram na finalização (orégano, manjericão, Nutella…),
+// pela etapa marcada na ficha técnica de cada sabor.
+function _kdsIngredFinalizacao(z) {
+  if (typeof opcoes === 'undefined' || typeof fichaEtapaIngrediente !== 'function') return [];
+  const nomes = new Set();
+  for (const m of z.meias || []) {
+    const opc = m.opcao_id != null ? opcoes.find(o => o.id === m.opcao_id) : null;
+    for (const r of opc?.fichaTecnica?.ingredientes || []) {
+      if (!r.item_id || fichaEtapaIngrediente(r) !== 'finalizacao') continue;
+      const ins = typeof items !== 'undefined' ? items.find(x => x.id === r.item_id) : null;
+      if (ins) nomes.add(_kdsFrase(ins.name));
+    }
+  }
+  return [...nomes];
+}
+
+// Baixa no estoque de uma pizza inteira (base + sabores pela ficha), com o
+// tipo de saída — pedido interno pronto, refazer e desperdício.
+async function _kdsBaixaEstoque(z, tipo, obs) {
+  if (typeof estExpandirProduto !== 'function' || typeof estInserirMovs !== 'function' || typeof produtosPizza === 'undefined') return;
+  try {
+    const cat = z.tipo === 'doce' ? 'doce' : 'salgada';
+    const base = produtosPizza.find(b => b.tamanho === z.tamanho && b.categoria === cat && b.active !== false)
+      || produtosPizza.find(b => b.tamanho === z.tamanho);
+    const ids = (z.meias || []).map(m => m.opcao_id).filter(v => v != null);
+    if (!base || !ids.length) return;
+    const partes = estExpandirProduto({ baseId: base.id, saborIds: ids, qtd: 1 });
+    if (!partes.length) return;
+    const nome = `${base.nome} · ${[...new Set(z.meias.map(m => m.nome))].join(' + ')}`;
+    const grupoId = crypto.randomUUID();
+    await estInserirMovs(partes.map(x => _estMovRow(x.item, {
+      tipo: 'baixa', sinal: -1, qtd: _estRound(x.qtd), tipo_baixa: tipo,
+      local_origem: estLocalSaida(x.item) || EST_SEM_LOCAL, motivo: obs || null,
+      grupo_id: grupoId, produto_nome: nome, ref_tipo: 'kds_pizza', ref_id: z.id,
+    })));
+    const custo = partes.reduce((s, x) => s + x.qtd * (x.item.cost || 0), 0);
+    _estEspelharBaixa({ grupoId, origem: 'produto', itemId: null, nome, unidade: 'un', qtd: 1, tipo, custo, obs });
+  } catch (e) {
+    console.warn('[kds] baixa de estoque', e);
+    _kdsAviso('Pizza registrada, mas a baixa no estoque falhou: ' + (e.message || e), 'err');
+  }
+}
+
+// Avisa o CW que o pedido ficou pronto (agendado passa por "em preparo" antes)
+async function _kdsCwPronto(cwId) {
+  const cw = _kds.cw.get(cwId);
+  if (!cw || !['confirmed', 'scheduled_confirmed'].includes(cw.status)) return;
+  const chamar = acao => _kdsDb().functions.invoke('cw-status', { body: { order_id: cwId, acao } }).then(({ data }) => data);
+  try {
+    if (cw.status === 'scheduled_confirmed') await chamar('start_preparation');
+    const r = await chamar('prepared');
+    if (r && !r.ok) throw new Error(r.erro || r.detalhe || 'CW recusou');
+    _kdsAviso(`Pedido #${cw.display_id} pronto — avisado no Cardápio Web`);
+  } catch (e) {
+    console.warn('[kds] CW prepared', e);
+    _kdsAviso(`Pedido #${cw.display_id} pronto, mas o Cardápio Web não aceitou — marque como pronto lá`, 'err');
+  }
 }

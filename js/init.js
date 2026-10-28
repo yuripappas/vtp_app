@@ -64,11 +64,11 @@
     'js/compras.js', 'js/cp-base.js', 'js/cp-compras.js', 'js/cp-listas.js', 'js/cp-cotacao.js', 'js/cp-recebimento.js', 'js/relatorios.js', 'js/modules.js', 'js/previsao-dados.js', 'js/previsao.js',
     'js/cadastros.js', 'js/vendas.js', 'js/vendas-ui.js', 'js/vendas-canais.js', 'js/vendas-extratos.js', 'js/cmv.js', 'js/configuracoes.js', 'js/desperdicio.js',
     'js/checklist.js', 'js/manutencao.js', 'js/inventario.js',
-    'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/etiquetagem.js', 'js/kds.js',
+    'js/rh.js', 'js/alertas.js', 'js/auditoria.js', 'js/etiquetagem.js', 'js/kds.js', 'js/kds-finalizacao.js', 'js/kds-pedido.js',
     'js/atendimento.js', 'js/marketing.js', 'js/crm-clientes.js', 'js/login.js',
   ];
   for (const src of APP_SCRIPTS) {
-    await loadScript(src + '?v=260');
+    await loadScript(src + '?v=261');
   }
 
   // First run: push all initialized data to Supabase
