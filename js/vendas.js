@@ -400,8 +400,13 @@ async function vendasCarregar(dias = 90, forcar = false) {
 async function vendasCarregarPeriodo(inicioISO, fimISO, forcar = false) {
   const chave = inicioISO + '|' + (fimISO || '');
   if (_vCache[chave] && !forcar) return _vCache[chave];
-  _vCache[chave] = await _vFetchPeriodo(inicioISO, fimISO);
-  return _vCache[chave];
+  const linhas = await _vFetchPeriodo(inicioISO, fimISO);
+  // Só cacheia período já fechado (fim há mais de 1h, margem pro cw-sync).
+  // Período aberto ("Hoje") cacheado congelava o custo: com a aba aberta
+  // desde ontem às 19h, o "Ontem" de hoje reaproveitava o "Hoje" parcial.
+  if (fimISO && new Date(fimISO).getTime() < Date.now() - 3600e3) _vCache[chave] = linhas;
+  else delete _vCache[chave];
+  return linhas;
 }
 
 // ── Resolução de custo (saborKey → Opção; bebida → Produto/insumo) ──
