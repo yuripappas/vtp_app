@@ -651,6 +651,78 @@ function _estGuardar(estado, ids) { ids.forEach(id => { const el = document.getE
 // ── Entrada (insumo = entrada manual · processado = produção) ──
 let _estEn = { origem: 'insumo' };
 
+// ── Painel Atual → movimento → Atualizado (como no Cardápio Web) ──
+// p = prefixo dos campos (ee = entrada, eb = saída); sinal +1 entra, −1 sai.
+// Número em pt-BR: vírgula é decimal; em item por unidade, ponto é milhar (3.420 = 3420).
+function _estNumBr(v, unidade = '') {
+  const t = String(v ?? '').trim().replace(/\s/g, '');
+  if (!t) return NaN;
+  if (t.includes(',')) return parseFloat(t.replace(/\./g, '').replace(',', '.'));
+  if (/^(un|und|unid|unidade|cx|pct)$/i.test(unidade) && /^\d{1,3}(\.\d{3})+$/.test(t)) return parseFloat(t.replace(/\./g, ''));
+  return parseFloat(t);
+}
+const _estFmtInp = v => v ? String(v).replace('.', ',') : '';
+
+function _estPainelHtml(p, sinal) {
+  const box = (rot, corpo, destaque = false) => `<div style="flex:1;min-width:0;text-align:center">
+    <div style="font-size:var(--text-sm);color:var(--text2);font-weight:${destaque ? 700 : 500};margin-bottom:6px">${rot}</div>${corpo}</div>`;
+  const num = id => `<div id="${id}" style="font-size:var(--text-xl);font-weight:700;padding:6px 0">—</div>`;
+  const inp = (id, ph, pre = '') => `<div style="display:flex;align-items:center;gap:4px;border:1.5px solid var(--purple);border-radius:var(--r8);padding:0 10px;background:var(--card-bg)">
+    ${pre ? `<span style="font-size:var(--text-sm);color:var(--muted)">${pre}</span>` : ''}
+    <input id="${id}" type="text" inputmode="decimal" placeholder="${ph}" oninput="_estPainelAtualizar('${p}', ${sinal})"
+      style="width:100%;border:none;outline:none;background:transparent;text-align:center;font-size:var(--text-xl);font-weight:700;padding:6px 0;font-family:inherit;color:var(--text)"></div>`;
+  return `<div class="field"><div class="fm-box" style="display:flex;gap:12px;align-items:flex-start">
+      ${box('Atual', num(p + 'PnAtual') + `<div id="${p}PnLocal" style="font-size:var(--text-xs);color:var(--muted);margin-top:-4px"></div>`)}
+      ${box(sinal > 0 ? 'Adicionar' : 'Retirar', inp(p + 'Qtd', '0'), true)}
+      ${box('Atualizado', num(p + 'PnNovo'))}
+    </div>
+    <div class="fm-box" style="display:flex;gap:12px;align-items:flex-start;margin-top:8px">
+      ${box('Custo atual', num(p + 'PnCusto'))}
+      ${sinal > 0 ? box('Custo unitário', inp(p + 'Custo', '0,00', 'R$'), true) : box('Valor da saída', num(p + 'PnValor'), true)}
+      ${box(sinal > 0 ? 'Custo médio' : 'Valor que fica', num(p + 'PnMedio'))}
+    </div>
+    <div id="${p}PnDica" style="font-size:var(--text-xs);color:var(--muted);margin-top:6px"></div></div>`;
+}
+
+function _estPainelAtualizar(p, sinal) {
+  const item = _estItemDoSelect(p + 'Item');
+  const $ = id => document.getElementById(p + id);
+  if (!$('PnAtual')) return;
+  const un = item?.unit || '';
+  if (!item) { ['PnAtual', 'PnNovo', 'PnCusto', 'PnValor', 'PnMedio'].forEach(k => { if ($(k)) $(k).textContent = '—'; }); $('PnDica').textContent = ''; return; }
+  const local = $('Local')?.value || '';
+  const sal = _estSaldosCache?.porItem.get(item.id);
+  const atual = sal ? (local ? (sal.porLocal[local]?.saldo ?? 0) : sal.total) : null;
+  const total = sal ? sal.total : null;
+  const qtd = _estNumBr($('Qtd').value, un) || 0;
+  const custo = Number(item.cost) || 0;
+  const fq = v => v == null ? '…' : `${_estQ(v)} <span style="font-size:var(--text-sm);font-weight:500;color:var(--muted)">${_estEsc(un)}</span>`;
+  $('PnLocal').textContent = local ? estLocalLabel(local) : 'todos os locais';
+  $('PnAtual').innerHTML = fq(atual);
+  const novo = atual == null ? null : atual + sinal * qtd;
+  $('PnNovo').innerHTML = fq(novo);
+  $('PnNovo').style.color = novo != null && novo < -0.0005 ? 'var(--danger-fg)' : qtd ? 'var(--purple)' : 'var(--text)';
+  $('PnCusto').textContent = _estR(custo);
+  if (sinal > 0) {
+    const cu = _estNumBr($('Custo').value);
+    const cUnit = isNaN(cu) ? custo : cu;
+    const base = Math.max(0, total || 0);
+    const medio = base + qtd > 0 ? (base * custo + qtd * cUnit) / (base + qtd) : cUnit;
+    $('PnMedio').textContent = _estR(medio);
+    $('PnDica').textContent = qtd ? `Entra ${_estR(qtd * cUnit)} no valor do estoque. Não conta como compra no CMV.` : '';
+  } else {
+    $('PnValor').textContent = _estR(qtd * custo);
+    $('PnMedio').textContent = atual == null ? '…' : _estR(Math.max(0, novo) * custo);
+    $('PnDica').textContent = novo != null && novo < -0.0005 ? `O saldo neste local fica negativo: confira a quantidade ou o local.` : '';
+  }
+  if (total != null && local && Math.abs(total - atual) > 0.0005) $('PnDica').textContent += `${$('PnDica').textContent ? ' ' : ''}Total em todos os locais: ${_estQ(total)} ${un}.`;
+}
+
+function _estPainelIniciar(p, sinal) {
+  _estPainelAtualizar(p, sinal);
+  if (!_estSaldosCache) estSaldos().then(() => _estPainelAtualizar(p, sinal)).catch(() => {});
+}
+
 function estAbrirEntrada(origem = 'insumo') {
   _estEn = { origem };
   _estModal('ovEstEntrada', 'Registrar entrada', '', '_estSalvarEntrada()', 'Registrar entrada', 580,
@@ -671,35 +743,36 @@ function _estEntradaRender() {
   const e = _estEn, proc = e.origem === 'preparado';
   body.innerHTML = `
     ${_estCampo('O que entrou', _estOpcoes(_EST_ORIGENS.map(o => o.id === 'preparado' ? { ...o, desc: 'produção (ex.: molho, massa)' } : { ...o, desc: 'doação, devolução, ajuste' }), e.origem, '_estEntradaSet'))}
-    ${_estCampo(proc ? 'Processado *' : 'Insumo *', `<select class="inp" id="eeItem" onchange="_estEn.itemId=+this.value||null;_estSugerirLocal('eeItem','eeLocal','entrada');${proc ? '' : "const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=it.cost||''"}">${_estOptsItens(_estFiltroOrigem(e.origem), e.itemId)}</select>`,
-      '', proc ? 'Os insumos crus usados na produção saem do estoque na contagem.' : '')}
     <div class="f2">
-      ${_estCampo('Local *', `<select class="inp" id="eeLocal">${_estOptsLocais(e.itemId ? estLocalEntrada(items.find(i => i.id === e.itemId)) : '', true)}</select>`)}
-      ${_estCampo(`${proc ? 'Quantidade produzida' : 'Quantidade'} * <span id="eeItem-un" style="font-weight:400;color:var(--fg-subtle)"></span>`, `<input class="inp" type="number" id="eeQtd" min="0" step="0.001" value="${_estEsc(e.eeQtd || '')}">`)}
+      ${_estCampo(proc ? 'Processado *' : 'Insumo *', `<select class="inp" id="eeItem" onchange="_estEn.itemId=+this.value||null;_estSugerirLocal('eeItem','eeLocal','entrada');const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=_estFmtInp(it.cost);_estPainelAtualizar('ee',1)">${_estOptsItens(_estFiltroOrigem(e.origem), e.itemId)}</select>`,
+        '', proc ? 'Os insumos crus usados na produção saem do estoque na contagem.' : '')}
+      ${_estCampo('Local *', `<select class="inp" id="eeLocal" onchange="_estPainelAtualizar('ee',1)">${_estOptsLocais(e.itemId ? estLocalEntrada(items.find(i => i.id === e.itemId)) : '', true)}</select>`)}
     </div>
-    ${proc ? `<div class="f2">
+    ${_estPainelHtml('ee', 1)}
+    <div class="f2">
       ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="eeData" value="${e.eeData || _estAgora()}">`)}
-      ${_estCampo('Observação', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="opcional">`)}
-    </div>` : `<div class="f2">
-      ${_estCampo('Custo unitário (R$)', `<input class="inp" type="number" id="eeCusto" min="0" step="0.01" value="${_estEsc(e.eeCusto || '')}">`)}
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="eeData" value="${e.eeData || _estAgora()}">`)}
-    </div>
-    ${_estCampo('Motivo', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="ex: devolução do fornecedor">`)}`}`;
+      ${_estCampo(proc ? 'Observação' : 'Motivo', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="${proc ? 'opcional' : 'ex: ajuste de contagem, devolução'}">`)}
+    </div>`;
+  document.getElementById('eeQtd').value = e.eeQtd || '';
+  const itSel = e.itemId ? items.find(i => i.id === e.itemId) : null;
+  document.getElementById('eeCusto').value = e.eeCusto || (itSel ? _estFmtInp(itSel.cost) : '');
   if (e.itemId) _estSugerirLocal('eeItem', 'eeLocal', 'entrada');
+  _estPainelIniciar('ee', 1);
 }
 
 function _estSalvarEntrada() {
   const proc = _estEn.origem === 'preparado';
   const item = _estItemDoSelect('eeItem');
-  const qtd  = parseFloat(document.getElementById('eeQtd').value);
   if (!item) return toast(proc ? 'Selecione o processado' : 'Selecione o insumo', 'err');
+  const qtd  = _estNumBr(document.getElementById('eeQtd').value, item.unit);
+  const cu   = _estNumBr(document.getElementById('eeCusto').value);
+  const custoUnit = isNaN(cu) ? (item.cost || 0) : cu;
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
   const comum = {
     sinal: 1, qtd: _estRound(qtd), local_destino: document.getElementById('eeLocal').value || EST_SEM_LOCAL,
     motivo: document.getElementById('eeMotivo').value.trim() || null, data_mov: _estLerData('eeData'),
   };
-  const row = proc ? _estMovRow(item, { tipo: 'producao', ...comum })
-    : _estMovRow(item, { tipo: 'entrada_manual', ...comum, custo_unit: parseFloat(document.getElementById('eeCusto').value) || item.cost || 0 });
+  const row = _estMovRow(item, { tipo: proc ? 'producao' : 'entrada_manual', ...comum, custo_unit: custoUnit });
   _estSalvarComBotao('ovEstEntrada', () => estInserirMovs([row]).then(() => toast(proc ? 'Produção registrada' : 'Entrada registrada', 'ok')));
 }
 
@@ -816,9 +889,10 @@ function _estBaixaRender() {
         : _estCampo('Sabor *', `<select class="inp" onchange="_estBaixaSet('s1',+this.value||null)">${optSab(b.s1)}</select>`)) : ''}`;
   } else {
     alvo = `<div class="f2">
-      ${_estCampo(b.origem === 'preparado' ? 'Processado *' : 'Insumo *', `<select class="inp" id="ebItem" onchange="_estBx.itemId=+this.value||null;_estSugerirLocal('ebItem','ebLocal','saida')">${_estOptsItens(_estFiltroOrigem(b.origem), b.itemId)}</select>`)}
-      ${_estCampo('Local *', `<select class="inp" id="ebLocal">${_estOptsLocais(b.itemId ? estLocalSaida(items.find(i => i.id === b.itemId)) : '', true)}</select>`)}
-    </div>`;
+      ${_estCampo(b.origem === 'preparado' ? 'Processado *' : 'Insumo *', `<select class="inp" id="ebItem" onchange="_estBx.itemId=+this.value||null;_estSugerirLocal('ebItem','ebLocal','saida');_estPainelAtualizar('eb',-1)">${_estOptsItens(_estFiltroOrigem(b.origem), b.itemId)}</select>`)}
+      ${_estCampo('Local *', `<select class="inp" id="ebLocal" onchange="_estPainelAtualizar('eb',-1)">${_estOptsLocais(b.itemId ? estLocalSaida(items.find(i => i.id === b.itemId)) : '', true)}</select>`)}
+    </div>
+    ${_estPainelHtml('eb', -1)}`;
   }
 
   // Produto: lista do que sai, com opção de tirar itens que não foram usados
@@ -844,9 +918,9 @@ function _estBaixaRender() {
   body.innerHTML = `
     ${_estCampo('O que saiu', _estOpcoes([..._EST_ORIGENS, { id: 'produto', label: 'Produto', icon: 'layers', desc: 'pizza pronta, sai pela ficha' }], b.origem, "_estBaixaSet.bind(null,'origem')"))}
     ${alvo}
-    <div class="f2">
-      ${_estCampo(prod ? 'Quantidade (unidades) *' : 'Quantidade *', `<input class="inp" type="number" id="ebQtd" min="0" step="${prod ? 1 : 0.001}" value="${b.ebQtd ?? (prod ? 1 : '')}"
-        ${prod ? `oninput="clearTimeout(window._ebT);window._ebT=setTimeout(()=>_estBaixaSet('_',''),300)"` : ''}>`)}
+    <div class="${prod ? 'f2' : ''}">
+      ${prod ? _estCampo('Quantidade (unidades) *', `<input class="inp" type="number" id="ebQtd" min="0" step="1" value="${b.ebQtd ?? 1}"
+        oninput="clearTimeout(window._ebT);window._ebT=setTimeout(()=>_estBaixaSet('_',''),300)">`) : ''}
       ${_estCampo('Tipo de saída *', `<select class="inp" id="ebTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${b.ebTipo === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`)}
     </div>
     ${previa}
@@ -854,7 +928,11 @@ function _estBaixaRender() {
       ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="ebData" value="${b.ebData || _estAgora()}">`)}
       ${_estCampo('O que aconteceu', `<input class="inp" id="ebMotivo" value="${_estEsc(b.ebMotivo || '')}" placeholder="opcional">`)}
     </div>`;
-  if (!prod && b.itemId) _estSugerirLocal('ebItem', 'ebLocal', 'saida');
+  if (!prod) {
+    document.getElementById('ebQtd').value = b.ebQtd || '';
+    if (b.itemId) _estSugerirLocal('ebItem', 'ebLocal', 'saida');
+    _estPainelIniciar('eb', -1);
+  }
 }
 
 // todos = true inclui os itens desmarcados (para a lista); false = só o que sai
@@ -873,7 +951,8 @@ function _estBaixaPartes(qtd, todos = false) {
 
 function _estSalvarBaixa() {
   const b = _estBx;
-  const qtd   = parseFloat(document.getElementById('ebQtd').value);
+  const itemSel = b.origem !== 'produto' ? _estItemDoSelect('ebItem') : null;
+  const qtd   = _estNumBr(document.getElementById('ebQtd').value, itemSel?.unit);
   const tipo  = document.getElementById('ebTipo').value;
   const obs   = document.getElementById('ebMotivo').value.trim();
   const data  = _estLerData('ebData');
