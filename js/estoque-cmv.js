@@ -16,7 +16,26 @@
  * Valores pelo custo congelado na contagem (custo_unit do item contado) e,
  * nas compras, pelo custo da nota.
  * Faturamento: soma de cw_pedidos.total (mesma fonte do Dashboard e do Vendas).
+ *
+ * Processados não são linha própria no CMV: tudo (contagem, compras, saídas e
+ * vendas) é convertido para os insumos comprados pela ficha do processado
+ * (peso_g em gramas por rendimento_kg). Ex.: 10 kg de Mussarela Triturada na
+ * contagem = 10,23 kg de Mussarela em Barra em estoque. A produção é só uma
+ * transformação interna e não entra na conta. Processado sem ficha fica como
+ * linha própria, marcado "sem ficha".
  */
+
+// Processado → insumos comprados, recursivo. → { insumoId: qtd } (ou o próprio item se não for processado / sem ficha)
+function estExplodirItem(itemId, qtd, acc = {}, visitados = new Set()) {
+  const it = items.find(i => i.id === itemId);
+  const ings = it?.isProd ? it.fichaTecnica?.ingredientes : null;
+  if (!it || !ings?.length || visitados.has(it.id)) { acc[itemId] = (acc[itemId] || 0) + qtd; return acc; }
+  const fracao = qtd / (it.fichaTecnica.rendimento_kg || 1);
+  visitados.add(it.id);
+  for (const ing of ings) if (ing.item_id != null && ing.peso_g > 0) estExplodirItem(ing.item_id, ing.peso_g / 1000 * fracao, acc, visitados);
+  visitados.delete(it.id);
+  return acc;
+}
 
 let _cmvCicloId = null;
 let _cmvCache = {};   // cicloId → resultado
@@ -74,25 +93,49 @@ async function estCalcularCMV(ciclo, contagens) {
       const it = items.find(i => i.id === id);
       porItem.set(id, { id, nome: nome || it?.name || '—', cat: cat ?? it?.cat, unid: unid || it?.unit || '',
         debAuto: false, ini: 0, iniV: 0, fim: 0, fimV: 0, compras: 0, comprasV: 0, producao: 0,
-        vendas: 0, vendasV: 0, perdas: 0, perdasV: 0, custo: it?.cost || 0 });
+        vendas: 0, vendasV: 0, perdas: 0, perdasV: 0, custo: it?.cost || 0,
+        semFicha: !!(it?.isProd && !it.fichaTecnica?.ingredientes?.length), viaProc: {} });
     }
     return porItem.get(id);
   };
-  for (const x of itensIni) { const r = reg(x.item_id, x.item_nome, x.categoria, x.unidade); r.ini += +x.contado; r.iniV += x.contado * (x.custo_unit || 0); }
-  for (const x of itensFim) { const r = reg(x.item_id, x.item_nome, x.categoria, x.unidade); r.fim += +x.contado; r.fimV += x.contado * (x.custo_unit || 0); }
+  // Lança qtd (e valor) do item; processado é distribuído pelos insumos da ficha.
+  // O valor do processado é rateado pelo custo de cada parte, pra o total em R$ não mudar.
+  const lancar = (id, qtd, valor, campo, campoV, info = {}) => {
+    const partes = Object.entries(estExplodirItem(Number(id), Number(qtd) || 0)).map(([k, q]) => [Number(k), q]);
+    const viaProc = partes.length > 1 || (partes[0] && partes[0][0] !== Number(id));
+    const pesos = partes.map(([k, q]) => q * (items.find(i => i.id === k)?.cost || 0));
+    const somaP = pesos.reduce((a, b) => a + b, 0);
+    partes.forEach(([k, q], i) => {
+      const r = viaProc ? reg(k) : reg(k, info.nome, info.cat, info.unid);
+      r[campo] += q;
+      if (campoV) r[campoV] += valor === null ? q * r.custo : somaP > 0 ? valor * pesos[i] / somaP : valor / partes.length;
+      if (viaProc && (campo === 'ini' || campo === 'fim')) {
+        const nm = items.find(x => x.id === Number(id))?.name || info.nome || '?';
+        const vp = r.viaProc[nm] || (r.viaProc[nm] = { ini: 0, fim: 0, unid: items.find(x => x.id === Number(id))?.unit || '' });
+        vp[campo] += Number(qtd) || 0;
+      }
+    });
+    return partes;
+  };
+  for (const x of itensIni) lancar(x.item_id, x.contado, x.contado * (x.custo_unit || 0), 'ini', 'iniV', { nome: x.item_nome, cat: x.categoria, unid: x.unidade });
+  for (const x of itensFim) lancar(x.item_id, x.contado, x.contado * (x.custo_unit || 0), 'fim', 'fimV', { nome: x.item_nome, cat: x.categoria, unid: x.unidade });
   for (const m of movs) {
     if (_estMs(m.data_mov) <= _estMs(inicio)) continue;
-    const r = reg(m.item_id, m.item_nome, m.categoria, m.unidade);
     const v = (Number(m.qtd) || 0) * (Number(m.custo_unit) || 0);
-    if (m.tipo === 'recebimento' || m.tipo === 'compra_avulsa') { r.compras += +m.qtd; r.comprasV += v; }
-    else if (m.tipo === 'producao') { r.producao += +m.qtd; }
-    else if (m.tipo === 'baixa') { r.perdas += +m.qtd; r.perdasV += v; }
+    const info = { nome: m.item_nome, cat: m.categoria, unid: m.unidade };
+    if (m.tipo === 'recebimento' || m.tipo === 'compra_avulsa') lancar(m.item_id, m.qtd, v, 'compras', 'comprasV', info);
+    else if (m.tipo === 'producao') reg(m.item_id, m.item_nome, m.categoria, m.unidade).producao += +m.qtd;   // só informativo
+    else if (m.tipo === 'baixa') lancar(m.item_id, m.qtd, v, 'perdas', 'perdasV', info);
   }
   for (const p of debitos) {
     for (const [id, q] of Object.entries(p.itens)) {
-      const r = reg(Number(id));
-      r.vendas += q; r.vendasV += q * r.custo; r.debAuto = true;
+      lancar(Number(id), q, null, 'vendas', 'vendasV').forEach(([k]) => { reg(k).debAuto = true; });
     }
+  }
+  // Processados com ficha saem da lista (já estão dentro dos insumos)
+  for (const [id] of porItem) {
+    const it = items.find(i => i.id === id);
+    if (it?.isProd && it.fichaTecnica?.ingredientes?.length) porItem.delete(id);
   }
 
   const lista = [...porItem.values()].filter(r => noCmv(r.cat));
@@ -105,7 +148,7 @@ async function estCalcularCMV(ciclo, contagens) {
 
   // Itens com débito automático: consumo real × teórico (só quando há EI e EF)
   const divergencias = temIni && temFim ? lista.filter(r => r.debAuto).map(r => {
-    const consumo = r.ini + r.compras + r.producao - r.fim;
+    const consumo = r.ini + r.compras + (r.semFicha ? r.producao : 0) - r.fim;
     const dif = consumo - r.vendas - r.perdas;
     return { ...r, consumo, dif, difV: dif * r.custo };
   }).filter(r => Math.abs(r.dif) > 0.0005).sort((a, b) => Math.abs(b.difV) - Math.abs(a.difV)) : [];
@@ -116,7 +159,7 @@ async function estCalcularCMV(ciclo, contagens) {
 
   // Todos os itens com movimento: consumo real (contagem) × digital (vendas + saídas)
   const itens = [...porItem.values()].map(r => {
-    const real = temIni && temFim ? r.ini + r.compras + r.producao - r.fim : null;
+    const real = temIni && temFim ? r.ini + r.compras + (r.semFicha ? r.producao : 0) - r.fim : null;
     const digital = r.vendas + r.perdas;
     return { ...r, noCmv: noCmv(r.cat), real, realV: real !== null ? real * r.custo : null, digital, digitalV: digital * r.custo,
       dif: real !== null ? real - digital : null, difV: real !== null ? (real - digital) * r.custo : null };

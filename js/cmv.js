@@ -82,7 +82,7 @@ function _csModoHtml() {
     background:${on ? 'var(--purple)' : 'transparent'};color:${on ? '#fff' : 'var(--text2)'}">${lc(icon, 14, 'currentColor')} ${t}</button>`; };
   return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
     <div style="display:inline-flex;gap:3px;background:var(--surface2);border-radius:var(--r10);padding:3px">${b('periodo', 'calendar', 'Por período')}${b('ciclo', 'refresh-cw', 'Por ciclo')}</div>
-    <span style="font-size:var(--text-sm);color:var(--muted)">${_csModo === 'periodo' ? 'Consumo digital (vendas pela ficha + saídas), dia a dia.' : 'Real (contagem) × digital no ciclo: diferença e alertas.'}</span>
+    <span style="font-size:var(--text-sm);color:var(--muted)">${_csModo === 'periodo' ? 'Consumo digital (vendas pela ficha + saídas), dia a dia.' : 'Real (contagem) × digital no ciclo, só insumos comprados: os processados entram convertidos pela ficha.'}</span>
   </div>`;
 }
 
@@ -119,7 +119,6 @@ function _csLinhas() {
   const q = f.q.trim().toLowerCase();
   return r.itens
     .filter(x => !f.soCmv || x.noCmv)
-    .filter(x => !f.tipo || (f.tipo === 'preparado' ? items.find(i => i.id === x.id)?.isProd : !items.find(i => i.id === x.id)?.isProd))
     .filter(x => !f.cat || (x.cat || 'Outros') === f.cat)
     .filter(x => !q || x.nome.toLowerCase().includes(q))
     .filter(x => x.digital > 0.0005 || (x.real !== null && Math.abs(x.real) > 0.0005))
@@ -185,9 +184,6 @@ function _csRender() {
         <select class="inp" style="width:auto" onchange="_csFil.cat=this.value;_csRender()">
           <option value="">Todas as categorias</option>${cats.map(c => `<option value="${_estEsc(c)}"${f.cat === c ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}
         </select>
-        ${chip(!f.tipo, `_csFil.tipo='';_csRender()`, 'Todos')}
-        ${chip(f.tipo === 'insumo', `_csFil.tipo='insumo';_csRender()`, 'Insumos')}
-        ${chip(f.tipo === 'preparado', `_csFil.tipo='preparado';_csRender()`, 'Processados')}
         ${r.temFim ? chip(f.alertas, `_csFil.alertas=!_csFil.alertas;_csRender()`, `${lc('alert-triangle', 12, 'currentColor')} Só alertas (${nAlertas})`, 'var(--danger-fg)', 'var(--danger-bg)') : ''}
         <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--text2);text-transform:none;letter-spacing:0;font-weight:500;cursor:pointer">
           <input type="checkbox" ${f.soCmv ? 'checked' : ''} onchange="_csFil.soCmv=this.checked;_csRender()" style="accent-color:var(--purple)"> Só o que entra no CMV</label>
@@ -202,9 +198,10 @@ function _csRender() {
           return `<tr onclick="cmvDetalheInsumo(${x.id})" style="border-top:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
             <td style="padding:10px 12px">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">${_estEsc(x.nome)}</span>
-                ${it?.isProd ? '<span class="badge b-purple" style="font-size:var(--text-2xs)">Processado</span>' : ''}
+                ${x.semFicha ? '<span class="badge b-yellow" style="font-size:var(--text-2xs)" title="Processado sem ficha técnica: não dá pra converter nos insumos">Processado sem ficha</span>' : ''}
                 ${x.alerta ? `<span class="badge b-red" style="font-size:var(--text-2xs)">${lc('alert-triangle', 10, 'currentColor')} Alerta</span>` : ''}</div>
-              <div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(x.cat || '')}${x.debAuto ? '' : ' · sem débito automático (consumo só pela contagem)'}</div></td>
+              <div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(x.cat || '')}${x.debAuto ? '' : ' · sem débito automático (consumo só pela contagem)'}</div>
+              ${Object.keys(x.viaProc || {}).length ? `<div style="font-size:var(--text-xs);color:var(--purple);margin-top:2px">inclui ${Object.entries(x.viaProc).map(([n, v]) => `${_estEsc(n)} (${r.temFim ? `contagem ${_estQ(v.ini)} → ${_estQ(v.fim)}` : `estoque inicial ${_estQ(v.ini)}`} ${_estEsc(v.unid)})`).join(' · ')}</div>` : ''}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap">${_estQ(x.digital)} ${u}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap">${x.real !== null ? `${_estQ(x.real)} ${u}` : '<span style="color:var(--muted)">—</span>'}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-weight:700;color:${x.dif > 0.0005 ? 'var(--danger-fg)' : x.dif < -0.0005 ? 'var(--warning-fg)' : 'var(--text2)'}">${x.dif !== null ? `${x.dif > 0 ? '+' : ''}${_estQ(x.dif)} ${u}` : '—'}</td>

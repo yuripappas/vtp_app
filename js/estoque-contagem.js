@@ -604,15 +604,18 @@ function _ctgRasc(row) {
   const r = _ctgAtual.rasc;
   if (!r[row.id]) {
     const p = row.pacotes || {};
+    const br = v => v === '' || v == null ? '' : String(v).replace('.', ',');   // valor salvo → texto pt-BR (não confundir com milhar)
     r[row.id] = row.contado === null ? { emb: '', avulso: '' }
-      : { emb: p.emb ?? '', avulso: p.avulso ?? (p.emb == null ? Number(row.contado) : '') };
+      : { emb: br(p.emb), avulso: br(p.avulso ?? (p.emb == null ? Number(row.contado) : '')) };
   }
   return r[row.id];
 }
-const _ctgNum = v => (v === '' || v == null) ? null : Number(String(v).replace(',', '.'));
+// pt-BR: vírgula decimal; em item por unidade (e no nº de embalagens) o ponto é milhar — 3.420 = 3420
+const _ctgNum = (v, un = '') => (v === '' || v == null) ? null : _estNumBr(v, un);
+const _ctgUnCampo = (row, campo) => campo === 'emb' ? 'un' : _ctgUn(row);
 function _ctgTotalRasc(row) {
   const r = _ctgRasc(row), e = _ctgEmb(row);
-  const emb = _ctgNum(r.emb), av = _ctgNum(r.avulso);
+  const emb = _ctgNum(r.emb, 'un'), av = _ctgNum(r.avulso, _ctgUn(row));
   if (emb === null && av === null) return null;
   return _estRound((e ? (emb || 0) * e.fator : 0) + (av || 0));
 }
@@ -686,11 +689,11 @@ function _ctgLinhaContar(r, arrastavel) {
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0">
       <div style="flex:1;min-width:140px;font-size:var(--text-md)">${rotulo}</div>
       <button class="btn btn-outline btn-sm" style="width:38px;height:38px;padding:0;justify-content:center;border-radius:50%" onclick="_ctgPasso('${r.id}','${campo}',-1)">${lc('minus', 14, 'currentColor')}</button>
-      <input class="inp" id="ctgIn-${r.id}-${campo}" type="number" inputmode="decimal" min="0" step="any" value="${rasc[campo]}" placeholder="—"
+      <input class="inp" id="ctgIn-${r.id}-${campo}" type="text" inputmode="decimal" autocomplete="off" value="${rasc[campo]}" placeholder="—"
         style="width:130px;text-align:right;font-size:var(--text-lg);font-weight:700" oninput="_ctgDigitar('${r.id}','${campo}',this.value)"
         onkeydown="if(event.key==='Enter')_ctgConferir('${r.id}')">
       <button class="btn btn-outline btn-sm" style="width:38px;height:38px;padding:0;justify-content:center;border-radius:50%" onclick="_ctgPasso('${r.id}','${campo}',1)">${lc('plus', 14, 'currentColor')}</button>
-      <div id="ctgEq-${r.id}-${campo}" style="width:110px;text-align:right;font-size:var(--text-sm);color:var(--text2)">${_ctgNum(rasc[campo]) !== null ? `= ${_estQ(_ctgNum(rasc[campo]) * fator)} ${u}` : ''}</div>
+      <div id="ctgEq-${r.id}-${campo}" style="width:110px;text-align:right;font-size:var(--text-sm);color:var(--text2)">${_ctgNum(rasc[campo], _ctgUnCampo(r, campo)) !== null ? `= ${_estQ(_ctgNum(rasc[campo], _ctgUnCampo(r, campo)) * fator)} ${u}` : ''}</div>
     </div>`;
   return `<div data-row="${r.id}" ${arrastavel ? `draggable="true" ondragstart="_ctgDragIni(event,'${r.id}')" ondragover="_ctgDragSobre(event)" ondrop="_ctgDragSoltar(event,'${r.id}')" ondragend="this.style.opacity=''"` : ''}
       style="border:1.5px solid ${conf ? 'var(--success-fg)' : 'var(--card-border)'};border-radius:var(--r12);background:${conf ? 'var(--success-bg)' : 'var(--card-bg)'};overflow:hidden">
@@ -731,7 +734,7 @@ function _ctgDigitar(rowId, campo, valor) {
 function _ctgPasso(rowId, campo, delta) {
   const row = _ctgAtual.itens.find(i => i.id === rowId);
   const r = _ctgRasc(row);
-  r[campo] = String(Math.max(0, (_ctgNum(r[campo]) || 0) + delta));
+  r[campo] = String(Math.max(0, (_ctgNum(r[campo], _ctgUnCampo(row, campo)) || 0) + delta)).replace('.', ',');
   const inp = document.getElementById(`ctgIn-${rowId}-${campo}`); if (inp) inp.value = r[campo];
   _ctgAtualizarTotais(row);
 }
@@ -739,7 +742,7 @@ function _ctgAtualizarTotais(row) {
   const r = _ctgRasc(row), e = _ctgEmb(row), u = _estEsc(_ctgUn(row));
   for (const [campo, fator] of [['emb', e?.fator || 0], ['avulso', 1]]) {
     const eq = document.getElementById(`ctgEq-${row.id}-${campo}`);
-    const v = _ctgNum(r[campo]);
+    const v = _ctgNum(r[campo], _ctgUnCampo(row, campo));
     if (eq) eq.textContent = v !== null ? `= ${_estQ(v * fator)} ${_ctgUn(row)}` : '';
   }
   const tot = _ctgTotalRasc(row);
@@ -749,7 +752,7 @@ function _ctgAtualizarTotais(row) {
 
 async function _ctgSalvarContado(row) {
   const r = _ctgRasc(row), e = _ctgEmb(row);
-  const emb = _ctgNum(r.emb), av = _ctgNum(r.avulso);
+  const emb = _ctgNum(r.emb, 'un'), av = _ctgNum(r.avulso, _ctgUn(row));
   if (emb === null && av === null) { toast('Digite a quantidade (0 se não houver)', 'err'); return false; }
   if ((emb !== null && (isNaN(emb) || emb < 0)) || (av !== null && (isNaN(av) || av < 0))) { toast('Quantidade inválida', 'err'); return false; }
   const total = _ctgTotalRasc(row);
