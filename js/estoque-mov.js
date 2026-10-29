@@ -624,6 +624,60 @@ async function _estSalvarComBotao(id, fn) {
   }
 }
 
+// ── Busca de item (insumo/processado): campo de texto com lista filtrada ──
+// id = input escondido com o id do item (lido por _estItemDoSelect); aoEscolher = JS executado ao escolher.
+const _estBuscaCfg = {};
+const _estNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function _estBuscaItemHtml(id, filtro, selId, aoEscolher = '') {
+  const it = selId ? items.find(i => i.id === selId) : null;
+  _estBuscaCfg[id] = { filtro, aoEscolher, ix: 0 };
+  return `<div style="position:relative">
+    <input type="hidden" id="${id}" value="${it ? it.id : ''}">
+    <span style="position:absolute;left:14px;top:23px;transform:translateY(-50%);line-height:0;pointer-events:none">${lc('search', 17, 'var(--purple)')}</span>
+    <input class="inp" id="${id}Q" autocomplete="off" placeholder="Digite para buscar…" value="${it ? _estEsc(it.name) : ''}"
+      style="height:46px;padding-left:42px;font-size:var(--text-md);font-weight:600;border:1.5px solid var(--purple);background:var(--card-bg)"
+      onfocus="this.select();_estBuscaFiltrar('${id}')" oninput="document.getElementById('${id}').value='';_estBuscaCfg['${id}'].ix=0;_estBuscaFiltrar('${id}')"
+      onkeydown="_estBuscaTecla(event,'${id}')" onblur="setTimeout(()=>_estBuscaFechar('${id}'),150)">
+    <div id="${id}Lista" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;max-height:300px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--r10);box-shadow:0 10px 28px rgba(0,0,0,.18)"></div>
+  </div>`;
+}
+function _estBuscaLista(id) {
+  const cfg = _estBuscaCfg[id], q = _estNorm(document.getElementById(id + 'Q')?.value);
+  return items.filter(i => i.active !== false && cfg.filtro(i) && (!q || _estNorm(i.name).includes(q) || _estNorm(i.cat).includes(q)))
+    .sort((a, b) => (q ? (_estNorm(a.name).startsWith(q) ? 0 : 1) - (_estNorm(b.name).startsWith(q) ? 0 : 1) : 0) || a.name.localeCompare(b.name)).slice(0, 80);
+}
+function _estBuscaFiltrar(id) {
+  const el = document.getElementById(id + 'Lista'); if (!el) return;
+  const lista = _estBuscaLista(id), cfg = _estBuscaCfg[id];
+  cfg.ix = Math.min(cfg.ix, Math.max(0, lista.length - 1));
+  el.innerHTML = lista.length ? lista.map((i, k) => `<div onmousedown="event.preventDefault();_estBuscaEscolher('${id}',${i.id})"
+      style="display:flex;justify-content:space-between;gap:10px;padding:9px 14px;cursor:pointer;${k === cfg.ix ? 'background:var(--purple-xlight)' : ''}" onmouseover="_estBuscaCfg['${id}'].ix=${k};_estBuscaFiltrar('${id}')">
+      <span style="font-weight:600">${_estEsc(i.name)}</span><span style="font-size:var(--text-xs);color:var(--muted);white-space:nowrap">${_estEsc(i.cat || '')} · ${_estEsc(i.unit || '')}</span></div>`).join('')
+    : `<div style="padding:12px 14px;color:var(--muted);font-size:var(--text-sm)">Nenhum item encontrado</div>`;
+  el.style.display = 'block';
+}
+function _estBuscaTecla(ev, id) {
+  const cfg = _estBuscaCfg[id], lista = _estBuscaLista(id);
+  if (ev.key === 'ArrowDown') { ev.preventDefault(); cfg.ix = Math.min(cfg.ix + 1, lista.length - 1); _estBuscaFiltrar(id); }
+  else if (ev.key === 'ArrowUp') { ev.preventDefault(); cfg.ix = Math.max(cfg.ix - 1, 0); _estBuscaFiltrar(id); }
+  else if (ev.key === 'Enter') { ev.preventDefault(); if (lista[cfg.ix]) _estBuscaEscolher(id, lista[cfg.ix].id); }
+  else if (ev.key === 'Escape') _estBuscaFechar(id);
+}
+function _estBuscaFechar(id) {
+  const el = document.getElementById(id + 'Lista'); if (el) el.style.display = 'none';
+  // texto digitado sem escolher: volta ao item escolhido (ou vazio)
+  const it = _estItemDoSelect(id), q = document.getElementById(id + 'Q');
+  if (q && document.activeElement !== q) q.value = it ? it.name : '';
+}
+function _estBuscaEscolher(id, itemId) {
+  const it = items.find(i => i.id === itemId); if (!it) return;
+  document.getElementById(id).value = it.id;
+  document.getElementById(id + 'Q').value = it.name;
+  document.getElementById(id + 'Lista').style.display = 'none';
+  document.getElementById(id + 'Q').blur();
+  if (_estBuscaCfg[id].aoEscolher) (new Function(_estBuscaCfg[id].aoEscolher))();
+}
+
 function _estItemDoSelect(selId) {
   const id = parseInt(document.getElementById(selId)?.value);
   return items.find(i => i.id === id) || null;
@@ -743,16 +797,12 @@ function _estEntradaRender() {
   const e = _estEn, proc = e.origem === 'preparado';
   body.innerHTML = `
     ${_estCampo('O que entrou', _estOpcoes(_EST_ORIGENS.map(o => o.id === 'preparado' ? { ...o, desc: 'produção (ex.: molho, massa)' } : { ...o, desc: 'doação, devolução, ajuste' }), e.origem, '_estEntradaSet'))}
-    <div class="f2">
-      ${_estCampo(proc ? 'Processado *' : 'Insumo *', `<select class="inp" id="eeItem" onchange="_estEn.itemId=+this.value||null;_estSugerirLocal('eeItem','eeLocal','entrada');const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=_estFmtInp(it.cost);_estPainelAtualizar('ee',1)">${_estOptsItens(_estFiltroOrigem(e.origem), e.itemId)}</select>`,
-        '', proc ? 'Os insumos crus usados na produção saem do estoque na contagem.' : '')}
-      ${_estCampo('Local *', `<select class="inp" id="eeLocal" onchange="_estPainelAtualizar('ee',1)">${_estOptsLocais(e.itemId ? estLocalEntrada(items.find(i => i.id === e.itemId)) : '', true)}</select>`)}
-    </div>
+    ${_estCampo(proc ? 'Processado *' : 'Insumo *', _estBuscaItemHtml('eeItem', _estFiltroOrigem(e.origem), e.itemId,
+        "_estEn.itemId=+document.getElementById('eeItem').value||null;_estSugerirLocal('eeItem','eeLocal','entrada');const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=_estFmtInp(it.cost);_estPainelAtualizar('ee',1)"),
+      '', proc ? 'Os insumos crus usados na produção saem do estoque na contagem.' : '')}
+    ${_estCampo('Local *', `<select class="inp" id="eeLocal" onchange="_estPainelAtualizar('ee',1)">${_estOptsLocais(e.itemId ? estLocalEntrada(items.find(i => i.id === e.itemId)) : '', true)}</select>`)}
     ${_estPainelHtml('ee', 1)}
-    <div class="f2">
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="eeData" value="${e.eeData || _estAgora()}">`)}
-      ${_estCampo(proc ? 'Observação' : 'Motivo', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="${proc ? 'opcional' : 'ex: ajuste de contagem, devolução'}">`)}
-    </div>`;
+    ${_estCampo('Observação', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="${proc ? 'opcional' : 'ex: ajuste de contagem, devolução'}">`, '', 'Data e hora: o momento em que você registrar.')}`;
   document.getElementById('eeQtd').value = e.eeQtd || '';
   const itSel = e.itemId ? items.find(i => i.id === e.itemId) : null;
   document.getElementById('eeCusto').value = e.eeCusto || (itSel ? _estFmtInp(itSel.cost) : '');
@@ -770,7 +820,7 @@ function _estSalvarEntrada() {
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
   const comum = {
     sinal: 1, qtd: _estRound(qtd), local_destino: document.getElementById('eeLocal').value || EST_SEM_LOCAL,
-    motivo: document.getElementById('eeMotivo').value.trim() || null, data_mov: _estLerData('eeData'),
+    motivo: document.getElementById('eeMotivo').value.trim() || null, data_mov: new Date().toISOString(),
   };
   const row = _estMovRow(item, { tipo: proc ? 'producao' : 'entrada_manual', ...comum, custo_unit: custoUnit });
   _estSalvarComBotao('ovEstEntrada', () => estInserirMovs([row]).then(() => toast(proc ? 'Produção registrada' : 'Entrada registrada', 'ok')));
@@ -803,11 +853,8 @@ function estAbrirTransferencia(itemId) {
       ${_estCampo('De *', `<select class="inp" id="etDe">${opts(de)}</select>`)}
       ${_estCampo('Para *', `<select class="inp" id="etPara">${opts(para)}</select>`)}
     </div>
-    <div class="f2">
-      ${_estCampo(`Quantidade (${_estEsc(item.unit || 'un')}) *`, `<input class="inp" type="number" id="etQtd" min="0" step="0.001">`)}
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="etData" value="${_estAgora()}">`)}
-    </div>
-    ${_estCampo('Motivo', `<input class="inp" id="etMotivo" placeholder="ex: reposição da loja">`)}`,
+    ${_estCampo(`Quantidade (${_estEsc(item.unit || 'un')}) *`, `<input class="inp" type="text" inputmode="decimal" id="etQtd" placeholder="0">`)}
+    ${_estCampo('Observação', `<input class="inp" id="etMotivo" placeholder="ex: reposição da loja">`, '', 'Data e hora: o momento em que você registrar.')}`,
     '_estSalvarTransf()', 'Transferir', 540,
     'Sai de um local e entra no outro numa operação só, sem valor financeiro.');
   setTimeout(() => document.getElementById('etQtd')?.focus(), 50);
@@ -815,14 +862,14 @@ function estAbrirTransferencia(itemId) {
 
 function _estSalvarTransf() {
   const item = _estItemDoSelect('etItem');
-  const qtd  = parseFloat(document.getElementById('etQtd').value);
+  const qtd  = _estNumBr(document.getElementById('etQtd').value, item?.unit);
   const de = document.getElementById('etDe').value, para = document.getElementById('etPara').value;
   if (!item) return toast('Item não encontrado', 'err');
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
   if (!de || !para || de === para) return toast('Escolha locais de origem e destino diferentes', 'err');
   _estSalvarComBotao('ovEstTransf', () => estInserirMovs([_estMovRow(item, {
     tipo: 'transferencia', sinal: 0, qtd: _estRound(qtd), local_origem: de, local_destino: para,
-    motivo: document.getElementById('etMotivo').value.trim() || null, data_mov: _estLerData('etData'),
+    motivo: document.getElementById('etMotivo').value.trim() || null, data_mov: new Date().toISOString(),
   })]).then(() => {
     toast('Transferência registrada', 'ok');
     // Reabre o detalhe do item já com o saldo novo de cada local
@@ -888,11 +935,11 @@ function _estBaixaRender() {
           </div>${_estDica('Deixe a 2ª metade vazia se a pizza era inteira de um sabor só.')}</div>`
         : _estCampo('Sabor *', `<select class="inp" onchange="_estBaixaSet('s1',+this.value||null)">${optSab(b.s1)}</select>`)) : ''}`;
   } else {
-    alvo = `<div class="f2">
-      ${_estCampo(b.origem === 'preparado' ? 'Processado *' : 'Insumo *', `<select class="inp" id="ebItem" onchange="_estBx.itemId=+this.value||null;_estSugerirLocal('ebItem','ebLocal','saida');_estPainelAtualizar('eb',-1)">${_estOptsItens(_estFiltroOrigem(b.origem), b.itemId)}</select>`)}
+    alvo = `
+      ${_estCampo(b.origem === 'preparado' ? 'Processado *' : 'Insumo *', _estBuscaItemHtml('ebItem', _estFiltroOrigem(b.origem), b.itemId,
+        "_estBx.itemId=+document.getElementById('ebItem').value||null;_estSugerirLocal('ebItem','ebLocal','saida');_estPainelAtualizar('eb',-1)"))}
       ${_estCampo('Local *', `<select class="inp" id="ebLocal" onchange="_estPainelAtualizar('eb',-1)">${_estOptsLocais(b.itemId ? estLocalSaida(items.find(i => i.id === b.itemId)) : '', true)}</select>`)}
-    </div>
-    ${_estPainelHtml('eb', -1)}`;
+      ${_estPainelHtml('eb', -1)}`;
   }
 
   // Produto: lista do que sai, com opção de tirar itens que não foram usados
@@ -924,10 +971,7 @@ function _estBaixaRender() {
       ${_estCampo('Tipo de saída *', `<select class="inp" id="ebTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${b.ebTipo === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`)}
     </div>
     ${previa}
-    <div class="f2">
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="ebData" value="${b.ebData || _estAgora()}">`)}
-      ${_estCampo('O que aconteceu', `<input class="inp" id="ebMotivo" value="${_estEsc(b.ebMotivo || '')}" placeholder="opcional">`)}
-    </div>`;
+    ${_estCampo('Observação', `<input class="inp" id="ebMotivo" value="${_estEsc(b.ebMotivo || '')}" placeholder="o que aconteceu (opcional)">`, '', 'Data e hora: o momento em que você registrar.')}`;
   if (!prod) {
     document.getElementById('ebQtd').value = b.ebQtd || '';
     if (b.itemId) _estSugerirLocal('ebItem', 'ebLocal', 'saida');
@@ -955,7 +999,7 @@ function _estSalvarBaixa() {
   const qtd   = _estNumBr(document.getElementById('ebQtd').value, itemSel?.unit);
   const tipo  = document.getElementById('ebTipo').value;
   const obs   = document.getElementById('ebMotivo').value.trim();
-  const data  = _estLerData('ebData');
+  const data  = new Date().toISOString();   // sempre o horário do lançamento
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
   if (!tipo) return toast('Escolha o tipo de saída', 'err');
 
@@ -1000,14 +1044,14 @@ function estEditarMovModal(id) {
     <div style="font-size:var(--text-md);font-weight:700">${_estEsc(m.item_nome)}</div>
     <div class="f2">
       ${_estCampo(`Quantidade (${_estEsc(m.unidade || '')})`, `<input class="inp" type="number" id="emQtd" value="${m.qtd}" min="0" step="0.001">`)}
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="emData" value="${dt.toISOString().slice(0, 16)}">`)}
+
     </div>
     ${m.tipo === 'transferencia' ? `<div class="f2">
         ${_estCampo('De', `<select class="inp" id="emDe">${_estOptsLocais(m.local_origem)}</select>`)}
         ${_estCampo('Para', `<select class="inp" id="emPara">${_estOptsLocais(m.local_destino)}</select>`)}</div>`
       : _estCampo('Local', `<select class="inp" id="emLocal">${_estOptsLocais(m[loc], true)}</select>`)}
     ${m.tipo === 'baixa' ? _estCampo('Tipo de saída', `<select class="inp" id="emTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${m.tipo_baixa === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`) : ''}
-    ${_estCampo('Motivo', `<input class="inp" id="emMotivo" value="${_estEsc(m.motivo || '')}">`)}
+    ${_estCampo('Observação', `<input class="inp" id="emMotivo" value="${_estEsc(m.motivo || '')}">`)}
     ${_estDica('A alteração fica registrada no histórico com o seu nome.')}`,
     `_estSalvarEdicao('${id}')`);
 }
@@ -1015,7 +1059,7 @@ function _estSalvarEdicao(id) {
   const m = _estAcharMov(id);
   const qtd = parseFloat(document.getElementById('emQtd').value);
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
-  const campos = { qtd: _estRound(qtd), data_mov: _estLerData('emData'), motivo: document.getElementById('emMotivo').value.trim() || null };
+  const campos = { qtd: _estRound(qtd), motivo: document.getElementById('emMotivo').value.trim() || null };
   if (m.tipo === 'transferencia') {
     campos.local_origem = document.getElementById('emDe').value; campos.local_destino = document.getElementById('emPara').value;
     if (campos.local_origem === campos.local_destino) return toast('Origem e destino precisam ser diferentes', 'err');
@@ -1039,10 +1083,10 @@ function estEditarGrupoModal(grupoId) {
     <div style="font-size:var(--text-sm);color:var(--muted);margin-top:-8px">${ms.length} insumo(s)/processado(s) da ficha</div>
     <div class="f2">
       ${_estCampo('Quantidade (unidades)', `<input class="inp" type="number" id="egQtd" value="${_estQtdProduto(m0.produto_nome)}" min="1" step="1">`)}
-      ${_estCampo('Data e hora', `<input class="inp" type="datetime-local" id="egData" value="${dt.toISOString().slice(0, 16)}">`)}
+
     </div>
     ${_estCampo('Tipo de saída', `<select class="inp" id="egTipo">${TIPOS_DESPERDICIO.map(t => `<option value="${t.id}"${m0.tipo_baixa === t.id ? ' selected' : ''}>${_estEsc(t.label)}</option>`).join('')}</select>`)}
-    ${_estCampo('O que aconteceu', `<input class="inp" id="egMotivo" value="${_estEsc(m0.motivo || '')}">`)}
+    ${_estCampo('Observação', `<input class="inp" id="egMotivo" value="${_estEsc(m0.motivo || '')}">`)}
     ${_estDica('Mudar a quantidade ajusta todos os itens na mesma proporção. A alteração fica registrada no histórico com o seu nome.')}`,
     `_estSalvarEdicaoGrupo('${grupoId}')`);
 }
@@ -1054,7 +1098,7 @@ function _estSalvarEdicaoGrupo(grupoId) {
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
   const antes = _estQtdProduto(ms[0].produto_nome), fator = qtd / antes;
   const base = String(ms[0].produto_nome).replace(/^\d+(?:[.,]\d+)?×\s+/, '');
-  const comum = { data_mov: _estLerData('egData'), tipo_baixa: document.getElementById('egTipo').value,
+  const comum = { tipo_baixa: document.getElementById('egTipo').value,
     motivo: document.getElementById('egMotivo').value.trim() || null, produto_nome: (qtd > 1 ? `${qtd}× ` : '') + base };
   _estSalvarComBotao('ovEstEdit', async () => {
     let custo = 0;
@@ -1066,7 +1110,7 @@ function _estSalvarEdicaoGrupo(grupoId) {
     // espelho em Relatórios
     const d = typeof desperdicios !== 'undefined' && desperdicios.find(x => x.movGrupoId === grupoId);
     if (d) {
-      Object.assign(d, { nome: comum.produto_nome, qty: qtd, tipo: comum.tipo_baixa, custo, date: comum.data_mov.slice(0, 10), obs: comum.motivo || '' });
+      Object.assign(d, { nome: comum.produto_nome, qty: qtd, tipo: comum.tipo_baixa, custo, date: String(ms[0].data_mov).slice(0, 10), obs: comum.motivo || '' });
       if (typeof saveD === 'function') saveD();
     }
     toast('Saída atualizada', 'ok');
