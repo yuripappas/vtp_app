@@ -16,8 +16,9 @@
  * (item.qty) como saldo, sem débito de venda — não dá pra saber desde quando
  * descontar. Ele aparece marcado como "sem contagem" até a primeira contagem
  * de ciclo. Toda movimentação nova também ajusta item.qty (ver
- * estAplicarLegado em estoque-mov.js), então para esses itens as
- * movimentações NÃO são somadas de novo aqui — já estão dentro do item.qty.
+ * estAplicarLegado em estoque-mov.js); para não somar duas vezes, o saldo
+ * antigo "puro" é item.qty − movimentações, e ele fica no local de saída,
+ * enquanto cada movimentação entra no local dela. O total continua = item.qty.
  *
  * Dados: tabelas est_* no Supabase (ver migration 20261010120000) + cw_pedidos.
  */
@@ -230,9 +231,10 @@ async function estCalcularSaldos({ ate = null } = {}) {
       };
     }
     if (!temContagem) {
-      // Sem contagem ainda: saldo antigo (importação CW) no local de saída
+      // Sem contagem ainda: saldo antigo (importação CW, sem as movimentações) no local de saída
       const l = estLocalSaida(item);
-      porLocal[l].base = Number(item.qty) || 0;
+      const movsItem = movs.filter(m => m.item_id === item.id && m.ref_tipo !== 'desperdicio_legado');
+      porLocal[l].base = (Number(item.qty) || 0) - movsItem.reduce((s, m) => s + estEfeitoMov(m).reduce((a, [, d]) => a + d, 0), 0);
     }
     porItem.set(item.id, { item, porLocal, semContagem: !temContagem, total: 0 });
   }
@@ -240,7 +242,7 @@ async function estCalcularSaldos({ ate = null } = {}) {
   // Movimentações depois da base de cada local
   for (const m of movs) {
     const r = porItem.get(m.item_id);
-    if (!r || r.semContagem) continue; // já refletida no item.qty
+    if (!r || (r.semContagem && m.ref_tipo === 'desperdicio_legado')) continue; // migradas: já estavam no item.qty
     for (const [loc, delta] of estEfeitoMov(m)) {
       if (!loc) continue;
       const pl = r.porLocal[loc] || (r.porLocal[loc] = { saldo: 0, base: 0, baseData: null, entradas: 0, vendas: 0, baixas: 0, transferencias: 0, ajustes: 0 });
