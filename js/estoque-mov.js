@@ -607,6 +607,23 @@ function _estOptsLocais(sel, incluirSem = false) {
     + (incluirSem ? `<option value="${EST_SEM_LOCAL}"${sel === EST_SEM_LOCAL ? ' selected' : ''}>Sem local</option>` : '');
 }
 
+// Locais habilitados no cadastro do item, com o saldo de cada um (sem item: todos os locais)
+function _estOptsLocaisItem(item, sel) {
+  if (!item) return `<option value="">Escolha o item primeiro</option>`;
+  const locais = estLocaisReaisDoItem(item);
+  if (!locais.length) return _estOptsLocais(sel || EST_SEM_LOCAL, true);
+  const sal = _estSaldosCache?.porItem.get(item.id);
+  const alvo = locais.includes(sel) ? sel : locais[0];
+  return locais.map(l => { const v = sal?.porLocal[l]?.saldo;
+    return `<option value="${l}"${l === alvo ? ' selected' : ''}>${_estEsc(estLocalLabel(l))}${v != null ? ` · ${_estQ(v)} ${_estEsc(item.unit || '')}` : ''}</option>`; }).join('');
+}
+function _estAtualizarLocais(p, campo) {
+  const item = _estItemDoSelect(p + 'Item'), sel = document.getElementById(p + 'Local');
+  if (!sel) return;
+  sel.innerHTML = _estOptsLocaisItem(item, item ? (campo === 'saida' ? estLocalSaida(item) : estLocalEntrada(item)) : '');
+  sel.disabled = !item;
+}
+
 const _estCampo = (label, html, extra = '', dica = '') => `<div class="field" style="${extra}"><label>${label}</label>${html}${dica ? _estDica(dica) : ''}</div>`;
 
 async function _estSalvarComBotao(id, fn) {
@@ -651,15 +668,21 @@ function _estBuscaFiltrar(id) {
   const lista = _estBuscaLista(id), cfg = _estBuscaCfg[id];
   cfg.ix = Math.min(cfg.ix, Math.max(0, lista.length - 1));
   el.innerHTML = lista.length ? lista.map((i, k) => `<div onmousedown="event.preventDefault();_estBuscaEscolher('${id}',${i.id})"
-      style="display:flex;justify-content:space-between;gap:10px;padding:9px 14px;cursor:pointer;${k === cfg.ix ? 'background:var(--purple-xlight)' : ''}" onmouseover="_estBuscaCfg['${id}'].ix=${k};_estBuscaFiltrar('${id}')">
+      class="est-busca-op" data-k="${k}" onmouseenter="_estBuscaMarcar('${id}',${k})"
+      style="display:flex;justify-content:space-between;gap:10px;padding:9px 14px;cursor:pointer;${k === cfg.ix ? 'background:var(--purple-xlight)' : ''}">
       <span style="font-weight:600">${_estEsc(i.name)}</span><span style="font-size:var(--text-xs);color:var(--muted);white-space:nowrap">${_estEsc(i.cat || '')} · ${_estEsc(i.unit || '')}</span></div>`).join('')
     : `<div style="padding:12px 14px;color:var(--muted);font-size:var(--text-sm)">Nenhum item encontrado</div>`;
   el.style.display = 'block';
 }
+function _estBuscaMarcar(id, k) {
+  _estBuscaCfg[id].ix = k;
+  document.querySelectorAll(`#${id}Lista .est-busca-op`).forEach(el => { el.style.background = +el.dataset.k === k ? 'var(--purple-xlight)' : ''; });
+}
 function _estBuscaTecla(ev, id) {
   const cfg = _estBuscaCfg[id], lista = _estBuscaLista(id);
-  if (ev.key === 'ArrowDown') { ev.preventDefault(); cfg.ix = Math.min(cfg.ix + 1, lista.length - 1); _estBuscaFiltrar(id); }
-  else if (ev.key === 'ArrowUp') { ev.preventDefault(); cfg.ix = Math.max(cfg.ix - 1, 0); _estBuscaFiltrar(id); }
+  const mover = k => { _estBuscaMarcar(id, k); document.querySelector(`#${id}Lista .est-busca-op[data-k="${k}"]`)?.scrollIntoView({ block: 'nearest' }); };
+  if (ev.key === 'ArrowDown') { ev.preventDefault(); mover(Math.min(cfg.ix + 1, lista.length - 1)); }
+  else if (ev.key === 'ArrowUp') { ev.preventDefault(); mover(Math.max(cfg.ix - 1, 0)); }
   else if (ev.key === 'Enter') { ev.preventDefault(); if (lista[cfg.ix]) _estBuscaEscolher(id, lista[cfg.ix].id); }
   else if (ev.key === 'Escape') _estBuscaFechar(id);
 }
@@ -726,10 +749,11 @@ function _estPainelHtml(p, sinal) {
     <input id="${id}" type="text" inputmode="decimal" placeholder="${ph}" oninput="_estPainelAtualizar('${p}', ${sinal})"
       style="width:100%;border:none;outline:none;background:transparent;text-align:center;font-size:var(--text-xl);font-weight:700;padding:6px 0;font-family:inherit;color:var(--text)"></div>`;
   return `<div class="field"><div class="fm-box" style="display:flex;gap:12px;align-items:flex-start">
-      ${box('Atual', num(p + 'PnAtual') + `<div id="${p}PnLocal" style="font-size:var(--text-xs);color:var(--muted);margin-top:-4px"></div>`)}
+      ${box('Atual (total)', num(p + 'PnAtual'))}
       ${box(sinal > 0 ? 'Adicionar' : 'Retirar', inp(p + 'Qtd', '0'), true)}
-      ${box('Atualizado', num(p + 'PnNovo'))}
+      ${box('Atualizado (total)', num(p + 'PnNovo'))}
     </div>
+    <div id="${p}PnLocais"></div>
     <div class="fm-box" style="display:flex;gap:12px;align-items:flex-start;margin-top:8px">
       ${box('Custo atual', num(p + 'PnCusto'))}
       ${sinal > 0 ? box('Custo unitário', inp(p + 'Custo', '0,00', 'R$'), true) : box('Valor da saída', num(p + 'PnValor'), true)}
@@ -743,17 +767,29 @@ function _estPainelAtualizar(p, sinal) {
   const $ = id => document.getElementById(p + id);
   if (!$('PnAtual')) return;
   const un = item?.unit || '';
-  if (!item) { ['PnAtual', 'PnNovo', 'PnCusto', 'PnValor', 'PnMedio'].forEach(k => { if ($(k)) $(k).textContent = '—'; }); $('PnDica').textContent = ''; return; }
+  if (!item) { ['PnAtual', 'PnNovo', 'PnCusto', 'PnValor', 'PnMedio'].forEach(k => { if ($(k)) $(k).textContent = '—'; }); $('PnDica').textContent = ''; $('PnLocais').innerHTML = ''; return; }
   const local = $('Local')?.value || '';
   const sal = _estSaldosCache?.porItem.get(item.id);
-  const atual = sal ? (local ? (sal.porLocal[local]?.saldo ?? 0) : sal.total) : null;
   const total = sal ? sal.total : null;
+  const atualLocal = sal ? (sal.porLocal[local]?.saldo ?? 0) : null;
   const qtd = _estNumBr($('Qtd').value, un) || 0;
   const custo = Number(item.cost) || 0;
   const fq = v => v == null ? '…' : `${_estQ(v)} <span style="font-size:var(--text-sm);font-weight:500;color:var(--muted)">${_estEsc(un)}</span>`;
-  $('PnLocal').textContent = local ? estLocalLabel(local) : 'todos os locais';
-  $('PnAtual').innerHTML = fq(atual);
-  const novo = atual == null ? null : atual + sinal * qtd;
+  $('PnAtual').innerHTML = fq(total);
+  const novo = total == null ? null : total + sinal * qtd;
+  const novoLocal = atualLocal == null ? null : atualLocal + sinal * qtd;
+  // Saldo em cada local: os habilitados no cadastro + algum outro que ainda tenha saldo
+  if (sal) {
+    const hab = estLocaisReaisDoItem(item);
+    const locs = [...new Set([...hab, ...Object.keys(sal.porLocal).filter(l => Math.abs(sal.porLocal[l]?.saldo || 0) > 0.0005)])];
+    $('PnLocais').innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${locs.map(l => {
+      const v = sal.porLocal[l]?.saldo ?? 0, on = l === local;
+      const depois = on && qtd ? ` → <strong style="color:${novoLocal < -0.0005 ? 'var(--danger-fg)' : 'var(--purple)'}">${_estQ(novoLocal)}</strong>` : '';
+      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:99px;font-size:var(--text-xs);
+        border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};background:${on ? 'var(--purple-xlight)' : 'var(--card-bg)'}">
+        ${_estEsc(estLocalLabel(l))}${hab.includes(l) ? '' : ' <span style="color:var(--muted)">(fora do cadastro)</span>'}:
+        <strong style="color:${v < -0.0005 ? 'var(--danger-fg)' : 'var(--text)'}">${_estQ(v)}</strong>${depois} ${_estEsc(un)}</span>`; }).join('')}</div>`;
+  } else $('PnLocais').innerHTML = '';
   $('PnNovo').innerHTML = fq(novo);
   $('PnNovo').style.color = novo != null && novo < -0.0005 ? 'var(--danger-fg)' : qtd ? 'var(--purple)' : 'var(--text)';
   $('PnCusto').textContent = _estR(custo);
@@ -766,15 +802,15 @@ function _estPainelAtualizar(p, sinal) {
     $('PnDica').textContent = qtd ? `Entra ${_estR(qtd * cUnit)} no valor do estoque. Não conta como compra no CMV.` : '';
   } else {
     $('PnValor').textContent = _estR(qtd * custo);
-    $('PnMedio').textContent = atual == null ? '…' : _estR(Math.max(0, novo) * custo);
-    $('PnDica').textContent = novo != null && novo < -0.0005 ? `O saldo neste local fica negativo: confira a quantidade ou o local.` : '';
+    $('PnMedio').textContent = total == null ? '…' : _estR(Math.max(0, novo) * custo);
+    $('PnDica').textContent = novoLocal != null && novoLocal < -0.0005 ? `O saldo em ${estLocalLabel(local)} fica negativo: confira a quantidade ou o local.` : '';
   }
-  if (total != null && local && Math.abs(total - atual) > 0.0005) $('PnDica').textContent += `${$('PnDica').textContent ? ' ' : ''}Total em todos os locais: ${_estQ(total)} ${un}.`;
 }
 
 function _estPainelIniciar(p, sinal) {
   _estPainelAtualizar(p, sinal);
-  if (!_estSaldosCache) estSaldos().then(() => _estPainelAtualizar(p, sinal)).catch(() => {});
+  if (!_estSaldosCache) estSaldos().then(() => { const sel = document.getElementById(p + 'Local'), v = sel?.value;
+    _estAtualizarLocais(p, sinal > 0 ? 'entrada' : 'saida'); if (sel && v && [...sel.options].some(o => o.value === v)) sel.value = v; _estPainelAtualizar(p, sinal); }).catch(() => {});
 }
 
 function estAbrirEntrada(origem = 'insumo') {
@@ -798,15 +834,15 @@ function _estEntradaRender() {
   body.innerHTML = `
     ${_estCampo('O que entrou', _estOpcoes(_EST_ORIGENS.map(o => o.id === 'preparado' ? { ...o, desc: 'produção (ex.: molho, massa)' } : { ...o, desc: 'doação, devolução, ajuste' }), e.origem, '_estEntradaSet'))}
     ${_estCampo(proc ? 'Processado *' : 'Insumo *', _estBuscaItemHtml('eeItem', _estFiltroOrigem(e.origem), e.itemId,
-        "_estEn.itemId=+document.getElementById('eeItem').value||null;_estSugerirLocal('eeItem','eeLocal','entrada');const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=_estFmtInp(it.cost);_estPainelAtualizar('ee',1)"),
+        "_estEn.itemId=+document.getElementById('eeItem').value||null;_estAtualizarLocais('ee','entrada');_estSugerirLocal('eeItem','eeLocal','entrada');const it=_estItemDoSelect('eeItem');if(it)document.getElementById('eeCusto').value=_estFmtInp(it.cost);_estPainelAtualizar('ee',1)"),
       '', proc ? 'Os insumos crus usados na produção saem do estoque na contagem.' : '')}
-    ${_estCampo('Local *', `<select class="inp" id="eeLocal" onchange="_estPainelAtualizar('ee',1)">${_estOptsLocais(e.itemId ? estLocalEntrada(items.find(i => i.id === e.itemId)) : '', true)}</select>`)}
+    ${_estCampo('Local *', `<select class="inp" id="eeLocal" onchange="_estPainelAtualizar('ee',1)"></select>`)}
     ${_estPainelHtml('ee', 1)}
     ${_estCampo('Observação', `<input class="inp" id="eeMotivo" value="${_estEsc(e.eeMotivo || '')}" placeholder="${proc ? 'opcional' : 'ex: ajuste de contagem, devolução'}">`, '', 'Data e hora: o momento em que você registrar.')}`;
   document.getElementById('eeQtd').value = e.eeQtd || '';
   const itSel = e.itemId ? items.find(i => i.id === e.itemId) : null;
   document.getElementById('eeCusto').value = e.eeCusto || (itSel ? _estFmtInp(itSel.cost) : '');
-  if (e.itemId) _estSugerirLocal('eeItem', 'eeLocal', 'entrada');
+  _estAtualizarLocais('ee', 'entrada');
   _estPainelIniciar('ee', 1);
 }
 
@@ -937,8 +973,8 @@ function _estBaixaRender() {
   } else {
     alvo = `
       ${_estCampo(b.origem === 'preparado' ? 'Processado *' : 'Insumo *', _estBuscaItemHtml('ebItem', _estFiltroOrigem(b.origem), b.itemId,
-        "_estBx.itemId=+document.getElementById('ebItem').value||null;_estSugerirLocal('ebItem','ebLocal','saida');_estPainelAtualizar('eb',-1)"))}
-      ${_estCampo('Local *', `<select class="inp" id="ebLocal" onchange="_estPainelAtualizar('eb',-1)">${_estOptsLocais(b.itemId ? estLocalSaida(items.find(i => i.id === b.itemId)) : '', true)}</select>`)}
+        "_estBx.itemId=+document.getElementById('ebItem').value||null;_estAtualizarLocais('eb','saida');_estSugerirLocal('ebItem','ebLocal','saida');_estPainelAtualizar('eb',-1)"))}
+      ${_estCampo('Local *', `<select class="inp" id="ebLocal" onchange="_estPainelAtualizar('eb',-1)"></select>`)}
       ${_estPainelHtml('eb', -1)}`;
   }
 
@@ -974,7 +1010,7 @@ function _estBaixaRender() {
     ${_estCampo('Observação', `<input class="inp" id="ebMotivo" value="${_estEsc(b.ebMotivo || '')}" placeholder="o que aconteceu (opcional)">`, '', 'Data e hora: o momento em que você registrar.')}`;
   if (!prod) {
     document.getElementById('ebQtd').value = b.ebQtd || '';
-    if (b.itemId) _estSugerirLocal('ebItem', 'ebLocal', 'saida');
+    _estAtualizarLocais('eb', 'saida');
     _estPainelIniciar('eb', -1);
   }
 }
