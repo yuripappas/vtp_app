@@ -236,7 +236,10 @@ async function estCalcularSaldos({ ate = null } = {}) {
       const movsItem = movs.filter(m => m.item_id === item.id && m.ref_tipo !== 'desperdicio_legado');
       porLocal[l].base = (Number(item.qty) || 0) - movsItem.reduce((s, m) => s + estEfeitoMov(m).reduce((a, [, d]) => a + d, 0), 0);
     }
-    porItem.set(item.id, { item, porLocal, semContagem: !temContagem, total: 0 });
+    // "Sem local" não existe mais: o histórico antigo lançado lá (desperdício migrado)
+    // fica para trás da primeira contagem do item e não pesa no saldo
+    const corteItem = Object.values(porLocal).map(p => p.baseData).filter(Boolean).sort((a, b) => _estMs(a) - _estMs(b))[0] || null;
+    porItem.set(item.id, { item, porLocal, semContagem: !temContagem, corteItem, total: 0 });
   }
 
   // Movimentações depois da base de cada local
@@ -245,8 +248,9 @@ async function estCalcularSaldos({ ate = null } = {}) {
     if (!r || (r.semContagem && m.ref_tipo === 'desperdicio_legado')) continue; // migradas: já estavam no item.qty
     for (const [loc, delta] of estEfeitoMov(m)) {
       if (!loc) continue;
+      const corte = r.porLocal[loc]?.baseData || (loc === EST_SEM_LOCAL ? r.corteItem : null);
+      if (corte && _estMs(m.data_mov) <= _estMs(corte)) continue;
       const pl = r.porLocal[loc] || (r.porLocal[loc] = { saldo: 0, base: 0, baseData: null, entradas: 0, vendas: 0, baixas: 0, transferencias: 0, ajustes: 0 });
-      if (pl.baseData && _estMs(m.data_mov) <= _estMs(pl.baseData)) continue;
       const g = _EST_GRUPO_MOV[m.tipo] || 'ajustes';
       pl[g] += delta;
     }

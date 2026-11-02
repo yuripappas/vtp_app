@@ -256,9 +256,11 @@ function estAbrirDetalheItem(itemId) {
   const sinal = n => n > 0.0005 ? `+${_estQ(n)}` : n < -0.0005 ? `−${_estQ(-n)}` : '—';
   const cor   = n => n > 0.0005 ? 'var(--green)' : n < -0.0005 ? 'var(--red)' : 'var(--muted)';
 
-  const linhasLocal = Object.entries(r.porLocal).map(([loc, p]) => `
+  const locDebito = origens.length ? estLocalSaida(it) : null;
+  const linhasLocal = Object.entries(r.porLocal).filter(([loc, p]) => estLocaisReaisDoItem(it).includes(loc) || Math.abs(p.saldo) > 0.0005).map(([loc, p]) => `
     <tr style="border-top:1px solid var(--border)">
-      <td style="padding:10px 12px;font-weight:600">${loc === EST_SEM_LOCAL ? '<span style="color:var(--orange-dark)">Sem local</span>' : _estEsc(estLocalLabel(loc))}</td>
+      <td style="padding:10px 12px;font-weight:600">${loc === EST_SEM_LOCAL ? '<span style="color:var(--orange-dark)">Sem local</span>' : _estEsc(estLocalLabel(loc))}
+        ${loc === locDebito ? `<div style="display:inline-flex;align-items:center;gap:3px;margin-top:3px;padding:2px 8px;border-radius:99px;background:var(--green-light);color:var(--green);font-size:var(--text-2xs);font-weight:700;white-space:nowrap">${lc('zap', 10, 'currentColor')} débito das vendas</div>` : ''}</td>
       <td style="padding:10px 12px;text-align:right;white-space:nowrap">${_estQ(p.base)}
         <div style="font-size:var(--text-2xs);color:var(--muted)">${p.baseData ? 'contagem ' + _estData(p.baseData) : r.semContagem && p.base ? 'saldo antigo' : 'sem contagem'}</div></td>
       <td style="padding:10px 12px;text-align:right;color:${cor(p.entradas)}">${sinal(p.entradas)}</td>
@@ -285,7 +287,7 @@ function estAbrirDetalheItem(itemId) {
     <div style="display:flex;gap:8px;align-items:flex-start;padding:10px 14px;border-radius:var(--r8);background:${origens.length ? 'var(--green-light)' : 'var(--surface2)'};font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">
       <span style="line-height:0;margin-top:2px">${lc('zap', 14, origens.length ? 'var(--green)' : 'var(--muted)')}</span>
       <div>${origens.length
-        ? `<strong style="color:var(--green)">Débito automático</strong> — sai do saldo na venda de ${_estEsc(origens.slice(0, 6).join(', '))}${origens.length > 6 ? ` e mais ${origens.length - 6}` : ''}.`
+        ? `<strong style="color:var(--green)">Débito automático</strong> — sai do saldo de <strong>${_estEsc(estLocalLabel(estLocalSaida(it)))}</strong> na venda de ${_estEsc(origens.slice(0, 6).join(', '))}${origens.length > 6 ? ` e mais ${origens.length - 6}` : ''}. Para mudar o local, edite o cadastro do item.`
         : `<strong>Sem débito automático</strong> — não está na ficha de nenhum produto vendido. Sai do saldo só na contagem ou por uma saída manual.`}</div>
     </div>
 

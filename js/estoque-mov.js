@@ -611,11 +611,12 @@ function _estOptsLocais(sel, incluirSem = false) {
 function _estOptsLocaisItem(item, sel) {
   if (!item) return `<option value="">Escolha o item primeiro</option>`;
   const locais = estLocaisReaisDoItem(item);
-  if (!locais.length) return _estOptsLocais(sel || EST_SEM_LOCAL, true);
+  if (!locais.length) return `<option value="">Cadastre um local no item</option>`;   // não existe movimentação sem local
   const sal = _estSaldosCache?.porItem.get(item.id);
   const alvo = locais.includes(sel) ? sel : locais[0];
+  const deb = estDebitoAutoMapa().has(item.id) ? estLocalSaida(item) : null;
   return locais.map(l => { const v = sal?.porLocal[l]?.saldo;
-    return `<option value="${l}"${l === alvo ? ' selected' : ''}>${_estEsc(estLocalLabel(l))}${v != null ? ` · ${_estQ(v)} ${_estEsc(item.unit || '')}` : ''}</option>`; }).join('');
+    return `<option value="${l}"${l === alvo ? ' selected' : ''}>${_estEsc(estLocalLabel(l))}${v != null ? ` · ${_estQ(v)} ${_estEsc(item.unit || '')}` : ''}${l === deb ? ' · ⚡ débito das vendas' : ''}</option>`; }).join('');
 }
 function _estAtualizarLocais(p, campo) {
   const item = _estItemDoSelect(p + 'Item'), sel = document.getElementById(p + 'Local');
@@ -787,7 +788,7 @@ function _estPainelAtualizar(p, sinal) {
       const depois = on && qtd ? ` → <strong style="color:${novoLocal < -0.0005 ? 'var(--danger-fg)' : 'var(--purple)'}">${_estQ(novoLocal)}</strong>` : '';
       return `<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:99px;font-size:var(--text-xs);
         border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};background:${on ? 'var(--purple-xlight)' : 'var(--card-bg)'}">
-        ${_estEsc(estLocalLabel(l))}${hab.includes(l) ? '' : ' <span style="color:var(--muted)">(fora do cadastro)</span>'}:
+        ${l === estLocalSaida(item) && estDebitoAutoMapa().has(item.id) ? lc('zap', 11, 'var(--green)') : ''}${_estEsc(estLocalLabel(l))}${hab.includes(l) ? '' : ' <span style="color:var(--muted)">(fora do cadastro)</span>'}:
         <strong style="color:${v < -0.0005 ? 'var(--danger-fg)' : 'var(--text)'}">${_estQ(v)}</strong>${depois} ${_estEsc(un)}</span>`; }).join('')}</div>`;
   } else $('PnLocais').innerHTML = '';
   $('PnNovo').innerHTML = fq(novo);
@@ -854,8 +855,9 @@ function _estSalvarEntrada() {
   const cu   = _estNumBr(document.getElementById('eeCusto').value);
   const custoUnit = isNaN(cu) ? (item.cost || 0) : cu;
   if (!(qtd > 0)) return toast('Informe a quantidade', 'err');
+  if (!document.getElementById('eeLocal').value) return toast('Escolha o local (cadastre um local no item, se não houver)', 'err');
   const comum = {
-    sinal: 1, qtd: _estRound(qtd), local_destino: document.getElementById('eeLocal').value || EST_SEM_LOCAL,
+    sinal: 1, qtd: _estRound(qtd), local_destino: document.getElementById('eeLocal').value,
     motivo: document.getElementById('eeMotivo').value.trim() || null, data_mov: new Date().toISOString(),
   };
   const row = _estMovRow(item, { tipo: proc ? 'producao' : 'entrada_manual', ...comum, custo_unit: custoUnit });
@@ -1042,7 +1044,8 @@ function _estSalvarBaixa() {
   if (b.origem !== 'produto') {
     const item = _estItemDoSelect('ebItem');
     if (!item) return toast('Selecione o item', 'err');
-    const local = document.getElementById('ebLocal').value || EST_SEM_LOCAL;
+    const local = document.getElementById('ebLocal').value;
+    if (!local) return toast('Escolha o local de onde saiu (cadastre um local no item, se não houver)', 'err');
     return _estSalvarComBotao('ovEstBaixa', () => estRegistrarBaixaItem(item, qtd, tipo, { local, obs, data })
       .then(() => toast('Saída registrada', 'ok')));
   }
@@ -1050,6 +1053,8 @@ function _estSalvarBaixa() {
   if (!_estBaixaPartes(qtd, true).length) return toast('Escolha o produto e o sabor', 'err');
   const partes = _estBaixaPartes(qtd);
   if (!partes.length) return toast('Deixe pelo menos um item marcado', 'err');
+  const semLocal = partes.filter(x => !estLocaisReaisDoItem(x.item).length).map(x => x.item.name);
+  if (semLocal.length) return toast(`Cadastre o local de: ${semLocal.join(', ')}`, 'err');
   const base = produtosPizza.find(x => x.id === b.baseId);
   const nome = b.produtoId ? produtos.find(p => p.id === b.produtoId)?.name
     : `${base.nome} · ${[b.s1, base.tamanho === 'grande' ? (b.s2 || b.s1) : null].filter(Boolean)
