@@ -218,9 +218,13 @@ async function estCalcularSaldos({ ate = null } = {}) {
   const datasBase = [...bases.values()].map(b => b.data).sort((a, b) => _estMs(a) - _estMs(b));
   const debitos = datasBase.length ? await estBuscarDebitos(new Date(_estMs(datasBase[0])).toISOString(), ate) : [];
 
+  // Locais contados por item (inclusive fora do cadastro dele)
+  const locaisContados = new Map();
+  for (const k of bases.keys()) { const [id, l] = k.split('|'); (locaisContados.get(+id) || locaisContados.set(+id, new Set()).get(+id)).add(l); }
+
   const porItem = new Map();
   for (const item of ativos) {
-    const locais = estLocaisDoItem(item);
+    const locais = [...new Set([...estLocaisDoItem(item), ...(locaisContados.get(item.id) || [])])];
     const temContagem = locais.some(l => bases.has(item.id + '|' + l));
     const porLocal = {};
     for (const l of locais) {

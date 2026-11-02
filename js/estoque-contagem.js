@@ -102,8 +102,11 @@ function _ctgEscopo(tipo, cats) {
   const set = new Set(cats || []);
   return i => set.has(i.cat || 'Outros');
 }
+// Itens do card de um local: os cadastrados nele + os que têm saldo ali mesmo sem
+// estar no cadastro (senão esse saldo nunca seria contado e o digital não bateria com o real)
 function _ctgItensDoLocal(escopo, localId) {
-  return items.filter(i => i.active !== false && estLocaisDoItem(i).includes(localId) && escopo(i));
+  const comSaldo = id => Math.abs(_estSaldosCache?.porItem.get(id)?.porLocal[localId]?.saldo || 0) > 0.0005;
+  return items.filter(i => i.active !== false && escopo(i) && (estLocaisDoItem(i).includes(localId) || comSaldo(i.id)));
 }
 function _ctgLocaisCom(escopo) {
   return [...estLocaisEstoque().map(l => l.id), EST_SEM_LOCAL].filter(l => _ctgItensDoLocal(escopo, l).length > 0);
@@ -276,6 +279,8 @@ function estNovaContagem() {
   _estModal('ovCtgNova', 'Nova contagem', `<div id="cnTipos"></div><div id="cnCorpo" class="fm-pilha"></div>`, '_ctgCriar()', 'Criar', 600,
     'Um card por local escolhido. Cada card entra no estoque ao concluir a revisão.');
   _ctgNovaRender();
+  // Saldo atual: entra nos cards quem tem saldo num local fora do cadastro
+  estSaldos(true).then(() => { if (document.getElementById('ovCtgNova')) _ctgNovaRender(); }).catch(() => {});
 }
 
 function _ctgNovaSet(campo, valor) {
@@ -370,6 +375,7 @@ async function _ctgCriar() {
     return toast(`A data precisa ser depois do início do ciclo atual (${_ctgDataBr(ciclo.inicio)})`, 'err');
 
   _estSalvarComBotao('ovCtgNova', async () => {
+    await estSaldos();
     const sb = _estSb();
     const user = estUsuario();
     const r0 = info.rodada[0];
