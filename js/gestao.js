@@ -83,6 +83,8 @@ const _gesReal = {
   processoSalvar: (id, d) => gesRpc('gestao_processo_salvar', { p_id: id || null, p_dados: d }),
   processoArquivar: id => gesRpc('gestao_processo_arquivar', { p_id: id }),
   rotinaSalvar: (id, d) => gesRpc('gestao_rotina_salvar', { p_id: id || null, p_dados: d }),
+  // apaga a rotina e todas as respostas dela (inclusive meses fechados)
+  rotinaExcluir: id => gesRpc('gestao_rotina_excluir', { p_id: id }),
   balancoAbrir: mes => gesRpc('gestao_balanco_abrir', { p_mes: mes }),
   // resposta: 'concluido' | 'parcial' | 'nao' | 'na' | null (limpa)
   balancoResponder: (bid, rid, resposta, obs) => gesRpc('gestao_balanco_responder', { p_balanco_id: bid, p_rotina_id: rid, p_resposta: resposta, p_observacao: obs ?? null }),
@@ -1241,7 +1243,6 @@ function _gesHtmlRotinasCorpo() {
         <div class="ges-rot-area-h">${_gesSelo(a.id)} ${a.nome}</div>
         ${_gSubsAtivas(a.id).map(s => {
           const rs = (_ges.D.rotinas || []).filter(r => r.subarea_id === s.id).sort((x, y) => x.ordem - y.ordem);
-          const procs = (_ges.D.processos || []).filter(p => p.subarea_id === s.id && !p.arquivado);
           return `
           <div class="ges-rot-sub">
             <div class="ges-rot-sub-h">${_gesEsc(s.nome)} <span class="ges-pa-area-qtd">${rs.filter(r => r.ativo).length}</span></div>
@@ -1252,12 +1253,9 @@ function _gesHtmlRotinasCorpo() {
                   <textarea class="inp ges-ta ges-rot-crit" rows="2" aria-label="Critério de Concluído" data-k="rot-c:${r.id}" placeholder="Critério: o que conta como Concluído"
                     onchange="gesRotSalvar('${r.id}',{descricao:this.value})">${_gesEsc(r.descricao || '')}</textarea>
                 </div>
-                <select class="inp" aria-label="Processo ligado" onchange="gesRotSalvar('${r.id}',{processo_id:this.value||null})">
-                  <option value="">Sem processo</option>
-                  ${procs.map(p => `<option value="${p.id}" ${r.processo_id === p.id ? 'selected' : ''}>${_gesEsc(p.nome)}</option>`).join('')}
-                </select>
                 <button class="ges-pa-abrir" title="${r.ativo ? 'Desativar' : 'Reativar'}" aria-label="${r.ativo ? 'Desativar' : 'Reativar'}"
                   onclick="gesRotSalvar('${r.id}',{ativo:${!r.ativo}})">${lc(r.ativo ? 'eye-off' : 'eye', 15, 'currentColor')}</button>
+                <button class="ges-pa-abrir ges-rot-del" title="Excluir" aria-label="Excluir rotina" onclick="gesRotExcluir('${r.id}')">${lc('trash', 15, 'currentColor')}</button>
               </div>`).join('')}
             <div class="ges-sub-add">
               ${lc('plus', 14, 'currentColor')}
@@ -1269,6 +1267,13 @@ function _gesHtmlRotinasCorpo() {
       </div>`).join('')}`;
 }
 async function gesRotSalvar(id, d) { await _gesExec(() => gesApi().rotinaSalvar(id, d)); }
+async function gesRotExcluir(id) {
+  const r = _gRotina(id);
+  const n = new Set((_ges.D.avals || []).filter(v => v.rotina_id === id).map(v => v.balanco_id)).size;
+  if (!confirm(`Excluir a rotina "${r.titulo}"?\n\n${n ? `Ela sai também do histórico: as respostas de ${n} ${n === 1 ? 'mês' : 'meses'} são apagadas e as notas desses meses recalculadas sem ela.`
+    : 'Ela ainda não tem respostas.'}\nPara só parar de perguntar e manter o histórico, use o olho (desativar).`)) return;
+  await _gesExec(() => gesApi().rotinaExcluir(id), 'Rotina excluída');
+}
 async function gesRotNova(subId, inp) {
   if (!inp.value.trim()) return;
   await _gesExec(() => gesApi().rotinaSalvar(null, { subarea_id: subId, titulo: inp.value }));

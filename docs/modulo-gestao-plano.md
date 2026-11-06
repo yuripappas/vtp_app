@@ -174,3 +174,4 @@ Cada fase: protótipo navegável com dados fictícios primeiro, banco depois.
   o critério aparece embaixo da pergunta e vai para a foto da resposta ao fechar.
 - 64 rotinas iniciais cadastradas (migration `20261107130000_gestao_rotinas_iniciais.sql`), 4 a 6 por sub-área.
 - **07/11:** a aba "Balanço" passou a se chamar **Raio X** (só os textos; rota `#gestao/balanco`, tabelas e funções seguem com o nome balanco).
+- **07/11:** Rotinas do Raio X sem ligação com processo. Olho = desativar (sai dos próximos meses, histórico fica); lixeira = excluir de vez (`gestao_rotina_excluir`: apaga a rotina e todas as respostas, inclusive meses fechados; atividades ficam, sem a ligação).

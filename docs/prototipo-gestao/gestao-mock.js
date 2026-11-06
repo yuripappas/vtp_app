@@ -280,6 +280,13 @@
       return novo.id;
     },
 
+    async rotinaExcluir(id) {
+      if (!D.rotinas.some(x => x.id === id)) throw new Error('Rotina não encontrada');
+      D.avals = D.avals.filter(v => v.rotina_id !== id);
+      D.atividades.forEach(a => { if (a.rotina_origem_id === id) a.rotina_origem_id = null; });
+      D.rotinas = D.rotinas.filter(x => x.id !== id);
+    },
+
     async balancoAbrir(mes) {
       const m = String(mes).slice(0, 7) + '-01';
       if (m > mesAtual) throw new Error('Não dá para abrir Raio X de mês futuro');

@@ -222,6 +222,16 @@ BEGIN
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'concluido')$q$, u1, b, r1), 'Raio X fechado não pode ser alterado');
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, null)$q$, u1, b, r1), 'Raio X fechado não pode ser alterado');
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Raio X já está fechado');
+  -- Excluir rotina apaga o histórico dela, inclusive em mês fechado; a atividade fica
+  PERFORM gestao_rotina_excluir(u1, r1);
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM gestao_rotinas WHERE id = r1), 'rotina excluída');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM gestao_balanco_aval WHERE rotina_id = r1), 'respostas da rotina somem até do mês fechado');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r2), 'outras respostas ficam');
+  PERFORM pg_temp.ok((SELECT rotina_origem_id IS NULL AND balanco_origem_id = b AND NOT arquivado FROM gestao_atividades WHERE descritivo = 'Corrigir: contagem'),
+    'atividade continua, sem a ligação com a rotina');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_rotina_excluir(%L, %L)$q$, u1, r1), 'Rotina não encontrada');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_rotina_excluir('nao-existe-xyz', %L)$q$, r2), 'Usuário inválido ou inativo');
+  n := n + 6;
   b2 := gestao_balanco_abrir(u1, (mes_teste - interval '1 month')::date);
   PERFORM pg_temp.ok(b2 <> b, 'mês anterior é outro balanço');
   n := n + 28;
