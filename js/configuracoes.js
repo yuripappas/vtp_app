@@ -1922,6 +1922,7 @@ const _CFG_ALL_PERMS = [
   'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
   'Pré-produção','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
   'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','CMV','Alertas',
+  'Gestão: Plano de Ação','Gestão: Raio X','Gestão: Processos',
   'Gerenciar usuários','Configurações',
 ];
 
@@ -1954,7 +1955,12 @@ const _CFG_PERMS_TREE = [
       { id:'Checklist',     label:'Equipe, templates e dashboard'         },
     ]},
   { id:'Etiquetagem',        label:'Etiquetagem',         icon:'tag'             },
-  { id:'Gestão',             label:'Gestão (Plano, Raio X e Processos)', icon:'activity' },
+  { id:'_gestao',            label:'Gestão',              icon:'target',
+    sub:[
+      { id:'Gestão: Plano de Ação', label:'Plano de Ação' },
+      { id:'Gestão: Raio X',        label:'Raio X'        },
+      { id:'Gestão: Processos',     label:'Processos'     },
+    ]},
   { id:'Manutenção',         label:'Manutenção',          icon:'wrench'          },
   { id:'Inventário',         label:'Inventário',          icon:'layers'          },
   { id:'RH',                 label:'RH',                  icon:'users'           },

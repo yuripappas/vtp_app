@@ -17,6 +17,18 @@ const _GES_ABAS = [
   { id: 'processos', icon: 'layers',          label: 'Processos'     },
 ];
 
+// Permissão de cada aba (Configurações › Usuários › Perfis de acesso › Gestão)
+const _GES_ABA_PERM = { plano: 'Gestão: Plano de Ação', balanco: 'Gestão: Raio X', processos: 'Gestão: Processos' };
+function _gesAbasPermitidas() {
+  const s = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  if (!s) return [];
+  // permissões do cadastro atual (mudanças em Configurações valem sem novo login)
+  const u = (typeof users !== 'undefined' && users.find(x => x.id === s.id)) || s;
+  const p = typeof getUserPerms === 'function' ? getUserPerms(u) : [];
+  return _GES_ABAS.filter(a => p.includes(_GES_ABA_PERM[a.id]));
+}
+const _gesPodeAba = id => _gesAbasPermitidas().some(a => a.id === id);
+
 const GES_AREAS = [
   { id: 'adm', sigla: 'ADM', nome: 'Administrativo' },
   { id: 'ope', sigla: 'OPE', nome: 'Operação'       },
@@ -179,14 +191,20 @@ function _gesOptPrio(sel) { return GES_PRIO.map(p => `<option value="${p.id}" ${
 async function renderGestao() {
   const el = document.getElementById('page-gestao');
   if (!el) return;
-  if (!_GES_ABAS.some(a => a.id === _ges.aba)) _ges.aba = 'plano';
   _setPageTitle('Gestão');
+  const abas = _gesAbasPermitidas();
+  if (!abas.length) {
+    el.innerHTML = `<div class="ges"><div class="ges-vazio"><div class="ges-vazio-titulo">Sem acesso às abas da Gestão</div>
+      <div class="ges-vazio-texto">Peça a um gestor para liberar Plano de Ação, Raio X ou Processos no seu perfil de acesso.</div></div></div>`;
+    return;
+  }
+  if (!abas.some(a => a.id === _ges.aba)) _ges.aba = abas[0].id;
   _gesCarregarFiltros();
 
   el.innerHTML = `
     <div class="ges">
       <div class="tab-bar" role="tablist">
-        ${_GES_ABAS.map(a => `
+        ${abas.map(a => `
           <button class="tab-btn ${_ges.aba === a.id ? 'active' : ''}" role="tab"
             aria-selected="${_ges.aba === a.id}" onclick="gesSetAba('${a.id}')">
             ${lc(a.icon, 15, 'currentColor')} ${a.label}
@@ -230,6 +248,7 @@ function _gesRenderBody() {
 }
 
 function gesSetAba(id) {
+  if (!_gesPodeAba(id)) return;
   _ges.aba = id;
   if (typeof _vtpPushRoute === 'function') _vtpPushRoute('gestao');
   renderGestao();
@@ -954,6 +973,7 @@ function gesProcCriarAtv(id) {
 }
 
 function gesIrAtividade(id) {
+  if (!_gesPodeAba('plano')) { toast('Seu perfil não tem acesso ao Plano de Ação', 'err'); return; }
   document.getElementById('gesProcModal')?.remove();
   _ges.aba = 'plano';
   if (typeof _vtpPushRoute === 'function') _vtpPushRoute('gestao');

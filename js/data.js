@@ -453,7 +453,7 @@ let PERMS = {
       'Vendas','CMV','Alertas',
       'Gerenciar usuários','Configurações',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
-      'Gestão',
+      'Gestão: Plano de Ação','Gestão: Raio X','Gestão: Processos',
     ]
   },
   supervisor: {
@@ -468,7 +468,7 @@ let PERMS = {
       'Manutenção','Inventário','RH','Performance',
       'Vendas','CMV','Alertas',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
-      'Gestão',
+      'Gestão: Plano de Ação','Gestão: Raio X','Gestão: Processos',
     ]
   },
   comprador: {
@@ -538,6 +538,8 @@ let PERMS = {
   if (mudouPerfis) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
   if (mudouUsers)  setTimeout(() => typeof saveU === 'function' && saveU(), 0);
 })();
+// Gestão por aba (07/11/2026): a conversão de 'Gestão' para as três abas foi
+// feita direto no banco (migration 20261107220000), não aqui no carregamento.
 const savePerms = () => db._set('vtp_perms',
   Object.fromEntries(Object.entries(PERMS).map(([k, v]) => [k, {
     label: v.label, icon: v.icon, color: v.color, bg: v.bg, mutavel: v.mutavel, perms: v.perms,

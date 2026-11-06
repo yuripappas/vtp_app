@@ -57,7 +57,7 @@ const MOD_PERM_LABEL = {
   alertas:       'Alertas',
   rh:            'RH',
   etiquetagem:   'Etiquetagem',
-  gestao:        'Gestão',
+  gestao:        ['Gestão: Plano de Ação', 'Gestão: Raio X', 'Gestão: Processos'],
 };
 
 // Retorna true/false se o módulo tem label mapeado, ou null se não mapeado (sem opinião)
