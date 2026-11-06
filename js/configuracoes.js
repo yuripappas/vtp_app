@@ -1954,6 +1954,7 @@ const _CFG_PERMS_TREE = [
       { id:'Checklist',     label:'Equipe, templates e dashboard'         },
     ]},
   { id:'Etiquetagem',        label:'Etiquetagem',         icon:'tag'             },
+  { id:'Gestão',             label:'Gestão (Plano, Balanço e Processos)', icon:'activity' },
   { id:'Manutenção',         label:'Manutenção',          icon:'wrench'          },
   { id:'Inventário',         label:'Inventário',          icon:'layers'          },
   { id:'RH',                 label:'RH',                  icon:'users'           },

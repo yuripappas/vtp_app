@@ -31,6 +31,7 @@ const MODULE_PERMISSIONS = {
   auditoria:     ['gerente', 'supervisor'],
   etiquetagem:   ['gerente', 'supervisor', 'comprador', 'funcionario'],
   kds:           ['gerente', 'supervisor', 'comprador', 'funcionario'],
+  gestao:        ['gerente', 'supervisor'],
 };
 
 // Módulo → label de permissão granular (árvore de Perfis de Acesso em Configurações → Usuários).
@@ -56,6 +57,7 @@ const MOD_PERM_LABEL = {
   alertas:       'Alertas',
   rh:            'RH',
   etiquetagem:   'Etiquetagem',
+  gestao:        'Gestão',
 };
 
 // Retorna true/false se o módulo tem label mapeado, ou null se não mapeado (sem opinião)

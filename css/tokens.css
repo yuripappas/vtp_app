@@ -284,6 +284,22 @@
   --chart-8: #C084FC;                /* lilac            */
   --chart-2-soft: #EFF6FF;           /* fundo do azul    */
 
+  /* Áreas da Gestão (selo ADM · OPE · PRO · MKT) */
+  --area-adm: var(--chart-3);        /* âmbar  */
+  --area-ope: var(--chart-4);        /* verde  */
+  --area-pro: var(--chart-2);        /* azul   */
+  --area-mkt: var(--chart-7);        /* violeta */
+
+  /* Paleta de 8 cores para avatares e marcadores (data-cor = N → --label-N) */
+  --label-1: var(--chart-1);         /* roxo     */
+  --label-2: var(--chart-2);         /* azul     */
+  --label-3: var(--chart-6);         /* ciano    */
+  --label-4: var(--chart-4);         /* verde    */
+  --label-5: var(--p-orange-500);    /* amarelo  */
+  --label-6: var(--chart-3);         /* âmbar    */
+  --label-7: var(--chart-5);         /* vermelho */
+  --label-8: var(--p-neutral-500);   /* cinza    */
+
   /* Pódio de rankings */
   --rank-gold:   var(--yellow);
   --rank-silver: var(--p-neutral-500);

@@ -453,6 +453,7 @@ let PERMS = {
       'Vendas','CMV','Alertas',
       'Gerenciar usuários','Configurações',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
+      'Gestão',
     ]
   },
   supervisor: {
@@ -467,6 +468,7 @@ let PERMS = {
       'Manutenção','Inventário','RH','Performance',
       'Vendas','CMV','Alertas',
       'Etiquetagem','Etiquetagem: Produção','Etiquetagem: Cadastros',
+      'Gestão',
     ]
   },
   comprador: {
@@ -516,6 +518,25 @@ let PERMS = {
   cfg.permCmvMigrado = true;
   db._set('vtp_config', cfg);
   if (mudou) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
+})();
+// Módulo Gestão (05/11/2026): os perfis salvos substituem o padrão, então
+// Gestor e Supervisor ganham 'Gestão' uma vez; gestores com permissões
+// individuais também. Depois disso, quem tem acesso é decidido em Configurações.
+(function() {
+  const cfg = db._get('vtp_config', {}) || {};
+  if (cfg.permGestaoMigrado) return;
+  let mudouPerfis = false, mudouUsers = false;
+  ['gerente', 'supervisor'].forEach(k => {
+    const p = PERMS[k];
+    if (p?.perms && !p.perms.includes('Gestão')) { p.perms.push('Gestão'); mudouPerfis = true; }
+  });
+  (users || []).forEach(u => {
+    if (u.role === 'gerente' && Array.isArray(u.perms) && !u.perms.includes('Gestão')) { u.perms.push('Gestão'); mudouUsers = true; }
+  });
+  cfg.permGestaoMigrado = true;
+  db._set('vtp_config', cfg);
+  if (mudouPerfis) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
+  if (mudouUsers)  setTimeout(() => typeof saveU === 'function' && saveU(), 0);
 })();
 const savePerms = () => db._set('vtp_perms',
   Object.fromEntries(Object.entries(PERMS).map(([k, v]) => [k, {

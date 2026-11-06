@@ -290,6 +290,7 @@ const modInfo = {
   auditoria:      { title: 'Auditoria',              sub: 'Log de ações · Rastreabilidade · Histórico do sistema' },
   etiquetagem:    { title: 'Etiquetagem',             sub: 'Impressão · Validades · Produção · Cadastros' },
   kds:            { title: 'KDS',                     sub: 'Pizzaiolo · Finalização · Pedido' },
+  gestao:         { title: 'Gestão',                  sub: 'Plano de Ação · Balanço · Processos' },
 };
 
 // ─── Hash-based routing ────────────────────────────────────────
@@ -574,6 +575,7 @@ function goModule(mod) {
   else if (mod === 'auditoria')    renderAuditoria();
   else if (mod === 'etiquetagem')  renderEtiquetagem();
   else if (mod === 'kds')          renderKds();
+  else if (mod === 'gestao')       renderGestao();
 
   // Fase 1: re-fetch em background — atualiza se dados mudaram desde o último acesso
   if (mod !== 'omnichannel') _vtpRefreshMod(mod);
