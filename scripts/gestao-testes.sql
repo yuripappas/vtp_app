@@ -33,9 +33,10 @@ DO $$
 DECLARE
   u1 TEXT; u2 TEXT;
   s_pes UUID; s_fin UUID; s_est UUID;
-  a1 UUID; a2 UUID; f1 UUID; f2 UUID; pr UUID; pr2 UUID; r1 UUID; r2 UUID; b UUID; b2 UUID; x UUID;
+  a1 UUID; a2 UUID; f1 UUID; f2 UUID; pr UUID; pr2 UUID; r1 UUID; r2 UUID; r3 UUID; b UUID; b2 UUID; x UUID;
   v_txt TEXT; n INT := 0;
   mes_atual DATE := date_trunc('month', gestao_hoje())::date;
+  mes_teste DATE := '2000-01-01';   -- mês antigo: não colide com balanços reais
 BEGIN
   SELECT min(u->>'id'), max(u->>'id') INTO u1, u2
     FROM kv_store k, jsonb_array_elements(k.value) u
@@ -161,53 +162,69 @@ BEGIN
   n := n + 13;
 
   -- ── Rotinas ──
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_abrir(%L, %L)$q$, u1, mes_atual), 'Cadastre ao menos uma rotina');
+  -- As rotinas reais ficam desativadas só dentro desta transação (desfeita no fim),
+  -- para os testes de "faltam N rotinas" contarem apenas as rotinas de teste.
+  UPDATE gestao_rotinas SET ativo = false WHERE ativo;
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_abrir(%L, %L)$q$, u1, mes_teste), 'Cadastre ao menos uma rotina');
   PERFORM pg_temp.erro(format($q$SELECT gestao_rotina_salvar(%L, null, %L)$q$, u1, jsonb_build_object('subarea_id', s_est)), 'Descreva a rotina');
   PERFORM pg_temp.erro(format($q$SELECT gestao_rotina_salvar(%L, null, %L)$q$, u1, jsonb_build_object('titulo', 'x')), 'Escolha a sub-área');
-  r1 := gestao_rotina_salvar(u1, null, jsonb_build_object('subarea_id', s_est, 'titulo', 'Contagem feita antes das 17h', 'processo_id', pr));
+  r1 := gestao_rotina_salvar(u1, null, jsonb_build_object('subarea_id', s_est, 'titulo', 'Contagem feita antes das 17h',
+    'descricao', 'Concluído: 100% dos dias', 'processo_id', pr));
   r2 := gestao_rotina_salvar(u1, null, jsonb_build_object('subarea_id', s_fin, 'titulo', 'Conciliação semanal'));
+  r3 := gestao_rotina_salvar(u1, null, jsonb_build_object('subarea_id', s_fin, 'titulo', 'Rocks do próximo trimestre'));
   x  := gestao_rotina_salvar(u1, null, jsonb_build_object('subarea_id', s_fin, 'titulo', 'Rotina desativada'));
   PERFORM gestao_rotina_salvar(u1, x, '{"ativo":false}');
   PERFORM pg_temp.ok((SELECT NOT ativo AND titulo = 'Rotina desativada' FROM gestao_rotinas WHERE id = x), 'desativar rotina');
-  n := n + 4;
+  PERFORM gestao_rotina_salvar(u1, r2, '{"descricao":"Concluído: 4 de 4 semanas"}');
+  PERFORM pg_temp.ok((SELECT descricao = 'Concluído: 4 de 4 semanas' AND titulo = 'Conciliação semanal' FROM gestao_rotinas WHERE id = r2), 'editar critério mantém a pergunta');
+  n := n + 5;
 
-  -- ── Balanço ──
+  -- ── Balanço (escala Concluído · Parcial · Não realizado · N/A) ──
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_abrir(%L, %L)$q$, u1, (mes_atual + interval '1 month')::date), 'mês futuro');
-  b := gestao_balanco_abrir(u1, (mes_atual + 14));
-  PERFORM pg_temp.ok((SELECT mes = mes_atual AND status = 'rascunho' FROM gestao_balancos WHERE id = b), 'mês normalizado para o dia 1');
-  PERFORM pg_temp.ok(gestao_balanco_abrir(u1, mes_atual) = b, 'abrir é idempotente');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'na')$q$, u1, b, r1), 'Resposta inválida');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, gen_random_uuid(), 'sim')$q$, u1, b), 'Rotina não encontrada');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, gen_random_uuid(), %L, 'sim')$q$, u1, r1), 'Balanço não encontrado');
+  b := gestao_balanco_abrir(u1, (mes_teste + 14));
+  PERFORM pg_temp.ok((SELECT mes = mes_teste AND status = 'rascunho' FROM gestao_balancos WHERE id = b), 'mês normalizado para o dia 1');
+  PERFORM pg_temp.ok(gestao_balanco_abrir(u1, mes_teste) = b, 'abrir é idempotente');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'sim')$q$, u1, b, r1), 'Resposta inválida');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, gen_random_uuid(), 'concluido')$q$, u1, b), 'Rotina não encontrada');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, gen_random_uuid(), %L, 'concluido')$q$, u1, r1), 'Balanço não encontrado');
   PERFORM gestao_balanco_responder(u1, b, r1, 'nao', null);
+  PERFORM gestao_balanco_responder(u1, b, r3, 'na', null);
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Faltam 1 rotina sem resposta');
-  PERFORM gestao_balanco_responder(u1, b, r2, 'sim', 'ignorada');
-  PERFORM pg_temp.ok((SELECT observacao = '' FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r2), 'Sim não guarda observação');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Escreva o que aconteceu em 1 resposta "Não"');
+  PERFORM gestao_balanco_responder(u1, b, r2, 'concluido', 'ignorada');
+  PERFORM pg_temp.ok((SELECT observacao = '' FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r2), 'Concluído não guarda observação');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Escreva a observação em 2 respostas');
+  PERFORM gestao_balanco_responder(u1, b, r3, 'na', 'Não fecha trimestre');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Escreva a observação em 1 resposta');
+  PERFORM gestao_balanco_responder(u1, b, r2, 'parcial', null);
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Escreva a observação em 2 respostas');
+  PERFORM gestao_balanco_responder(u1, b, r2, 'parcial', '3 de 4 semanas');
+  PERFORM pg_temp.ok((SELECT observacao = '3 de 4 semanas' AND rotina_criterio = 'Concluído: 4 de 4 semanas'
+    FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r2), 'Parcial guarda observação e critério');
   PERFORM gestao_balanco_responder(u1, b, r2, null);
   PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r2), 'null limpa a resposta');
-  PERFORM gestao_balanco_responder(u1, b, r2, 'sim');
+  PERFORM gestao_balanco_responder(u1, b, r2, 'concluido');
   PERFORM gestao_balanco_responder(u1, b, r1, 'nao', '  Contagem saiu às 18h  ');
   PERFORM pg_temp.ok((SELECT observacao = 'Contagem saiu às 18h' AND rotina_titulo = 'Contagem feita antes das 17h' AND subarea_id = s_est
-    AND respondido_por = u1 FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r1), 'Não com observação e foto da rotina');
-  -- atividade criada a partir do "Não"
+    AND rotina_criterio = 'Concluído: 100% dos dias' AND respondido_por = u1 FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r1),
+    'Não realizado com observação e foto da rotina');
+  -- atividade criada a partir do "Não realizado"
   x := gestao_atividade_salvar(u1, null, jsonb_build_object('descritivo', 'Corrigir: contagem', 'subarea_id', s_est,
     'rotina_origem_id', r1, 'balanco_origem_id', b));
   PERFORM pg_temp.ok((SELECT rotina_origem_id = r1 AND balanco_origem_id = b FROM gestao_atividades WHERE id = x), 'atividade nasce do balanço');
-  PERFORM gestao_rotina_salvar(u1, r1, '{"titulo":"Contagem antes das 17h (renomeada)"}');
+  PERFORM gestao_rotina_salvar(u1, r1, '{"titulo":"Contagem antes das 17h (renomeada)","descricao":"Concluído: todos os dias"}');
   PERFORM gestao_balanco_fechar(u1, b);
   PERFORM pg_temp.ok((SELECT status = 'fechado' AND fechado_por = u1 AND fechado_em IS NOT NULL FROM gestao_balancos WHERE id = b), 'balanço fechado');
-  PERFORM pg_temp.ok((SELECT rotina_titulo = 'Contagem antes das 17h (renomeada)' FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r1),
-    'fechar tira a foto final da rotina');
-  PERFORM gestao_rotina_salvar(u1, r1, '{"titulo":"Renomeada depois"}');
-  PERFORM pg_temp.ok((SELECT rotina_titulo = 'Contagem antes das 17h (renomeada)' FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r1),
-    'histórico não muda depois de fechado');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'sim')$q$, u1, b, r1), 'Balanço fechado não pode ser alterado');
+  PERFORM pg_temp.ok((SELECT rotina_titulo = 'Contagem antes das 17h (renomeada)' AND rotina_criterio = 'Concluído: todos os dias'
+    FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r1), 'fechar tira a foto final da pergunta e do critério');
+  PERFORM gestao_rotina_salvar(u1, r1, '{"titulo":"Renomeada depois","descricao":"outro"}');
+  PERFORM pg_temp.ok((SELECT rotina_titulo = 'Contagem antes das 17h (renomeada)' AND rotina_criterio = 'Concluído: todos os dias'
+    FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r1), 'histórico não muda depois de fechado');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'concluido')$q$, u1, b, r1), 'Balanço fechado não pode ser alterado');
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, null)$q$, u1, b, r1), 'Balanço fechado não pode ser alterado');
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Balanço já está fechado');
-  b2 := gestao_balanco_abrir(u1, (mes_atual - interval '1 month')::date);
+  b2 := gestao_balanco_abrir(u1, (mes_teste - interval '1 month')::date);
   PERFORM pg_temp.ok(b2 <> b, 'mês anterior é outro balanço');
-  n := n + 22;
+  n := n + 28;
 
   -- ── Arquivar ──
   PERFORM gestao_atividade_arquivar(u1, a1);

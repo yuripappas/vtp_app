@@ -84,7 +84,7 @@ const _gesReal = {
   processoArquivar: id => gesRpc('gestao_processo_arquivar', { p_id: id }),
   rotinaSalvar: (id, d) => gesRpc('gestao_rotina_salvar', { p_id: id || null, p_dados: d }),
   balancoAbrir: mes => gesRpc('gestao_balanco_abrir', { p_mes: mes }),
-  // resposta: 'sim' | 'nao' | null (limpa)
+  // resposta: 'concluido' | 'parcial' | 'nao' | 'na' | null (limpa)
   balancoResponder: (bid, rid, resposta, obs) => gesRpc('gestao_balanco_responder', { p_balanco_id: bid, p_rotina_id: rid, p_resposta: resposta, p_observacao: obs ?? null }),
   balancoFechar: bid => gesRpc('gestao_balanco_fechar', { p_balanco_id: bid }),
 };
@@ -967,6 +967,15 @@ function gesIrAtividade(id) {
 const GES_MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const GES_MESES_C = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const GES_FAIXAS = { ok: 'Saudável', atencao: 'Atenção', critico: 'Crítico' };
+// Escala do balanço: valor na nota (N/A fica fora da conta) e se exige observação
+const GES_RESP = [
+  { id: 'concluido', label: 'Concluído',     icon: 'check', valor: 100 },
+  { id: 'parcial',   label: 'Parcial',       icon: 'minus', valor: 50 },
+  { id: 'nao',       label: 'Não realizado', icon: 'x',     valor: 0 },
+  { id: 'na',        label: 'N/A',           icon: '',      valor: null },
+];
+const _gesRespValor = r => GES_RESP.find(x => x.id === r)?.valor;
+const _gesRespPedeObs = r => !!r && r !== 'concluido';
 
 function gesFaixa(n) { return n == null ? '' : n >= 85 ? 'ok' : n >= 70 ? 'atencao' : 'critico'; }
 function _gesMesAtual() { return gesHoje().slice(0, 7) + '-01'; }
@@ -981,7 +990,8 @@ const _gRotina   = id => (_ges.D.rotinas || []).find(r => r.id === id);
 // Rotinas que entram no balanço: fechado = o que foi registrado; rascunho = ativas + as que já têm resposta
 function _gesRotinasDoBal(bal) {
   const av = bal ? _gAvals(bal.id) : [];
-  if (bal?.status === 'fechado') return av.map(v => ({ id: v.rotina_id, titulo: v.rotina_titulo, subarea_id: v.subarea_id, processo_id: _gRotina(v.rotina_id)?.processo_id }));
+  if (bal?.status === 'fechado') return av.map(v => ({ id: v.rotina_id, titulo: v.rotina_titulo, descricao: v.rotina_criterio || '', subarea_id: v.subarea_id,
+    processo_id: _gRotina(v.rotina_id)?.processo_id, ordem: _gRotina(v.rotina_id)?.ordem ?? 0 })).sort((a, b) => a.ordem - b.ordem);
   const ids = new Set(av.map(v => v.rotina_id));
   return (_ges.D.rotinas || []).filter(r => r.ativo || ids.has(r.id)).sort((a, b) => a.ordem - b.ordem);
 }
@@ -990,11 +1000,11 @@ function _gesRotinasDoBal(bal) {
 function gesNotas(bal) {
   const r = { sub: {}, area: {}, gestao: null };
   if (!bal) return r;
-  const av = _gAvals(bal.id).filter(v => v.resposta === 'sim' || v.resposta === 'nao');
+  const av = _gAvals(bal.id).filter(v => _gesRespValor(v.resposta) != null);   // N/A fica fora
   const media = l => l.length ? Math.round(l.reduce((s, x) => s + x, 0) / l.length) : null;
   _ges.D.subareas.forEach(s => {
     const l = av.filter(v => v.subarea_id === s.id);
-    if (l.length) r.sub[s.id] = Math.round(l.filter(v => v.resposta === 'sim').length / l.length * 100);
+    if (l.length) r.sub[s.id] = media(l.map(v => _gesRespValor(v.resposta)));
   });
   GES_AREAS.forEach(a => {
     const n = media(_ges.D.subareas.filter(s => s.area === a.id && r.sub[s.id] != null).map(s => r.sub[s.id]));
@@ -1072,7 +1082,7 @@ function _gesHtmlBalMes() {
   const rot = _gesRotinasDoBal(bal);
   const av = _gAvals(bal.id);
   const resp = rot.filter(r => av.some(v => v.rotina_id === r.id && v.resposta)).length;
-  const naoSemObs = av.filter(v => v.resposta === 'nao' && !String(v.observacao || '').trim()).length;
+  const naoSemObs = av.filter(v => _gesRespPedeObs(v.resposta) && !String(v.observacao || '').trim()).length;
   const notas = gesNotas(bal), ant = gesNotas(_gBal(_gesMesSomar(st.mes, -1)));
   const balAnt = _gBal(_gesMesSomar(st.mes, -1));
   const acoesAnt = balAnt ? _ges.D.atividades.filter(a => a.balanco_origem_id === balAnt.id && !a.arquivado && !a.parent_id) : [];
@@ -1122,24 +1132,27 @@ function _gesHtmlBalRotina(bal, r, fechado) {
   const v = _gAval(bal.id, r.id);
   const resp = v?.resposta || '';
   const atv = _ges.D.atividades.find(a => a.rotina_origem_id === r.id && a.balanco_origem_id === bal.id && !a.arquivado);
-  const semObs = resp === 'nao' && !String(v?.observacao || '').trim();
+  const pedeObs = _gesRespPedeObs(resp);
+  const semObs = pedeObs && !String(v?.observacao || '').trim();
   return `
     <div class="ges-bl-rot" data-resp="${resp}">
       <div class="ges-bl-rot-t">
         <span>${_gesEsc(r.titulo)}</span>
+        ${r.descricao ? `<span class="ges-bl-crit">${_gesEsc(r.descricao)}</span>` : ''}
       </div>
       <div class="ges-bl-resp" role="group" aria-label="Resposta">
-        ${[['sim', 'check', 'Sim'], ['nao', 'x', 'Não']].map(([k, ic, t]) => `
-          <button class="${resp === k ? 'on' : ''}" data-v="${k}" aria-pressed="${resp === k}" ${fechado ? 'disabled' : ''}
-            onclick="gesBalResp('${bal.id}','${r.id}','${resp === k ? '' : k}')">${ic ? lc(ic, 14, 'currentColor') : ''} ${t}</button>`).join('')}
+        ${GES_RESP.map(o => `
+          <button class="${resp === o.id ? 'on' : ''}" data-v="${o.id}" aria-pressed="${resp === o.id}" ${fechado ? 'disabled' : ''}
+            onclick="gesBalResp('${bal.id}','${r.id}','${resp === o.id ? '' : o.id}')">${o.icon ? lc(o.icon, 14, 'currentColor') : ''} ${o.label}</button>`).join('')}
       </div>
-      ${resp === 'nao' ? `
+      ${pedeObs ? `
         <div class="ges-bl-nao">
           ${fechado ? `<div class="ges-bl-obs-txt">${_gesEsc(v.observacao || '—')}</div>`
-            : `<textarea class="inp ges-ta ${semObs ? 'ges-inp-erro' : ''}" rows="2" data-k="obs:${r.id}" placeholder="O que aconteceu? (obrigatório)"
+            : `<textarea class="inp ges-ta ${semObs ? 'ges-inp-erro' : ''}" rows="2" data-k="obs:${r.id}"
+                placeholder="${resp === 'na' ? 'Por que não se aplica este mês? (obrigatório)' : 'O que aconteceu? (obrigatório)'}"
                 onchange="gesBalObs('${bal.id}','${r.id}',this.value)">${_gesEsc(v.observacao || '')}</textarea>`}
-          ${atv ? `<button class="ges-pr-atv" onclick="gesIrAtividade('${atv.id}')">${_gesChipStatus(atv.status)}<span>${_gesEsc(atv.descritivo)}</span></button>`
-            : `<button class="btn btn-outline btn-sm ges-btn" onclick="gesBalCriarAtv('${bal.id}','${r.id}')">${lc('plus', 14, 'currentColor')} Criar atividade no Plano</button>`}
+          ${resp === 'na' ? '' : atv ? `<button class="ges-pr-atv" onclick="gesIrAtividade('${atv.id}')">${_gesChipStatus(atv.status)}<span>${_gesEsc(atv.descritivo)}</span></button>`
+            : fechado ? '' : `<button class="btn btn-outline btn-sm ges-btn" onclick="gesBalCriarAtv('${bal.id}','${r.id}')">${lc('plus', 14, 'currentColor')} Criar atividade no Plano</button>`}
         </div>` : ''}
     </div>`;
 }
@@ -1148,9 +1161,13 @@ async function gesBalAbrir(mes) { await _gesExec(() => gesApi().balancoAbrir(mes
 async function gesBalResp(bid, rid, resposta) {
   const v = _gAval(bid, rid);
   await _gesExec(() => gesApi().balancoResponder(bid, rid, resposta || null, v?.observacao ?? null));
-  if (resposta === 'nao') setTimeout(() => document.querySelector(`[data-k="obs:${rid}"]`)?.focus(), 30);
+  if (_gesRespPedeObs(resposta)) setTimeout(() => document.querySelector(`[data-k="obs:${rid}"]`)?.focus(), 30);
 }
-async function gesBalObs(bid, rid, txt) { await _gesExec(() => gesApi().balancoResponder(bid, rid, 'nao', txt)); }
+async function gesBalObs(bid, rid, txt) {
+  const v = _gAval(bid, rid);
+  if (!v) return;
+  await _gesExec(() => gesApi().balancoResponder(bid, rid, v.resposta, txt));
+}
 async function gesBalFechar(bid) {
   const bal = (_ges.D.balancos || []).find(b => b.id === bid);
   if (!confirm(`Fechar o balanço de ${_gesMesLabel(bal.mes)}?\nDepois de fechado, ninguém consegue mudar as respostas.`)) return;
@@ -1217,8 +1234,8 @@ function gesAbrirRotinas() {
 }
 function _gesHtmlRotinasCorpo() {
   return `
-    <div class="ges-dica ges-rot-dica">O que precisa acontecer todo mês em cada sub-área. Escreva como algo verificável
-      (ex.: "Contagem de estoque feita todos os dias antes das 17h"). Mudar ou desativar não altera balanços já fechados.</div>
+    <div class="ges-dica ges-rot-dica">A pergunta do mês de cada sub-área e o critério do que conta como <b>Concluído</b>
+      (ex.: "100% dos dias. Parcial: 80% ou mais."). Mudar ou desativar não altera balanços já fechados.</div>
     ${GES_AREAS.map(a => `
       <div class="ges-rot-area" data-area="${a.id}">
         <div class="ges-rot-area-h">${_gesSelo(a.id)} ${a.nome}</div>
@@ -1230,7 +1247,11 @@ function _gesHtmlRotinasCorpo() {
             <div class="ges-rot-sub-h">${_gesEsc(s.nome)} <span class="ges-pa-area-qtd">${rs.filter(r => r.ativo).length}</span></div>
             ${rs.map(r => `
               <div class="ges-rot-linha ${r.ativo ? '' : 'off'}">
-                <input class="inp" value="${_gesEsc(r.titulo)}" aria-label="Rotina" onchange="gesRotSalvar('${r.id}',{titulo:this.value})">
+                <div class="ges-rot-txt">
+                  <textarea class="inp ges-ta ges-rot-tit" rows="2" aria-label="Pergunta" data-k="rot-t:${r.id}" onchange="gesRotSalvar('${r.id}',{titulo:this.value})">${_gesEsc(r.titulo)}</textarea>
+                  <textarea class="inp ges-ta ges-rot-crit" rows="2" aria-label="Critério de Concluído" data-k="rot-c:${r.id}" placeholder="Critério: o que conta como Concluído"
+                    onchange="gesRotSalvar('${r.id}',{descricao:this.value})">${_gesEsc(r.descricao || '')}</textarea>
+                </div>
                 <select class="inp" aria-label="Processo ligado" onchange="gesRotSalvar('${r.id}',{processo_id:this.value||null})">
                   <option value="">Sem processo</option>
                   ${procs.map(p => `<option value="${p.id}" ${r.processo_id === p.id ? 'selected' : ''}>${_gesEsc(p.nome)}</option>`).join('')}

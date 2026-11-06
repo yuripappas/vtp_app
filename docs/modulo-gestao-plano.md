@@ -164,3 +164,12 @@ Cada fase: protótipo navegável com dados fictícios primeiro, banco depois.
   Resp. Execução múltiplo também na subtarefa. **Links de entrega** (pasta, vídeo, link) em atividade e subtarefa.
 - **Balanço:** só **Sim / Não** (sem N/A); sem link de processo na rotina; visão do ano sem gráfico de linha (o mapa resolve).
 - **Processos:** cards de tamanho fixo, áreas lado a lado com rolagem horizontal; botão de link no próprio card.
+
+## Ajustes de 07/11 — escala do Balanço e rotinas iniciais
+- Resposta passa a ser **Concluído · Parcial · Não realizado · N/A** (substitui Sim/Não).
+  Nota: Concluído 100, Parcial 50, Não realizado 0; N/A fica fora da conta.
+  Parcial, Não realizado e N/A exigem observação para fechar; Parcial e Não realizado oferecem "Criar atividade no Plano".
+- Regra das perguntas: o Balanço pergunta se a rotina **rodou no mês**; se o processo existe é a aba Processos.
+- Cada rotina tem pergunta (título) e **critério de Concluído** (descrição), editáveis em Balanço › Rotinas;
+  o critério aparece embaixo da pergunta e vai para a foto da resposta ao fechar.
+- 64 rotinas iniciais cadastradas (migration `20261107130000_gestao_rotinas_iniciais.sql`), 4 a 6 por sub-área.

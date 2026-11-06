@@ -175,8 +175,8 @@
       if (k === 0 && i % 3 === 0) return;          // mês atual: parte ainda sem resposta
       const pSim = Math.min(.97, .5 + (k + 9) * .05 + (fraca[subNome(r.subarea_id)] || 0));
       const x = rnd();
-      const resposta = x < pSim ? 'sim' : 'nao';
-      D.avals.push({ balanco_id: b.id, rotina_id: r.id, resposta, observacao: resposta === 'nao' ? OBS[Math.floor(rnd() * OBS.length)] : '',
+      const resposta = x < pSim ? 'concluido' : x < pSim + 0.08 ? 'parcial' : 'nao';
+      D.avals.push({ balanco_id: b.id, rotina_id: r.id, resposta, observacao: resposta !== 'concluido' ? OBS[Math.floor(rnd() * OBS.length)] : '',
         rotina_titulo: r.titulo, subarea_id: r.subarea_id });
     });
   }
@@ -297,9 +297,9 @@
       if (b.status === 'fechado') throw new Error('Balanço fechado não pode ser alterado');
       const r = D.rotinas.find(x => x.id === rid);
       if (!r) throw new Error('Rotina não encontrada');
-      if (resposta != null && !['sim', 'nao'].includes(resposta)) throw new Error('Resposta inválida');
+      if (resposta != null && !['concluido', 'parcial', 'nao', 'na'].includes(resposta)) throw new Error('Resposta inválida');
       D.avals = D.avals.filter(v => !(v.balanco_id === bid && v.rotina_id === rid));
-      if (resposta) D.avals.push({ balanco_id: bid, rotina_id: rid, resposta, observacao: resposta === 'nao' ? String(obs || '').trim() : '',
+      if (resposta) D.avals.push({ balanco_id: bid, rotina_id: rid, resposta, observacao: resposta !== 'concluido' ? String(obs || '').trim() : '', rotina_criterio: r.descricao || '',
         rotina_titulo: r.titulo, subarea_id: r.subarea_id });
     },
 
@@ -310,8 +310,8 @@
       const av = D.avals.filter(v => v.balanco_id === bid);
       const faltam = D.rotinas.filter(r => r.ativo && !av.some(v => v.rotina_id === r.id)).length;
       if (faltam) throw new Error(`Faltam ${faltam} rotina${faltam === 1 ? '' : 's'} sem resposta`);
-      const semObs = av.filter(v => v.resposta === 'nao' && !v.observacao).length;
-      if (semObs) throw new Error(`Escreva o que aconteceu em ${semObs} resposta${semObs === 1 ? '' : 's'} "Não"`);
+      const semObs = av.filter(v => v.resposta !== 'concluido' && !v.observacao).length;
+      if (semObs) throw new Error(`Escreva a observação em ${semObs} resposta${semObs === 1 ? '' : 's'} Parcial, Não realizado ou N/A`);
       av.forEach(v => { const r = D.rotinas.find(x => x.id === v.rotina_id); if (r) { v.rotina_titulo = r.titulo; v.subarea_id = r.subarea_id; } });
       b.status = 'fechado'; b.fechado_em = agora(); b.fechado_por = String(getCurrentUser?.()?.id ?? '');
     },
