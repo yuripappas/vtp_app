@@ -1,6 +1,6 @@
 /**
  * VTP — Vai Ter Pizza!
- * gestao.js — Módulo Gestão (v2): Plano de Ação · Balanço · Processos
+ * gestao.js — Módulo Gestão (v2): Plano de Ação · Raio X · Processos
  *
  * Plano: docs/modulo-gestao-plano.md
  * Tudo pertence a uma sub-área; a área (ADM, OPE, PRO, MKT) vem dela.
@@ -13,7 +13,7 @@
 
 const _GES_ABAS = [
   { id: 'plano',     icon: 'clipboard-check', label: 'Plano de Ação' },
-  { id: 'balanco',   icon: 'activity',        label: 'Balanço'       },
+  { id: 'balanco',   icon: 'activity',        label: 'Raio X'        },
   { id: 'processos', icon: 'layers',          label: 'Processos'     },
 ];
 
@@ -702,7 +702,7 @@ function gesAbrirAtv(id, pre = {}) {
         ${id ? `<div class="ges-lk-box ges-lk-inline" data-kind="atv" data-id="${id}">${_gesHtmlLinksCorpo('atv', id)}</div>`
           : '<div class="ges-dica">Salve a atividade para adicionar links.</div>'}</div>
       ${a.processo_id && _gProc(a.processo_id) ? `<div class="ges-dica">${lc('layers', 13, 'currentColor')} Ligada ao processo <b>${_gesEsc(_gProc(a.processo_id).nome)}</b></div>` : ''}
-      ${a.rotina_origem_id && _gRotina(a.rotina_origem_id) ? `<div class="ges-dica">${lc('activity', 13, 'currentColor')} Nasceu do balanço${(() => { const b = (_ges.D.balancos || []).find(x => x.id === a.balanco_origem_id); return b ? ' de ' + _gesMesLabel(b.mes) : ''; })()}: <b>${_gesEsc(_gRotina(a.rotina_origem_id).titulo)}</b></div>` : ''}
+      ${a.rotina_origem_id && _gRotina(a.rotina_origem_id) ? `<div class="ges-dica">${lc('activity', 13, 'currentColor')} Nasceu do Raio X${(() => { const b = (_ges.D.balancos || []).find(x => x.id === a.balanco_origem_id); return b ? ' de ' + _gesMesLabel(b.mes) : ''; })()}: <b>${_gesEsc(_gRotina(a.rotina_origem_id).titulo)}</b></div>` : ''}
 
       ${id ? `<button class="ges-link ges-link-perigo" onclick="gesExcluirAtv('${id}')">${lc('trash', 13, 'currentColor')} Excluir atividade</button>` : ''}
     </div>`;
@@ -1041,7 +1041,7 @@ function _gesHtmlBalanco() {
     <div class="ges-bl">
       <div class="ges-pa-topo">
         <div>
-          <div class="ges-h1">Balanço da Gestão</div>
+          <div class="ges-h1">Raio X da Gestão</div>
           <div class="ges-sub">As rotinas-chave de cada sub-área foram feitas do jeito certo no mês?</div>
         </div>
         <div class="ges-bl-acoes">
@@ -1072,10 +1072,10 @@ function _gesHtmlBalMes() {
     const semRotinas = !(_ges.D.rotinas || []).some(r => r.ativo);
     return nav + `<div class="ges-vazio">
       <div class="ges-vazio-icone">${lc('activity', 22, 'currentColor')}</div>
-      <div class="ges-vazio-titulo">Balanço de ${_gesMesLabel(st.mes)} ainda não começou</div>
+      <div class="ges-vazio-titulo">Raio X de ${_gesMesLabel(st.mes)} ainda não começou</div>
       <div class="ges-vazio-texto">${semRotinas ? 'Cadastre as rotinas-chave de cada sub-área para começar.' : 'Avaliem juntos cada rotina-chave: foi feita do jeito certo no mês?'}</div>
       ${semRotinas ? `<button class="btn btn-primary ges-btn ges-mt" onclick="gesAbrirRotinas()">Cadastrar rotinas</button>`
-        : `<button class="btn btn-primary ges-btn ges-mt" onclick="gesBalAbrir('${st.mes}')">Começar balanço</button>`}
+        : `<button class="btn btn-primary ges-btn ges-mt" onclick="gesBalAbrir('${st.mes}')">Começar Raio X</button>`}
     </div>`;
   }
   const fechado = bal.status === 'fechado';
@@ -1097,7 +1097,7 @@ function _gesHtmlBalMes() {
         <div class="ges-bl-prog"><span class="ges-pa-stack"><span data-st="concluido" style="width:${rot.length ? resp / rot.length * 100 : 0}%"></span></span>
           ${resp} de ${rot.length} rotinas respondidas</div>
         ${fechado ? `<div class="ges-dica">Fechado em ${new Date(bal.fechado_em).toLocaleDateString('pt-BR', { timeZone: 'America/Maceio' })}${bal.fechado_por ? ' por ' + _gesEsc(_gesPrimeiroNome(bal.fechado_por)) : ''}. Não pode mais ser alterado.</div>`
-          : `<button class="btn btn-primary ges-btn" onclick="gesBalFechar('${bal.id}')" ${resp < rot.length || naoSemObs ? 'data-pendente="1"' : ''}>${lc('lock', 14, 'currentColor')} Fechar balanço</button>`}
+          : `<button class="btn btn-primary ges-btn" onclick="gesBalFechar('${bal.id}')" ${resp < rot.length || naoSemObs ? 'data-pendente="1"' : ''}>${lc('lock', 14, 'currentColor')} Fechar Raio X</button>`}
       </div>
       ${GES_AREAS.map(a => `
         <button class="ges-card ges-bl-area" data-area="${a.id}" onclick="document.getElementById('gesBlA-${a.id}')?.scrollIntoView({behavior:'smooth',block:'start'})">
@@ -1107,7 +1107,7 @@ function _gesHtmlBalMes() {
     </div>
     ${acoesAnt.length ? `
       <div class="ges-card ges-bl-ant">
-        <div class="ges-bl-lbl">${lc('clipboard-check', 13, 'currentColor')} Atividades que nasceram do balanço de ${_gesMesLabel(balAnt.mes)}</div>
+        <div class="ges-bl-lbl">${lc('clipboard-check', 13, 'currentColor')} Atividades que nasceram do Raio X de ${_gesMesLabel(balAnt.mes)}</div>
         <div class="ges-pr-atvs">${acoesAnt.map(a => `<button type="button" class="ges-pr-atv" onclick="gesIrAtividade('${a.id}')">
           ${_gesChipStatus(a.status)}<span>${_gesEsc(a.descritivo)}</span>${a.prazo ? `<span class="ges-prazo ges-push" data-tom="${_gesTomPrazo(a)}">${_gesData(a.prazo)}</span>` : ''}</button>`).join('')}</div>
       </div>` : ''}
@@ -1157,7 +1157,7 @@ function _gesHtmlBalRotina(bal, r, fechado) {
     </div>`;
 }
 
-async function gesBalAbrir(mes) { await _gesExec(() => gesApi().balancoAbrir(mes), 'Balanço iniciado'); }
+async function gesBalAbrir(mes) { await _gesExec(() => gesApi().balancoAbrir(mes), 'Raio X iniciado'); }
 async function gesBalResp(bid, rid, resposta) {
   const v = _gAval(bid, rid);
   await _gesExec(() => gesApi().balancoResponder(bid, rid, resposta || null, v?.observacao ?? null));
@@ -1170,8 +1170,8 @@ async function gesBalObs(bid, rid, txt) {
 }
 async function gesBalFechar(bid) {
   const bal = (_ges.D.balancos || []).find(b => b.id === bid);
-  if (!confirm(`Fechar o balanço de ${_gesMesLabel(bal.mes)}?\nDepois de fechado, ninguém consegue mudar as respostas.`)) return;
-  await _gesExec(() => gesApi().balancoFechar(bid), 'Balanço fechado');
+  if (!confirm(`Fechar o Raio X de ${_gesMesLabel(bal.mes)}?\nDepois de fechado, ninguém consegue mudar as respostas.`)) return;
+  await _gesExec(() => gesApi().balancoFechar(bid), 'Raio X fechado');
 }
 function gesBalCriarAtv(bid, rid) {
   const r = _gRotina(rid), v = _gAval(bid, rid);
@@ -1224,18 +1224,18 @@ function _gesHtmlBalAno() {
           </tbody>
         </table>
       </div>
-      <div class="ges-dica">Toque numa nota para abrir o balanço daquele mês.</div>
+      <div class="ges-dica">Toque numa nota para abrir o Raio X daquele mês.</div>
     </div>`;
 }
 
 // ── Cadastro de rotinas-chave ──
 function gesAbrirRotinas() {
-  _gesModal('gesRotModal', 'Rotinas-chave do Balanço', `<div id="gesRotBody">${_gesHtmlRotinasCorpo()}</div>`, null, '', 680);
+  _gesModal('gesRotModal', 'Rotinas-chave do Raio X', `<div id="gesRotBody">${_gesHtmlRotinasCorpo()}</div>`, null, '', 680);
 }
 function _gesHtmlRotinasCorpo() {
   return `
     <div class="ges-dica ges-rot-dica">A pergunta do mês de cada sub-área e o critério do que conta como <b>Concluído</b>
-      (ex.: "100% dos dias. Parcial: 80% ou mais."). Mudar ou desativar não altera balanços já fechados.</div>
+      (ex.: "100% dos dias. Parcial: 80% ou mais."). Mudar ou desativar não altera meses já fechados.</div>
     ${GES_AREAS.map(a => `
       <div class="ges-rot-area" data-area="${a.id}">
         <div class="ges-rot-area-h">${_gesSelo(a.id)} ${a.nome}</div>

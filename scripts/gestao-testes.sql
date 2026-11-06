@@ -186,7 +186,7 @@ BEGIN
   PERFORM pg_temp.ok(gestao_balanco_abrir(u1, mes_teste) = b, 'abrir é idempotente');
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'sim')$q$, u1, b, r1), 'Resposta inválida');
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, gen_random_uuid(), 'concluido')$q$, u1, b), 'Rotina não encontrada');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, gen_random_uuid(), %L, 'concluido')$q$, u1, r1), 'Balanço não encontrado');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, gen_random_uuid(), %L, 'concluido')$q$, u1, r1), 'Raio X não encontrado');
   PERFORM gestao_balanco_responder(u1, b, r1, 'nao', null);
   PERFORM gestao_balanco_responder(u1, b, r3, 'na', null);
   PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Faltam 1 rotina sem resposta');
@@ -219,9 +219,9 @@ BEGIN
   PERFORM gestao_rotina_salvar(u1, r1, '{"titulo":"Renomeada depois","descricao":"outro"}');
   PERFORM pg_temp.ok((SELECT rotina_titulo = 'Contagem antes das 17h (renomeada)' AND rotina_criterio = 'Concluído: todos os dias'
     FROM gestao_balanco_aval WHERE balanco_id = b AND rotina_id = r1), 'histórico não muda depois de fechado');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'concluido')$q$, u1, b, r1), 'Balanço fechado não pode ser alterado');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, null)$q$, u1, b, r1), 'Balanço fechado não pode ser alterado');
-  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Balanço já está fechado');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, 'concluido')$q$, u1, b, r1), 'Raio X fechado não pode ser alterado');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_responder(%L, %L, %L, null)$q$, u1, b, r1), 'Raio X fechado não pode ser alterado');
+  PERFORM pg_temp.erro(format($q$SELECT gestao_balanco_fechar(%L, %L)$q$, u1, b), 'Raio X já está fechado');
   b2 := gestao_balanco_abrir(u1, (mes_teste - interval '1 month')::date);
   PERFORM pg_temp.ok(b2 <> b, 'mês anterior é outro balanço');
   n := n + 28;

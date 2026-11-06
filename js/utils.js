@@ -290,7 +290,7 @@ const modInfo = {
   auditoria:      { title: 'Auditoria',              sub: 'Log de ações · Rastreabilidade · Histórico do sistema' },
   etiquetagem:    { title: 'Etiquetagem',             sub: 'Impressão · Validades · Produção · Cadastros' },
   kds:            { title: 'KDS',                     sub: 'Pizzaiolo · Finalização · Pedido' },
-  gestao:         { title: 'Gestão',                  sub: 'Plano de Ação · Balanço · Processos' },
+  gestao:         { title: 'Gestão',                  sub: 'Plano de Ação · Raio X · Processos' },
 };
 
 // ─── Hash-based routing ────────────────────────────────────────

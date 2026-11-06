@@ -282,7 +282,7 @@
 
     async balancoAbrir(mes) {
       const m = String(mes).slice(0, 7) + '-01';
-      if (m > mesAtual) throw new Error('Não dá para abrir balanço de mês futuro');
+      if (m > mesAtual) throw new Error('Não dá para abrir Raio X de mês futuro');
       const b = D.balancos.find(x => x.mes === m);
       if (b) return b.id;
       if (!D.rotinas.some(r => r.ativo)) throw new Error('Cadastre ao menos uma rotina antes de começar');
@@ -293,8 +293,8 @@
 
     async balancoResponder(bid, rid, resposta, obs) {
       const b = D.balancos.find(x => x.id === bid);
-      if (!b) throw new Error('Balanço não encontrado');
-      if (b.status === 'fechado') throw new Error('Balanço fechado não pode ser alterado');
+      if (!b) throw new Error('Raio X não encontrado');
+      if (b.status === 'fechado') throw new Error('Raio X fechado não pode ser alterado');
       const r = D.rotinas.find(x => x.id === rid);
       if (!r) throw new Error('Rotina não encontrada');
       if (resposta != null && !['concluido', 'parcial', 'nao', 'na'].includes(resposta)) throw new Error('Resposta inválida');
@@ -305,8 +305,8 @@
 
     async balancoFechar(bid) {
       const b = D.balancos.find(x => x.id === bid);
-      if (!b) throw new Error('Balanço não encontrado');
-      if (b.status === 'fechado') throw new Error('Balanço já está fechado');
+      if (!b) throw new Error('Raio X não encontrado');
+      if (b.status === 'fechado') throw new Error('Raio X já está fechado');
       const av = D.avals.filter(v => v.balanco_id === bid);
       const faltam = D.rotinas.filter(r => r.ativo && !av.some(v => v.rotina_id === r.id)).length;
       if (faltam) throw new Error(`Faltam ${faltam} rotina${faltam === 1 ? '' : 's'} sem resposta`);
