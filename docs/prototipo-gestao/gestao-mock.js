@@ -19,7 +19,7 @@
   const sub = {};
   [
     ['adm', ['Pessoas', 'Financeiro', 'Estratégico', 'Governança']],
-    ['ope', ['Estoque', 'Compras', 'Cozinha', 'Atendimento', 'Logística', 'Gerência', 'Patrimônio']],
+    ['ope', ['Estoque', 'Compras', 'Cozinha', 'Atendimento', 'Logística', 'Patrimônio', 'Gerência']],
     ['pro', ['Produtização']],
     ['mkt', ['Marketing e Vendas']],
   ].forEach(([area, nomes], ia) => nomes.forEach((nome, i) => {

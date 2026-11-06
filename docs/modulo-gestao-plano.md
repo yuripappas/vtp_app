@@ -15,7 +15,7 @@ Tudo no módulo (atividade, rotina do balanço, processo) pertence a **uma sub-�
 | Área | Sigla | Cor | Sub-áreas |
 |---|---|---|---|
 | Administrativo | **ADM** | laranja | Pessoas · Financeiro · Estratégico · Governança |
-| Operação | **OPE** | verde | Estoque · Compras · Cozinha · Atendimento · Logística · Gerência · Patrimônio |
+| Operação | **OPE** | verde | Estoque · Compras · Cozinha · Atendimento · Logística · Patrimônio · Gerência |
 | Produto | **PRO** | azul | Produtização |
 | Marketing | **MKT** | roxo | Marketing e Vendas |
 
