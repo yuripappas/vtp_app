@@ -102,7 +102,7 @@ async function _gesExec(fn, okMsg) {
     await _gesCarregar();
     _gesRenderBody();
     if (okMsg) toast(okMsg);
-    return r === undefined ? true : r;
+    return r ?? true;   // funções do banco sem retorno devolvem null
   } catch (e) {
     toast(_gesEsc(e.message), 'err');
     _gesRenderBody();   // desfaz o que estava na tela
