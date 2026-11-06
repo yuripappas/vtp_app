@@ -43,8 +43,8 @@ BEGIN
   PERFORM pg_temp.ok(u1 IS NOT NULL, 'precisa de ao menos um usuário ativo em vtp_users');
 
   -- ── Sub-áreas ──
-  PERFORM pg_temp.ok((SELECT count(*) FROM gestao_subareas) = 12, '12 sub-áreas pré-cadastradas');
-  PERFORM pg_temp.ok((SELECT count(*) FROM gestao_subareas WHERE area = 'ope') = 6, 'OPE tem 6 sub-áreas');
+  PERFORM pg_temp.ok((SELECT count(*) FROM gestao_subareas) = 13, '13 sub-áreas pré-cadastradas');
+  PERFORM pg_temp.ok((SELECT count(*) FROM gestao_subareas WHERE area = 'ope') = 7, 'OPE tem 7 sub-áreas (com Patrimônio)');
   SELECT id INTO s_pes FROM gestao_subareas WHERE nome = 'Pessoas';
   SELECT id INTO s_fin FROM gestao_subareas WHERE nome = 'Financeiro';
   SELECT id INTO s_est FROM gestao_subareas WHERE nome = 'Estoque';

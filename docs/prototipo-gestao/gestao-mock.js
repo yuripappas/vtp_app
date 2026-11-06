@@ -19,7 +19,7 @@
   const sub = {};
   [
     ['adm', ['Pessoas', 'Financeiro', 'Estratégico', 'Governança']],
-    ['ope', ['Estoque', 'Compras', 'Cozinha', 'Atendimento', 'Logística', 'Gerência']],
+    ['ope', ['Estoque', 'Compras', 'Cozinha', 'Atendimento', 'Logística', 'Gerência', 'Patrimônio']],
     ['pro', ['Produtização']],
     ['mkt', ['Marketing e Vendas']],
   ].forEach(([area, nomes], ia) => nomes.forEach((nome, i) => {
@@ -151,6 +151,7 @@
     'Atendimento': [['Mensagens respondidas em até 5 min', 'Atendimento via WhatsApp'], ['Reclamações registradas e respondidas']],
     'Logística': [['Tempo médio de entrega dentro da meta', 'Operação de entrega'], ['Entregadores escalados por turno', 'Escala de entregadores']],
     'Gerência': [['Reunião Nota 10 feita toda semana', 'Reunião Nota 10 (semanal)'], ['Checklists de turno conferidos', 'Checklists de turno']],
+    'Patrimônio': [['Preventiva do forno e da masseira em dia'], ['Limpeza da coifa no prazo'], ['Inventário de utensílios feito, com perdas registradas']],
     'Produtização': [['Margem por item revisada no mês', 'Rotina de precificação'], ['Lançamento só com ficha e teste', 'Gestão de cardápio']],
     'Marketing e Vendas': [['Calendário de posts cumprido', 'Gestão do Instagram'], ['Avaliações do Google respondidas', 'Google Meu Negócio'], ['Campanha de reativação disparada']],
   };
