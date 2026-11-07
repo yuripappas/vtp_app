@@ -612,13 +612,21 @@ function _cadCustoInfo() {
   const hist = editItemId ? (priceHistory || []).filter(h => h.itemId === editItemId && h.precoUnit > 0).sort((a, b) => String(b.data).localeCompare(String(a.data))) : [];
   const ult = hist[0];
   const dt = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
-  box.innerHTML = `<div class="cad-dica" style="margin:-4px 0 10px">Vale até a primeira compra. Depois, cada compra recebida atualiza o custo para o preço pago — é o custo usado no CMV e nas fichas.</div>
-    ${ult ? `<div class="cad-box"><div>Último preço pago: <strong>${_estR(ult.precoUnit)} por ${u}</strong></div>
-      <div style="color:var(--text2);font-size:var(--text-xs)">${dt(ult.data)} · ${ult.fornecedorNome || '—'}</div>
-      ${hist.length > 1 ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:var(--text-xs);font-weight:700;color:var(--purple)">Linha do tempo do custo (${hist.length})</summary>
-        <div style="margin-top:6px;max-height:160px;overflow-y:auto">${hist.slice(0, 30).map(h => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border);font-size:var(--text-xs)">
-          <span>${dt(h.data)} · ${h.fornecedorNome || '—'}</span><strong>${_estR(h.precoUnit)}</strong></div>`).join('')}</div></details>` : ''}</div>`
-      : `<div class="cad-box" style="color:var(--text2)">Ainda sem compras registradas.</div>`}`;
+  const umAno = new Date(); umAno.setFullYear(umAno.getFullYear() - 1);
+  const serie = [...hist].filter(h => h.data && new Date(h.data) >= umAno).reverse();   // antiga → recente
+  box.innerHTML = `<div class="cad-dica" style="margin:6px 0 0">Vale até a primeira compra. Depois, cada compra recebida atualiza o custo para o preço pago — é o custo usado no CMV e nas fichas.</div>
+    ${ult ? `<div class="cad-box" style="margin-top:14px"><div>Último preço pago: <strong>${_estR(ult.precoUnit)} por ${u}</strong></div>
+      <div style="color:var(--text2);font-size:var(--text-xs)">${dt(ult.data)} · ${ult.fornecedorNome || '—'}</div></div>
+      <div style="margin-top:14px"><div style="font-size:var(--text-sm);font-weight:700;margin-bottom:6px">Linha do tempo do custo <span style="font-weight:400;color:var(--text2)">· compras dos últimos 12 meses</span></div>
+        ${serie.length > 1 ? `<div style="height:150px"><canvas id="cadCustoChart"></canvas></div>` : `<div class="cad-dica" style="margin:0">Só uma compra no período — o gráfico aparece a partir da segunda.</div>`}</div>`
+      : `<div class="cad-box" style="margin-top:14px;color:var(--text2)">Ainda sem compras registradas.</div>`}`;
+  if (serie.length > 1 && typeof _cmvChart === 'function') _cmvChart('cadCustoChart', {
+    type: 'line',
+    data: { labels: serie.map(h => new Date(String(h.data).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
+      datasets: [{ label: `R$/${u}`, data: serie.map(h => Number(h.precoUnit)), borderColor: _cmvCor('--chart-1', '#6B21D4'), backgroundColor: _cmvCor('--chart-1', '#6B21D4'), tension: .25, pointRadius: 4 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { title: c => `${dt(serie[c[0].dataIndex].data)} · ${serie[c[0].dataIndex].fornecedorNome || '—'}`, label: c => _estR(c.parsed.y) } } },
+      scales: { y: { ticks: { callback: v => 'R$ ' + Number(v).toLocaleString('pt-BR') } } } },
+  });
   _cadApsCustoRefresh();
 }
 // Só atualiza a coluna de custo das apresentações (sem redesenhar a tabela que pode estar em edição)
@@ -628,6 +636,21 @@ function _cadEstoqueDica() {
   const el = document.getElementById('fEstoqueDica'); if (!el) return;
   const u = document.getElementById('fUnit').value;
   const min = parseFloat(document.getElementById('fMin').value) || 0, ideal = parseFloat(document.getElementById('fIdeal').value) || 0;
+  // Estoque atual (saldo do motor de estoque)
+  const at = document.getElementById('fEstoqueAtual');
+  if (at) {
+    const r = editItemId && typeof _estSaldosCache !== 'undefined' ? _estSaldosCache?.porItem.get(editItemId) : null;
+    if (!editItemId) at.innerHTML = '';
+    else if (!r) { at.innerHTML = `<div class="cad-kpi"><span style="font-size:var(--text-sm);color:var(--text2)">Estoque atual</span><span style="color:var(--text2)">calculando…</span></div>`;
+      if (typeof estSaldos === 'function') estSaldos().then(() => { _cadEstoqueDica(); const it = items.find(i => i.id === editItemId); if (it) _estBoxSync('fEstoqueBox'); }).catch(() => {}); }
+    else {
+      const st = r.total < -0.0005 ? ['Negativo', 'b-red'] : r.total <= 0.0005 ? ['Zerado', 'b-red'] : min > 0 && r.total < min ? ['Abaixo do mínimo', 'b-yellow'] : ['OK', 'b-green'];
+      at.innerHTML = `<div class="cad-kpi"><div><div style="font-size:var(--text-sm);color:var(--text2)">Estoque atual</div>
+          <div class="v" style="color:${r.total < -0.0005 ? 'var(--danger-fg)' : 'var(--text)'}">${_estQ(r.total)} <span style="font-size:var(--text-md);font-weight:600;color:var(--text2)">${u}</span></div>
+          ${r.semContagem ? `<div style="font-size:var(--text-xs);color:var(--warning-fg)">ainda sem contagem de ciclo</div>` : ''}</div>
+        <span class="badge ${st[1]}">${st[0]}</span></div>`;
+    }
+  }
   el.textContent = min > 0
     ? `Avisa em "estoque baixo" quando o saldo ficar abaixo de ${_estQ(min)} ${u}.${ideal > 0 ? ` A lista de compra sugere completar até ${_estQ(ideal)} ${u}.` : ''}`
     : 'Sem mínimo, o item não entra nos avisos de estoque baixo.';

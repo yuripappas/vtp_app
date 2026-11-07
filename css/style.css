@@ -2255,4 +2255,14 @@ body:not(.vtp-omnichannel) iframe[src*="ifood"] {
 .cad-tab .inp { padding: 6px 8px; }
 .cad-tab .acao { background: none; border: none; font: inherit; font-size: var(--text-sm); font-weight: 600; color: var(--purple); cursor: pointer; padding: 4px 6px; }
 .cad-tab .acao.neg { color: var(--danger-fg); }
+/* Ritmo vertical do cadastro: 16px entre blocos, 6px entre rótulo/campo/dica */
+.cad-card .field { gap: 6px; margin: 0 0 16px; }
+.cad-card .f2, .cad-card .f3 { margin: 0 0 16px; gap: 12px; }
+.cad-card .f2 > .field, .cad-card .f3 > .field { margin-bottom: 0; }
+.cad-card > :last-child, .cad-card .field:last-child { margin-bottom: 0; }
+.cad-card .cad-dica { margin: 6px 0 0; }
+.cad-card > .cad-dica, .cad-card .cad-intro { margin: 0 0 14px; }
+.cad-card .cad-box + .cad-box, .cad-card .cad-box + div, .cad-card div + .cad-box { margin-top: 12px; }
+.cad-kpi { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: var(--r8); background: var(--bg-subtle); margin-bottom: 16px; }
+.cad-kpi .v { font-size: var(--text-2xl); font-weight: 800; }
 @media (max-width: 900px) { .cad-grid { grid-template-columns: 1fr; } }

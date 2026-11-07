@@ -9,7 +9,7 @@
   <title>VTP360 — Vai Ter Pizza!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/tokens.css?v=121">
-  <link rel="stylesheet" href="css/style.css?v=128">
+  <link rel="stylesheet" href="css/style.css?v=129">
   <link rel="stylesheet" href="css/kds.css?v=3">
   <link rel="stylesheet" href="css/gestao.css?v=7">
 </head>
@@ -557,7 +557,7 @@
 
         <section class="cad-card">
           <div class="cad-h">Apresentações de compra</div>
-          <div class="cad-dica" style="margin:-4px 0 10px">Embalagens em que este insumo é comprado (pacote, caixa, fardo…) e quanto vem em cada uma. A unidade de controle continua sendo a base do estoque.</div>
+          <div class="cad-dica cad-intro">Embalagens em que este insumo é comprado (pacote, caixa, fardo…) e quanto vem em cada uma. A unidade de controle continua sendo a base do estoque.</div>
           <div id="fApsBox"></div>
         </section>
 
@@ -593,11 +593,12 @@
 
         <section class="cad-card">
           <div class="cad-h">Estoque</div>
+          <div id="fEstoqueAtual"></div>
           <div class="f2">
             <div class="field"><label>Estoque mínimo</label><input class="inp" type="number" id="fMin" placeholder="0" min="0" step="0.1" oninput="_cadEstoqueDica()"></div>
             <div class="field"><label>Estoque ideal</label><input class="inp" type="number" id="fIdeal" placeholder="0" min="0" step="0.1" oninput="_cadEstoqueDica()"></div>
           </div>
-          <div id="fEstoqueDica" class="cad-dica" style="margin:-6px 0 12px"></div>
+          <div id="fEstoqueDica" class="cad-dica" style="margin:-10px 0 16px"></div>
           <div id="fEstoqueBox"></div>
         </section>
       </div>
@@ -1333,7 +1334,7 @@
 <script src="js/icons.js?v=3"></script>
 <script src="js/db.js?v=118"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=276"></script>
+<script src="js/init.js?v=277"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">
