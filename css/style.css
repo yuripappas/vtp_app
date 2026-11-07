@@ -1110,6 +1110,11 @@ svg { display: block; }
 .shake { animation: shake var(--dur-slow) var(--ease-out); }
 
 /* === SETTINGS LAYOUT === */
+/* Desktop: as seções ficam no drill-down do sidebar; a nav interna sairia duplicada */
+@media (min-width: 769px) {
+  #page-configuracoes .settings-layout { grid-template-columns: 1fr; }
+  #page-configuracoes .settings-nav { display: none; }
+}
 .settings-layout {
   display: grid;
   grid-template-columns: 180px 1fr;

@@ -248,9 +248,8 @@ function _handleNavMarketing() {
   );
 }
 
-// Não usado pelo menu: Configurações abre direto a página, que tem a própria
-// navegação lateral (settings-nav); o drill-down no sidebar duplicava essa lista.
-// Reaproveita _CFG_SECTIONS
+// Configurações voltou pro sidebar com o mesmo padrão de drill-down dos
+// outros módulos (Vendas/Compras/Omnichannel) — reaproveita _CFG_SECTIONS
 // (definida em js/configuracoes.js) como fonte única das seções, em vez
 // de manter uma lista duplicada aqui.
 function _handleNavConfiguracoes() {
@@ -261,10 +260,22 @@ function _handleNavConfiguracoes() {
   _openMobileSubmenu(
     _CFG_SECTIONS.map(item => ({
       ...item,
-      action: `goModule('configuracoes'); setCfgSection('${item.id}');`
+      action: `goModule('configuracoes'); setCfgSection('${item.id}'); _cfgManterSubmenu();`
     })),
     'Configurações'
   );
+  _cfgMarcarSubmenu();
+}
+// Em Configurações a lista de seções fica aberta no sidebar (no desktop a nav
+// interna da página fica escondida) — goModule() fecha o drill-down ao navegar,
+// então reabre aqui e marca a seção atual.
+function _cfgManterSubmenu() {
+  if (isMobile() || !document.getElementById('page-configuracoes')?.classList.contains('active')) return;
+  if (!_mobileSubmenuActive) _handleNavConfiguracoes();
+  else _cfgMarcarSubmenu();
+}
+function _cfgMarcarSubmenu() {
+  if (typeof _cfgSection !== 'undefined') _setSubPanelActive(`setCfgSection('${_cfgSection}')`);
 }
 
 const modInfo = {
@@ -551,7 +562,7 @@ function goModule(mod) {
   else if (mod === 'cadastros')  renderCadastros();
   else if (mod === 'desperdicio')   renderDesperdicio();
   else if (mod === 'previsao')      renderPrevisao();
-  else if (mod === 'configuracoes') renderConfiguracoes();
+  else if (mod === 'configuracoes') { renderConfiguracoes(); setTimeout(_cfgManterSubmenu, 0); }
   else if (mod === 'relatorios') renderRelatorios();
   else if (mod === 'usuarios') {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
