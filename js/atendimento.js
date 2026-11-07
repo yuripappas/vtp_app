@@ -1888,7 +1888,7 @@ function _atdAbrirEndereco(addr) {
 // ══════════════════════════════════════════════════════════════
 
 async function _atdEnviarMensagem(conversaId) {
-  // Se estava em "Concluídos" e vai enviar, muda para "Ativos" (a conversa vai reabrir)
+  // Se estava em "Concluídos", guarda para mover APÓS o envio (evita duplicata visual)
   const eraConcluido = _atdState.viewMode === 'concluidos';
 
   // Se há arquivo pendente (e sem texto), envia o arquivo
@@ -1897,8 +1897,8 @@ async function _atdEnviarMensagem(conversaId) {
     if (!campo?.value.trim()) {
       const { file } = _atdArquivoPendente;
       _atdCancelarAnexo();
-      if (eraConcluido) _atdMudarParaAtivos(conversaId);
       await _atdUploadArquivo(conversaId, file);
+      if (eraConcluido) _atdMudarParaAtivos(conversaId);
       return;
     }
   }
@@ -1906,8 +1906,6 @@ async function _atdEnviarMensagem(conversaId) {
   const campo = document.getElementById('atdCampoTexto');
   let texto = campo?.value.trim();
   if (!texto) return;
-
-  if (eraConcluido) _atdMudarParaAtivos(conversaId);
 
   const user = getCurrentUser();
   const visibilidade = _atdState.modoNotaInterna ? 'interna' : 'publica';
@@ -1937,13 +1935,18 @@ async function _atdEnviarMensagem(conversaId) {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'falha ao enviar');
-    // Atualiza state local imediatamente (evita desaparecer do filtro)
-    const convLocal = _atdState.conversas.find(c => c.id === conversaId);
-    if (convLocal && visibilidade === 'publica') {
-      convLocal.ultima_mensagem = { texto, origem: 'atendente' };
-      if (user?.id) convLocal.atendente_id = user.id;
+    // Se veio de Concluídos, troca aba agora (envio confirmado → status já foi atualizado no backend)
+    if (eraConcluido) {
+      _atdMudarParaAtivos(conversaId);
+    } else {
+      // Atualiza state local imediatamente (evita desaparecer do filtro)
+      const convLocal = _atdState.conversas.find(c => c.id === conversaId);
+      if (convLocal && visibilidade === 'publica') {
+        convLocal.ultima_mensagem = { texto, origem: 'atendente' };
+        if (user?.id) convLocal.atendente_id = user.id;
+      }
+      _atdRenderLista();
     }
-    _atdRenderLista();
     await _atdAbrirConversa(conversaId);
   } catch (e) {
     toast('Erro ao enviar mensagem: ' + e.message, 'err');
