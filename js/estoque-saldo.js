@@ -187,6 +187,25 @@ const estLocalSaida   = item => item.localSaida   || item.localEntrada || estLoc
 const estLocalEntrada = item => item.localEntrada || item.localSaida   || estLocaisDoItem(item)[0];
 const estTipoItem     = item => item.isProd ? 'preparado' : 'insumo';
 
+// ── Apresentações de compra (embalagens) ─────────────────────────
+// item.apresentacoes = [{ id, nome, qtd, padrao, ativa }] — qtd na unidade do item
+// (ex.: Calabresa em kg → "Pacote 5 kg" = 5, "Caixa 50 kg" = 50). Item antigo
+// sem a lista usa a embalagem única de antes (unidCompra / qtdEmb).
+function estApresentacoes(item, soAtivas = true) {
+  const aps = Array.isArray(item?.apresentacoes) ? item.apresentacoes
+    : (item?.unidCompra && Number(item.qtdEmb) > 0
+      // embalagem antiga igual à própria unidade (ex.: "Kg" com 1 kg) não é apresentação
+      && !(Number(item.qtdEmb) === 1 && String(item.unidCompra).trim().toLowerCase() === String(item.unit || '').toLowerCase())
+      ? [{ id: 1, nome: item.unidCompra, qtd: Number(item.qtdEmb), padrao: true, ativa: true }] : []);
+  return soAtivas ? aps.filter(a => a.ativa !== false && Number(a.qtd) > 0) : aps;
+}
+// Quantidade na apresentação escolhida: "2 Caixa 10 kg (20 kg)"; sem apresentação: "20 kg".
+// ap = { nome, fator } (o que fica salvo no pedido)
+function estQtdApresentacao(qtd, unidade, ap) {
+  const base = `${_estQ(qtd)} ${unidade || ''}`.trim();
+  return ap && Number(ap.fator) > 0 ? `${_estQ(qtd / ap.fator)} ${ap.nome} (${base})` : base;
+}
+
 // ── Cálculo ────────────────────────────────────────────────────
 // Quanto cada movimentação mexe em cada local: [[localId, delta], …]
 function estEfeitoMov(m) {

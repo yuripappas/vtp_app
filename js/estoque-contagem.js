@@ -599,36 +599,50 @@ function _ctgOrdenados(az = false) {
   });
 }
 
-// Embalagem de compra do cadastro (ex.: CX com 12 kg). Sem embalagem → só avulso.
-function _ctgEmb(row) {
-  const it = _ctgItem(row);
-  const fator = Number(row.pacotes?.fator) || (it?.unidCompra && Number(it.qtdEmb) > 1 ? Number(it.qtdEmb) : 0);
-  const nome = row.pacotes?.embNome || it?.unidCompra || 'Embalagem';
-  return fator > 1 ? { fator, nome } : null;
+// Apresentações em que o item pode ser contado (cadastro + as que já estão salvas na contagem).
+// → [{ k: 'emb0', nome, fator }]. Sem apresentação → só avulso.
+// pacotes salvo: { aps: [{ nome, fator, n }], avulso } (antigo: { emb, fator, embNome, avulso })
+function _ctgEmbs(row) {
+  const it = _ctgItem(row), p = row.pacotes || {};
+  const lista = estApresentacoes(it).filter(a => Number(a.qtd) !== 1).sort((a, b) => (!!b.padrao - !!a.padrao) || (b.qtd - a.qtd)).map(a => ({ nome: a.nome, fator: Number(a.qtd) }));
+  const salvas = Array.isArray(p.aps) ? p.aps : (p.emb != null && Number(p.fator) > 0 ? [{ nome: p.embNome || 'Embalagem', fator: Number(p.fator) }] : []);
+  for (const s of salvas) if (!lista.some(a => a.nome === s.nome && a.fator === Number(s.fator))) lista.push({ nome: s.nome, fator: Number(s.fator) });
+  return lista.map((a, i) => ({ ...a, k: 'emb' + i }));
 }
 function _ctgRasc(row) {
   const r = _ctgAtual.rasc;
   if (!r[row.id]) {
     const p = row.pacotes || {};
     const br = v => v === '' || v == null ? '' : String(v).replace('.', ',');   // valor salvo → texto pt-BR (não confundir com milhar)
-    r[row.id] = row.contado === null ? { emb: '', avulso: '' }
-      : { emb: br(p.emb), avulso: br(p.avulso ?? (p.emb == null ? Number(row.contado) : '')) };
+    const o = { avulso: '' };
+    _ctgEmbs(row).forEach(e => { o[e.k] = ''; });
+    if (row.contado !== null) {
+      const salvas = Array.isArray(p.aps) ? p.aps : (p.emb != null ? [{ nome: p.embNome || 'Embalagem', fator: Number(p.fator), n: p.emb }] : []);
+      for (const sv of salvas) { const e = _ctgEmbs(row).find(x => x.nome === sv.nome && x.fator === Number(sv.fator)); if (e) o[e.k] = br(sv.n); }
+      o.avulso = br(p.avulso ?? (!salvas.length ? Number(row.contado) : ''));
+    }
+    r[row.id] = o;
   }
   return r[row.id];
 }
 // pt-BR: vírgula decimal; em item por unidade (e no nº de embalagens) o ponto é milhar — 3.420 = 3420
 const _ctgNum = (v, un = '') => (v === '' || v == null) ? null : _estNumBr(v, un);
-const _ctgUnCampo = (row, campo) => campo === 'emb' ? 'un' : _ctgUn(row);
+const _ctgUnCampo = (row, campo) => campo.startsWith('emb') ? 'un' : _ctgUn(row);
+// Campos da linha: cada apresentação + avulso → [{ k, fator, v }]
+function _ctgCampos(row) {
+  const r = _ctgRasc(row);
+  return [..._ctgEmbs(row).map(e => ({ k: e.k, nome: e.nome, fator: e.fator })), { k: 'avulso', fator: 1 }]
+    .map(c => ({ ...c, v: _ctgNum(r[c.k], _ctgUnCampo(row, c.k)) }));
+}
 function _ctgTotalRasc(row) {
-  const r = _ctgRasc(row), e = _ctgEmb(row);
-  const emb = _ctgNum(r.emb, 'un'), av = _ctgNum(r.avulso, _ctgUn(row));
-  if (emb === null && av === null) return null;
-  return _estRound((e ? (emb || 0) * e.fator : 0) + (av || 0));
+  const cs = _ctgCampos(row);
+  if (cs.every(c => c.v === null)) return null;
+  return _estRound(cs.reduce((s, c) => s + (c.v || 0) * c.fator, 0));
 }
 function _ctgDescPacotes(p, contado, unid, row) {
-  const e = row ? _ctgEmb(row) : null;
   const partes = [];
-  if (p && p.emb) partes.push(`${_estQ(p.emb)}× ${_estEsc(p.embNome || e?.nome || 'Emb.')} (${_estQ(p.fator)} ${_estEsc(unid)})`);
+  const aps = Array.isArray(p?.aps) ? p.aps : (p?.emb ? [{ nome: p.embNome || 'Emb.', fator: p.fator, n: p.emb }] : []);
+  for (const a of aps) if (a.n) partes.push(`${_estQ(a.n)}× ${_estEsc(a.nome)} (${_estQ(a.fator)} ${_estEsc(unid)})`);
   if (p && p.avulso) partes.push(`${_estQ(p.avulso)}× Avulso`);
   if (!partes.length) partes.push(`${_estQ(contado)}× Avulso`);
   return `${partes.join(' + ')} · ${_estQ(contado)} ${_estEsc(unid || '')}`;
@@ -688,7 +702,7 @@ function _ctgLinhaContar(r, arrastavel) {
   const conf = r.contado !== null;
   const u = _estEsc(_ctgUn(r));
   const ult = A.ultimas.get(r.item_id);
-  const e = _ctgEmb(r);
+  const embs = _ctgEmbs(r);
   const rasc = _ctgRasc(r);
   const tot = _ctgTotalRasc(r);
   const linhaQtd = (campo, rotulo, fator) => `
@@ -716,10 +730,10 @@ function _ctgLinhaContar(r, arrastavel) {
     </div>
     ${aberto ? `<div style="border-top:1px solid var(--border);padding:12px 16px;background:var(--card-bg)">
       ${ult ? `<div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:6px"><strong>Última contagem:</strong> ${_ctgDescPacotes(ult.pacotes, ult.contado, _ctgUn(r), r)} <span style="color:var(--muted)">(${_ctgDataBr(ult.data)})</span></div>` : ''}
-      ${e ? linhaQtd('emb', `${_estEsc(e.nome)} (${_estQ(e.fator)} ${u})`, e.fator) : ''}
-      ${linhaQtd('avulso', `Avulso (${u})`, 1)}
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
-        <div style="font-size:var(--text-sm);color:var(--text2)"><span id="ctgTot-${r.id}">${tot !== null ? `<strong>Total: ${_estQ(tot)} ${u}</strong>` : 'Digite a quantidade (0 se não houver) para conferir'}</span></div>
+      ${embs.map(e => linhaQtd(e.k, `${_estEsc(e.nome)} <span style="color:var(--muted)">(${_estQ(e.fator)} ${u} cada)</span>`, e.fator)).join('')}
+      ${linhaQtd('avulso', `Avulso <span style="color:var(--muted)">(em ${u})</span>`, 1)}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding:10px 12px;border-radius:var(--r8);background:var(--purple-xlight)">
+        <div style="font-size:var(--text-md);color:var(--text)"><span id="ctgTot-${r.id}">${tot !== null ? `Total contado: <strong style="font-size:var(--text-lg)">${_estQ(tot)} ${u}</strong>` : 'Digite a quantidade (0 se não houver) para conferir'}</span></div>
         <button class="btn btn-primary btn-sm" onclick="_ctgConferir('${r.id}')">${lc('check', 13, '#fff')} ${conf ? 'Atualizar' : 'Conferir'}</button>
       </div>
     </div>` : ''}
@@ -745,24 +759,22 @@ function _ctgPasso(rowId, campo, delta) {
   _ctgAtualizarTotais(row);
 }
 function _ctgAtualizarTotais(row) {
-  const r = _ctgRasc(row), e = _ctgEmb(row), u = _estEsc(_ctgUn(row));
-  for (const [campo, fator] of [['emb', e?.fator || 0], ['avulso', 1]]) {
-    const eq = document.getElementById(`ctgEq-${row.id}-${campo}`);
-    const v = _ctgNum(r[campo], _ctgUnCampo(row, campo));
-    if (eq) eq.textContent = v !== null ? `= ${_estQ(v * fator)} ${_ctgUn(row)}` : '';
+  const u = _estEsc(_ctgUn(row));
+  for (const c of _ctgCampos(row)) {
+    const eq = document.getElementById(`ctgEq-${row.id}-${c.k}`);
+    if (eq) eq.textContent = c.v !== null ? `= ${_estQ(c.v * c.fator)} ${_ctgUn(row)}` : '';
   }
   const tot = _ctgTotalRasc(row);
   const t = document.getElementById(`ctgTot-${row.id}`);
-  if (t) t.innerHTML = tot !== null ? `<strong>Total: ${_estQ(tot)} ${u}</strong>` : 'Digite a quantidade (0 se não houver) para conferir';
+  if (t) t.innerHTML = tot !== null ? `Total contado: <strong style="font-size:var(--text-lg)">${_estQ(tot)} ${u}</strong>` : 'Digite a quantidade (0 se não houver) para conferir';
 }
 
 async function _ctgSalvarContado(row) {
-  const r = _ctgRasc(row), e = _ctgEmb(row);
-  const emb = _ctgNum(r.emb, 'un'), av = _ctgNum(r.avulso, _ctgUn(row));
-  if (emb === null && av === null) { toast('Digite a quantidade (0 se não houver)', 'err'); return false; }
-  if ((emb !== null && (isNaN(emb) || emb < 0)) || (av !== null && (isNaN(av) || av < 0))) { toast('Quantidade inválida', 'err'); return false; }
+  const cs = _ctgCampos(row);
+  if (cs.every(c => c.v === null)) { toast('Digite a quantidade (0 se não houver)', 'err'); return false; }
+  if (cs.some(c => c.v !== null && (isNaN(c.v) || c.v < 0))) { toast('Quantidade inválida', 'err'); return false; }
   const total = _ctgTotalRasc(row);
-  const pacotes = { emb: e ? emb : null, avulso: av, fator: e?.fator || null, embNome: e?.nome || null };
+  const pacotes = { aps: cs.filter(c => c.k !== 'avulso' && c.v).map(c => ({ nome: c.nome, fator: c.fator, n: c.v })), avulso: cs.find(c => c.k === 'avulso').v };
   const { error } = await _estSb().from('est_contagem_itens').update({ contado: total, pacotes, atualizado_por: estUsuario() }).eq('id', row.id);
   if (error) { toast('Não salvou: ' + error.message, 'err'); return false; }
   row.contado = total; row.pacotes = pacotes;
@@ -790,7 +802,7 @@ async function _ctgConferir(rowId) {
   if (prox) setTimeout(() => {
     const b = document.querySelector(`[data-row="${prox.id}"]`);
     b?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    document.getElementById(`ctgIn-${prox.id}-${_ctgEmb(prox) ? 'emb' : 'avulso'}`)?.focus({ preventScroll: true });
+    document.getElementById(`ctgIn-${prox.id}-${_ctgEmbs(prox).length ? 'emb0' : 'avulso'}`)?.focus({ preventScroll: true });
   }, 50);
 }
 
@@ -899,9 +911,9 @@ function _ctgRenderRevisao(el) {
   const ordenados = _ctgOrdenados(A.ordemRev === 'az');
   const linha = r => {
     const ed = A.editRev === r.id;
-    const e = _ctgEmb(r), rasc = _ctgRasc(r), u = _estEsc(_ctgUn(r));
+    const embs = _ctgEmbs(r), rasc = _ctgRasc(r), u = _estEsc(_ctgUn(r));
     const campo = (k, rot) => `<label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);text-transform:none">${rot}
-      <input class="inp" id="ctgIn-${r.id}-${k}" type="number" inputmode="decimal" min="0" step="any" value="${rasc[k]}" style="width:110px;text-align:right" oninput="_ctgDigitar('${r.id}','${k}',this.value)"></label>`;
+      <input class="inp" id="ctgIn-${r.id}-${k}" type="text" inputmode="decimal" autocomplete="off" value="${rasc[k]}" style="width:110px;text-align:right" oninput="_ctgDigitar('${r.id}','${k}',this.value)"></label>`;
     return `<tr onclick="_ctgAtual.editRev=${ed ? 'null' : `'${r.id}'`};_ctgRenderTela()" style="border-top:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
         <td style="padding:12px 14px;font-weight:600">${_estEsc(r.item_nome)}${r.adicionado ? ' <span class="badge b-purple">Adicionado</span>' : ''}</td>
         <td style="padding:12px 14px;color:var(--text2);font-size:var(--text-sm)">${_estEsc(r.categoria || 'Outros')}</td>
@@ -911,7 +923,7 @@ function _ctgRenderRevisao(el) {
       </tr>
       ${ed ? `<tr><td colspan="5" style="padding:12px 14px;background:var(--surface2)">
         <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap" onclick="event.stopPropagation()">
-          ${e ? campo('emb', `${_estEsc(e.nome)} (${_estQ(e.fator)} ${u})`) : ''}${campo('avulso', `Avulso (${u})`)}
+          ${embs.map(e => campo(e.k, `${_estEsc(e.nome)} (${_estQ(e.fator)} ${u})`)).join('')}${campo('avulso', `Avulso (${u})`)}
           <span id="ctgTot-${r.id}" style="font-size:var(--text-sm)"></span>
           <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="_ctgCorrigirRevisao('${r.id}')">${lc('check', 13, '#fff')} Salvar</button>
         </div></td></tr>` : ''}`;

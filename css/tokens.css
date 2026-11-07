@@ -113,7 +113,7 @@
   /* Texto */
   --fg:           #1A0A2E;    /* texto primário   */
   --fg-muted:     #4B4569;    /* texto secundário */
-  --fg-subtle:    #9B91B8;    /* texto terciário  */
+  --fg-subtle:    #7A6FA0;    /* texto terciário (AA 4,5:1 no branco) */
   --fg-disabled:  #C4BCDE;
   --fg-inverse:   #FFFFFF;
   --fg-on-brand:  #FFFFFF;

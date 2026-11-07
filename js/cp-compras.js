@@ -293,11 +293,23 @@ function _cpNCPasso2() {
     </div>`;
 }
 
+// Unidade da nota (CX, PCT, FD…) → quantos da unidade do insumo vêm nela, pela apresentação
+// com nome parecido; senão a padrão; 0 = mesma unidade do insumo (não converte)
+const _CP_SIGLAS = { cx: 'caixa', pct: 'pacote', pc: 'pacote', pt: 'pacote', fd: 'fardo', sc: 'saco', gf: 'garrafa', fr: 'frasco', bd: 'balde', lt: 'lata', bj: 'bandeja', dz: 'duzia' };
+function cpFatorUnidadeNota(item, unid) {
+  if (!item || !unid || _cwNorm(unid) === _cwNorm(item.unit)) return 0;
+  const aps = estApresentacoes(item);
+  if (!aps.length) return 0;
+  const u = _cwNorm(unid), nome = _CP_SIGLAS[u] || u;
+  const casa = aps.find(a => _cwNorm(a.nome).startsWith(nome) || _cwNorm(a.nome).split(' ')[0] === u);
+  return Number((casa || aps.find(a => a.padrao) || (aps.length === 1 ? aps[0] : null))?.qtd) || 0;
+}
+
 function _cpNCSetItem(idx, itemId) {
   const l = _cpNC.itens[idx];
   l.item_id = itemId; l.sugestao = false; l.memoria = false;
   const item = items.find(i => i.id === itemId);
-  if (item && l.desc_nota && l.fator === 1 && item.qtdEmb > 0 && l.unid_nota && _cwNorm(l.unid_nota) !== _cwNorm(item.unit)) l.fator = item.qtdEmb;
+  if (item && l.desc_nota && l.fator === 1 && l.unid_nota) { const f = cpFatorUnidadeNota(item, l.unid_nota); if (f > 0) l.fator = f; }
   _cpNCRecalcNota(l);
   if (item && !l.desc_nota && l.preco_unit === null && item.cost) { l.preco_unit = item.cost; if (l.qtd) l.total = _estRound(l.qtd * l.preco_unit); }
   _cpNCRender();
@@ -601,7 +613,7 @@ async function _cpMontarCompraDaNota(nota, origem) {
       if (c) {
         l.item_id = c.x.id; l.sugestao = true;
         const item = items.find(i => i.id === c.x.id);
-        if (item?.qtdEmb > 0 && it.unidade && _cwNorm(it.unidade) !== _cwNorm(item.unit)) l.fator = item.qtdEmb;
+        const f = cpFatorUnidadeNota(item, it.unidade); if (f > 0) l.fator = f;
       }
     }
     _cpNCRecalcNota(l);

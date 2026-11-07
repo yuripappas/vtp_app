@@ -147,9 +147,8 @@ const _rcPedido = id => _rcDados?.pedidos.find(p => p.id === id);
 function _rcMensagem(p, its) {
   const s = cpFornecedor(p.fornecedor_id);
   const linhas = its.map(i => {
-    const it = items.find(x => x.id === i.item_id);
-    const emb = it?.qtdEmb > 0 && it?.unidCompra ? ` (${_estQ(i.qtd_pedida / it.qtdEmb)} ${it.unidCompra})` : '';
-    return `• ${i.item_nome} — ${_estQ(i.qtd_pedida)} ${i.unidade || ''}${emb}${i.preco_combinado ? ` · ${_estR(i.preco_combinado)}/${i.unidade || 'un'}` : ''}`;
+    const ap = i.apresentacao && Number(i.apresentacao.fator) > 0 ? i.apresentacao : null;
+    return `• ${i.item_nome} — ${estQtdApresentacao(i.qtd_pedida, i.unidade, ap)}${i.preco_combinado ? ` · ${_estR(i.preco_combinado * (ap?.fator || 1))}/${ap?.nome || i.unidade || 'un'}` : ''}`;
   });
   const fr = Number(p.frete) || 0;
   const total = its.reduce((t, i) => t + (Number(i.qtd_pedida) || 0) * (Number(i.preco_combinado) || 0), 0) + fr;
@@ -212,7 +211,7 @@ function _rcImprimir(id) {
     <div class="m">Fornecedor: <b>${_estEsc(p.fornecedor_nome)}</b>${s?.seller ? ` · ${_estEsc(s.seller)}` : ''}${s?.phone ? ` · ${_estEsc(s.phone)}` : ''}</div>
     <div class="m">Gerado em ${_estDH(p.created_at)}${p.previsao_entrega ? ` · previsão de entrega ${cpDataBr(p.previsao_entrega)}` : ''} · status: ${RC_STATUS[p.status].label}</div>
     <table><thead><tr><th>Item</th><th class="r">Qtd pedida</th><th class="r">Preço combinado</th><th class="r">Subtotal</th><th class="chk">Recebido</th></tr></thead><tbody>
-    ${its.map(i => `<tr><td>${_estEsc(i.item_nome)}</td><td class="r">${_estQ(i.qtd_pedida)} ${_estEsc(i.unidade || '')}</td><td class="r">${i.preco_combinado ? _estR(i.preco_combinado) : '—'}</td><td class="r">${_estR((i.qtd_pedida || 0) * (i.preco_combinado || 0))}</td><td></td></tr>`).join('')}
+    ${its.map(i => `<tr><td>${_estEsc(i.item_nome)}</td><td class="r">${_estEsc(estQtdApresentacao(i.qtd_pedida, i.unidade, i.apresentacao))}</td><td class="r">${i.preco_combinado ? _estR(i.preco_combinado) : '—'}</td><td class="r">${_estR((i.qtd_pedida || 0) * (i.preco_combinado || 0))}</td><td></td></tr>`).join('')}
     </tbody><tfoot><tr><th colspan="3" class="r">Total estimado</th><th class="r">${_estR(p.total_previsto)}</th><th></th></tr></tfoot></table>
     <p class="m" style="margin-top:28px">Conferido por: ______________________ &nbsp; Data: ___/___/______</p>
     <script>window.onload=()=>{window.print()}<\/script></body></html>`);
@@ -263,7 +262,7 @@ function _rcRenderConf() {
           const u = _estEsc(i.unidade || 'un');
           return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:9px 10px;font-weight:600">${_estEsc(i.item_nome)}${i.notaDesc ? `<div style="font-size:var(--text-xs);color:var(--muted);font-weight:400">na nota: ${_estEsc(i.notaDesc)}</div>` : ''}</td>
-            <td style="padding:9px 10px;text-align:right;white-space:nowrap">${_estQ(i.qtd_pedida)} ${u}</td>
+            <td style="padding:9px 10px;text-align:right;white-space:nowrap">${_estQ(i.qtd_pedida)} ${u}${i.apresentacao?.fator > 0 ? `<div style="font-size:var(--text-xs);color:var(--text2)">${_estQ(i.qtd_pedida / i.apresentacao.fator)} ${_estEsc(i.apresentacao.nome)}</div>` : ''}</td>
             <td style="padding:9px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${_estQ(i.qtd_recebida)} ${u}</td>
             ${aberto ? `<td style="padding:9px 10px;text-align:right;white-space:nowrap">${num(k, 'receber', i.receber)} <span style="font-size:var(--text-xs);color:var(--muted)">${u}</span>
               <div id="rcDifQ${k}" style="font-size:var(--text-2xs);color:var(--orange-dark)"></div></td>` : ''}

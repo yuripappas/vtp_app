@@ -195,6 +195,26 @@ const _ctPreco = (li, f) => { const p = _ctAtual.precos.get(li.id + '|' + f); re
 
 const _ctFrete = f => Number(_ctAtual?.lote.fretes?.[f]) || 0;
 
+// Apresentação em que o item vai ser comprado ({ nome, fator } ou null = unidade do insumo).
+// Preços ficam salvos por unidade do insumo; na tela aparecem por apresentação (× fator).
+const _ctAp = li => li.apresentacao && Number(li.apresentacao.fator) > 0 ? li.apresentacao : null;
+const _ctFator = li => _ctAp(li)?.fator || 1;
+const _ctUnCompra = li => _ctAp(li)?.nome || li.unidade || 'un';
+async function _ctSetAp(liId, v) {
+  const li = _ctAtual.itens.find(i => i.id === liId);
+  const it = items.find(x => x.id === li.item_id);
+  const a = v ? estApresentacoes(it).find(x => String(x.id) === v) : null;
+  try { Object.assign(li, await cpUpdate('cp_lote_itens', liId, { apresentacao: a ? { nome: a.nome, fator: Number(a.qtd) } : null })); _ctRender(); }
+  catch (e) { toast('Não salvou: ' + e.message, 'err'); }
+}
+// Quantidade que não fecha embalagem inteira → arredonda para cima
+async function _ctArredondar(liId) {
+  const li = _ctAtual.itens.find(i => i.id === liId), f = _ctFator(li);
+  const qtd = _estRound(Math.ceil(Number(li.qtd) / f - 0.0001) * f);
+  try { Object.assign(li, await cpUpdate('cp_lote_itens', liId, { qtd })); _ctRender(); }
+  catch (e) { toast('Não salvou: ' + e.message, 'err'); }
+}
+
 // Por fornecedor: total dos itens escolhidos (total), entrega e total com entrega
 function _ctTotais() {
   const t = {};
@@ -300,7 +320,7 @@ function _ctRenderPlanilha(totais) {
         ${bloqueado ? `<span style="font-size:var(--text-2xs);color:var(--muted)">exclusivo de outro</span>` : `
         <div style="display:flex;align-items:center;gap:6px;justify-content:center">
           <input type="radio" name="ct${li.id}" ${sel ? 'checked' : ''} ${ed && p !== null ? '' : 'disabled'} onchange="_ctEscolher('${li.id}', ${f})" style="accent-color:var(--purple);width:16px;height:16px" title="Escolher este fornecedor">
-          <input class="inp" type="number" min="0" step="0.01" value="${p ?? ''}" placeholder="R$" ${ed ? '' : 'disabled'}
+          <input class="inp" type="number" min="0" step="0.01" value="${p !== null ? _estRound(p * _ctFator(li)) : ''}" placeholder="R$" ${ed ? '' : 'disabled'} title="R$ por ${_estEsc(_ctUnCompra(li))}"
             style="width:88px;text-align:right;font-weight:${sel ? 800 : 600};padding:6px 8px" onchange="_ctSetPreco('${li.id}', ${f}, this.value)">
         </div>
         ${p !== null && melhor !== null && p === melhor && precos.length > 1 ? `<div style="margin-top:4px"><span class="badge b-purple" style="font-size:var(--text-2xs)">★ Melhor preço</span></div>` : ''}
@@ -310,10 +330,20 @@ function _ctRenderPlanilha(totais) {
     return `<tr style="border-top:1px solid var(--border)">
       <td style="padding:8px 10px;position:sticky;left:0;background:var(--card-bg);z-index:1;min-width:220px">
         <div style="font-weight:700">${_estEsc(li.item_nome)}</div>
-        <div style="font-size:var(--text-xs);color:var(--muted)">${_estQ(li.qtd)} ${_estEsc(li.unidade || '')} ${_clEmb(it, li.qtd)}</div>
+        <div style="font-size:var(--text-sm);color:var(--text2)">${estQtdApresentacao(li.qtd, li.unidade, _ctAp(li))}</div>
+        ${(() => { const aps = estApresentacoes(it); const ap = _ctAp(li);
+          const naoFecha = ap && Math.abs(li.qtd / ap.fator - Math.round(li.qtd / ap.fator)) > 0.001;
+          return `${aps.length || ap ? `<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+            <span style="font-size:var(--text-xs);color:var(--text2)">Comprar em</span>
+            <select class="inp" style="width:auto;padding:3px 6px;font-size:var(--text-xs)" ${ed ? '' : 'disabled'} onchange="_ctSetAp('${li.id}', this.value)">
+              <option value="">${_estEsc(li.unidade || 'unidade')}</option>
+              ${aps.map(a => `<option value="${a.id}"${ap && ap.nome === a.nome && ap.fator === Number(a.qtd) ? ' selected' : ''}>${_estEsc(a.nome)} (${_estQ(a.qtd)} ${_estEsc(li.unidade || '')})</option>`).join('')}
+              ${ap && !aps.some(a => a.nome === ap.nome && Number(a.qtd) === ap.fator) ? `<option selected>${_estEsc(ap.nome)}</option>` : ''}
+            </select></div>` : ''}
+          ${naoFecha && ed ? `<div style="font-size:var(--text-xs);color:var(--warning-fg);margin-top:3px">não fecha embalagem inteira · <a href="#" onclick="_ctArredondar('${li.id}');return false">arredondar para ${_estQ(Math.ceil(li.qtd / ap.fator - 0.0001))}</a></div>` : ''}`; })()}
         ${ed ? `<button class="btn btn-ghost btn-xs" style="color:var(--muted);padding:2px 0" onclick="_ctRemoverItem('${li.id}')">tirar do lote</button>` : ''}
       </td>
-      <td style="padding:8px 10px;white-space:nowrap;font-size:var(--text-sm)">${ult ? `${_estR(ult.precoUnit)}<div style="font-size:var(--text-xs);color:var(--muted)">${cpDataBr(ult.data)} · ${_estEsc(ult.fornecedorNome || '')}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="padding:8px 10px;white-space:nowrap;font-size:var(--text-sm)">${ult ? `${_estR(ult.precoUnit * _ctFator(li))}${_ctAp(li) ? `<span style="color:var(--muted)"> /${_estEsc(_ctUnCompra(li))}</span>` : ''}<div style="font-size:var(--text-xs);color:var(--muted)">${cpDataBr(ult.data)} · ${_estEsc(ult.fornecedorNome || '')}</div>` : '<span style="color:var(--muted)">—</span>'}</td>
       ${cells}
     </tr>`;
   }).join('');
@@ -335,7 +365,7 @@ function _ctRenderPlanilha(totais) {
       <button class="btn btn-outline btn-sm" onclick="_ctMelhores()">${lc('star', 13, 'currentColor')} Selecionar os melhores preços</button>
       ${outros.length ? `<select class="inp" style="width:auto;font-size:var(--text-sm);font-weight:600;color:var(--purple);border-color:var(--purple)" onchange="_ctAddForn(+this.value)">
         <option value="">+ Adicionar fornecedor</option>${outros.map(s => `<option value="${s.id}">${_estEsc(s.name)}</option>`).join('')}</select>` : ''}
-      <span style="font-size:var(--text-xs);color:var(--muted)">Preço por unidade do insumo (kg, un…). Marque o círculo do fornecedor escolhido. Para tirar um fornecedor, use o × no topo da coluna.</span>
+      <span style="font-size:var(--text-xs);color:var(--muted)">Preço na unidade de compra de cada item (kg, ou a embalagem escolhida em "Comprar em"). Marque o círculo do fornecedor escolhido. Para tirar um fornecedor, use o × no topo da coluna.</span>
     </div>` : ''}
     ${a.forns.length ? `<div style="overflow:auto;border:1.5px solid var(--border);border-radius:var(--r8)">
       <table style="border-collapse:collapse;font-size:var(--text-md);width:100%">
@@ -365,7 +395,7 @@ function _ctRenderResumo(totais) {
               ${min ? `<div style="font-size:var(--text-xs);font-weight:700;color:${abaixo ? 'var(--danger-fg)' : 'var(--success-fg)'}">${abaixo ? `abaixo do mínimo de ${_estR(min)}` : `mínimo ${_estR(min)} ok`}</div>` : ''}</div>
           </div>
           ${r.itens.map(li => { const it = items.find(x => x.id === li.item_id); return `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 14px;border-top:1px solid var(--border);font-size:var(--text-sm)">
-            <span>${_estEsc(li.item_nome)}<div style="font-size:var(--text-xs);color:var(--muted)">${_estQ(li.qtd)} ${_estEsc(li.unidade || '')} ${_clEmb(it, li.qtd)} × ${_estR(li.preco)}</div></span>
+            <span>${_estEsc(li.item_nome)}<div style="font-size:var(--text-xs);color:var(--muted)">${estQtdApresentacao(li.qtd, li.unidade, _ctAp(li))} × ${_estR(li.preco * _ctFator(li))}/${_estEsc(_ctUnCompra(li))}</div></span>
             <strong style="white-space:nowrap">${_estR(li.qtd * li.preco)}</strong></div>`; }).join('')}
           ${r.frete ? `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 14px;border-top:1px solid var(--border);font-size:var(--text-sm)"><span>Entrega</span><strong>${_estR(r.frete)}</strong></div>` : ''}
           <div style="padding:10px 14px;border-top:1px solid var(--border)">
@@ -377,7 +407,8 @@ function _ctRenderResumo(totais) {
 
 // ── Ações da planilha ──
 async function _ctSetPreco(liId, f, v) {
-  const preco = v === '' ? null : parseFloat(v);
+  const li0 = _ctAtual.itens.find(i => i.id === liId);
+  const preco = v === '' ? null : parseFloat(v) / _ctFator(li0);   // salva por unidade do insumo
   const k = liId + '|' + f;
   const atual = _ctAtual.precos.get(k);
   try {
@@ -435,9 +466,7 @@ async function _ctRemoverItem(liId) {
 
 // ── Mensagens (copiar e colar no WhatsApp) ──
 function _ctLinhaMsg(li, comPreco) {
-  const it = items.find(x => x.id === li.item_id);
-  const emb = it?.qtdEmb > 0 && it?.unidCompra ? ` (${_estQ(li.qtd / it.qtdEmb)} ${it.unidCompra})` : '';
-  return `• ${li.item_nome} — ${_estQ(li.qtd)} ${li.unidade || ''}${emb}${comPreco && li.preco ? ` · ${_estR(li.preco)}/${li.unidade || 'un'}` : ''}`;
+  return `• ${li.item_nome} — ${estQtdApresentacao(li.qtd, li.unidade, _ctAp(li))}${comPreco && li.preco ? ` · ${_estR(li.preco * _ctFator(li))}/${_ctUnCompra(li)}` : ''}`;
 }
 function _ctSaudacao(s) { return `Olá${s?.seller ? ', ' + s.seller.charAt(0) + s.seller.slice(1).toLowerCase() : ''}! Aqui é da Vai Ter Pizza.`; }
 
@@ -490,7 +519,7 @@ function _ctConcluir() {
           });
           await cpInsert('cp_pedido_itens', r.itens.map(li => ({
             pedido_id: ped.id, lote_item_id: li.id, item_id: li.item_id, item_nome: li.item_nome, unidade: li.unidade,
-            qtd_pedida: li.qtd, preco_combinado: li.preco, criado_por: user,
+            qtd_pedida: li.qtd, preco_combinado: li.preco, apresentacao: _ctAp(li), criado_por: user,
           })));
         }
         for (const li of semForn) {

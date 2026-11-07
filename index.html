@@ -8,10 +8,10 @@
   <meta http-equiv="Expires" content="0">
   <title>VTP360 — Vai Ter Pizza!</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/tokens.css?v=120">
-  <link rel="stylesheet" href="css/style.css?v=127">
+  <link rel="stylesheet" href="css/tokens.css?v=121">
+  <link rel="stylesheet" href="css/style.css?v=128">
   <link rel="stylesheet" href="css/kds.css?v=3">
-  <link rel="stylesheet" href="css/gestao.css?v=6">
+  <link rel="stylesheet" href="css/gestao.css?v=7">
 </head>
 <body>
 
@@ -532,80 +532,74 @@
 
 <!-- Modal: Insumo -->
 <div class="overlay" id="ovItem">
-  <div class="mbox">
-    <div class="mh"><div class="mt" id="itemModalTitle">Novo Insumo</div><button class="mc" onclick="closeModal('ovItem')"></button></div>
-    <div class="mb">
+  <div class="mbox cad-mbox">
+    <div class="mh">
+      <div><div class="mt" id="itemModalTitle">Novo Insumo</div><div id="itemModalSub" class="cad-sub"></div></div>
+      <button class="mc" onclick="closeModal('ovItem')"></button>
+    </div>
+    <div class="mb cad-grid">
       <input type="hidden" id="eItemId">
-      <div class="field"><label>Nome *</label><input class="inp" id="fName" placeholder="ex: Mussarela em Barra"></div>
-      <div class="f2">
-        <div class="field"><label>Categoria</label><input class="inp" id="fCat" placeholder="ex: Laticínios" list="catDL"><datalist id="catDL"></datalist></div>
-        <div class="field"><label>Unidade</label>
-          <select class="inp" id="fUnit"><option>kg</option><option>g</option><option>L</option><option>ml</option><option>un</option><option>cx</option><option>pct</option><option>fardo</option></select>
-        </div>
-      </div>
-      <div class="field"><label>Código interno <span style="font-weight:400;text-transform:none;letter-spacing:0">(opcional)</span></label><input class="inp" id="fCode" placeholder="ex: 157629"></div>
-      <hr class="sdiv"><div class="slbl">Marcas preferidas</div>
-      <div style="display:flex;flex-direction:column;gap:7px">
-        <div style="display:flex;align-items:center;gap:8px;background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:8px 12px">
-          <span style="font-size:.67rem;font-weight:700;color:var(--purple);min-width:64px">⭐ Principal</span>
-          <input class="inp" id="fB0" placeholder="ex: Polenghi" style="background:#fff">
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;background:var(--lilac-light);border:1.5px solid #E9D5FF;border-radius:var(--r8);padding:8px 12px">
-          <span style="font-size:.67rem;font-weight:700;color:var(--lilac);min-width:64px">2ª opção</span>
-          <input class="inp" id="fB1" placeholder="ex: Scala" style="background:#fff">
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;background:var(--lilac-light);border:1.5px solid #E9D5FF;border-radius:var(--r8);padding:8px 12px">
-          <span style="font-size:.67rem;font-weight:700;color:var(--lilac);min-width:64px">3ª opção</span>
-          <input class="inp" id="fB2" placeholder="ex: Tirolez" style="background:#fff">
-        </div>
-      </div>
-      <hr class="sdiv">
-      <div class="slbl">Estoque</div>
-      <div id="fEstoqueBox"></div>
-      <hr class="sdiv"><div class="slbl">Quantidades & Custos</div>
-      <div class="field">
-        <label>Fornecedores vinculados</label>
-        <div style="position:relative;margin-bottom:6px">
-          <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none;flex-shrink:0" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input class="inp" id="fSupSearch" placeholder="Buscar fornecedor..." style="padding-left:28px;font-size:var(--text-xs)" oninput="_filtrarFornSupSearch()">
-        </div>
-        <div id="fSupIds" style="display:flex;flex-direction:column;gap:5px;padding:8px;border:1.5px solid var(--border);border-radius:var(--r8);background:var(--surface2);max-height:160px;overflow-y:auto;min-height:40px">
-          <span style="font-size:.72rem;color:var(--muted);font-style:italic">Nenhum fornecedor cadastrado</span>
-        </div>
-        <div style="font-size:.65rem;color:var(--muted);margin-top:4px">Marque todos os fornecedores que fornecem este insumo</div>
-      </div>
-      <div class="f3">
-        <div class="field"><label>Qtd. mínima</label><input class="inp" type="number" id="fMin" placeholder="0" min="0" step="0.1"></div>
-        <div class="field"><label>Qtd. ideal</label><input class="inp" type="number" id="fIdeal" placeholder="0" min="0" step="0.1"></div>
-        <div class="field"><label>Custo ref. (R$)</label><input class="inp" type="number" id="fCost" placeholder="0.00" step="0.01"></div>
+      <!-- Coluna principal -->
+      <div class="cad-col">
+        <section class="cad-card">
+          <div class="cad-h">Identificação</div>
+          <div class="field"><label>Nome *</label><input class="inp" id="fName" placeholder="ex: Mussarela em Barra"></div>
+          <div class="f2">
+            <div class="field"><label>Categoria</label><input class="inp" id="fCat" placeholder="ex: Laticínios" list="catDL"><datalist id="catDL"></datalist></div>
+            <div class="field"><label>Código interno <span class="cad-opc">(opcional)</span></label><input class="inp" id="fCode" placeholder="ex: 157629"></div>
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Unidade de controle *</label>
+            <input type="hidden" id="fUnit" value="kg">
+            <div id="fUnitBtns" class="cad-units"></div>
+            <div id="fUnitLock" class="cad-dica"></div>
+          </div>
+        </section>
+
+        <section class="cad-card">
+          <div class="cad-h">Apresentações de compra</div>
+          <div class="cad-dica" style="margin:-4px 0 10px">Embalagens em que este insumo é comprado (pacote, caixa, fardo…) e quanto vem em cada uma. A unidade de controle continua sendo a base do estoque.</div>
+          <div id="fApsBox"></div>
+        </section>
+
+        <section class="cad-card">
+          <div class="cad-h">Fornecedores e marcas</div>
+          <div class="field">
+            <label>Fornecedores vinculados</label>
+            <div style="position:relative;margin-bottom:6px">
+              <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input class="inp" id="fSupSearch" placeholder="Buscar fornecedor..." style="padding-left:28px" oninput="_filtrarFornSupSearch()">
+            </div>
+            <div id="fSupIds" class="cad-sups"><span class="cad-dica">Nenhum fornecedor cadastrado</span></div>
+          </div>
+          <div class="field" style="margin-bottom:0"><label>Marcas preferidas <span class="cad-opc">(opcional)</span></label>
+            <div class="f3" style="margin:0">
+              <input class="inp" id="fB0" placeholder="★ Principal — ex: Polenghi">
+              <input class="inp" id="fB1" placeholder="2ª opção — ex: Scala">
+              <input class="inp" id="fB2" placeholder="3ª opção — ex: Tirolez">
+            </div>
+          </div>
+        </section>
       </div>
 
-      <hr class="sdiv"><div class="slbl">Unidade de Compra <span style="font-weight:400;color:var(--muted);font-size:.72rem">(opcional)</span></div>
-      <div style="background:var(--purple-xlight);border:1.5px solid var(--purple-light);border-radius:var(--r8);padding:12px;margin-bottom:4px">
-        <div style="font-size:.72rem;color:var(--muted);margin-bottom:10px;line-height:1.5">
-          Configure como o fornecedor vende este insumo. O sistema converte automaticamente da unidade base para embalagens na lista de compra.
-          <br><span style="color:var(--purple);font-weight:600">Ex: base = kg · embalagem = Barra (25 kg) → preciso 50 kg = 2 barras</span>
-        </div>
-        <div class="f2" style="margin-bottom:0">
-          <div class="field" style="margin:0">
-            <label>Nome da embalagem</label>
-            <input type="hidden" id="fUnidCompra">
-            <button type="button" id="fUnidCompraBtn" onclick="abrirEmbPicker()"
-              style="width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:var(--r8);
-              background:var(--surface);cursor:pointer;text-align:left;font-family:Inter,sans-serif;
-              font-size:.82rem;display:flex;align-items:center;justify-content:space-between;gap:8px;
-              transition:border-color .15s">
-              <span id="fUnidCompraTxt" style="color:var(--muted)">Selecionar tipo de embalagem...</span>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--muted)"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
+      <!-- Coluna lateral -->
+      <div class="cad-col">
+        <section class="cad-card">
+          <div class="cad-h">Custo</div>
+          <div class="field"><label>Custo estimado</label>
+            <div class="cad-money"><span>R$</span><input class="inp" type="number" id="fCost" placeholder="0,00" step="0.01" oninput="_cadCustoInfo()"><span id="fCostUn">/ kg</span></div>
           </div>
-          <div class="field" style="margin:0">
-            <label id="fQtdEmbLabel">Qtd base por embalagem</label>
-            <input class="inp" type="number" id="fQtdEmb" placeholder="Ex: 25" min="0.001" step="0.001"
-              oninput="atualizarLabelEmb()">
+          <div id="fCustoInfo"></div>
+        </section>
+
+        <section class="cad-card">
+          <div class="cad-h">Estoque</div>
+          <div class="f2">
+            <div class="field"><label>Estoque mínimo</label><input class="inp" type="number" id="fMin" placeholder="0" min="0" step="0.1" oninput="_cadEstoqueDica()"></div>
+            <div class="field"><label>Estoque ideal</label><input class="inp" type="number" id="fIdeal" placeholder="0" min="0" step="0.1" oninput="_cadEstoqueDica()"></div>
           </div>
-        </div>
-        <div id="fEmbPreview" style="margin-top:8px;font-size:.7rem;color:var(--purple);font-weight:600;min-height:18px"></div>
+          <div id="fEstoqueDica" class="cad-dica" style="margin:-6px 0 12px"></div>
+          <div id="fEstoqueBox"></div>
+        </section>
       </div>
     </div>
     <div class="mf">
@@ -1339,7 +1333,7 @@
 <script src="js/icons.js?v=3"></script>
 <script src="js/db.js?v=118"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=274"></script>
+<script src="js/init.js?v=276"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">

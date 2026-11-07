@@ -140,13 +140,12 @@ function cpAbrirLista(id) {
 // EDITOR (tela cheia): montar · aprovar · ver
 // ══════════════════════════════════════════════════════════════
 
-// Sugestão de compra: ideal − saldo (ou mínimo, se não houver ideal), em embalagens
+// Sugestão de compra: ideal − saldo (ou mínimo, se não houver ideal), na unidade do insumo.
+// A embalagem (apresentação) é escolhida pelo comprador na cotação.
 function _clSugestao(item, saldo) {
   const alvo = item.ideal > 0 ? item.ideal : item.min > 0 ? item.min : 0;
-  let falta = alvo - Math.max(saldo, 0);
-  if (!(falta > 0.0005)) return 0;
-  if (item.qtdEmb > 0) falta = Math.ceil(falta / item.qtdEmb - 0.0001) * item.qtdEmb;
-  return _estRound(falta);
+  const falta = alvo - Math.max(saldo, 0);
+  return falta > 0.0005 ? _estRound(falta) : 0;
 }
 const _clEmb = (item, q) => item?.qtdEmb > 0 && item?.unidCompra && q > 0 ? `= ${_estQ(q / item.qtdEmb)} ${_estEsc(item.unidCompra)}` : '';
 
@@ -227,14 +226,14 @@ function _clRender() {
     let qtdCel;
     if (a.modo === 'editar') {
       qtdCel = `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
-        <input class="inp" type="number" min="0" step="${it.qtdEmb > 0 ? it.qtdEmb : 0.001}" value="${x.qtd ?? ''}" placeholder="${x.sugerida || ''}" ${x.marcado ? '' : 'disabled'}
+        <input class="inp" type="number" min="0" step="0.001" value="${x.qtd ?? ''}" placeholder="${x.sugerida || ''}" ${x.marcado ? '' : 'disabled'}
           style="width:100px;text-align:right;font-weight:700" oninput="_clSetQtd(${id}, this.value)"><span style="width:28px;font-size:var(--text-xs);color:var(--muted)">${u}</span></div>
         <div style="font-size:var(--text-2xs);color:var(--muted);text-align:right" id="clEmb${id}">${_clEmb(it, x.qtd)}</div>`;
     } else if (a.modo === 'aprovar') {
       const mudou = Math.abs((x.qtdAprov ?? 0) - (x.qtd ?? 0)) > 0.0005;
       qtdCel = `<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
         <span style="font-size:var(--text-xs);color:var(--muted);${mudou ? 'text-decoration:line-through' : ''}">${_estQ(x.qtd)}</span>
-        <input class="inp" type="number" min="0" step="${it.qtdEmb > 0 ? it.qtdEmb : 0.001}" value="${x.qtdAprov ?? ''}" style="width:100px;text-align:right;font-weight:700;${mudou ? 'border-color:var(--purple)' : ''}" oninput="_clSetAprov(${id}, this.value)">
+        <input class="inp" type="number" min="0" step="0.001" value="${x.qtdAprov ?? ''}" style="width:100px;text-align:right;font-weight:700;${mudou ? 'border-color:var(--purple)' : ''}" oninput="_clSetAprov(${id}, this.value)">
         <span style="width:28px;font-size:var(--text-xs);color:var(--muted)">${u}</span></div>
         <div style="font-size:var(--text-2xs);color:var(--muted);text-align:right">${(x.qtdAprov ?? 0) === 0 ? '<span style="color:var(--danger-fg)">cortado</span>' : _clEmb(it, x.qtdAprov)}</div>`;
     } else {
@@ -329,7 +328,7 @@ function _clMarcarVisiveis(on) {
     const x = _clAtual.linhas.get(id);
     if (!x || x.marcado === on) continue;
     x.marcado = on; n++;
-    if (on && !(x.qtd > 0)) x.qtd = x.sugerida > 0 ? x.sugerida : (x.item.qtdEmb > 0 ? x.item.qtdEmb : 1);
+    if (on && !(x.qtd > 0)) x.qtd = x.sugerida > 0 ? x.sugerida : 1;
   }
   toast(on ? `${n} item(ns) marcados` : `${n} item(ns) desmarcados`, 'ok');
   _clRender();
@@ -344,7 +343,7 @@ function _clFechar() {
 function _clToggle(id, on) {
   const x = _clAtual.linhas.get(id);
   x.marcado = on;
-  if (on && !(x.qtd > 0)) x.qtd = x.sugerida > 0 ? x.sugerida : (x.item.qtdEmb > 0 ? x.item.qtdEmb : 1);
+  if (on && !(x.qtd > 0)) x.qtd = x.sugerida > 0 ? x.sugerida : 1;
   _clRender();
 }
 // Atualiza o estimado da linha e o total do topo sem redesenhar (mantém o foco)

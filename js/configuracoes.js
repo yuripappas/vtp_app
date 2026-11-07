@@ -2836,7 +2836,7 @@ function _cfgEtqCategorias(el) {
   const sel = habilitadas !== null ? new Set(habilitadas) : new Set(todasCats);
 
   el.innerHTML = `
-    <div style="max-width:680px">
+    <div style="max-width:none">
       <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Categorias visíveis na Etiquetagem</div>
       <div style="font-size:.72rem;color:var(--muted);margin-bottom:14px">
         Selecione quais categorias de insumos e processados aparecem no wizard de impressão de etiquetas.
@@ -2904,7 +2904,7 @@ function _cfgEtqMetodos(el) {
         ${lc('plus', 13, '#fff')} Novo método
       </button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;max-width:900px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
       ${_etqMetodos.map(m => {
         const label  = m.status ? `${m.nome} · ${m.status}` : m.nome;
         const vCount = _etqValidades ? _etqValidades.filter(v => v.metodo_id === m.id).length : 0;
@@ -2962,7 +2962,7 @@ function _cfgEtqValidades(el) {
           oninput="_cfgEtqBusca=this.value;_cfgEtqValidListUpdate()"
           style="max-width:380px">
       </div>
-      <div id="cfgEtqValidList" style="display:flex;flex-direction:column;gap:10px;max-width:900px"></div>`;
+      <div id="cfgEtqValidList" style="display:flex;flex-direction:column;gap:10px"></div>`;
   }
   _cfgEtqValidListUpdate();
 }
@@ -3030,7 +3030,7 @@ function _cfgEtqOpenVal(itemId, metodoId) {
 
 function _cfgEtqPontos(el) {
   el.innerHTML = `
-    <div style="max-width:680px">
+    <div style="max-width:none">
       <div style="font-size:.84rem;font-weight:700;color:var(--text);margin-bottom:4px">Pontos de Impressão</div>
       <div style="font-size:.72rem;color:var(--muted);margin-bottom:16px">
         Cada ponto é um dispositivo (hoje: um Raspberry Pi) conectado via USB a uma impressora

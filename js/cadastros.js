@@ -76,7 +76,7 @@ function renderCadInsumos() {
   let filt = insumos.filter(i => {
     if (q && !i.name.toLowerCase().includes(q) && !i.cat.toLowerCase().includes(q)) return false;
     if (cat && i.cat !== cat) return false;
-    if (window._cadFilEmb    && !(i.unidCompra && i.qtdEmb > 0)) return false;
+    if (window._cadFilEmb    && !estApresentacoes(i).length) return false;
     if (window._cadFilDiaria && !_debAuto.has(i.id))              return false;
     return true;
   }).sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
@@ -94,7 +94,7 @@ function renderCadInsumos() {
   filt.forEach(i => { if (!bycat[i.cat]) bycat[i.cat] = []; bycat[i.cat].push(i); });
 
   if (inCfg) {
-    const nEmb    = insumos.filter(i => i.unidCompra && i.qtdEmb > 0).length;
+    const nEmb    = insumos.filter(i => estApresentacoes(i).length).length;
     const nDiaria = insumos.filter(i => _debAuto.has(i.id)).length;
     const filEmb  = !!window._cadFilEmb;
     const filDia  = !!window._cadFilDiaria;
@@ -139,7 +139,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="cfg-row-label">${item.name}</span>
               <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
-              ${temEmb ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>` : ''}
+              ${_cadApsBadge(item)}
               ${temDebito ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito auto</span>` : ''}
               ${supExcCfg ? `<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--orange-light);color:var(--orange-dark);border:1px solid var(--orange-dark);white-space:nowrap">${lc('star',9,'currentColor')} Exclusivo · ${supExcCfg.name}</span>` : ''}
             </div>
@@ -183,7 +183,7 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                   <span style="font-size:var(--text-sm);font-weight:700">${item.name}</span>
                   <span style="font-size:var(--text-xs);color:var(--muted)">${item.unit}${item.code?' · #'+item.code:''}</span>
-                  ${temEmb?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${item.unidCompra} ${fmt(item.qtdEmb)}${item.unit}</span>`:''}
+                  ${_cadApsBadge(item)}
                   ${temDebito?`<span style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--green-light);color:var(--green);white-space:nowrap">${lc('zap',9,'currentColor')} Débito auto</span>`:''}
                 </div>
                 ${sups.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
@@ -207,6 +207,14 @@ ${Object.entries(bycat).map(([cat, catItems]) => `
     </div>`).join('');
 }
 
+// Etiqueta das apresentações na lista: "Caixa 10 kg +1"
+function _cadApsBadge(item) {
+  const aps = estApresentacoes(item);
+  if (!aps.length) return '';
+  const p = aps.find(a => a.padrao) || aps[0];
+  return `<span title="${aps.map(a => `${a.nome}: ${fmt(a.qtd)} ${item.unit}`).join(' · ')}" style="display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;background:var(--purple-xlight);color:var(--purple);white-space:nowrap">${lc('package',9,'currentColor')} ${p.nome} · ${fmt(p.qtd)} ${item.unit}${aps.length > 1 ? ` +${aps.length - 1}` : ''}</span>`;
+}
+
 // ── Modal insumo (sem campo qty — só cadastro) ──
 function openItemModal() {
   editItemId = null;
@@ -215,15 +223,15 @@ function openItemModal() {
   ['fName','fCat','fB0','fB1','fB2','fCode'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
-  _setEmbDisplay('');
-  ['fMin','fIdeal','fCost','fQtdEmb'].forEach(id => {
+  ['fMin','fIdeal','fCost'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
-  document.getElementById('fUnit').value = 'kg';
-  const prev = document.getElementById('fEmbPreview'); if (prev) prev.textContent = '';
+  document.getElementById('itemModalSub').innerHTML = '';
+  _cadAps = [];
+  _cadSetUnit('kg', false);
   populateSupChecks([]);
-  const cd = document.getElementById('fContagemDiaria'); if (cd) cd.checked = false;
   _estBoxRender('fEstoqueBox', null, false);
+  _cadCustoInfo(); _cadEstoqueDica();
   document.getElementById('delItemBtn').style.display = 'none';
   document.getElementById('ovItem').classList.add('open');
   setTimeout(() => document.getElementById('fName').focus(), 80);
@@ -245,15 +253,16 @@ function openEditItem(id) {
   document.getElementById('fB0').value = b[0] || '';
   document.getElementById('fB1').value = b[1] || '';
   document.getElementById('fB2').value = b[2] || '';
-  // Campos de embalagem de compra
-  const qeEl = document.getElementById('fQtdEmb');
-  _setEmbDisplay(item.unidCompra || '');
-  if (qeEl) qeEl.value = item.qtdEmb > 0 ? item.qtdEmb : '';
-  atualizarLabelEmb();
+  _cadAps = estApresentacoes(item, false).map(a => ({ ...a }));
+  _cadSetUnit(item.unit || 'kg', _cadItemTemHistorico(item));
+  const deb = (estDebitoAutoMapa().get(item.id) || []).length;
+  document.getElementById('itemModalSub').innerHTML = `<span class="badge b-gray">Insumo</span>${item.cat ? `<span class="badge b-gray">${item.cat}</span>` : ''}
+    ${deb ? `<span class="badge b-green">${lc('zap', 10, 'currentColor')} Débito automático</span>` : ''}`;
   // Suporta supIds (array novo) e supId (legado)
   const supIds = item.supIds?.length ? item.supIds : (item.supId ? [item.supId] : []);
   populateSupChecks(supIds, item.supIdExclusivo ?? null);
   _estBoxRender('fEstoqueBox', item, false);
+  _cadCustoInfo(); _cadEstoqueDica();
   document.getElementById('delItemBtn').style.display = 'inline-flex';
   document.getElementById('ovItem').classList.add('open');
 }
@@ -475,8 +484,11 @@ function saveItem() {
 }
 
 function _saveItemConfirmado(name, supIds) {
-  const unidCompra    = document.getElementById('fUnidCompra')?.value.trim() || '';
-  const qtdEmb        = parseFloat(document.getElementById('fQtdEmb')?.value) || 0;
+  // Apresentações: a padrão (ativa) também vai para unidCompra/qtdEmb, que o resto do app ainda lê
+  const apresentacoes = _cadAps.filter(a => a.nome && Number(a.qtd) > 0);
+  const padrao = apresentacoes.find(a => a.padrao && a.ativa !== false);
+  const unidCompra = padrao ? padrao.nome : '';
+  const qtdEmb     = padrao ? Number(padrao.qtd) : 0;
   const supIdExclusivo = getSupExclusivoId();
   const data = {
     name,
@@ -491,6 +503,7 @@ function _saveItemConfirmado(name, supIds) {
     supIdExclusivo: supIdExclusivo,
     unidCompra,
     qtdEmb,
+    apresentacoes,
     brands: [
       document.getElementById('fB0').value.trim(),
       document.getElementById('fB1').value.trim(),
@@ -512,6 +525,112 @@ function _saveItemConfirmado(name, supIds) {
   closeModal('ovItem');
   renderCadInsumos();
   renderDashboard();
+}
+
+// ── Cadastro de insumo: unidade, apresentações, custo e estoque ──
+const _CAD_UNIDADES = [['kg', 'Quilo (kg)'], ['g', 'Grama (g)'], ['L', 'Litro (L)'], ['ml', 'Mililitro (ml)'], ['un', 'Unidade (un)'], ['cx', 'Caixa (cx)'], ['pct', 'Pacote (pct)'], ['fardo', 'Fardo']];
+let _cadAps = [];        // apresentações em edição no modal
+let _cadApEdit = null;   // id da apresentação aberta para editar
+
+// Unidade não muda depois que o item tem histórico (compras, estoque ou ficha técnica)
+function _cadItemTemHistorico(item) {
+  if (!item) return false;
+  if ((priceHistory || []).some(h => h.itemId === item.id)) return true;
+  if (Math.abs(Number(item.qty) || 0) > 0.0005) return true;
+  const usa = f => (f?.ingredientes || []).some(g => g.item_id === item.id);
+  return [...(produtos || []), ...(produtosPizza || []), ...(opcoes || []), ...items].some(x => usa(x.fichaTecnica));
+}
+function _cadSetUnit(u, travada = null) {
+  const el = document.getElementById('fUnit'); el.value = u;
+  if (travada !== null) el.dataset.travada = travada ? '1' : '';
+  const trav = el.dataset.travada === '1';
+  const lista = _CAD_UNIDADES.some(([k]) => k === u) ? _CAD_UNIDADES : [..._CAD_UNIDADES, [u, u]];
+  document.getElementById('fUnitBtns').innerHTML = lista.map(([k, rot]) =>
+    `<button type="button" class="${k === u ? 'on' : ''}" ${trav ? 'disabled' : `onclick="_cadSetUnit('${k}')"`}>${rot}</button>`).join('');
+  document.getElementById('fUnitLock').innerHTML = trav
+    ? `<span style="display:inline-block;vertical-align:-1px">${lc('lock', 11, 'currentColor')}</span> Este insumo já tem histórico em ${u} (compras, estoque ou ficha técnica). Para usar outra unidade, cadastre um insumo novo e desative este.`
+    : 'É a unidade do estoque, da contagem e das fichas técnicas.';
+  const cu = document.getElementById('fCostUn'); if (cu) cu.textContent = '/ ' + u;
+  _cadApsRender(); _cadCustoInfo(); _cadEstoqueDica();
+}
+
+function _cadApsRender() {
+  const box = document.getElementById('fApsBox'); if (!box) return;
+  const u = document.getElementById('fUnit').value, custo = parseFloat(document.getElementById('fCost').value) || 0;
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const linha = a => {
+    if (_cadApEdit === a.id) return `<tr>
+      <td><input class="inp" id="apEdNome" value="${esc(a.nome)}"></td>
+      <td><div style="display:flex;align-items:center;gap:6px"><input class="inp" id="apEdQtd" type="text" inputmode="decimal" value="${String(a.qtd).replace('.', ',')}" style="width:90px;text-align:right"><span>${u}</span></div></td>
+      <td></td><td></td>
+      <td class="r" style="white-space:nowrap"><button class="acao" onclick="_cadApSalvarEd(${a.id})">Salvar</button><button class="acao" style="color:var(--text2)" onclick="_cadApEdit=null;_cadApsRender()">Cancelar</button></td></tr>`;
+    const off = a.ativa === false;
+    return `<tr class="${off ? 'off' : ''}">
+      <td style="font-weight:600">${esc(a.nome)}${off ? ' <span class="badge b-gray">desativada</span>' : ''}</td>
+      <td>${_estQ(a.qtd)} ${u}</td>
+      <td class="r">${custo ? _estR(a.qtd * custo) : '—'}</td>
+      <td style="text-align:center">${off ? '' : `<button type="button" class="acao" title="${a.padrao ? 'Apresentação padrão (sugerida na contagem e nas compras)' : 'Definir como padrão'}" onclick="_cadApPadrao(${a.id})" style="font-size:var(--text-md);color:${a.padrao ? 'var(--warning-fg)' : 'var(--border)'}">★</button>`}</td>
+      <td class="r" style="white-space:nowrap">${off ? `<button class="acao" onclick="_cadApAtiva(${a.id}, true)">Reativar</button>`
+        : `<button class="acao" onclick="_cadApEdit=${a.id};_cadApsRender()">Editar</button><button class="acao neg" onclick="_cadApAtiva(${a.id}, false)">Desativar</button>`}</td></tr>`;
+  };
+  box.innerHTML = `${_cadAps.length ? `<table class="cad-tab">
+      <thead><tr><th>Apresentação</th><th>Conteúdo</th><th class="r">Custo pelo estimado</th><th style="text-align:center">Padrão</th><th></th></tr></thead>
+      <tbody>${_cadAps.map(linha).join('')}</tbody></table>`
+    : `<div class="cad-box" style="color:var(--text2)">Nenhuma apresentação. O insumo é comprado só em ${u}.</div>`}
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;align-items:end;margin-top:12px">
+      <div class="field" style="margin:0"><label>Nova apresentação</label><input class="inp" id="apNovoNome" placeholder="ex: Pacote 5 kg, Caixa 50 kg, Fardo 12 un" onkeydown="if(event.key==='Enter')_cadApAdd()"></div>
+      <div class="field" style="margin:0"><label>Quanto vem (${u})</label><input class="inp" id="apNovoQtd" type="text" inputmode="decimal" placeholder="ex: 5" style="text-align:right" onkeydown="if(event.key==='Enter')_cadApAdd()"></div>
+      <button type="button" class="btn btn-outline" onclick="_cadApAdd()">${lc('plus', 13, 'currentColor')} Adicionar</button>
+    </div>`;
+}
+const _cadNum = v => { const t = String(v || '').trim(); return parseFloat(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t); };
+function _cadApAdd() {
+  const nome = document.getElementById('apNovoNome').value.trim(), qtd = _cadNum(document.getElementById('apNovoQtd').value);
+  if (!nome) return toast('Digite o nome da apresentação', 'err');
+  if (!(qtd > 0)) return toast('Informe quanto vem em uma embalagem', 'err');
+  if (_cadAps.some(a => a.nome.toLowerCase() === nome.toLowerCase() && a.ativa !== false)) return toast('Já existe uma apresentação com esse nome', 'err');
+  _cadAps.push({ id: Math.max(0, ..._cadAps.map(a => a.id)) + 1, nome, qtd, padrao: !_cadAps.some(a => a.padrao && a.ativa !== false), ativa: true });
+  _cadApsRender();
+  document.getElementById('apNovoNome')?.focus();
+}
+function _cadApSalvarEd(id) {
+  const a = _cadAps.find(x => x.id === id);
+  const nome = document.getElementById('apEdNome').value.trim(), qtd = _cadNum(document.getElementById('apEdQtd').value);
+  if (!nome || !(qtd > 0)) return toast('Preencha nome e quantidade', 'err');
+  Object.assign(a, { nome, qtd }); _cadApEdit = null; _cadApsRender();
+}
+function _cadApPadrao(id) { _cadAps.forEach(a => { a.padrao = a.id === id ? !a.padrao : false; }); _cadApsRender(); }
+function _cadApAtiva(id, ativa) {
+  const a = _cadAps.find(x => x.id === id); a.ativa = ativa;
+  if (!ativa) a.padrao = false;
+  _cadApsRender();
+}
+
+function _cadCustoInfo() {
+  const box = document.getElementById('fCustoInfo'); if (!box) return;
+  const u = document.getElementById('fUnit').value;
+  const hist = editItemId ? (priceHistory || []).filter(h => h.itemId === editItemId && h.precoUnit > 0).sort((a, b) => String(b.data).localeCompare(String(a.data))) : [];
+  const ult = hist[0];
+  const dt = d => d ? String(d).slice(0, 10).split('-').reverse().join('/') : '';
+  box.innerHTML = `<div class="cad-dica" style="margin:-4px 0 10px">Vale até a primeira compra. Depois, cada compra recebida atualiza o custo para o preço pago — é o custo usado no CMV e nas fichas.</div>
+    ${ult ? `<div class="cad-box"><div>Último preço pago: <strong>${_estR(ult.precoUnit)} por ${u}</strong></div>
+      <div style="color:var(--text2);font-size:var(--text-xs)">${dt(ult.data)} · ${ult.fornecedorNome || '—'}</div>
+      ${hist.length > 1 ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:var(--text-xs);font-weight:700;color:var(--purple)">Linha do tempo do custo (${hist.length})</summary>
+        <div style="margin-top:6px;max-height:160px;overflow-y:auto">${hist.slice(0, 30).map(h => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border);font-size:var(--text-xs)">
+          <span>${dt(h.data)} · ${h.fornecedorNome || '—'}</span><strong>${_estR(h.precoUnit)}</strong></div>`).join('')}</div></details>` : ''}</div>`
+      : `<div class="cad-box" style="color:var(--text2)">Ainda sem compras registradas.</div>`}`;
+  _cadApsCustoRefresh();
+}
+// Só atualiza a coluna de custo das apresentações (sem redesenhar a tabela que pode estar em edição)
+function _cadApsCustoRefresh() { if (_cadApEdit === null) _cadApsRender(); }
+
+function _cadEstoqueDica() {
+  const el = document.getElementById('fEstoqueDica'); if (!el) return;
+  const u = document.getElementById('fUnit').value;
+  const min = parseFloat(document.getElementById('fMin').value) || 0, ideal = parseFloat(document.getElementById('fIdeal').value) || 0;
+  el.textContent = min > 0
+    ? `Avisa em "estoque baixo" quando o saldo ficar abaixo de ${_estQ(min)} ${u}.${ideal > 0 ? ` A lista de compra sugere completar até ${_estQ(ideal)} ${u}.` : ''}`
+    : 'Sem mínimo, o item não entra nos avisos de estoque baixo.';
 }
 
 // ── Bloco "Estoque" dos modais de insumo e preparado ─────────────
@@ -540,43 +659,44 @@ function _estBoxRender(boxId, item, isPreparado) {
     debHtml = `<strong style="color:var(--text2)">Débito automático: não</strong> <span style="color:var(--muted)">— não está na ficha de nenhum produto vendido; sai do saldo só na contagem.</span>`;
   }
 
-  const opts = sel => `<option value="">— Não definido —</option>` +
-    locais.map(l => `<option value="${l.id}"${l.id === sel ? ' selected' : ''}>${l.label}</option>`).join('');
-
+  // Locais numa tabela só: guardado aqui · entrada · saída das vendas (+ saldo atual)
+  _estBoxSel[boxId] = new Set([...(item?.locais || []), ent, sai].filter(Boolean));
+  _estBoxEnt[boxId] = ent;
+  _estBoxSai[boxId] = sai || ent;   // saída não definida = sai de onde entra
   box.innerHTML = `
     <div style="display:flex;gap:8px;align-items:flex-start;padding:9px 12px;border-radius:var(--r8);background:${origens?.length ? 'var(--green-light)' : 'var(--surface2)'};font-size:var(--text-xs);line-height:1.5;margin-bottom:10px">
       <span style="flex-shrink:0;line-height:0;margin-top:2px">${lc('zap', 13, origens?.length ? 'var(--green)' : 'var(--muted)')}</span><div>${debHtml}</div>
     </div>
-    ${locais.length ? `
-    <div class="f2">
-      <div class="field"><label>${isPreparado ? 'Entrada da produção' : 'Entrada da compra'}</label>
-        <select class="inp" id="${boxId}-ent" onchange="_estBoxSync('${boxId}')">${opts(ent)}</select></div>
-      <div class="field"><label>Saída na venda</label>
-        <select class="inp" id="${boxId}-sai" onchange="_estBoxSync('${boxId}')">${opts(sai)}</select></div>
-    </div>
-    <div class="field" style="margin-bottom:0"><label>Também guardado em <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
-      <div id="${boxId}-extras" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-      <span style="font-size:.65rem;color:var(--muted);margin-top:4px">O item aparece na contagem de cada local marcado.</span>
-    </div>` : `
-    <div style="font-size:var(--text-xs);color:var(--muted)">Nenhum local de estoque cadastrado. Cadastre em Configurações › Personalização › Estoque.</div>`}`;
+    ${locais.length ? `<div id="${boxId}-tab"></div>
+      <span style="font-size:var(--text-xs);color:var(--text2);display:block;margin-top:6px">Marque onde o item é guardado: ele aparece na contagem desses locais. ${isPreparado ? 'A produção' : 'A compra'} entra no local de entrada; as vendas debitam do local de saída.</span>`
+    : `<div style="font-size:var(--text-xs);color:var(--muted)">Nenhum local de estoque cadastrado. Cadastre em Configurações › Personalização › Estoque.</div>`}`;
+  _estBoxItem[boxId] = item;
   _estBoxSync(boxId);
 }
+let _estBoxEnt = {}, _estBoxSai = {}, _estBoxItem = {};
 
 function _estBoxSync(boxId) {
-  const wrap = document.getElementById(boxId + '-extras');
+  const wrap = document.getElementById(boxId + '-tab');
   if (!wrap) return;
-  const ent = document.getElementById(boxId + '-ent')?.value || '';
-  const sai = document.getElementById(boxId + '-sai')?.value || '';
-  const sel = _estBoxSel[boxId] || new Set();
-  wrap.innerHTML = estLocaisEstoque().map(l => {
-    const fixo = l.id === ent || l.id === sai;
-    const on   = fixo || sel.has(l.id);
-    return `<button type="button" ${fixo ? 'disabled title="Já é entrada ou saída"' : `onclick="_estBoxToggle('${boxId}','${l.id}')"`}
-      style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:99px;font-size:var(--text-xs);font-weight:600;font-family:inherit;
-      cursor:${fixo ? 'default' : 'pointer'};border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};
-      background:${on ? 'var(--purple-xlight)' : 'transparent'};color:${on ? 'var(--purple)' : 'var(--text2)'};opacity:${fixo ? .7 : 1}">
-      ${on ? lc('check', 10, 'currentColor') : ''}${l.label}</button>`;
-  }).join('');
+  const sel = _estBoxSel[boxId], ent = _estBoxEnt[boxId], sai = _estBoxSai[boxId];
+  const it = _estBoxItem[boxId], sal = it && typeof _estSaldosCache !== 'undefined' ? _estSaldosCache?.porItem.get(it.id) : null;
+  const radio = (campo, l, on, dis) => `<input type="radio" name="${boxId}-${campo}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} onchange="_estBoxSet('${boxId}','${campo}','${l}')" style="accent-color:var(--purple);width:16px;height:16px">`;
+  wrap.innerHTML = `<table class="cad-tab"><thead><tr><th>Local</th><th style="text-align:center" title="O item é guardado (e contado) neste local">Guarda</th><th style="text-align:center" title="Onde a compra/produção entra">Entrada</th><th style="text-align:center" title="De onde as vendas debitam">${lc('zap', 10, 'currentColor')} Venda</th>${sal ? '<th class="r">Saldo</th>' : ''}</tr></thead>
+    <tbody>${estLocaisEstoque().map(l => {
+      const on = sel.has(l.id), fixo = l.id === ent || l.id === sai;
+      const v = sal?.porLocal[l.id]?.saldo;
+      return `<tr><td style="font-weight:${on ? 700 : 500};color:${on ? 'var(--text)' : 'var(--text2)'}">${l.label}</td>
+        <td style="text-align:center"><input type="checkbox" ${on ? 'checked' : ''} ${fixo ? 'disabled title="É o local de entrada ou de saída"' : ''} onchange="_estBoxToggle('${boxId}','${l.id}')" style="accent-color:var(--purple);width:16px;height:16px"></td>
+        <td style="text-align:center">${radio('ent', l.id, l.id === ent, false)}</td>
+        <td style="text-align:center">${radio('sai', l.id, l.id === sai, false)}</td>
+        ${sal ? `<td class="r" style="white-space:nowrap;color:${v < -0.0005 ? 'var(--danger-fg)' : 'var(--text2)'}">${v != null && Math.abs(v) > 0.0005 ? _estQ(v) + ' ' + (it.unit || '') : '—'}</td>` : ''}</tr>`;
+    }).join('')}</tbody></table>`;
+}
+function _estBoxSet(boxId, campo, l) {
+  if (campo === 'ent') { if (_estBoxSai[boxId] === _estBoxEnt[boxId] || !_estBoxSai[boxId]) _estBoxSai[boxId] = l; _estBoxEnt[boxId] = l; }
+  else _estBoxSai[boxId] = l;
+  _estBoxSel[boxId].add(l);
+  _estBoxSync(boxId);
 }
 
 function _estBoxToggle(boxId, localId) {
@@ -587,10 +707,9 @@ function _estBoxToggle(boxId, localId) {
 
 // Campos que vão pro item. `locais` sempre inclui entrada e saída.
 function _estBoxLer(boxId) {
-  const entEl = document.getElementById(boxId + '-ent');
-  if (!entEl) return {}; // sem locais cadastrados: não mexe no que o item já tem
-  const ent = entEl.value || null;
-  const sai = document.getElementById(boxId + '-sai')?.value || null;
+  if (!document.getElementById(boxId + '-tab')) return {}; // sem locais cadastrados: não mexe no que o item já tem
+  const ent = _estBoxEnt[boxId] || null;
+  const sai = _estBoxSai[boxId] || null;
   const locais = [...new Set([ent, sai, ...(_estBoxSel[boxId] || [])].filter(Boolean))];
   return { localEntrada: ent, localSaida: sai, locais };
 }
