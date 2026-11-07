@@ -248,8 +248,9 @@ function _handleNavMarketing() {
   );
 }
 
-// Configurações voltou pro sidebar com o mesmo padrão de drill-down dos
-// outros módulos (Vendas/Compras/Omnichannel) — reaproveita _CFG_SECTIONS
+// Não usado pelo menu: Configurações abre direto a página, que tem a própria
+// navegação lateral (settings-nav); o drill-down no sidebar duplicava essa lista.
+// Reaproveita _CFG_SECTIONS
 // (definida em js/configuracoes.js) como fonte única das seções, em vez
 // de manter uma lista duplicada aqui.
 function _handleNavConfiguracoes() {
