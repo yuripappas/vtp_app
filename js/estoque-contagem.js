@@ -733,7 +733,7 @@ function _ctgLinhaContar(r, arrastavel) {
       ${embs.map(e => linhaQtd(e.k, `${_estEsc(e.nome)} <span style="color:var(--muted)">(${_estQ(e.fator)} ${u} cada)</span>`, e.fator)).join('')}
       ${linhaQtd('avulso', `Avulso <span style="color:var(--muted)">(em ${u})</span>`, 1)}
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;padding:10px 12px;border-radius:var(--r8);background:var(--purple-xlight)">
-        <div style="font-size:var(--text-md);color:var(--text)"><span id="ctgTot-${r.id}">${tot !== null ? `Total contado: <strong style="font-size:var(--text-lg)">${_estQ(tot)} ${u}</strong>` : 'Digite a quantidade (0 se não houver) para conferir'}</span></div>
+        <div style="font-size:var(--text-md);color:var(--text)"><span id="ctgTot-${r.id}">${_ctgTotHtml(r)}</span></div>
         <button class="btn btn-primary btn-sm" onclick="_ctgConferir('${r.id}')">${lc('check', 13, '#fff')} ${conf ? 'Atualizar' : 'Conferir'}</button>
       </div>
     </div>` : ''}
@@ -758,22 +758,58 @@ function _ctgPasso(rowId, campo, delta) {
   const inp = document.getElementById(`ctgIn-${rowId}-${campo}`); if (inp) inp.value = r[campo];
   _ctgAtualizarTotais(row);
 }
+// Trava contra quantidade digitada em gramas num item em kg (ou ml em L):
+// muito acima do normal = mais de 10× a referência (ideal, última contagem ou saldo esperado)
+function _ctgSuspeito(row, tot) {
+  if (tot === null || !/^(kg|l)$/i.test(_ctgUn(row))) return false;
+  const it = _ctgItem(row), ult = _ctgAtual?.ultimas?.get(row.item_id);
+  const ref = Math.max(Number(it?.ideal) || 0, Number(ult?.contado) || 0, Number(row.esperado) || 0);
+  return tot > Math.max(ref * 10, 30);
+}
+function _ctgTotHtml(row) {
+  const tot = _ctgTotalRasc(row), u = _estEsc(_ctgUn(row));
+  if (tot === null) return 'Digite a quantidade (0 se não houver) para conferir';
+  return `Total contado: <strong style="font-size:var(--text-lg)">${_estQ(tot)} ${u}</strong>`
+    + (_ctgSuspeito(row, tot) ? `<div style="margin-top:6px;font-size:var(--text-sm);color:var(--danger-fg);font-weight:600">${lc('alert-triangle', 13, 'currentColor')} Muito acima do normal — parece que foi pesado em ${u === 'kg' ? 'gramas' : 'ml'}.
+        <button class="btn btn-outline btn-xs" style="margin-left:6px" onclick="event.stopPropagation();_ctgConverterMil('${row.id}')">Converter para ${_estQ(tot / 1000)} ${u}</button></div>` : '');
+}
+// Divide todos os campos por 1.000 (gramas → kg)
+function _ctgConverterMil(rowId) {
+  const row = _ctgAtual.itens.find(i => i.id === rowId);
+  const r = _ctgRasc(row);
+  for (const c of _ctgCampos(row)) {
+    if (c.v === null || c.k !== 'avulso') continue;   // embalagens são contadas em unidades
+    r[c.k] = String(_estRound(c.v / 1000)).replace('.', ',');
+    const inp = document.getElementById(`ctgIn-${rowId}-${c.k}`); if (inp) inp.value = r[c.k];
+  }
+  _ctgAtualizarTotais(row);
+}
+
 function _ctgAtualizarTotais(row) {
   const u = _estEsc(_ctgUn(row));
   for (const c of _ctgCampos(row)) {
     const eq = document.getElementById(`ctgEq-${row.id}-${c.k}`);
     if (eq) eq.textContent = c.v !== null ? `= ${_estQ(c.v * c.fator)} ${_ctgUn(row)}` : '';
   }
-  const tot = _ctgTotalRasc(row);
   const t = document.getElementById(`ctgTot-${row.id}`);
-  if (t) t.innerHTML = tot !== null ? `Total contado: <strong style="font-size:var(--text-lg)">${_estQ(tot)} ${u}</strong>` : 'Digite a quantidade (0 se não houver) para conferir';
+  if (t) t.innerHTML = _ctgTotHtml(row);
 }
 
-async function _ctgSalvarContado(row) {
+async function _ctgSalvarContado(row, refazer) {
   const cs = _ctgCampos(row);
   if (cs.every(c => c.v === null)) { toast('Digite a quantidade (0 se não houver)', 'err'); return false; }
   if (cs.some(c => c.v !== null && (isNaN(c.v) || c.v < 0))) { toast('Quantidade inválida', 'err'); return false; }
   const total = _ctgTotalRasc(row);
+  if (_ctgSuspeito(row, total) && row._okGrande !== total) {
+    const u = _ctgUn(row);
+    vtpConfirm({
+      title: 'Quantidade muito acima do normal',
+      message: `${_estQ(total)} ${u} de ${row.item_nome}? É mais de 10 vezes o normal para este item. Se foi pesado em ${u.toLowerCase() === 'kg' ? 'gramas' : 'ml'}, cancele e use "Converter para ${_estQ(total / 1000)} ${u}".`,
+      confirmLabel: `Está certo: ${_estQ(total)} ${u}`, danger: true,
+      onConfirm: () => { row._okGrande = total; refazer?.(); },
+    });
+    return false;
+  }
   const pacotes = { aps: cs.filter(c => c.k !== 'avulso' && c.v).map(c => ({ nome: c.nome, fator: c.fator, n: c.v })), avulso: cs.find(c => c.k === 'avulso').v };
   const { error } = await _estSb().from('est_contagem_itens').update({ contado: total, pacotes, atualizado_por: estUsuario() }).eq('id', row.id);
   if (error) { toast('Não salvou: ' + error.message, 'err'); return false; }
@@ -786,7 +822,7 @@ async function _ctgSalvarContado(row) {
 async function _ctgConferir(rowId) {
   const A = _ctgAtual;
   const row = A.itens.find(i => i.id === rowId);
-  if (!row || !(await _ctgSalvarContado(row))) return;
+  if (!row || !(await _ctgSalvarContado(row, () => _ctgConferir(rowId)))) return;
   if (A.c.status === 'pendente') {
     const user = estUsuario();
     const { error } = await _estSb().from('est_contagens').update({ status: 'andamento', iniciado_por: user, atualizado_por: user }).eq('id', A.c.id);
@@ -969,7 +1005,7 @@ function _ctgRenderRevisao(el) {
 
 async function _ctgCorrigirRevisao(rowId) {
   const row = _ctgAtual.itens.find(i => i.id === rowId);
-  if (!row || !(await _ctgSalvarContado(row))) return;
+  if (!row || !(await _ctgSalvarContado(row, () => _ctgCorrigirRevisao(rowId)))) return;
   _ctgAtual.editRev = null;
   toast('Quantidade corrigida', 'ok');
   _ctgRenderTela();
