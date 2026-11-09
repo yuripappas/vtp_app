@@ -17,12 +17,13 @@
  * nas compras, pelo custo da nota.
  * Faturamento: soma de cw_pedidos.total (mesma fonte do Dashboard e do Vendas).
  *
- * Processados não são linha própria no CMV: tudo (contagem, compras, saídas e
- * vendas) é convertido para os insumos comprados pela ficha do processado
- * (peso_g em gramas por rendimento_kg). Ex.: 10 kg de Mussarela Triturada na
- * contagem = 10,23 kg de Mussarela em Barra em estoque. A produção é só uma
- * transformação interna e não entra na conta. Processado sem ficha fica como
- * linha própria, marcado "sem ficha".
+ * CMV só com os insumos COMPRADOS (decisão de 09/11/2026, enquanto a produção
+ * não lança os processados): estoque inicial e final em R$ contam só o que não é
+ * processado. Vendas (teórico) e saídas de processado continuam convertidas nos
+ * insumos comprados pela ficha (peso_g em gramas por rendimento_kg).
+ * Processados aparecem à parte (r.proc), só para confronto: real = inicial +
+ * produção − final; digital = vendas pela ficha + saídas. A variação do estoque
+ * de processados no ciclo (procIni → procFim) fica fora do cálculo e é avisada na tela.
  */
 
 // Processado → insumos comprados, recursivo. → { insumoId: qtd } (ou o próprio item se não for processado / sem ficha)
@@ -94,7 +95,7 @@ async function estCalcularCMV(ciclo, contagens) {
       porItem.set(id, { id, nome: nome || it?.name || '—', cat: cat ?? it?.cat, unid: unid || it?.unit || '',
         debAuto: false, ini: 0, iniV: 0, fim: 0, fimV: 0, compras: 0, comprasV: 0, producao: 0,
         vendas: 0, vendasV: 0, perdas: 0, perdasV: 0, custo: it?.cost || 0,
-        semFicha: !!(it?.isProd && !it.fichaTecnica?.ingredientes?.length), viaProc: {} });
+        proc: !!it?.isProd, semFicha: !!(it?.isProd && !it.fichaTecnica?.ingredientes?.length), viaProc: {} });
     }
     return porItem.get(id);
   };
@@ -117,29 +118,35 @@ async function estCalcularCMV(ciclo, contagens) {
     });
     return partes;
   };
-  for (const x of itensIni) lancar(x.item_id, x.contado, x.contado * (x.custo_unit || 0), 'ini', 'iniV', { nome: x.item_nome, cat: x.categoria, unid: x.unidade });
-  for (const x of itensFim) lancar(x.item_id, x.contado, x.contado * (x.custo_unit || 0), 'fim', 'fimV', { nome: x.item_nome, cat: x.categoria, unid: x.unidade });
+  // Contagem: cada item no próprio registro (processado não vira insumo)
+  const contar = (x, campo) => { const r = reg(x.item_id, x.item_nome, x.categoria, x.unidade); r[campo] += +x.contado; r[campo + 'V'] += x.contado * (x.custo_unit || 0); };
+  // Processado com ficha: o que vai para o CMV desce aos insumos; aqui fica a linha dele, só para confronto
+  const comFicha = id => { const it = items.find(i => i.id === Number(id)); return !!(it?.isProd && it.fichaTecnica?.ingredientes?.length); };
+  for (const x of itensIni) contar(x, 'ini');
+  for (const x of itensFim) contar(x, 'fim');
   for (const m of movs) {
     if (_estMs(m.data_mov) <= _estMs(inicio)) continue;
     const v = (Number(m.qtd) || 0) * (Number(m.custo_unit) || 0);
     const info = { nome: m.item_nome, cat: m.categoria, unid: m.unidade };
     if (m.tipo === 'recebimento' || m.tipo === 'compra_avulsa') lancar(m.item_id, m.qtd, v, 'compras', 'comprasV', info);
     else if (m.tipo === 'producao') reg(m.item_id, m.item_nome, m.categoria, m.unidade).producao += +m.qtd;   // só informativo
-    else if (m.tipo === 'baixa') lancar(m.item_id, m.qtd, v, 'perdas', 'perdasV', info);
+    else if (m.tipo === 'baixa') {
+      lancar(m.item_id, m.qtd, v, 'perdas', 'perdasV', info);
+      if (comFicha(m.item_id)) { const r = reg(m.item_id, m.item_nome, m.categoria, m.unidade); r.perdas += +m.qtd; }
+    }
   }
   for (const p of debitos) {
     for (const [id, q] of Object.entries(p.itens)) {
       lancar(Number(id), q, null, 'vendas', 'vendasV').forEach(([k]) => { reg(k).debAuto = true; });
+      if (comFicha(id)) { const r = reg(Number(id)); r.vendas += q; r.debAuto = true; }
     }
   }
-  // Processados com ficha saem da lista (já estão dentro dos insumos)
-  for (const [id] of porItem) {
-    const it = items.find(i => i.id === id);
-    if (it?.isProd && it.fichaTecnica?.ingredientes?.length) porItem.delete(id);
-  }
 
-  const lista = [...porItem.values()].filter(r => noCmv(r.cat));
+  // CMV: só insumos comprados
+  const lista = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc);
   const soma = k => lista.reduce((s, r) => s + (r[k] || 0), 0);
+  const procs = [...porItem.values()].filter(r => noCmv(r.cat) && r.proc);
+  const procIni = procs.reduce((s, r) => s + r.iniV, 0), procFim = procs.reduce((s, r) => s + r.fimV, 0);
   const ei = soma('iniV'), compras = soma('comprasV'), ef = soma('fimV');
   const teorico = soma('vendasV'), perdas = soma('perdasV');
   const temIni = abertura.length > 0, temFim = fechamento.length > 0;
@@ -148,7 +155,7 @@ async function estCalcularCMV(ciclo, contagens) {
 
   // Itens com débito automático: consumo real × teórico (só quando há EI e EF)
   const divergencias = temIni && temFim ? lista.filter(r => r.debAuto).map(r => {
-    const consumo = r.ini + r.compras + (r.semFicha ? r.producao : 0) - r.fim;
+    const consumo = r.ini + r.compras - r.fim;
     const dif = consumo - r.vendas - r.perdas;
     return { ...r, consumo, dif, difV: dif * r.custo };
   }).filter(r => Math.abs(r.dif) > 0.0005).sort((a, b) => Math.abs(b.difV) - Math.abs(a.difV)) : [];
@@ -159,7 +166,7 @@ async function estCalcularCMV(ciclo, contagens) {
 
   // Todos os itens com movimento: consumo real (contagem) × digital (vendas + saídas)
   const itens = [...porItem.values()].map(r => {
-    const real = temIni && temFim ? r.ini + r.compras + (r.semFicha ? r.producao : 0) - r.fim : null;
+    const real = temIni && temFim ? r.ini + r.compras + (r.proc ? r.producao : 0) - r.fim : null;
     const digital = r.vendas + r.perdas;
     return { ...r, noCmv: noCmv(r.cat), real, realV: real !== null ? real * r.custo : null, digital, digitalV: digital * r.custo,
       dif: real !== null ? real - digital : null, difV: real !== null ? (real - digital) * r.custo : null };
@@ -167,7 +174,7 @@ async function estCalcularCMV(ciclo, contagens) {
 
   return {
     ciclo, inicio, fim: fimReal, aberto: !fimReal, temIni, temFim, aberturaCount: abertura.length, itens,
-    ei, compras, ef, real, teorico, perdas, gap, fat: fat.total, pedidos: fat.pedidos,
+    ei, compras, ef, real, teorico, perdas, gap, fat: fat.total, pedidos: fat.pedidos, procIni, procFim, nProc: procs.length,
     divergencias, consumoTop, custos: _cmvVariacaoCustos(inicio, fimReal), geradoEm: new Date().toISOString(),
   };
 }
@@ -236,10 +243,16 @@ function _cmvRender(r) {
       <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_cmvCicloId=this.value;estRenderAbaCMV()">
         ${ciclos.map(c => `<option value="${c.id}"${c.id === _cmvCicloId ? ' selected' : ''}>Ciclo ${new Date(c.inicio).toLocaleDateString('pt-BR')} → ${c.fim ? new Date(c.fim).toLocaleDateString('pt-BR') : 'em aberto'}</option>`).join('')}
       </select>
-      <span style="font-size:var(--text-sm);color:var(--muted)">${r.pedidos} pedidos · só categorias que entram no CMV</span>
+      <span style="font-size:var(--text-sm);color:var(--muted)">${r.pedidos} pedidos · só insumos comprados das categorias que entram no CMV (processados ficam fora)</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="estRenderAbaCMV(true)" title="Recalcular">${lc('refresh-cw', 13, 'currentColor')}</button>
     </div>
     ${aviso ? `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--warning-bg);color:var(--warning-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('info', 14, 'currentColor')}<div>${aviso}</div></div>` : ''}
+    ${r.temIni && (r.procIni || r.procFim) ? (() => {
+      const v = r.procFim - r.procIni;
+      return `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--info-bg);color:var(--info-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('chef-hat', 14, 'currentColor')}<div>
+        <strong>Estoque de processados fora do cálculo:</strong> ${_estR(r.procIni)} no início${r.temFim ? ` → ${_estR(r.procFim)} no fim (<strong>${v >= 0 ? '+' : '−'}${_estR(Math.abs(v)).replace('−', '')}</strong>)` : ''}.
+        ${r.temFim && Math.abs(v) > 0.005 ? (v < 0 ? 'A cozinha usou processado feito antes do ciclo — o insumo dele não entra neste CMV, que tende a ficar menor.' : 'A produção estocou processado — o insumo usado nele conta como consumido neste CMV, que tende a ficar maior.') : ''}
+        Os processados aparecem só para confronto em Consumo de insumos.</div></div>`; })() : ''}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:12px">
       ${card('CMV real %', cmvPct !== null ? pct(r.real, r.fat) : nd, `meta ${meta}% · teórico ${teoPct !== null ? pct(r.teorico, r.fat) : '—'}`, cmvPct === null ? 'var(--text)' : cmvPct > meta ? 'var(--danger-fg)' : 'var(--success-fg)', true)}
@@ -248,9 +261,9 @@ function _cmvRender(r) {
       ${card('CMV teórico', _estR(r.teorico), 'vendas × fichas técnicas')}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:12px">
-      ${card('Estoque inicial', r.temIni ? _estR(r.ei) : nd, r.temIni ? `${r.aberturaCount} local(is) contado(s)` : 'contagem de abertura pendente')}
+      ${card('Estoque inicial', r.temIni ? _estR(r.ei) : nd, r.temIni ? `${r.aberturaCount} local(is) contado(s) · só insumos comprados` : 'contagem de abertura pendente')}
       ${card('Compras', _estR(r.compras), 'recebimentos no ciclo')}
-      ${card('Estoque final', r.temFim ? _estR(r.ef) : nd, r.temFim ? 'contagem de fechamento' : 'aguardando fechamento')}
+      ${card('Estoque final', r.temFim ? _estR(r.ef) : nd, r.temFim ? 'contagem de fechamento · só insumos comprados' : 'aguardando fechamento')}
       ${card('Perdas registradas', _estR(r.perdas), `${pct(r.perdas, r.fat)} do faturamento · baixas`, 'var(--danger-fg)')}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:18px">

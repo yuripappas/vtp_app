@@ -141,9 +141,11 @@ function _csRender() {
   if (!el || !_csDados) return;
   const r = _csDados, f = _csFil, lim = _csAlertaPct();
   const ciclos = _ctgDados.ciclos;
-  const linhas = _csLinhas();
+  const todasLinhas = _csLinhas();
+  // Insumos comprados entram no CMV; processados ficam à parte, só para confronto
+  const linhas = todasLinhas.filter(x => !x.proc), linhasProc = todasLinhas.filter(x => x.proc);
   const todas = r.itens.filter(x => !f.soCmv || x.noCmv);
-  const nAlertas = _csDados.temFim ? todas.filter(x => {
+  const nAlertas = _csDados.temFim ? todas.filter(x => !x.proc).filter(x => {
     const p = x.real !== null && x.digital > 0.0005 ? (x.real - x.digital) / x.digital * 100 : null;
     return x.debAuto && p !== null && Math.abs(p) > lim;
   }).length : 0;
@@ -172,8 +174,8 @@ function _csRender() {
     ${!r.temFim ? `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--info-bg);color:var(--info-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('info', 14, 'currentColor')}
       <div>Ciclo em aberto: mostrando o consumo <strong>digital</strong> em tempo real (vendas + saídas). O consumo <strong>real</strong> e as inconformidades aparecem quando o ciclo for concluído com a contagem de fechamento.</div></div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
-      ${kpi('Consumo digital', _estR(soma('digitalV')), 'vendas pela ficha + saídas, a custo')}
-      ${kpi('Consumo real', r.temFim ? _estR(soma('realV')) : '—', r.temFim ? 'inicial + entradas − final, a custo' : 'aguardando fechamento')}
+      ${kpi('Consumo digital', _estR(soma('digitalV')), 'insumos comprados · vendas pela ficha + saídas, a custo')}
+      ${kpi('Consumo real', r.temFim ? _estR(soma('realV')) : '—', r.temFim ? 'insumos comprados · inicial + compras − final, a custo' : 'aguardando fechamento')}
       ${kpi('Diferença', r.temFim ? _estR(soma('difV')) : '—', 'real − digital', r.temFim && Math.abs(soma('difV')) > 0.005 ? 'var(--danger-fg)' : 'var(--text)')}
       ${kpi('Itens em alerta', r.temFim ? nAlertas : '—', `diferença acima de ${lim}%`, nAlertas ? 'var(--danger-fg)' : 'var(--text)')}
     </div>
@@ -192,13 +194,14 @@ function _csRender() {
         <thead style="background:var(--surface2)"><tr>
           ${th('Item', 'nome', 'left')}${th('Digital')}${th('Real')}${th('Diferença')}${th('Dif. %')}${th('Valor da dif.', 'impacto')}${th('Custo un.')}${th('Consumo R$', 'consumo')}
         </tr></thead>
-        <tbody>${linhas.length ? linhas.map(x => {
+        <tbody>${(() => {
+          const linhaHtml = x => {
           const u = _estEsc(x.unid || '');
           const it = items.find(i => i.id === x.id);
           return `<tr onclick="cmvDetalheInsumo(${x.id})" style="border-top:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
             <td style="padding:10px 12px">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:600">${_estEsc(x.nome)}</span>
-                ${x.semFicha ? '<span class="badge b-yellow" style="font-size:var(--text-2xs)" title="Processado sem ficha técnica: não dá pra converter nos insumos">Processado sem ficha</span>' : ''}
+                ${x.proc ? `<span class="badge b-purple" style="font-size:var(--text-2xs)">Processado${x.semFicha ? ' sem ficha' : ''}</span>` : ''}
                 ${x.alerta ? `<span class="badge b-red" style="font-size:var(--text-2xs)">${lc('alert-triangle', 10, 'currentColor')} Alerta</span>` : ''}</div>
               <div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(x.cat || '')}${x.debAuto ? '' : ' · sem débito automático (consumo só pela contagem)'}</div>
               ${Object.keys(x.viaProc || {}).length ? `<div style="font-size:var(--text-xs);color:var(--purple);margin-top:2px">inclui ${Object.entries(x.viaProc).map(([n, v]) => `${_estEsc(n)} (${r.temFim ? `contagem ${_estQ(v.ini)} → ${_estQ(v.fim)}` : `estoque inicial ${_estQ(v.ini)}`} ${_estEsc(v.unid)})`).join(' · ')}</div>` : ''}</td>
@@ -210,7 +213,16 @@ function _csRender() {
             <td style="padding:10px 12px;text-align:right;white-space:nowrap;color:var(--text2)">${x.custo ? _estR(x.custo) : '—'}</td>
             <td style="padding:10px 12px;text-align:right;white-space:nowrap;font-weight:700">${_estR((x.real ?? x.digital) * x.custo)}</td>
           </tr>`;
-        }).join('') : `<tr><td colspan="8" style="padding:40px;text-align:center;color:var(--muted)">Nenhum item com esses filtros</td></tr>`}</tbody>
+          };
+          const secao = (titulo, sub, n, cor) => `<tr><td colspan="8" style="padding:12px 12px 8px;background:var(--bg-subtle);border-top:1.5px solid var(--border)">
+            <div style="font-size:var(--text-md);font-weight:800;color:${cor}">${titulo} <span style="font-weight:600;color:var(--text2)">(${n})</span></div>
+            <div style="font-size:var(--text-xs);color:var(--text2);margin-top:2px">${sub}</div></td></tr>`;
+          if (!linhas.length && !linhasProc.length) return `<tr><td colspan="8" style="padding:40px;text-align:center;color:var(--muted)">Nenhum item com esses filtros</td></tr>`;
+          return secao('Insumos comprados · entram no CMV', 'Real = estoque inicial + compras − estoque final (contagem do próprio insumo). Digital = vendas pela ficha (os processados descem até o insumo) + saídas.', linhas.length, 'var(--text)')
+            + linhas.map(linhaHtml).join('')
+            + (linhasProc.length ? secao('Processados · só confronto, fora do CMV', 'Real = estoque inicial + produção lançada − estoque final. Sem o lançamento da produção, o real fica distorcido (tende a negativo). Digital = vendas pela ficha + saídas.', linhasProc.length, 'var(--purple)')
+              + linhasProc.map(linhaHtml).join('') : '');
+        })()}</tbody>
       </table></div>
       <div style="padding:10px 16px;border-top:1.5px solid var(--border);font-size:var(--text-xs);color:var(--muted);line-height:1.5">
         Diferença positiva = saiu mais do que as vendas e saídas explicam (ficha pesando menos que o real, porção acima, perda não lançada). Negativa = sobrou. Clique no item para ver a variação de preço e de consumo.</div>
