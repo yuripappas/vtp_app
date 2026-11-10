@@ -16,16 +16,16 @@
 
 const CP_EXTRAS = [
   { k: 'ipi',      label: 'IPI' },
-  { k: 'icms_st',  label: 'ICMS ST (substituição)' },
+  { k: 'icms_st',  label: 'ICMS ST', dica: 'ICMS substituição tributária (campo "Valor do ICMS Substituição")' },
   { k: 'seguro',   label: 'Seguro' },
-  { k: 'outras',   label: 'Outras despesas' },
+  { k: 'outras',   label: 'Outras desp.', dica: 'Outras despesas acessórias' },
   { k: 'desconto', label: 'Desconto', menos: true },
   { k: 'frete',    label: 'Frete', foraCusto: true },
 ];
 // Celular: campos da linha em 2 colunas (insumo ocupa a linha toda)
 if (!document.getElementById('cpLinhaCss')) {
   const st = document.createElement('style'); st.id = 'cpLinhaCss';
-  st.textContent = '@media (max-width:640px){.cp-linha{grid-template-columns:1fr 1fr !important}.cp-linha>.field:first-child:nth-last-child(4){grid-column:1/-1}}';
+  st.textContent = '@media (max-width:640px){.cp-linha{grid-template-columns:1fr 1fr !important}.cp-linha>.field:first-child:nth-last-child(5){grid-column:1/-1}.cp-linha>.cp-emb{grid-column:1/-1}}';
   document.head.appendChild(st);
 }
 const cpExtrasVazio = () => ({ ipi: 0, icms_st: 0, seguro: 0, outras: 0, desconto: 0, frete: 0 });
@@ -87,44 +87,52 @@ function cpResumoNota(linhas, ex) {
   return { itens: _cpR2(itens), extras: _cpR2(extras), frete: _cpR2(ex.frete), total: _cpR2(itens + extras + (+ex.frete || 0)) };
 }
 
-// Texto da conversão: "= 50 kg · R$ 16,00/kg · R$ 400,00/Caixa 25 kg · +R$ 3,20 de impostos"
+// Texto da conversão: "= 144 un · custo R$ 4,36/un · +R$ 3,20 de impostos rateados"
 function cpConvTexto(l, acr = 0) {
   const it = items.find(i => i.id === l.item_id);
   if (!it) return '';
   const c = cpLinhaCalc(l), u = it.unit || 'un';
   if (!(c.qtd > 0)) return l.ap ? `1 ${_estEsc(l.ap.nome)} = ${_estQ(l.ap.fator)} ${_estEsc(u)}` : '';
-  const custo = c.qtd > 0 ? (c.total + acr) / c.qtd : 0;
   const partes = [`= <strong>${_estQ(c.qtd)} ${_estEsc(u)}</strong>`];
-  if (c.total > 0) {
-    partes.push(`${_estR(custo)}/${_estEsc(u)}${Math.abs(acr) >= 0.005 ? ' com impostos' : ''}`);
-    if (l.ap) partes.push(`${_estR(c.total / c.n + acr / c.n)}/${_estEsc(l.ap.nome)}`);
-    if (l.modo === 'total' && !l.ap) partes.push(`total ${_estR(c.total)}`);
-    else if (l.modo === 'unit') partes.push(`total ${_estR(c.total)}`);
-  }
+  if (c.total > 0) partes.push(`custo ${_estR((c.total + acr) / c.qtd)}/${_estEsc(u)}${Math.abs(acr) >= 0.005 ? ' com impostos' : ''}`);
   if (Math.abs(acr) >= 0.005) partes.push(`${acr > 0 ? '+' : '−'}${_estR(Math.abs(acr))} rateio da nota`);
   return partes.join(' · ');
 }
 
-// Campos da linha. ns = prefixo dos handlers (ex.: '_cpNC' → _cpNCLinha(idx, campo, valor))
+// Campos da linha: [Insumo] · Embalagem · Qtd · Valor unitário · Total (os dois valores sempre
+// visíveis e ligados: digita um, o outro é calculado). ns = prefixo dos handlers (ex.: '_cpNC').
 function cpLinhaCamposHtml(l, idx, ns, { comItem = true } = {}) {
   const it = items.find(i => i.id === l.item_id);
   const ops = it ? cpApOpcoes(it, l.ap) : [{ nome: null, fator: 1 }];
   const sel = ops.findIndex(o => (o.nome || null) === (l.ap?.nome || null) && Math.abs(o.fator - (l.ap?.fator || 1)) < 1e-6);
   const u = it?.unit || 'un';
   const unid = l.ap ? l.ap.nome : u;
-  const seg = (m, t) => `<button type="button" onclick="${ns}Linha(${idx},'modo','${m}')" style="padding:2px 9px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;font-family:inherit;cursor:pointer;border:1.5px solid ${l.modo === m ? 'var(--purple)' : 'var(--border)'};background:${l.modo === m ? 'var(--purple-xlight)' : 'transparent'};color:${l.modo === m ? 'var(--purple)' : 'var(--text2)'}">${t}</button>`;
-  return `<div class="cp-linha" style="display:grid;grid-template-columns:${comItem ? 'minmax(200px,2fr) ' : ''}minmax(150px,1.3fr) minmax(90px,.7fr) minmax(150px,1.1fr);gap:8px;align-items:end">
-    ${comItem ? `<div class="field" style="margin:0"><label>Insumo ${l.sugestao ? '<span style="color:var(--warning-fg);text-transform:none;letter-spacing:0">· sugestão, confira</span>' : l.memoria ? '<span style="color:var(--success-fg);text-transform:none;letter-spacing:0">· reconhecido</span>' : ''}</label>
+  const c = cpLinhaCalc(l);
+  const vu = l.modo === 'total' ? (c.n > 0 ? c.total / c.n : null) : l.vUnit;
+  const vt = l.modo === 'total' ? l.vTotal : (c.n > 0 && l.vUnit != null ? c.total : null);
+  const lab = t => `<label style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t}</label>`;
+  const din = (campo, val, ph, extra = '') => `<div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:var(--text-xs);color:var(--muted);pointer-events:none">R$</span>
+    <input class="inp" id="${ns}${campo}${idx}" type="text" inputmode="decimal" value="${val == null || val === '' ? '' : cpFmtNum(Math.round(val * 100) / 100)}" placeholder="${ph}"
+      style="text-align:right;font-weight:700;padding-left:30px;${extra}" oninput="${ns}Linha(${idx},'${campo}',this.value)"></div>`;
+  return `<div class="cp-linha" style="display:grid;grid-template-columns:${comItem ? 'minmax(180px,1.6fr) ' : ''}minmax(150px,1.2fr) minmax(80px,.6fr) minmax(110px,.8fr) minmax(110px,.8fr);gap:10px;align-items:end">
+    ${comItem ? `<div class="field" style="margin:0">${lab(`Insumo ${l.sugestao ? '<span style="color:var(--warning-fg);text-transform:none;letter-spacing:0">· sugestão, confira</span>' : l.memoria ? '<span style="color:var(--success-fg);text-transform:none;letter-spacing:0">· reconhecido</span>' : ''}`)}
       ${cpComboHtml(`cb${ns}${idx}`, { tipo: 'insumo', valor: l.item_id, ao: `${ns}Linha(${idx},'item',%v)` })}</div>` : ''}
-    <div class="field" style="margin:0"><label>Embalagem</label>
-      <select class="inp" ${it ? '' : 'disabled'} onchange="${ns}Linha(${idx},'ap',this.value)">${ops.map((o, k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${o.nome ? `${_estEsc(o.nome)} (${_estQ(o.fator)} ${_estEsc(u)})` : `${_estEsc(u)} (unidade base)`}</option>`).join('')}</select></div>
-    <div class="field" style="margin:0"><label>Qtd <span style="text-transform:none;letter-spacing:0">(${_estEsc(unid)})</span></label>
+    <div class="field cp-emb" style="margin:0">${lab('Embalagem')}
+      <select class="inp" ${it ? '' : 'disabled'} onchange="${ns}Linha(${idx},'ap',this.value)">${ops.map((o, k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${o.nome ? (/\d/.test(o.nome) ? _estEsc(o.nome) : `${_estEsc(o.nome)} (${_estQ(o.fator)} ${_estEsc(u)})`) : `${_estEsc(u)} (unidade base)`}</option>`).join('')}</select></div>
+    <div class="field" style="margin:0">${lab(`Qtd <span style="text-transform:none;letter-spacing:0;font-weight:500">(${_estEsc(unid)})</span>`)}
       <input class="inp" type="text" inputmode="decimal" value="${cpFmtNum(l.n)}" style="text-align:right;font-weight:700" oninput="${ns}Linha(${idx},'n',this.value)"></div>
-    <div class="field" style="margin:0"><label style="display:flex;justify-content:space-between;align-items:center;gap:4px">Valor ${seg('unit', 'Unitário')}${seg('total', 'Total')}</label>
-      <div style="display:flex;align-items:center;gap:4px"><span style="font-size:var(--text-xs);color:var(--muted)">R$</span>
-      <input class="inp" type="text" inputmode="decimal" value="${cpFmtNum(l.modo === 'total' ? l.vTotal : l.vUnit)}" style="text-align:right;font-weight:700" placeholder="${l.modo === 'total' ? 'total da linha' : 'por ' + _estEsc(unid)}" oninput="${ns}Linha(${idx},'v',this.value)"></div></div>
+    <div class="field" style="margin:0"><label style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="R$ por ${_estEsc(unid)}">Valor unitário</label>${din('vu', vu, '0,00')}</div>
+    <div class="field" style="margin:0">${lab('Total')}${din('vt', vt, '0,00')}</div>
   </div>
   <div id="${ns}Conv${idx}" style="font-size:var(--text-xs);color:var(--text2);margin-top:6px;min-height:14px"></div>`;
+}
+
+// Mantém unitário e total coerentes na tela sem redesenhar (o campo que a pessoa digita não é tocado)
+function cpLinhaSincronizar(l, idx, ns, campoAtivo) {
+  const c = cpLinhaCalc(l);
+  const set = (campo, val) => { const el = document.getElementById(ns + campo + idx); if (el && campo !== campoAtivo) el.value = val == null || !isFinite(val) ? '' : cpFmtNum(Math.round(val * 100) / 100); };
+  if (l.modo === 'total') set('vu', c.n > 0 ? c.total / c.n : null);
+  else set('vt', c.n > 0 && l.vUnit != null ? c.total : null);
 }
 
 // Aplica uma mudança na linha. Devolve true quando precisa redesenhar a linha inteira.
@@ -157,6 +165,8 @@ function cpLinhaSet(l, campo, v) {
     return true;
   }
   if (campo === 'n') l.n = cpNum(v);
+  if (campo === 'vu') { l.modo = 'unit'; l.vUnit = cpNum(v); }
+  if (campo === 'vt') { l.modo = 'total'; l.vTotal = cpNum(v); }
   if (campo === 'v') { if (l.modo === 'total') l.vTotal = cpNum(v); else l.vUnit = cpNum(v); }
   return false;
 }
@@ -165,13 +175,15 @@ function cpLinhaSet(l, campo, v) {
 function cpTotaisNotaHtml(ex, totalNota, ns, aberto = false) {
   return `<details class="cp-totais" ${aberto ? 'open' : ''} style="border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 14px;margin-top:12px;background:var(--card-bg)">
     <summary style="cursor:pointer;font-size:var(--text-sm);font-weight:700">Impostos, frete e desconto da nota <span style="font-weight:400;color:var(--muted)">· rodapé "Cálculo do imposto"</span></summary>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px 12px;margin-top:10px">
-      ${CP_EXTRAS.map(e => `<div class="field" style="margin:0"><label style="text-transform:none;letter-spacing:0">${e.label}${e.foraCusto ? ' <span style="color:var(--muted)">· fora do custo</span>' : ''}</label>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px 12px;margin-top:10px;align-items:end">
+      ${CP_EXTRAS.map(e => `<div class="field" style="margin:0"><label style="text-transform:none;letter-spacing:0;white-space:nowrap" ${e.dica ? `title="${e.dica}"` : ''}>${e.menos ? '− ' : ''}${e.label}</label>
         <input class="inp" type="text" inputmode="decimal" value="${ex[e.k] ? cpFmtNum(ex[e.k]) : ''}" placeholder="0,00" style="text-align:right" oninput="${ns}Extra('${e.k}',this.value)"></div>`).join('')}
-      <div class="field" style="margin:0"><label style="text-transform:none;letter-spacing:0;font-weight:800;color:var(--text)">Valor total da nota</label>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-top:10px">
+      <div style="font-size:var(--text-xs);color:var(--muted);line-height:1.5;flex:1;min-width:240px">O ICMS comum (Simples Nacional) já está no preço: não some. IPI, ICMS ST, seguro, outras despesas e desconto entram no custo dos itens (rateio). O frete entra só no total da compra.</div>
+      <div class="field" style="margin:0;width:180px"><label style="text-transform:none;letter-spacing:0;font-weight:800;color:var(--text);white-space:nowrap">Valor total da nota</label>
         <input class="inp" type="text" inputmode="decimal" value="${totalNota ? cpFmtNum(totalNota) : ''}" placeholder="para conferir" style="text-align:right;font-weight:700" oninput="${ns}Extra('totalNota',this.value)"></div>
     </div>
-    <div style="font-size:var(--text-xs);color:var(--muted);margin-top:8px;line-height:1.5">O ICMS comum (Simples Nacional) já está no preço de cada produto: não some. IPI, ICMS ST, seguro, outras despesas e desconto são rateados no custo dos itens. O frete entra só no total da compra.</div>
   </details>`;
 }
 

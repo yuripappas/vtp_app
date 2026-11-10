@@ -310,6 +310,7 @@ function _rcLinha(k, campo, v) {
     const box = document.getElementById('rcL' + k);
     if (box) box.outerHTML = _rcLinhaHtml(l, k);
   }
+  else cpLinhaSincronizar(l, k, '_rc', campo);
   _rcAtualizar();
 }
 

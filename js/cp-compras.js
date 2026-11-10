@@ -285,6 +285,7 @@ function _cpNCLinha(idx, campo, v) {
     const box = document.getElementById('ncL' + idx);
     if (box) { const div = box.querySelector('.cp-linha')?.parentElement; if (div) div.innerHTML = cpLinhaCamposHtml(l, idx, '_cpNC'); box.style.borderColor = l.item_id ? 'var(--border)' : 'var(--warning-bg)'; }
   }
+  else cpLinhaSincronizar(l, idx, '_cpNC', campo);
   _cpNCAtualizar();
 }
 
