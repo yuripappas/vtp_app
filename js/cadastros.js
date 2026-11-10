@@ -55,6 +55,13 @@ function renderCadastros() {
 // CADASTRO DE INSUMOS
 // ══════════════════════════════════════════════════════════════
 
+function _cadLimparFiltros() {
+  window._cadFilEmb = false; window._cadFilDiaria = false;
+  const c = document.getElementById('catCadFil'); if (c) c.value = '';
+  const b = document.getElementById('srchCadInsumos'); if (b) b.value = '';
+  renderCadInsumos();
+}
+
 function renderCadInsumos() {
   const q   = document.getElementById('srchCadInsumos')?.value?.toLowerCase() || '';
   const cat = document.getElementById('catCadFil')?.value || '';
@@ -83,7 +90,13 @@ function renderCadInsumos() {
 
   const el = document.getElementById('cadInsumosGrid');
   if (!filt.length) {
-    el.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("package",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum insumo cadastrado</div><div>Clique em "Novo Insumo" para começar</div></div>`;
+    // Filtro ativo sem resultado: diz quais filtros estão ligados e deixa limpar
+    // (antes os botões de filtro sumiam junto e parecia que não havia insumo)
+    const ativos = [cat && `categoria ${cat}`, q && `busca "${q}"`, window._cadFilEmb && 'só com embalagem', window._cadFilDiaria && 'só débito automático'].filter(Boolean);
+    el.innerHTML = ativos.length
+      ? `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("filter",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum insumo com estes filtros</div><div>${_estEsc(ativos.join(' + '))}</div>
+          <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="_cadLimparFiltros()">${lc('x',12,'currentColor')} Limpar filtros</button></div>`
+      : `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("package",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum insumo cadastrado</div><div>Clique em "Novo Insumo" para começar</div></div>`;
     return;
   }
 
