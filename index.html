@@ -622,12 +622,12 @@
         <div class="field"><label>Nome do processado *</label><input class="inp" id="fpName" placeholder="ex: Frango Desfiado"></div>
         <div class="field">
           <label>Categoria *</label>
-          <input class="inp" id="fpCat" placeholder="ex: Carnes e Frios" list="fpCatDL"><datalist id="fpCatDL"></datalist>
+          <input type="hidden" id="fpCat"><div id="fpCatBox"></div>
           <span style="font-size:.63rem;color:var(--muted);margin-top:2px">Onde ele pesa no custo — a mesma dos insumos (ex.: Mussarela Triturada em Laticínios)</span>
         </div>
       </div>
       <div class="f2">
-        <div class="field"><label>Unidade</label><select class="inp" id="fpUnit"><option>kg</option><option>g</option><option>L</option><option>un</option></select></div>
+        <div class="field"><label>Unidade</label><select class="inp" id="fpUnit"><option>kg</option><option>L</option><option>un</option></select></div>
         <div class="field"><label>Kg por porção</label><input class="inp" type="number" id="fpPorcao" placeholder="ex: 0.090" step="0.001"></div>
       </div>
       <div class="f3">
@@ -1334,7 +1334,7 @@
 <script src="js/icons.js?v=3"></script>
 <script src="js/db.js?v=118"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=286"></script>
+<script src="js/init.js?v=287"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">

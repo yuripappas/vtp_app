@@ -454,6 +454,7 @@ function getSupCheckedIds() {
 function saveItem() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
+  if (!catEncontrar(document.getElementById('fCat').value)) { toast('Escolha a categoria (lista de Configurações › Categorias de Insumo)', 'err'); return; }
   const supIds    = getSupCheckedIds();
   const newBrands = [
     document.getElementById('fB0').value.trim(),
@@ -495,7 +496,7 @@ function _saveItemConfirmado(name, supIds) {
   const supIdExclusivo = getSupExclusivoId();
   const data = {
     name,
-    cat:        document.getElementById('fCat').value.trim() || 'Outros',
+    cat:        catEncontrar(document.getElementById('fCat').value) || document.getElementById('fCat').value.trim(),
     unit:       document.getElementById('fUnit').value,
     min:        parseFloat(document.getElementById('fMin').value)   || 0,
     ideal:      parseFloat(document.getElementById('fIdeal').value) || 0,
@@ -1275,16 +1276,15 @@ function openEditPreparo(id) {
 
 // Mesmas categorias dos insumos — processado não tem categoria própria
 function _fpPopularCategorias() {
-  const dl = document.getElementById('fpCatDL');
-  if (!dl) return;
-  const cats = [...new Set([...(typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []), ...items.map(i => i.cat)].filter(Boolean))].sort();
-  dl.innerHTML = cats.map(c => `<option value="${c}">`).join('');
+  const box = document.getElementById('fpCatBox'); if (!box) return;
+  const v = document.getElementById('fpCat').value || null;
+  box.innerHTML = cpComboHtml('fpCatCb', { tipo: 'categoria', valor: v, placeholder: 'Selecionar categoria…', ao: "document.getElementById('fpCat').value=%v" });
 }
 
 function savePreparo() {
   const name = document.getElementById('fpName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
-  if (!document.getElementById('fpCat').value.trim()) { toast('Informe a categoria', 'err'); return; }
+  if (!catEncontrar(document.getElementById('fpCat').value)) { toast('Escolha a categoria (lista de Configurações › Categorias de Insumo)', 'err'); return; }
   const rendimento_kg = parseFloat(document.getElementById('ftRendimento').value) || 0;
   const novaFT = { ingredientes: _ftRows.filter(r => r.item_id), rendimento_kg };
 
@@ -1307,14 +1307,9 @@ function savePreparo() {
 
 // Usa a grafia já cadastrada quando só muda maiúscula/acento (ex.: "laticinios" → "LATICÍNIOS")
 function _fpCategoria() {
+  // Só categorias da lista única (Configurações › Categorias de Insumo)
   const v = document.getElementById('fpCat').value.trim();
-  const n = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  const existente = [...(typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []), ...items.map(i => i.cat)].find(c => c && n(c) === n(v));
-  if (existente) return existente;
-  if (typeof CATEGORIAS_INSUMO !== 'undefined' && typeof saveCategoriasInsumo === 'function') {
-    CATEGORIAS_INSUMO.push(v); CATEGORIAS_INSUMO.sort(); saveCategoriasInsumo();
-  }
-  return v;
+  return catEncontrar(v) || v;
 }
 
 function _savePreparoConfirmado(name, fichaTecnica) {

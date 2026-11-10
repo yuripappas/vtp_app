@@ -35,6 +35,7 @@ const ETQ_CAT_ICONS = {
   'Queijos':            'droplets',
 
   // Proteínas
+  'Proteínas':          'flame',
   'Carnes e Frios':     'flame',
   'Carnes':             'flame',
   'Frios':              'flame',
@@ -386,7 +387,8 @@ function _etqStep2(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
   // Categorias exatamente como estão em item.cat — sem normalização, sem mapeamento
   const habilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
-  const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  const usadas = new Set(allItems.map(i => i.cat));
+  const todasCats = catLista().filter(c => usadas.has(c));
   const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
   // Processados ficam na categoria real (ex.: Mussarela Triturada em
   // Laticínios), mas a produção etiqueta quase só eles — atalho no topo.

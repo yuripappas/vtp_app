@@ -341,14 +341,6 @@ function _renderCfgSecEstoque(el) {
       </div>
     </div>
 
-    <div style="margin-bottom:22px">
-      ${_secTitle('Categorias Cadastradas', null)}
-      <div style="font-size:var(--text-xs);color:var(--muted);margin-bottom:10px">
-        Renomeie categorias que vieram do Cardápio Web ou ajuste qualquer nome. Todos os insumos e processados da categoria são atualizados automaticamente.
-      </div>
-      <div id="cfgCatRenameList" style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden"></div>
-    </div>
-
     ${_block(_secTitle('Categorias de Insumo', null), _addBar(`
       <input class="inp" id="cfgNewCatInsumo" placeholder="Nova categoria" style="flex:1;font-size:var(--text-sm)" onkeydown="if(event.key==='Enter')_cfgAddCatInsumo()">
       <button class="btn btn-primary" style="font-size:var(--text-sm);white-space:nowrap" onclick="_cfgAddCatInsumo()">${lc('plus',13,'#fff')} Add</button>`), 'cfgCatInsumoList')}
@@ -359,6 +351,7 @@ function _renderCfgSecEstoque(el) {
 
 // ── Gerenciar Categorias ──────────────────────────────────────
 
+// (antiga lista "Categorias Cadastradas": agora tudo fica em "Categorias de Insumo")
 function _cfgRenderCatRename() {
   const el = document.getElementById('cfgCatRenameList');
   if (!el) return;
@@ -424,32 +417,12 @@ function _cfgSalvarRenomearCat(catAtual, idx) {
   const novoNome = document.getElementById(`cfgCatNovoNome_${idx}`)?.value.trim();
   if (!novoNome) { toast('Informe o novo nome', 'err'); return; }
   if (novoNome === catAtual) { _cfgRenderCatRename(); return; }
-
-  const allItems = typeof items !== 'undefined' ? items : [];
-  let count = 0;
-  allItems.forEach(i => {
-    if ((i.cat || 'Outros') === catAtual) { i.cat = novoNome; count++; }
-  });
-
-  if (typeof saveI === 'function') saveI();
-
-  // Atualiza também a lista de categorias de insumo se o nome antigo estiver lá
-  if (typeof CATEGORIAS_INSUMO !== 'undefined') {
-    const ci = CATEGORIAS_INSUMO.indexOf(catAtual);
-    if (ci >= 0) { CATEGORIAS_INSUMO[ci] = novoNome; if (typeof saveCategoriasInsumo === 'function') saveCategoriasInsumo(); }
-  }
-
-  // Atualiza filtro de etiquetagem se o nome antigo estiver lá
-  if (typeof db !== 'undefined') {
-    const etiqCats = db._get('vtp_etiq_categorias', null);
-    if (Array.isArray(etiqCats)) {
-      const updated = etiqCats.map(c => c === catAtual ? novoNome : c);
-      db._set('vtp_etiq_categorias', updated);
-    }
-  }
-
-  toast(`${lc('check-circle',13,'var(--green)')} "${catAtual}" → "${novoNome}" · ${count} ${count === 1 ? 'item atualizado' : 'itens atualizados'}`, 'ok');
-  _cfgRenderCatRename();
+  catRenomear(catAtual, novoNome).then(r => {
+    toast(`${lc('check-circle',13,'var(--green)')} "${catAtual}" → "${r.alvo}" · ${r.itens} ${r.itens === 1 ? 'item atualizado' : 'itens atualizados'}`, 'ok');
+    _cfgRenderCatRename();
+    if (typeof _cfgRenderCatInsumo === 'function') _cfgRenderCatInsumo();
+  }).catch(e => toast(e.message, 'err'));
+  return;
   if (typeof _cfgRenderCatInsumo === 'function') _cfgRenderCatInsumo();
   if (typeof renderDashboard === 'function') renderDashboard();
 }
@@ -951,10 +924,11 @@ let _cfgCatInsumoEditIdx = null;
 function _cfgRenderCatInsumo() {
   const el = document.getElementById('cfgCatInsumoList');
   if (!el) return;
-  const lista = typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : [];
+  const lista = catLista();
   if (!lista.length) { el.innerHTML = `<div style="padding:20px;text-align:center;font-size:var(--text-sm);color:var(--muted);font-style:italic">Nenhuma categoria cadastrada.</div>`; return; }
   const foraCmv = estCatsForaCMV();
-  el.innerHTML = lista.map((cat, idx) => {
+  el.innerHTML = `<div style="font-size:var(--text-xs);color:var(--muted);padding:2px 2px 8px">Lista única do app: cadastro de insumos e processados, estoque, contagem, CMV, compras e etiquetagem usam estas categorias. Renomear ou excluir atualiza tudo, inclusive o histórico.</div>` + lista.map((cat, idx) => {
+    const n = catQtdItens(cat);
     if (_cfgCatInsumoEditIdx === idx) {
       return `<div class="cfg-row" style="border-color:var(--purple);background:var(--purple-xlight)">
         <input class="inp" id="cfgCatInsumoEditInp" value="${cat.replace(/"/g,'&quot;')}" style="flex:1;font-size:var(--text-sm);height:32px"
@@ -968,7 +942,7 @@ function _cfgRenderCatInsumo() {
     const noCmv = estCatNoCMV(cat, foraCmv);
     return `<div class="cfg-row">
       <div style="width:8px;height:8px;border-radius:50%;background:${noCmv ? 'var(--purple)' : 'var(--muted)'};flex-shrink:0"></div>
-      <span class="cfg-row-label">${cat}</span>
+      <span class="cfg-row-label">${cat} <span style="font-weight:400;color:var(--muted);font-size:var(--text-xs)">· ${n} ${n === 1 ? 'item' : 'itens'}</span></span>
       <label title="Entra no CMV: influencia a venda direta (insumos e processados). Desmarcado = outra despesa (ex.: escritório, higiene, descartáveis)"
         style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--text-xs);font-weight:600;color:${noCmv ? 'var(--purple)' : 'var(--muted)'};user-select:none;white-space:nowrap">
         <input type="checkbox" ${noCmv ? 'checked' : ''} onchange="_cfgToggleCatCMV(${idx}, this.checked)" style="accent-color:var(--purple);width:14px;height:14px">
@@ -976,7 +950,7 @@ function _cfgRenderCatInsumo() {
       </label>
       <div class="cfg-row-actions">
         <button class="btn btn-ghost btn-xs" onclick="_cfgEditCatInsumo(${idx})" title="Renomear">${lc('edit-2',12,'currentColor')}</button>
-        ${_cfgDelBtn(`_cfgRemoverCatInsumo(${idx})`, 'Remover categoria')}
+        ${_cfgDelBtn(`_cfgRemoverCatInsumo(${idx})`, 'Excluir categoria')}
       </div>
     </div>`;
   }).join('');
@@ -986,7 +960,7 @@ function _cfgRenderCatInsumo() {
 
 // Lista de categorias fora do CMV fica em vtp_config.catsForaCMV
 function _cfgToggleCatCMV(idx, entra) {
-  const cat = CATEGORIAS_INSUMO[idx];
+  const cat = catLista()[idx];
   if (!cat) return;
   const fora = estCatsForaCMV();
   entra ? fora.delete(cat) : fora.add(cat);
@@ -1005,16 +979,16 @@ function _cfgEditCatInsumo(idx) {
 
 function _cfgSaveCatInsumo(idx) {
   const val = document.getElementById('cfgCatInsumoEditInp')?.value.trim();
+  const antiga = catLista()[idx];
   if (!val) { toast('Nome não pode ser vazio', 'err'); return; }
-  if (CATEGORIAS_INSUMO.some((c, i) => i !== idx && c === val)) { toast('Categoria já existe', 'err'); return; }
-  const antiga = CATEGORIAS_INSUMO[idx];
-  const fora = estCatsForaCMV();
-  if (fora.has(antiga)) { fora.delete(antiga); fora.add(val); const cfg = getConfig(); cfg.catsForaCMV = [...fora]; db._set('vtp_config', cfg); }
-  CATEGORIAS_INSUMO[idx] = val;
-  saveCategoriasInsumo();
-  _cfgCatInsumoEditIdx = null;
-  _cfgRenderCatInsumo();
-  toast(`Categoria renomeada para "${val}"`, 'ok');
+  const fazer = () => catRenomear(antiga, val).then(r => {
+    _cfgCatInsumoEditIdx = null;
+    _cfgRenderCatInsumo();
+    toast(r.juntou ? `"${antiga}" juntou-se a "${r.alvo}" · ${r.itens} item(ns) movidos` : `Categoria renomeada para "${r.alvo}" em todo o app`, 'ok');
+  }).catch(e => toast(e.message, 'err'));
+  const ex = catLista().find(c => c !== antiga && catNorm(c) === catNorm(val));
+  if (ex) return vtpConfirm({ title: `Juntar "${antiga}" com "${ex}"?`, message: `Já existe "${ex}". Os ${catQtdItens(antiga)} item(ns) de "${antiga}" passam para ela e "${antiga}" deixa de existir.`, confirmLabel: 'Juntar', danger: false, onConfirm: fazer });
+  fazer();
 }
 
 function _cfgCancelCatInsumo() {
@@ -1200,25 +1174,16 @@ function _cfgResetTiposDesp() {
 // ── Ações — Categorias de Insumo ─────────────────────────────
 
 function _cfgAddCatInsumo() {
-  if (typeof CATEGORIAS_INSUMO === 'undefined') { toast('CATEGORIAS_INSUMO não disponível', 'err'); return; }
-  const nome = document.getElementById('cfgNewCatInsumo')?.value.trim();
-  if (!nome) { toast('Informe o nome da categoria', 'err'); return; }
-  if (CATEGORIAS_INSUMO.includes(nome)) { toast('Categoria já existe', 'err'); return; }
-  CATEGORIAS_INSUMO.push(nome);
-  saveCategoriasInsumo();
-  document.getElementById('cfgNewCatInsumo').value = '';
-  _cfgRenderCatInsumo();
-  toast(`Categoria "${nome}" adicionada!`);
+  try {
+    const nome = catAdicionar(document.getElementById('cfgNewCatInsumo')?.value);
+    document.getElementById('cfgNewCatInsumo').value = '';
+    _cfgRenderCatInsumo();
+    toast(`Categoria "${nome}" adicionada!`);
+  } catch (e) { toast(e.message, 'err'); }
 }
 
-function _cfgRemoverCatInsumo(idx) {
-  if (typeof CATEGORIAS_INSUMO === 'undefined') return;
-  const nome = CATEGORIAS_INSUMO[idx];
-  CATEGORIAS_INSUMO.splice(idx, 1);
-  saveCategoriasInsumo();
-  _cfgRenderCatInsumo();
-  toast(`Categoria "${nome}" removida.`);
-}
+// Excluir: categoria com itens pede para onde eles vão (o motor move tudo, inclusive o histórico)
+function _cfgRemoverCatInsumo(idx) { catExcluirUI(catLista()[idx], _cfgRenderCatInsumo); }
 
 // ── Ações — Tipos de Ausência ─────────────────────────────────
 
@@ -2830,8 +2795,8 @@ function _renderCfgSecEtiquetagem(el) {
 
 function _cfgEtqCategorias(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
-  // Categorias exatamente como estão em item.cat — sem mapeamento
-  const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  // Mesma lista única de categorias do app (Configurações › Categorias de Insumo)
+  const todasCats = catLista();
   const habilitadas = db._get('vtp_etiq_categorias', null);
   const sel = habilitadas !== null ? new Set(habilitadas) : new Set(todasCats);
 

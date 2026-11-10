@@ -26,7 +26,7 @@ let items = db._get('vtp_items', null) || [
 ];
 
 // Tipo × categoria: o tipo (insumo/processado) é o isProd; a categoria é
-// onde o item pesa no custo (Laticínios, Carnes e Frios…). Até out/2026 os
+// onde o item pesa no custo (Laticínios, Proteínas…). Até out/2026 os
 // processados ficavam todos na categoria "PREPARADOS" — esta migração dá a
 // eles a categoria real (a mesma que o usuário usa no Pinch) e, se o nome não
 // estiver no mapa, a categoria do ingrediente de maior peso na ficha.
@@ -35,9 +35,9 @@ let items = db._get('vtp_items', null) || [
   const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
   const VARIANTES = new Set(['PREPARADOS', 'PREPARADO', 'PRODUCAO INTERNA']);
   const MAPA = {
-    'FRANGO DESFIADO': 'CARNES E FRIOS', 'CARNE DE SOL DESFIADA': 'CARNES E FRIOS',
-    'COSTELA BOVINA DESFIADA': 'CARNES E FRIOS', 'COSTELINHA BOVINA DESFIADA': 'CARNES E FRIOS',
-    'PRESUNTO TRITURADO': 'CARNES E FRIOS', 'PONTA DE ALCATRA CUBO': 'CARNES E FRIOS', 'PONTA DE ALCATRA EM CUBO': 'CARNES E FRIOS',
+    'FRANGO DESFIADO': 'PROTEÍNAS', 'CARNE DE SOL DESFIADA': 'PROTEÍNAS',
+    'COSTELA BOVINA DESFIADA': 'PROTEÍNAS', 'COSTELINHA BOVINA DESFIADA': 'PROTEÍNAS',
+    'PRESUNTO TRITURADO': 'PROTEÍNAS', 'PONTA DE ALCATRA CUBO': 'PROTEÍNAS', 'PONTA DE ALCATRA EM CUBO': 'PROTEÍNAS',
     'MUSSARELA TRITURADA': 'LATICÍNIOS',
     'BRIGADEIRO DE CHOCOLATE': 'DOCES', 'BRIGADEIRO DE NINHO': 'DOCES', 'FAROFA DE BISCOITO': 'DOCES',
     'CREME DE MARSHMALLOW': 'DOCES', 'GELEIA DE MORANGO': 'DOCES',
