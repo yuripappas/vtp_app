@@ -203,7 +203,7 @@ function _ctgRenderConteudo() {
   el.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
       <button class="btn btn-primary" onclick="estNovaContagem()">${lc('plus', 14, '#fff')} Nova contagem</button>
-      <button class="btn btn-outline" onclick="estImprimirAbertas()" title="Uma folha por local, das contagens pendentes e em andamento">${lc('printer', 14, 'currentColor')} Imprimir folhas</button>
+      <button class="btn btn-outline" onclick="estImprimirAbertas()" title="Lista única com todos os insumos e uma coluna por local (contagens pendentes e em andamento)">${lc('printer', 14, 'currentColor')} Imprimir folhas</button>
       <button class="btn btn-outline" style="color:var(--danger-fg)" onclick="estExcluirRodada()">${lc('trash-2', 14, 'currentColor')} Excluir rodada de contagem</button>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         <select class="inp" style="width:auto;max-width:220px;font-size:var(--text-md)" onchange="_ctgFilCat=this.value;_ctgRenderConteudo()">
@@ -1136,61 +1136,91 @@ function _ctgOrdenarPorLocal(lista, localId) {
   });
 }
 
-// ids: contagens a imprimir (uma folha por card/local)
+// ids: contagens a imprimir. Lista única: uma linha por insumo, uma coluna por local
+// (só abre o campo onde o item está guardado) e o total. Página deitada, 2 blocos.
 async function estImprimirContagens(ids) {
   const cs = ids.map(id => _ctgDados?.contagens.find(c => c.id === id)).filter(Boolean);
   if (!cs.length) return toast('Nenhuma contagem para imprimir', 'err');
-  const w = window.open('', '_blank', 'width=900,height=1000');
+  const w = window.open('', '_blank', 'width=1100,height=800');
   if (!w) return toast('Libere pop-ups para imprimir', 'err');
-  w.document.write('<p style="font-family:Arial;padding:30px">Montando as folhas…</p>');
+  w.document.write('<p style="font-family:Arial;padding:30px">Montando a folha…</p>');
   let linhas;
   try {
-    linhas = await _estSelectTodos(() => _estSb().from('est_contagem_itens').select('*').in('contagem_id', cs.map(c => c.id)).is('removido_em', null));
+    linhas = await _estSelectTodos(() => _estSb().from('est_contagem_itens').select('item_id, item_nome, unidade, categoria, contagem_id').in('contagem_id', cs.map(c => c.id)).is('removido_em', null));
   } catch (e) { w.close(); return toast('Não consegui carregar os itens: ' + e.message, 'err'); }
   const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-  const caixa = (rot) => `<span class="cx"><span class="rot">${esc(rot)}</span><span class="linha"></span></span>`;
-  const folha = c => {
-    const its = _ctgOrdenarPorLocal(linhas.filter(r => r.contagem_id === c.id), c.local_id);
-    const tit = _ctgTitulo(c);
-    return `<section class="folha">
-      <header>
-        <div><div class="marca">Vai Ter Pizza! · Folha de contagem</div><h1>${esc(estLocalLabel(c.local_id))}</h1>
-          <div class="sub">${esc(tit)} · ${_ctgDataBr(c.data_ref)}${_ctgEhCmv(c) ? ' · Contagem de CMV' : ' · Outras categorias'} · ${its.length} itens</div></div>
-        <div class="quem"><div>Contado por: <span class="l" style="width:170px"></span></div><div>Início: <span class="l" style="width:50px"></span> &nbsp; Fim: <span class="l" style="width:50px"></span></div></div>
-      </header>
-      <div class="dica">Conte tudo o que está no local. Anote as embalagens fechadas no campo de cada uma e o que sobrar aberto em <b>avulso</b>, na unidade do item. Se não tiver, escreva <b>0</b>: não deixe linha em branco.</div>
-      <table>
-        <thead><tr><th class="n">#</th><th>Produto</th><th>Contagem</th><th class="ok">✓</th></tr></thead>
-        <tbody>${its.map((r, k) => {
-          const un = r.unidade || items.find(i => i.id === r.item_id)?.unit || 'un';
-          const embs = _ctgEmbs(r);
-          return `<tr><td class="n">${k + 1}</td>
-            <td class="prod"><b>${esc(r.item_nome)}</b><div class="cat">${esc(r.categoria || '')}</div></td>
-            <td><div class="cont">${embs.map(e => caixa(`${e.nome}${/\d/.test(e.nome) ? '' : ` (${_estQ(e.fator)} ${un})`}`)).join('')}${caixa(embs.length ? `avulso (${un})` : un)}</div></td>
-            <td class="ok"><span class="box"></span></td></tr>`;
-        }).join('')}</tbody>
-      </table>
-      <div class="extra"><b>Itens encontrados que não estão na lista</b> (produto · quantidade · unidade)
-        ${'<div class="l2"></div>'.repeat(4)}</div>
-    </section>`;
+  // Locais na ordem do app
+  const ordemLoc = _ctgLocaisCom(_ctgEscopo('cmv'));
+  const locais = [...new Set(cs.map(c => c.local_id))].sort((a, b) => ((ordemLoc.indexOf(a) + 1) || 99) - ((ordemLoc.indexOf(b) + 1) || 99));
+  const curto = l => {
+    const ws = estLocalLabel(l).split(/[\s\-–]+/).filter(x => x && x.length > 1);
+    if (ws.length <= 1) return (ws[0] || '?').slice(0, 6);
+    return ws.slice(0, -1).map(x => x[0].toUpperCase()).join('') + '. ' + ws[ws.length - 1].slice(0, 5);
   };
+  const locDe = Object.fromEntries(cs.map(c => [c.id, c.local_id]));
+  // Insumo → locais em que ele tem card
+  const porItem = new Map();
+  for (const r of linhas) {
+    if (!porItem.has(r.item_id)) porItem.set(r.item_id, { ...r, locais: new Set() });
+    porItem.get(r.item_id).locais.add(locDe[r.contagem_id]);
+  }
+  const lista = [...porItem.values()].sort((a, b) => (a.categoria || '').localeCompare(b.categoria || '') || a.item_nome.localeCompare(b.item_nome));
+  const dica = r => {
+    const it = items.find(i => i.id === r.item_id);
+    const aps = estApresentacoes(it).filter(a => Number(a.qtd) !== 1).sort((a, b) => (!!b.padrao - !!a.padrao)).slice(0, 2);
+    return aps.map(a => esc(/\d/.test(a.nome) ? a.nome : `${a.nome} ${_estQ(a.qtd)}`)).join(' · ');
+  };
+  // Linhas (categoria vira uma linha de título) → páginas com 2 blocos lado a lado
+  const rows = [];
+  let cat = null;
+  for (const r of lista) {
+    if (r.categoria !== cat) rows.push(`<tr class="cat"><td colspan="${locais.length + 2}">${esc(cat = r.categoria || 'Sem categoria')}</td></tr>`);
+    rows.push(`<tr><td class="prod"><b>${esc(r.item_nome)}</b> <span class="un">${esc(r.unidade || '')}</span>${dica(r) ? `<div class="emb">${dica(r)}</div>` : ''}</td>
+      ${locais.map(l => `<td class="${r.locais.has(l) ? 'cel' : 'nao'}"></td>`).join('')}<td class="tot"></td></tr>`);
+  }
+  const POR_BLOCO_1 = 22, POR_BLOCO = 25;   // 1ª página tem o cabeçalho
+  const paginas = [];
+  for (let i = 0, pg = 0; i < rows.length; pg++) {
+    const n = pg === 0 ? POR_BLOCO_1 : POR_BLOCO;
+    let esq = rows.slice(i, i + n); i += n;
+    let dir = rows.slice(i, i + n); i += n;
+    // não deixa título de categoria sozinho no fim do bloco
+    for (const b of [esq, dir]) if (b.length && b[b.length - 1].startsWith('<tr class="cat"')) { i -= 1; b.pop(); }
+    paginas.push([esq, dir]);
+  }
+  const cabTabela = `<thead><tr><th class="prod">Insumo</th>${locais.map(l => `<th title="${esc(estLocalLabel(l))}">${esc(curto(l))}</th>`).join('')}<th>Total</th></tr></thead>`;
+  const datas = [...new Set(cs.map(c => _ctgDataBr(c.data_ref)))].join(', ');
+  const tipo = cs.every(_ctgEhCmv) ? 'Contagem de CMV' : cs.some(_ctgEhCmv) ? 'Contagem' : 'Outras categorias';
   w.document.open();
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Folhas de contagem</title><style>
-    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:18px;font-size:12px}
-    .folha{page-break-after:always;break-after:page} .folha:last-child{page-break-after:auto;break-after:auto}
-    header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:8px}
-    .marca{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#555} h1{font-size:22px;margin:2px 0} .sub{color:#444}
-    .quem{text-align:right;line-height:2} .l{display:inline-block;border-bottom:1px solid #111;vertical-align:bottom}
-    .dica{margin:8px 0 10px;padding:6px 8px;background:#f3f3f3;border-radius:4px;font-size:11px}
-    table{width:100%;border-collapse:collapse} th{text-align:left;font-size:10px;text-transform:uppercase;color:#555;border-bottom:1.5px solid #111;padding:5px 4px}
-    td{border-bottom:1px solid #bbb;padding:7px 4px;vertical-align:middle} tr{page-break-inside:avoid;break-inside:avoid}
-    .n{width:26px;color:#777;text-align:right} .prod{width:34%} .cat{font-size:9px;color:#777;text-transform:uppercase}
-    .cont{display:flex;flex-wrap:wrap;gap:6px 14px} .cx{display:inline-flex;align-items:flex-end;gap:4px} .rot{font-size:10px;color:#444;white-space:nowrap}
-    .cx .linha{display:inline-block;width:56px;height:18px;border-bottom:1.5px solid #111}
-    .ok{width:24px;text-align:center} .box{display:inline-block;width:13px;height:13px;border:1.5px solid #111}
-    .extra{margin-top:12px;font-size:11px} .l2{border-bottom:1px solid #999;height:22px}
-    @page{size:A4;margin:12mm} @media print{body{padding:0}}
-  </style></head><body>${cs.map(folha).join('')}<script>window.onload=()=>setTimeout(()=>window.print(),200)<\/script></body></html>`);
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Folha de contagem</title><style>
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:12px;font-size:10px}
+    header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:6px}
+    .marca{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555} h1{font-size:18px;margin:1px 0}
+    .quem{text-align:right;line-height:1.9;font-size:11px} .l{display:inline-block;border-bottom:1px solid #111;vertical-align:bottom}
+    .info{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:9.5px;margin-bottom:6px}
+    .legenda span{margin-right:10px;white-space:nowrap} .legenda b{display:inline-block;min-width:0}
+    .pagina{display:flex;gap:7mm;align-items:flex-start} .pagina.nova{break-before:page;page-break-before:always;padding-top:2mm} .bloco{flex:1;min-width:0}
+    table{width:100%;border-collapse:collapse;break-inside:auto} thead{display:table-header-group}
+    th{font-size:8.5px;text-transform:uppercase;color:#333;border-bottom:1.5px solid #111;padding:3px 2px;text-align:center;white-space:nowrap}
+    th.prod{text-align:left} td{border:1px solid #999;height:23px;padding:1px 3px}
+    tr{break-inside:avoid;page-break-inside:avoid}
+    td.prod{border-left:none;line-height:1.15} td.prod b{font-size:9.5px} .un{color:#666;font-size:8.5px} .emb{color:#666;font-size:7.5px}
+    td.cel{width:11mm;background:#fff} td.nao{width:11mm;background:repeating-linear-gradient(135deg,#e6e6e6 0 2px,#fff 2px 5px)}
+    td.tot{width:13mm;background:#f4f4f4;border-left:1.5px solid #111}
+    tr.cat td{border:none;padding:6px 2px 2px;font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:#444;height:auto}
+    @page{size:A4 landscape;margin:8mm} @media print{body{padding:0}}
+  </style></head><body>
+    <header>
+      <div><div class="marca">Vai Ter Pizza! · Folha de contagem</div><h1>${esc(tipo)} · ${esc(datas)}</h1></div>
+      <div class="quem">Contado por: <span class="l" style="width:170px"></span> &nbsp; Início: <span class="l" style="width:45px"></span> &nbsp; Fim: <span class="l" style="width:45px"></span></div>
+    </header>
+    <div class="info">
+      <div class="legenda"><b>Locais:</b> ${locais.map(l => `<span><b>${esc(curto(l))}</b> = ${esc(estLocalLabel(l))}</span>`).join('')}</div>
+      <div>${lista.length} insumos · anote na unidade do item (embalagem fechada: ex. "2 cx + 3"). Campo listrado = item não fica nesse local. Sem nada: escreva 0.</div>
+    </div>
+    ${paginas.map(([esq, dir], k) => `<div class="pagina${k ? ' nova' : ''}">${[esq, dir].map(b => `<div class="bloco">${b.length ? `<table>${cabTabela}<tbody>${b.join('')}</tbody></table>` : ''}</div>`).join('')}</div>`).join('')}
+    <div style="margin-top:8px;font-size:9.5px"><b>Itens encontrados que não estão na lista</b> (insumo · local · quantidade): ____________________________________________________________________________________________</div>
+    <script>window.onload=()=>setTimeout(()=>window.print(),200)<\/script></body></html>`);
   w.document.close();
 }
 
