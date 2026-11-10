@@ -167,6 +167,7 @@ function _csRender() {
         ${ciclos.map(c => `<option value="${c.id}"${c.id === _csCicloId ? ' selected' : ''}>${c.status === 'aberto' ? 'Ciclo atual (tempo real)' : 'Ciclo fechado'} · ${new Date(c.inicio).toLocaleDateString('pt-BR')} → ${c.fim ? new Date(c.fim).toLocaleDateString('pt-BR') : 'agora'}</option>`).join('')}
       </select>
       <span style="font-size:var(--text-sm);color:var(--muted)">${periodo}</span>
+      ${cmvBaseHtml()}
       <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--text2);text-transform:none;letter-spacing:0;font-weight:500">Alerta acima de
         <input class="inp" type="number" min="1" step="1" value="${lim}" style="width:64px;text-align:right" onchange="_csSetAlerta(this.value)">%</label>
       <button class="btn btn-ghost btn-sm" onclick="cmvRenderConsumo(true)" title="Recalcular">${lc('refresh-cw', 13, 'currentColor')}</button>
@@ -174,8 +175,8 @@ function _csRender() {
     ${!r.temFim ? `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--info-bg);color:var(--info-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('info', 14, 'currentColor')}
       <div>Ciclo em aberto: mostrando o consumo <strong>digital</strong> em tempo real (vendas + saídas). O consumo <strong>real</strong> e as inconformidades aparecem quando o ciclo for concluído com a contagem de fechamento.</div></div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px">
-      ${kpi('Consumo digital', _estR(soma('digitalV')), 'insumos comprados · vendas pela ficha + saídas, a custo')}
-      ${kpi('Consumo real', r.temFim ? _estR(soma('realV')) : '—', r.temFim ? 'insumos comprados · inicial + compras − final, a custo' : 'aguardando fechamento')}
+      ${kpi('Consumo digital', _estR(soma('digitalV')), 'vendas pela ficha + saídas, a custo')}
+      ${kpi('Consumo real', r.temFim ? _estR(soma('realV')) : '—', r.temFim ? (_cmvBase === 'geral' ? 'inicial + compras − final (com processados convertidos), a custo' : 'só insumos comprados · inicial + compras − final, a custo') : 'aguardando fechamento')}
       ${kpi('Diferença', r.temFim ? _estR(soma('difV')) : '—', 'real − digital', r.temFim && Math.abs(soma('difV')) > 0.005 ? 'var(--danger-fg)' : 'var(--text)')}
       ${kpi('Itens em alerta', r.temFim ? nAlertas : '—', `diferença acima de ${lim}%`, nAlertas ? 'var(--danger-fg)' : 'var(--text)')}
     </div>
@@ -218,7 +219,9 @@ function _csRender() {
             <div style="font-size:var(--text-md);font-weight:800;color:${cor}">${titulo} <span style="font-weight:600;color:var(--text2)">(${n})</span></div>
             <div style="font-size:var(--text-xs);color:var(--text2);margin-top:2px">${sub}</div></td></tr>`;
           if (!linhas.length && !linhasProc.length) return `<tr><td colspan="8" style="padding:40px;text-align:center;color:var(--muted)">Nenhum item com esses filtros</td></tr>`;
-          return secao('Insumos comprados · entram no CMV', 'Real = estoque inicial + compras − estoque final (contagem do próprio insumo). Digital = vendas pela ficha (os processados descem até o insumo) + saídas.', linhas.length, 'var(--text)')
+          return secao('Insumos comprados · entram no CMV', _cmvBase === 'geral'
+              ? 'Real = estoque inicial + compras − estoque final, com os processados contados convertidos no insumo de origem pela ficha. Digital = vendas pela ficha + saídas.'
+              : 'Real = estoque inicial + compras − estoque final (contagem do próprio insumo). Digital = vendas pela ficha (os processados descem até o insumo) + saídas.', linhas.length, 'var(--text)')
             + linhas.map(linhaHtml).join('')
             + (linhasProc.length ? secao('Processados · só confronto, fora do CMV', 'Real = estoque inicial + produção lançada − estoque final. Sem o lançamento da produção, o real fica distorcido (tende a negativo). Digital = vendas pela ficha + saídas.', linhasProc.length, 'var(--purple)')
               + linhasProc.map(linhaHtml).join('') : '');

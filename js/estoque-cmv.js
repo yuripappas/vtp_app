@@ -17,14 +17,32 @@
  * nas compras, pelo custo da nota.
  * Faturamento: soma de cw_pedidos.total (mesma fonte do Dashboard e do Vendas).
  *
- * CMV só com os insumos COMPRADOS (decisão de 09/11/2026, enquanto a produção
- * não lança os processados): estoque inicial e final em R$ contam só o que não é
- * processado. Vendas (teórico) e saídas de processado continuam convertidas nos
- * insumos comprados pela ficha (peso_g em gramas por rendimento_kg).
- * Processados aparecem à parte (r.proc), só para confronto: real = inicial +
- * produção − final; digital = vendas pela ficha + saídas. A variação do estoque
- * de processados no ciclo (procIni → procFim) fica fora do cálculo e é avisada na tela.
+ * Duas bases (seletor na tela, _cmvBase):
+ *  • 'geral' (padrão): estoque inicial/final = insumos comprados + processados
+ *    contados, convertidos nos insumos de origem pela ficha (peso_g em gramas por
+ *    rendimento_kg). Mede o consumo do ciclo só com contagens — não depende de
+ *    lançar produção. Ex.: 10 kg de Triturada contada = 10,2 kg de Barra.
+ *  • 'compras': só os insumos comprados; processados à parte, só para confronto
+ *    (real = inicial + produção lançada − final). Oscila quando o estoque de
+ *    processados sobe ou desce no ciclo (procIni → procFim, avisado na tela).
+ * Nas duas, teórico (vendas × ficha) e perdas descem o processado até o insumo comprado.
+ * O resultado guarda as duas (porBase) e os campos da tela seguem _cmvBase.
  */
+
+let _cmvBase = (() => { try { return localStorage.getItem('vtp_cmv_base') === 'compras' ? 'compras' : 'geral'; } catch (e) { return 'geral'; } })();
+function cmvSetBase(b) {
+  _cmvBase = b === 'compras' ? 'compras' : 'geral';
+  try { localStorage.setItem('vtp_cmv_base', _cmvBase); } catch (e) {}
+  if (typeof _cmvAba !== 'undefined' && _cmvAba === 'consumo' && typeof _csRender === 'function') _csRender();
+  else estRenderAbaCMV();
+}
+function cmvBaseHtml() {
+  const b = (id, t, dica) => { const on = _cmvBase === id; return `<button onclick="cmvSetBase('${id}')" title="${dica}" style="padding:7px 14px;border:none;cursor:pointer;font-family:inherit;font-size:var(--text-sm);font-weight:700;border-radius:var(--r8);
+    background:${on ? 'var(--purple)' : 'transparent'};color:${on ? '#fff' : 'var(--text2)'}">${t}</button>`; };
+  return `<div style="display:inline-flex;align-items:center;gap:8px"><span style="font-size:var(--text-sm);color:var(--text2);font-weight:600">Base</span>
+    <div style="display:inline-flex;gap:3px;background:var(--surface2);border-radius:var(--r10);padding:3px">
+      ${b('geral', 'CMV Geral', 'Insumos comprados + processados contados, convertidos pela ficha')}${b('compras', 'CMV Compras', 'Só os insumos comprados; processados fora do cálculo')}</div></div>`;
+}
 
 // Processado → insumos comprados, recursivo. → { insumoId: qtd } (ou o próprio item se não for processado / sem ficha)
 function estExplodirItem(itemId, qtd, acc = {}, visitados = new Set()) {
@@ -93,7 +111,7 @@ async function estCalcularCMV(ciclo, contagens) {
     if (!porItem.has(id)) {
       const it = items.find(i => i.id === id);
       porItem.set(id, { id, nome: nome || it?.name || '—', cat: cat ?? it?.cat, unid: unid || it?.unit || '',
-        debAuto: false, ini: 0, iniV: 0, fim: 0, fimV: 0, compras: 0, comprasV: 0, producao: 0,
+        debAuto: false, ini: 0, iniV: 0, fim: 0, fimV: 0, iniG: 0, iniGV: 0, fimG: 0, fimGV: 0, compras: 0, comprasV: 0, producao: 0,
         vendas: 0, vendasV: 0, perdas: 0, perdasV: 0, custo: it?.cost || 0,
         proc: !!it?.isProd, semFicha: !!(it?.isProd && !it.fichaTecnica?.ingredientes?.length), viaProc: {} });
     }
@@ -110,10 +128,10 @@ async function estCalcularCMV(ciclo, contagens) {
       const r = viaProc ? reg(k) : reg(k, info.nome, info.cat, info.unid);
       r[campo] += q;
       if (campoV) r[campoV] += valor === null ? q * r.custo : somaP > 0 ? valor * pesos[i] / somaP : valor / partes.length;
-      if (viaProc && (campo === 'ini' || campo === 'fim')) {
+      if (viaProc && (campo === 'iniG' || campo === 'fimG')) {
         const nm = items.find(x => x.id === Number(id))?.name || info.nome || '?';
         const vp = r.viaProc[nm] || (r.viaProc[nm] = { ini: 0, fim: 0, unid: items.find(x => x.id === Number(id))?.unit || '' });
-        vp[campo] += Number(qtd) || 0;
+        vp[campo === 'iniG' ? 'ini' : 'fim'] += Number(qtd) || 0;
       }
     });
     return partes;
@@ -124,6 +142,13 @@ async function estCalcularCMV(ciclo, contagens) {
   const comFicha = id => { const it = items.find(i => i.id === Number(id)); return !!(it?.isProd && it.fichaTecnica?.ingredientes?.length); };
   for (const x of itensIni) contar(x, 'ini');
   for (const x of itensFim) contar(x, 'fim');
+  // Base geral: o processado contado entra nos insumos de origem (valor rateado pelo custo de cada parte)
+  const contarGeral = (x, campo) => {
+    if (comFicha(x.item_id)) lancar(x.item_id, x.contado, x.contado * (x.custo_unit || 0), campo + 'G', campo + 'GV', { nome: x.item_nome, cat: x.categoria, unid: x.unidade });
+    else { const r = reg(x.item_id, x.item_nome, x.categoria, x.unidade); r[campo + 'G'] += +x.contado; r[campo + 'GV'] += x.contado * (x.custo_unit || 0); }
+  };
+  for (const x of itensIni) contarGeral(x, 'ini');
+  for (const x of itensFim) contarGeral(x, 'fim');
   for (const m of movs) {
     if (_estMs(m.data_mov) <= _estMs(inicio)) continue;
     const v = (Number(m.qtd) || 0) * (Number(m.custo_unit) || 0);
@@ -142,41 +167,50 @@ async function estCalcularCMV(ciclo, contagens) {
     }
   }
 
-  // CMV: só insumos comprados
-  const lista = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc);
-  const soma = k => lista.reduce((s, r) => s + (r[k] || 0), 0);
+  const temIni = abertura.length > 0, temFim = fechamento.length > 0;
   const procs = [...porItem.values()].filter(r => noCmv(r.cat) && r.proc);
   const procIni = procs.reduce((s, r) => s + r.iniV, 0), procFim = procs.reduce((s, r) => s + r.fimV, 0);
-  const ei = soma('iniV'), compras = soma('comprasV'), ef = soma('fimV');
-  const teorico = soma('vendasV'), perdas = soma('perdasV');
-  const temIni = abertura.length > 0, temFim = fechamento.length > 0;
-  const real = temIni && temFim ? ei + compras - ef : null;
-  const gap = real !== null ? real - teorico - perdas : null;
+  const teorico = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc).reduce((s, r) => s + r.vendasV, 0);
+  const perdas = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc).reduce((s, r) => s + r.perdasV, 0);
+  const compras = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc).reduce((s, r) => s + r.comprasV, 0);
 
-  // Itens com débito automático: consumo real × teórico (só quando há EI e EF)
-  const divergencias = temIni && temFim ? lista.filter(r => r.debAuto).map(r => {
-    const consumo = r.ini + r.compras - r.fim;
-    const dif = consumo - r.vendas - r.perdas;
-    return { ...r, consumo, dif, difV: dif * r.custo };
-  }).filter(r => Math.abs(r.dif) > 0.0005).sort((a, b) => Math.abs(b.difV) - Math.abs(a.difV)) : [];
-
-  // Top consumo real (R$) — todos os itens do CMV
-  const consumoTop = temIni && temFim ? lista.map(r => ({ ...r, consumoV: r.iniV + r.comprasV - r.fimV }))
-    .filter(r => r.consumoV > 0.005).sort((a, b) => b.consumoV - a.consumoV).slice(0, 10) : [];
-
-  // Todos os itens com movimento: consumo real (contagem) × digital (vendas + saídas)
-  const itens = [...porItem.values()].map(r => {
-    const real = temIni && temFim ? r.ini + r.compras + (r.proc ? r.producao : 0) - r.fim : null;
-    const digital = r.vendas + r.perdas;
-    return { ...r, noCmv: noCmv(r.cat), real, realV: real !== null ? real * r.custo : null, digital, digitalV: digital * r.custo,
-      dif: real !== null ? real - digital : null, difV: real !== null ? (real - digital) * r.custo : null };
-  });
-
-  return {
-    ciclo, inicio, fim: fimReal, aberto: !fimReal, temIni, temFim, aberturaCount: abertura.length, itens,
-    ei, compras, ef, real, teorico, perdas, gap, fat: fat.total, pedidos: fat.pedidos, procIni, procFim, nProc: procs.length,
-    divergencias, consumoTop, custos: _cmvVariacaoCustos(inicio, fimReal), geradoEm: new Date().toISOString(),
+  // Monta a visão de uma base: g = true usa os estoques com processados convertidos
+  const montar = g => {
+    const I = g ? 'iniG' : 'ini', F = g ? 'fimG' : 'fim';
+    // geral: processado com ficha já está dentro dos insumos; sem ficha fica como linha própria
+    const entra = r => noCmv(r.cat) && (!r.proc || (g && r.semFicha));
+    const lista = [...porItem.values()].filter(entra);
+    const ei = lista.reduce((s, r) => s + r[I + 'V'], 0), ef = lista.reduce((s, r) => s + r[F + 'V'], 0);
+    const real = temIni && temFim ? ei + compras - ef : null;
+    const gap = real !== null ? real - teorico - perdas : null;
+    const consumoDe = r => r[I] + r.compras + (r.proc ? r.producao : 0) - r[F];
+    const divergencias = temIni && temFim ? lista.filter(r => r.debAuto).map(r => {
+      const consumo = consumoDe(r), dif = consumo - r.vendas - r.perdas;
+      return { ...r, consumo, dif, difV: dif * r.custo };
+    }).filter(r => Math.abs(r.dif) > 0.0005).sort((a, b) => Math.abs(b.difV) - Math.abs(a.difV)) : [];
+    const consumoTop = temIni && temFim ? lista.map(r => ({ ...r, consumoV: r[I + 'V'] + r.comprasV - r[F + 'V'] }))
+      .filter(r => r.consumoV > 0.005).sort((a, b) => b.consumoV - a.consumoV).slice(0, 10) : [];
+    // Itens do Consumo de insumos: na geral o processado com ficha some (está nos insumos); na compras fica à parte
+    const itens = [...porItem.values()].filter(r => !(g && r.proc && !r.semFicha)).map(r => {
+      const real = temIni && temFim ? consumoDe(r) : null;
+      const digital = r.vendas + r.perdas;
+      return { ...r, viaProc: g ? r.viaProc : {}, proc: g ? false : r.proc, noCmv: noCmv(r.cat), real, realV: real !== null ? real * r.custo : null, digital, digitalV: digital * r.custo,
+        dif: real !== null ? real - digital : null, difV: real !== null ? (real - digital) * r.custo : null };
+    });
+    return { ei, ef, real, gap, divergencias, consumoTop, itens };
   };
+  const porBase = { geral: montar(true), compras: montar(false) };
+
+  const res = {
+    ciclo, inicio, fim: fimReal, aberto: !fimReal, temIni, temFim, aberturaCount: abertura.length,
+    compras, teorico, perdas, fat: fat.total, pedidos: fat.pedidos, procIni, procFim, nProc: procs.length, porBase,
+    custos: _cmvVariacaoCustos(inicio, fimReal), geradoEm: new Date().toISOString(),
+  };
+  // Campos da base escolhida (seguem o seletor sem recalcular) + a outra base para comparação
+  for (const k of ['ei', 'ef', 'real', 'gap', 'divergencias', 'consumoTop', 'itens'])
+    Object.defineProperty(res, k, { get: () => res.porBase[_cmvBase][k], enumerable: true });
+  Object.defineProperty(res, 'outra', { get: () => res.porBase[_cmvBase === 'geral' ? 'compras' : 'geral'] });
+  return res;
 }
 
 // ── Render ─────────────────────────────────────────────────────
@@ -243,11 +277,12 @@ function _cmvRender(r) {
       <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_cmvCicloId=this.value;estRenderAbaCMV()">
         ${ciclos.map(c => `<option value="${c.id}"${c.id === _cmvCicloId ? ' selected' : ''}>Ciclo ${new Date(c.inicio).toLocaleDateString('pt-BR')} → ${c.fim ? new Date(c.fim).toLocaleDateString('pt-BR') : 'em aberto'}</option>`).join('')}
       </select>
-      <span style="font-size:var(--text-sm);color:var(--muted)">${r.pedidos} pedidos · só insumos comprados das categorias que entram no CMV (processados ficam fora)</span>
+      ${cmvBaseHtml()}
+      <span style="font-size:var(--text-sm);color:var(--muted)">${r.pedidos} pedidos · ${_cmvBase === 'geral' ? 'insumos comprados + processados contados (convertidos pela ficha)' : 'só insumos comprados (processados ficam fora)'}</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="estRenderAbaCMV(true)" title="Recalcular">${lc('refresh-cw', 13, 'currentColor')}</button>
     </div>
     ${aviso ? `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--warning-bg);color:var(--warning-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('info', 14, 'currentColor')}<div>${aviso}</div></div>` : ''}
-    ${r.temIni && (r.procIni || r.procFim) ? (() => {
+    ${_cmvBase === 'compras' && r.temIni && (r.procIni || r.procFim) ? (() => {
       const v = r.procFim - r.procIni;
       return `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--info-bg);color:var(--info-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('chef-hat', 14, 'currentColor')}<div>
         <strong>Estoque de processados fora do cálculo:</strong> ${_estR(r.procIni)} no início${r.temFim ? ` → ${_estR(r.procFim)} no fim (<strong>${v >= 0 ? '+' : '−'}${_estR(Math.abs(v)).replace('−', '')}</strong>)` : ''}.
@@ -255,15 +290,15 @@ function _cmvRender(r) {
         Os processados aparecem só para confronto em Consumo de insumos.</div></div>`; })() : ''}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:12px">
-      ${card('CMV real %', cmvPct !== null ? pct(r.real, r.fat) : nd, `meta ${meta}% · teórico ${teoPct !== null ? pct(r.teorico, r.fat) : '—'}`, cmvPct === null ? 'var(--text)' : cmvPct > meta ? 'var(--danger-fg)' : 'var(--success-fg)', true)}
+      ${card('CMV real %', cmvPct !== null ? pct(r.real, r.fat) : nd, `meta ${meta}% · teórico ${teoPct !== null ? pct(r.teorico, r.fat) : '—'}${r.outra?.real != null ? ` · ${_cmvBase === 'geral' ? 'Compras' : 'Geral'}: ${pct(r.outra.real, r.fat)}` : ''}`, cmvPct === null ? 'var(--text)' : cmvPct > meta ? 'var(--danger-fg)' : 'var(--success-fg)', true)}
       ${card('Faturamento do ciclo', _estR(r.fat), `cw_pedidos · ${periodo}`)}
       ${card('CMV real', r.real !== null ? _estR(r.real) : nd, 'estoque inicial + compras − estoque final')}
       ${card('CMV teórico', _estR(r.teorico), 'vendas × fichas técnicas')}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:12px">
-      ${card('Estoque inicial', r.temIni ? _estR(r.ei) : nd, r.temIni ? `${r.aberturaCount} local(is) contado(s) · só insumos comprados` : 'contagem de abertura pendente')}
+      ${card('Estoque inicial', r.temIni ? _estR(r.ei) : nd, r.temIni ? `${r.aberturaCount} local(is) contado(s) · ${_cmvBase === 'geral' ? 'com processados' : 'só insumos comprados'}` : 'contagem de abertura pendente')}
       ${card('Compras', _estR(r.compras), 'recebimentos no ciclo')}
-      ${card('Estoque final', r.temFim ? _estR(r.ef) : nd, r.temFim ? 'contagem de fechamento · só insumos comprados' : 'aguardando fechamento')}
+      ${card('Estoque final', r.temFim ? _estR(r.ef) : nd, r.temFim ? `contagem de fechamento · ${_cmvBase === 'geral' ? 'com processados' : 'só insumos comprados'}` : 'aguardando fechamento')}
       ${card('Perdas registradas', _estR(r.perdas), `${pct(r.perdas, r.fat)} do faturamento · baixas`, 'var(--danger-fg)')}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:18px">
