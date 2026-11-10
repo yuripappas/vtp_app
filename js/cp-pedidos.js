@@ -178,13 +178,19 @@ async function _pdAbrirEditor({ pedido, forn, modo }) {
   }
   // Pedido novo: já vem marcado o que o estoque sugere, na embalagem padrão (arredondado para cima)
   if (!pedido) for (const l of linhas.values()) if (l.habil && l.sugerida > 0) { l.marcado = true; l.n = _pdSugN(l); }
-  _pdAtual = { pedido, forn, modo, linhas, q: '', filtro: pedido ? 'na_lista' : 'sugestao', cat: '', verOutros: false };
+  _pdAtual = { pedido, forn, modo, linhas, q: '', filtro: 'todos', cats: new Set(), verOutros: false };
   _pdRender();
 }
 
 const _pdF = l => l.ap?.fator > 0 ? l.ap.fator : 1;
 const _pdQtd = (l, aprov = false) => (Number(aprov ? l.nAprov : l.n) || 0) * _pdF(l);
-const _pdSugN = l => l.sugerida > 0 ? (l.ap ? Math.ceil(l.sugerida / _pdF(l) - 1e-9) : _estRound(l.sugerida)) : null;
+// Sugerido na unidade base; insumo "compra fechada" arredonda para embalagens inteiras
+const _pdSugBase = l => { const fe = cpApFechada(l.item)?.fator; return l.sugerida > 0 && fe > 0 ? _estRound(Math.ceil(l.sugerida / fe - 1e-9) * fe) : l.sugerida; };
+const _pdSugN = l => l.sugerida > 0 ? (l.ap ? Math.ceil(_pdSugBase(l) / _pdF(l) - 1e-9) : _estRound(_pdSugBase(l))) : null;
+const PD_FILTROS = {
+  todos:    { label: 'Todos', teste: () => true },
+  sugestao: { label: 'Precisa comprar', teste: x => x.sugerida > 0 },
+};
 const _pdUn = l => l.ap ? l.ap.nome : (l.item.unit || 'un');
 
 function _pdRender() {
@@ -215,10 +221,11 @@ function _pdRender() {
   let doForn, outros = [];
   if (a.modo === 'editar') {
     let base = todas.filter(x => x.habil || x.marcado);
-    if (a.cat) base = base.filter(x => (x.item.cat || 'Outros') === a.cat);
-    a.contas = Object.fromEntries(Object.keys(_CL_FILTROS).map(f => [f, base.filter(x => _CL_FILTROS[f].teste(x)).length]));
-    doForn = base.filter(x => _CL_FILTROS[a.filtro].teste(x)).filter(busca);
-    outros = todas.filter(x => !x.habil && !x.marcado && (!a.cat || (x.item.cat || 'Outros') === a.cat)).filter(busca);
+    const naCat = x => !a.cats.size || a.cats.has(x.item.cat || 'Outros');
+    base = base.filter(naCat);
+    a.contas = Object.fromEntries(Object.keys(PD_FILTROS).map(f => [f, base.filter(x => PD_FILTROS[f].teste(x)).length]));
+    doForn = base.filter(x => PD_FILTROS[a.filtro].teste(x)).filter(busca);
+    outros = todas.filter(x => !x.habil && !x.marcado && naCat(x) && PD_FILTROS[a.filtro].teste(x)).filter(busca);
   } else doForn = todas.filter(x => x.marcado).filter(busca);
 
   const th = (t, al = 'right') => `<th style="padding:8px 10px;text-align:${al};font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">${t}</th>`;
@@ -233,21 +240,22 @@ function _pdRender() {
           <tbody>${porCat[cat].sort((x, y) => x.item.name.localeCompare(y.item.name)).map(x => _pdLinhaHtml(x, fora)).join('')}</tbody>
         </table></div>`).join('');
   };
-  const catsLista = [...new Set(todas.filter(x => x.habil || x.marcado).map(x => x.item.cat || 'Outros'))].sort();
+  const catsLista = [...new Set(todas.map(x => x.item.cat || 'Outros'))].sort();
+  const chip = (on, txt, fn, n) => `<button onclick="${fn}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;font-size:var(--text-sm);font-weight:600;font-family:inherit;cursor:pointer;
+    border:1.5px solid ${on ? 'var(--purple)' : 'var(--border)'};background:${on ? 'var(--purple-xlight)' : 'var(--card-bg)'};color:${on ? 'var(--purple)' : 'var(--text2)'}">${on && n === undefined ? lc('check', 12, 'currentColor') : ''}${txt}${n !== undefined ? ` <span style="opacity:.75">${n}</span>` : ''}</button>`;
   document.getElementById('pdBody').innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
       <input class="inp" id="pdBusca" placeholder="Buscar insumo…" value="${_estEsc(a.q)}" style="max-width:320px;font-size:var(--text-md)"
         oninput="_pdAtual.q=this.value;clearTimeout(window._pdQT);window._pdQT=setTimeout(()=>{_pdRender();const b=document.getElementById('pdBusca');b.focus();b.setSelectionRange(b.value.length,b.value.length)},200)">
-      ${a.modo === 'editar' && catsLista.length > 1 ? `<select class="inp" style="width:auto;font-size:var(--text-sm)" onchange="_pdAtual.cat=this.value;_pdRender()">
-        <option value="">Todas as categorias</option>${catsLista.map(c => `<option value="${_estEsc(c)}"${c === a.cat ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}</select>` : ''}
+      ${a.modo === 'editar' ? Object.entries(PD_FILTROS).map(([id, f]) => chip(a.filtro === id, f.label, `_pdAtual.filtro='${id}';_pdRender()`, a.contas[id])).join('') : ''}
       ${a.modo === 'aprovar' ? `<span style="font-size:var(--text-sm);color:var(--text2)">Ajuste as quantidades se precisar. Zero corta o item.</span>` : ''}
     </div>
-    ${a.modo === 'editar' ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
-      ${Object.entries(_CL_FILTROS).map(([id, f]) => { const on = a.filtro === id; return `<button onclick="_pdAtual.filtro='${id}';_pdRender()" title="${f.dica}"
-        style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;font-size:var(--text-sm);font-weight:600;font-family:inherit;cursor:pointer;
-        border:1.5px solid ${on ? f.cor : 'var(--border)'};background:${on ? f.bg : 'var(--card-bg)'};color:${on ? f.cor : 'var(--text2)'}">${id === 'na_lista' ? 'No pedido' : f.label} <span style="opacity:.75">${a.contas[id]}</span></button>`; }).join('')}
+    ${a.modo === 'editar' && catsLista.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <span style="font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-right:2px">Categorias</span>
+      ${chip(!a.cats.size, 'Todas', '_pdAtual.cats.clear();_pdRender()')}
+      ${catsLista.map(c => chip(a.cats.has(c), _estEsc(c.charAt(0) + c.slice(1).toLowerCase()), `_pdToggleCat(${JSON.stringify(c).replace(/"/g, '&quot;')})`)).join('')}
     </div>` : ''}
-    ${doForn.length ? tabela(doForn) : `<div style="padding:30px;text-align:center;color:var(--muted)">${a.modo === 'editar' ? `Nenhum insumo deste fornecedor em "${_CL_FILTROS[a.filtro].label}". Experimente "Todos".` : 'Nenhum item'}</div>`}
+    ${doForn.length ? tabela(doForn) : `<div style="padding:30px;text-align:center;color:var(--muted)">${a.modo === 'editar' ? `Nenhum insumo deste fornecedor com esses filtros.` : 'Nenhum item'}</div>`}
     ${a.modo === 'editar' && outros.length ? `<div style="margin-top:18px;border-top:1.5px dashed var(--border);padding-top:12px">
       <button class="btn btn-ghost btn-sm" onclick="_pdAtual.verOutros=!_pdAtual.verOutros;_pdRender()">${lc(a.verOutros ? 'chevron-down' : 'chevron-right', 14, 'currentColor')} Outros insumos (não habilitados para este fornecedor) · ${outros.length}</button>
       ${a.verOutros ? `<div style="opacity:.85">${tabela(outros, true)}</div>` : ''}</div>` : ''}`;
@@ -280,10 +288,10 @@ function _pdLinhaHtml(x, fora) {
   const ops = cpApOpcoes(it, x.ap);
   const sel = ops.findIndex(o => (o.nome || null) === (x.ap?.nome || null) && Math.abs(o.fator - _pdF(x)) < 1e-6);
   const sugN = _pdSugN(x);
-  const sug = x.sugerida > 0 ? `${x.ap ? `${sugN} ${_estEsc(x.ap.nome)}` : `${_estQ(x.sugerida)} ${_estEsc(u)}`}${x.ap ? `<div style="font-size:var(--text-2xs);color:var(--muted);font-weight:400">(${_estQ(sugN * _pdF(x))} ${_estEsc(u)})</div>` : ''}` : '—';
+  const sug = x.sugerida > 0 ? `${x.ap ? `${sugN} ${_estEsc(x.ap.nome)}` : `${_estQ(sugN)} ${_estEsc(u)}`}${x.ap ? `<div style="font-size:var(--text-2xs);color:var(--muted);font-weight:400">(${_estQ(sugN * _pdF(x))} ${_estEsc(u)})</div>` : ''}` : '—';
   const outros = x.outros.length ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);font-weight:600">${lc('alert-triangle', 11, 'currentColor')} Em pedido p/ ${x.outros.map(o => `${_estEsc(o.forn)} (${_estQ(o.qtd)} ${_estEsc(u)})`).join(', ')} neste ciclo</div>` : '';
   const ultimo = estUltimoPreco(id);
-  const nome = `<td style="padding:8px 10px"><div style="font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${_estEsc(it.name)}${_clSituacao(x)}${x.marcado && !x.habil ? '<span class="badge b-gray" style="font-size:var(--text-2xs)">outro fornecedor</span>' : ''}</div>
+  const nome = `<td style="padding:8px 10px"><div style="font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap">${_estEsc(it.name)}${_clSituacao(x)}${x.marcado && !x.habil ? '<span class="badge b-gray" style="font-size:var(--text-2xs)">outro fornecedor</span>' : ''}${cpApFechada(it) ? `<span class="badge b-purple" style="font-size:var(--text-2xs)" title="Não se compra a granel: o sugerido vem em embalagens inteiras">${lc('package', 10, 'currentColor')} compra fechada · ${_estEsc(cpApFechada(it).nome)}</span>` : ''}</div>
     ${outros}${ultimo ? `<div style="font-size:var(--text-xs);color:var(--muted)">últ. compra ${_estR(ultimo.precoUnit)}/${_estEsc(u)} · ${_estEsc(ultimo.fornecedorNome || '')}</div>` : ''}</td>`;
   const cols = `<td style="padding:8px 10px;text-align:right;white-space:nowrap;color:${corSaldo}">${_estQ(x.saldo)} ${_estEsc(u)}</td>
     <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${it.min ? _estQ(it.min) : '—'} / ${it.ideal ? _estQ(it.ideal) : '—'}</td>`;
@@ -307,6 +315,12 @@ function _pdLinhaHtml(x, fora) {
     <td style="padding:8px 10px;min-width:230px">${comprar}</td>
     <td id="pdEst${id}" style="padding:8px 10px;text-align:right;white-space:nowrap">${_estR(_pdQtd(x, a.modo === 'aprovar') * x.preco)}<div style="font-size:var(--text-2xs);color:var(--muted)">${x.preco ? `${_estR(x.preco * _pdF(x))}/${_estEsc(_pdUn(x))}` : 'sem preço'}</div></td>
   </tr>`;
+}
+
+function _pdToggleCat(c) {
+  const s = _pdAtual.cats;
+  if (s.has(c)) s.delete(c); else s.add(c);
+  _pdRender();
 }
 
 function _pdConv(x) {

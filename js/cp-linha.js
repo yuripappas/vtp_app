@@ -42,7 +42,10 @@ function cpApOpcoes(item, atual) {
   if (atual?.fator > 0 && !ops.some(o => o.nome === atual.nome && Math.abs(o.fator - atual.fator) < 1e-6)) ops.push({ nome: atual.nome, fator: Number(atual.fator) });
   return ops;
 }
-const cpApPadrao = item => { const p = estApresentacoes(item).find(a => a.padrao); return p ? { nome: p.nome, fator: Number(p.qtd) } : null; };
+// Embalagem inicial de uma linha: sempre a medida base (kg, L, un), exceto o insumo marcado
+// "só se compra fechado" (bisnaga, lata, fardo…), que já vem na apresentação padrão ★
+const cpApFechada = item => { if (!item?.soEmbalagem) return null; const aps = estApresentacoes(item); const p = aps.find(a => a.padrao) || aps[0]; return p ? { nome: p.nome, fator: Number(p.qtd) } : null; };
+const cpApPadrao = item => cpApFechada(item);
 // Embalagem que corresponde a um fator (ex.: 1 UN da nota = 1,7 kg → "Lata 1,7 kg")
 function cpApDoFator(item, fator, unidNota) {
   if (!(fator > 0) || Math.abs(fator - 1) < 1e-6) return null;

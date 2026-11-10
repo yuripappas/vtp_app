@@ -227,7 +227,7 @@ function openItemModal() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   document.getElementById('itemModalSub').innerHTML = '';
-  _cadAps = [];
+  _cadAps = []; _cadSoEmb = false;
   _cadSetUnit('kg', false);
   populateSupChecks([]);
   _estBoxRender('fEstoqueBox', null, false);
@@ -254,6 +254,7 @@ function openEditItem(id) {
   document.getElementById('fB1').value = b[1] || '';
   document.getElementById('fB2').value = b[2] || '';
   _cadAps = estApresentacoes(item, false).map(a => ({ ...a }));
+  _cadSoEmb = !!item.soEmbalagem;
   _cadSetUnit(item.unit || 'kg', _cadItemTemHistorico(item));
   const deb = (estDebitoAutoMapa().get(item.id) || []).length;
   document.getElementById('itemModalSub').innerHTML = `<span class="badge b-gray">Insumo</span>${item.cat ? `<span class="badge b-gray">${item.cat}</span>` : ''}
@@ -504,6 +505,7 @@ function _saveItemConfirmado(name, supIds) {
     unidCompra,
     qtdEmb,
     apresentacoes,
+    soEmbalagem: _cadSoEmb && !!padrao,
     brands: [
       document.getElementById('fB0').value.trim(),
       document.getElementById('fB1').value.trim(),
@@ -530,6 +532,7 @@ function _saveItemConfirmado(name, supIds) {
 // ── Cadastro de insumo: unidade, apresentações, custo e estoque ──
 const _CAD_UNIDADES = [['kg', 'Quilo (kg)'], ['g', 'Grama (g)'], ['L', 'Litro (L)'], ['ml', 'Mililitro (ml)'], ['un', 'Unidade (un)'], ['cx', 'Caixa (cx)'], ['pct', 'Pacote (pct)'], ['fardo', 'Fardo']];
 let _cadAps = [];        // apresentações em edição no modal
+let _cadSoEmb = false;   // "só se compra fechado": compras e sugestão na apresentação padrão
 let _cadApEdit = null;   // id da apresentação aberta para editar
 
 // Unidade não muda depois que o item tem histórico (compras, estoque ou ficha técnica)
@@ -577,6 +580,9 @@ function _cadApsRender() {
       <thead><tr><th>Apresentação</th><th>Conteúdo</th><th class="r">Custo pelo estimado</th><th style="text-align:center">Padrão</th><th></th></tr></thead>
       <tbody>${_cadAps.map(linha).join('')}</tbody></table>`
     : `<div class="cad-box" style="color:var(--text2)">Nenhuma apresentação. O insumo é comprado só em ${u}.</div>`}
+    ${_cadAps.some(a => a.ativa !== false) ? `<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:var(--text-sm);cursor:pointer;text-transform:none;letter-spacing:0;color:var(--text);font-weight:500">
+      <input type="checkbox" ${_cadSoEmb ? 'checked' : ''} onchange="_cadSoEmb=this.checked" style="accent-color:var(--purple);margin-top:2px">
+      <span><strong>Só se compra fechado</strong> (não vende a granel em ${u})<br><span style="color:var(--text2);font-size:var(--text-xs)">Na cotação e na compra o item já vem na apresentação padrão ★ e o sugerido é arredondado para embalagens inteiras. Sem marcar, o padrão é comprar em ${u}.</span></span></label>` : ''}
     <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;align-items:end;margin-top:12px">
       <div class="field" style="margin:0"><label>Nova apresentação</label><input class="inp" id="apNovoNome" placeholder="ex: Pacote 5 kg, Caixa 50 kg, Fardo 12 un" onkeydown="if(event.key==='Enter')_cadApAdd()"></div>
       <div class="field" style="margin:0"><label>Quanto vem (${u})</label><input class="inp" id="apNovoQtd" type="text" inputmode="decimal" placeholder="ex: 5" style="text-align:right" onkeydown="if(event.key==='Enter')_cadApAdd()"></div>
