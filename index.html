@@ -545,7 +545,7 @@
           <div class="cad-h">Identificação</div>
           <div class="field"><label>Nome *</label><input class="inp" id="fName" placeholder="ex: Mussarela em Barra"></div>
           <div class="f2">
-            <div class="field"><label>Categoria</label><input class="inp" id="fCat" placeholder="ex: Laticínios" list="catDL"><datalist id="catDL"></datalist></div>
+            <div class="field"><label>Categoria</label><input type="hidden" id="fCat"><div id="fCatBox"></div><datalist id="catDL"></datalist></div>
             <div class="field"><label>Código interno <span class="cad-opc">(opcional)</span></label><input class="inp" id="fCode" placeholder="ex: 157629"></div>
           </div>
           <div class="field" style="margin-bottom:0"><label>Unidade de controle *</label>
@@ -1334,7 +1334,7 @@
 <script src="js/icons.js?v=3"></script>
 <script src="js/db.js?v=118"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=285"></script>
+<script src="js/init.js?v=286"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">

@@ -213,6 +213,11 @@ const _cpCb = {};
 const _cpCbNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
 function _cpCbOpcoes(cfg) {
+  if (cfg.tipo === 'categoria') {
+    const usadas = {}; items.forEach(i => { if (i.active !== false && !i.isProd) usadas[i.cat] = (usadas[i.cat] || 0) + 1; });
+    const cats = (typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []).filter(c => !/^PREPARADOS?$/i.test(c));
+    return cats.map(c => ({ v: c, label: c, tag: `${usadas[c] || 0} insumo${usadas[c] === 1 ? '' : 's'}` }));
+  }
   if (cfg.tipo === 'insumo') return items.filter(i => i.active !== false && !i.isProd)
     .map(i => ({ v: i.id, label: i.name, sub: i.cat || '', tag: i.unit === 'un' ? 'unidade' : (i.unit || '') }));
   return (typeof suppliers !== 'undefined' ? suppliers : []).filter(s => s.active !== false).map(s => {
@@ -225,7 +230,7 @@ function _cpCbLabel(cfg) {
   const v = cfg.valor;
   if (v === null || v === undefined || v === '') return '';
   if (typeof v === 'string' && v.startsWith('avulso:')) return v.slice(7) + ' (sem cadastro)';
-  return _cpCbOpcoes(cfg).find(o => o.v === v)?.label || '';
+  return _cpCbOpcoes(cfg).find(o => o.v === v)?.label || (cfg.tipo === 'categoria' ? String(v) : '');
 }
 
 function cpComboHtml(id, { tipo = 'insumo', valor = null, ao = '', avulso = false, placeholder } = {}) {
@@ -295,7 +300,7 @@ function _cpCbFiltrar(id) {
         <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${o.v === cfg.valor ? 'font-weight:800' : 'font-weight:600'}">${_estEsc(o.label)}</span>
         ${o.sub && !o.acao ? `<span style="display:block;font-size:var(--text-2xs);color:var(--muted)">${_estEsc(o.sub)}</span>` : o.sub ? `<span style="display:block;font-size:var(--text-2xs);color:var(--muted);font-weight:400">${_estEsc(o.sub)}</span>` : ''}</span></span>
       ${o.tag ? `<span class="badge b-gray" style="font-size:var(--text-2xs);white-space:nowrap">${_estEsc(o.tag)}</span>` : ''}</div>`).join('')
-    : `<div style="padding:12px;color:var(--muted);font-size:var(--text-sm)">${cfg.tipo === 'insumo' ? 'Nenhum insumo encontrado' : 'Digite o nome para buscar ou cadastrar'}</div>`;
+    : `<div style="padding:12px;color:var(--muted);font-size:var(--text-sm)">${cfg.tipo === 'insumo' ? 'Nenhum insumo encontrado' : cfg.tipo === 'categoria' ? 'Nenhuma categoria encontrada. Cadastre em Configurações.' : 'Digite o nome para buscar ou cadastrar'}</div>`;
 }
 
 function _cpCbMarcar(id, k) {

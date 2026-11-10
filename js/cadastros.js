@@ -228,6 +228,7 @@ function openItemModal() {
   });
   document.getElementById('itemModalSub').innerHTML = '';
   _cadAps = []; _cadSoEmb = false;
+  _cadCatRender('');
   _cadSetUnit('kg', false);
   populateSupChecks([]);
   _estBoxRender('fEstoqueBox', null, false);
@@ -244,6 +245,7 @@ function openEditItem(id) {
   document.getElementById('itemModalTitle').textContent = `${item.name}`;
   document.getElementById('fName').value  = item.name;
   document.getElementById('fCat').value   = item.cat;
+  _cadCatRender(item.cat);
   document.getElementById('fUnit').value  = item.unit;
   document.getElementById('fMin').value   = item.min;
   document.getElementById('fIdeal').value = item.ideal;
@@ -530,7 +532,8 @@ function _saveItemConfirmado(name, supIds) {
 }
 
 // ── Cadastro de insumo: unidade, apresentações, custo e estoque ──
-const _CAD_UNIDADES = [['kg', 'Quilo (kg)'], ['g', 'Grama (g)'], ['L', 'Litro (L)'], ['ml', 'Mililitro (ml)'], ['un', 'Unidade (un)'], ['cx', 'Caixa (cx)'], ['pct', 'Pacote (pct)'], ['fardo', 'Fardo']];
+// Só 3 unidades de controle; caixa, pacote, fardo… são apresentações de compra
+const _CAD_UNIDADES = [['kg', 'Quilo (kg)'], ['L', 'Litro (L)'], ['un', 'Unidade (un)']];
 let _cadAps = [];        // apresentações em edição no modal
 let _cadSoEmb = false;   // "só se compra fechado": compras e sugestão na apresentação padrão
 let _cadApEdit = null;   // id da apresentação aberta para editar
@@ -543,6 +546,13 @@ function _cadItemTemHistorico(item) {
   const usa = f => (f?.ingredientes || []).some(g => g.item_id === item.id);
   return [...(produtos || []), ...(produtosPizza || []), ...(opcoes || []), ...items].some(x => usa(x.fichaTecnica));
 }
+// Categoria: busca nas categorias cadastradas no sistema (Configurações)
+function _cadCatRender(valor) {
+  const box = document.getElementById('fCatBox'); if (!box) return;
+  document.getElementById('fCat').value = valor || '';
+  box.innerHTML = cpComboHtml('fCatCb', { tipo: 'categoria', valor: valor || null, placeholder: 'Selecionar categoria…', ao: "document.getElementById('fCat').value=%v" });
+}
+
 function _cadSetUnit(u, travada = null) {
   const el = document.getElementById('fUnit'); el.value = u;
   if (travada !== null) el.dataset.travada = travada ? '1' : '';
