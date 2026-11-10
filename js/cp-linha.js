@@ -112,7 +112,7 @@ function cpLinhaCamposHtml(l, idx, ns, { comItem = true } = {}) {
   const seg = (m, t) => `<button type="button" onclick="${ns}Linha(${idx},'modo','${m}')" style="padding:2px 9px;border-radius:99px;font-size:var(--text-2xs);font-weight:700;font-family:inherit;cursor:pointer;border:1.5px solid ${l.modo === m ? 'var(--purple)' : 'var(--border)'};background:${l.modo === m ? 'var(--purple-xlight)' : 'transparent'};color:${l.modo === m ? 'var(--purple)' : 'var(--text2)'}">${t}</button>`;
   return `<div class="cp-linha" style="display:grid;grid-template-columns:${comItem ? 'minmax(200px,2fr) ' : ''}minmax(150px,1.3fr) minmax(90px,.7fr) minmax(150px,1.1fr);gap:8px;align-items:end">
     ${comItem ? `<div class="field" style="margin:0"><label>Insumo ${l.sugestao ? '<span style="color:var(--warning-fg);text-transform:none;letter-spacing:0">· sugestão, confira</span>' : l.memoria ? '<span style="color:var(--success-fg);text-transform:none;letter-spacing:0">· reconhecido</span>' : ''}</label>
-      <select class="inp" onchange="${ns}Linha(${idx},'item',this.value)">${_estOptsItens(i => !i.isProd, l.item_id)}</select></div>` : ''}
+      ${cpComboHtml(`cb${ns}${idx}`, { tipo: 'insumo', valor: l.item_id, ao: `${ns}Linha(${idx},'item',%v)` })}</div>` : ''}
     <div class="field" style="margin:0"><label>Embalagem</label>
       <select class="inp" ${it ? '' : 'disabled'} onchange="${ns}Linha(${idx},'ap',this.value)">${ops.map((o, k) => `<option value="${k}"${k === sel ? ' selected' : ''}>${o.nome ? `${_estEsc(o.nome)} (${_estQ(o.fator)} ${_estEsc(u)})` : `${_estEsc(u)} (unidade base)`}</option>`).join('')}</select></div>
     <div class="field" style="margin:0"><label>Qtd <span style="text-transform:none;letter-spacing:0">(${_estEsc(unid)})</span></label>
@@ -197,4 +197,160 @@ function cpLinhasParaSalvar(linhas, ex, compraId, user) {
       apresentacao: l.ap || null, fator: l.ap?.fator || 1,
       desc_nota: l.desc_nota || null, cod_nota: l.cod_nota || null, qtd_nota: l.qtd_nota ?? null, unid_nota: l.unid_nota || null, criado_por: user };
   });
+}
+
+// ══════════════════════════════════════════════════════════════
+// CAMPO DE BUSCA (estilo Pinch): clica → abre busca + lista.
+// tipo 'insumo' (só escolhe) ou 'fornecedor' (pode cadastrar na hora e,
+// com avulso:true, usar um nome só nesta compra: mercado, presencial…).
+// ao = JS executado ao escolher; %v vira o valor (id, ou "avulso:Nome").
+// ══════════════════════════════════════════════════════════════
+
+const _cpCb = {};
+const _cpCbNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+function _cpCbOpcoes(cfg) {
+  if (cfg.tipo === 'insumo') return items.filter(i => i.active !== false && !i.isProd)
+    .map(i => ({ v: i.id, label: i.name, sub: i.cat || '', tag: i.unit === 'un' ? 'unidade' : (i.unit || '') }));
+  return (typeof suppliers !== 'undefined' ? suppliers : []).filter(s => s.active !== false).map(s => {
+    const n = items.filter(i => i.active !== false && !i.isProd && _clDoFornecedor(i, s.id)).length;
+    return { v: s.id, label: s.name, sub: s.seller || '', tag: `${n} insumo${n === 1 ? '' : 's'}` };
+  });
+}
+
+function _cpCbLabel(cfg) {
+  const v = cfg.valor;
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'string' && v.startsWith('avulso:')) return v.slice(7) + ' (sem cadastro)';
+  return _cpCbOpcoes(cfg).find(o => o.v === v)?.label || '';
+}
+
+function cpComboHtml(id, { tipo = 'insumo', valor = null, ao = '', avulso = false, placeholder } = {}) {
+  _cpCb[id] = { tipo, valor, ao, avulso, ix: 0, q: '' };
+  const lab = _cpCbLabel(_cpCb[id]);
+  return `<div class="cp-cb" id="${id}" style="position:relative">
+    <button type="button" class="inp" onclick="cpComboAbrir('${id}')" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;cursor:pointer;font-family:inherit">
+      <span id="${id}Lab" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${lab ? 'font-weight:600;color:var(--text)' : 'color:var(--muted)'}">${lab ? _estEsc(lab) : (placeholder || (tipo === 'insumo' ? 'Selecionar insumo…' : 'Selecionar fornecedor…'))}</span>
+      ${lc('search', 15, 'var(--muted)')}</button>
+  </div>`;
+}
+
+// A lista abre solta no <body> (position:fixed) para não ser cortada pelo modal
+function cpComboAbrir(id) {
+  document.querySelectorAll('.cp-cb-pop').forEach(p => p.remove());
+  const cb = document.getElementById(id); if (!cb) return;
+  const cfg = _cpCb[id]; cfg.q = ''; cfg.ix = 0;
+  const r = cb.getBoundingClientRect();
+  const pop = document.createElement('div');
+  pop.className = 'cp-cb-pop'; pop.id = id + 'Pop'; pop.dataset.dono = id;
+  const larg = Math.min(Math.max(r.width, 340), window.innerWidth - 16);
+  const left = Math.max(8, Math.min(r.left, window.innerWidth - larg - 8));
+  const embaixo = window.innerHeight - r.bottom, alto = 360;
+  const posV = embaixo >= alto || embaixo >= r.top ? `top:${r.bottom + 4}px` : `bottom:${window.innerHeight - r.top + 4}px`;
+  const maxH = Math.max(160, Math.min(300, (embaixo >= alto || embaixo >= r.top ? embaixo : r.top) - 70));
+  pop.style.cssText = `position:fixed;left:${left}px;${posV};width:${larg}px;z-index:10050;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--r10);box-shadow:0 12px 30px rgba(0,0,0,.2);overflow:hidden`;
+  pop.innerHTML = `<div style="position:relative;border-bottom:1px solid var(--border)">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);line-height:0;pointer-events:none">${lc('search', 15, 'var(--muted)')}</span>
+      <input id="${id}Q" autocomplete="off" placeholder="Digite para buscar…" style="width:100%;border:none;outline:none;padding:12px 12px 12px 36px;font-size:var(--text-md);font-family:inherit;background:transparent;color:var(--text)"
+        oninput="_cpCb['${id}'].q=this.value;_cpCb['${id}'].ix=0;_cpCbFiltrar('${id}')" onkeydown="_cpCbTecla(event,'${id}')">
+    </div>
+    <div id="${id}Lista" style="max-height:${maxH}px;overflow-y:auto;padding:4px"></div>`;
+  document.body.appendChild(pop);
+  document.getElementById(id + 'Q').focus();
+  _cpCbFiltrar(id);
+}
+function _cpCbFechar(id) { document.getElementById(id + 'Pop')?.remove(); }
+// Clique fora, rolagem da tela de trás ou redimensionar fecham a lista
+document.addEventListener('mousedown', e => {
+  document.querySelectorAll('.cp-cb-pop').forEach(p => {
+    const dono = document.getElementById(p.dataset.dono);
+    if (!p.contains(e.target) && !(dono && dono.contains(e.target))) p.remove();
+  });
+});
+document.addEventListener('scroll', e => { if (!e.target.closest?.('.cp-cb-pop')) document.querySelectorAll('.cp-cb-pop').forEach(p => p.remove()); }, true);
+window.addEventListener('resize', () => document.querySelectorAll('.cp-cb-pop').forEach(p => p.remove()));
+
+function _cpCbLista(id) {
+  const cfg = _cpCb[id], q = _cpCbNorm(cfg.q);
+  const ops = _cpCbOpcoes(cfg).filter(o => !q || _cpCbNorm(o.label).includes(q) || _cpCbNorm(o.sub).includes(q))
+    .sort((a, b) => (q ? (_cpCbNorm(a.label).startsWith(q) ? 0 : 1) - (_cpCbNorm(b.label).startsWith(q) ? 0 : 1) : 0) || a.label.localeCompare(b.label)).slice(0, 100);
+  const acoes = [];
+  if (cfg.tipo === 'fornecedor' && q && !ops.some(o => _cpCbNorm(o.label) === q)) {
+    acoes.push({ acao: 'novo', label: `Cadastrar fornecedor "${cfg.q.trim()}"`, icon: 'plus' });
+    if (cfg.avulso) acoes.push({ acao: 'avulso', label: `Usar "${cfg.q.trim()}" só nesta compra`, sub: 'mercado, compra presencial', icon: 'shopping-cart' });
+  }
+  return [...ops, ...acoes];
+}
+
+function _cpCbFiltrar(id) {
+  const el = document.getElementById(id + 'Lista'); if (!el) return;
+  const cfg = _cpCb[id], lista = _cpCbLista(id);
+  cfg.ix = Math.min(cfg.ix, Math.max(0, lista.length - 1));
+  el.innerHTML = lista.length ? lista.map((o, k) => `<div class="cp-cb-op" data-k="${k}" onmousedown="event.preventDefault();_cpCbEscolher('${id}',${k})" onmouseenter="_cpCbMarcar('${id}',${k})"
+      style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:var(--r8);cursor:pointer;${k === cfg.ix ? 'background:var(--purple-xlight)' : ''}${o.acao ? ';color:var(--purple);font-weight:700' : ''}">
+      <span style="display:flex;align-items:center;gap:6px;min-width:0">${o.acao ? lc(o.icon, 14, 'currentColor') : ''}<span style="min-width:0">
+        <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${o.v === cfg.valor ? 'font-weight:800' : 'font-weight:600'}">${_estEsc(o.label)}</span>
+        ${o.sub && !o.acao ? `<span style="display:block;font-size:var(--text-2xs);color:var(--muted)">${_estEsc(o.sub)}</span>` : o.sub ? `<span style="display:block;font-size:var(--text-2xs);color:var(--muted);font-weight:400">${_estEsc(o.sub)}</span>` : ''}</span></span>
+      ${o.tag ? `<span class="badge b-gray" style="font-size:var(--text-2xs);white-space:nowrap">${_estEsc(o.tag)}</span>` : ''}</div>`).join('')
+    : `<div style="padding:12px;color:var(--muted);font-size:var(--text-sm)">${cfg.tipo === 'insumo' ? 'Nenhum insumo encontrado' : 'Digite o nome para buscar ou cadastrar'}</div>`;
+}
+
+function _cpCbMarcar(id, k) {
+  _cpCb[id].ix = k;
+  document.querySelectorAll(`#${id}Lista .cp-cb-op`).forEach(el => { el.style.background = +el.dataset.k === k ? 'var(--purple-xlight)' : ''; });
+}
+
+function _cpCbTecla(ev, id) {
+  const cfg = _cpCb[id], n = _cpCbLista(id).length;
+  const mover = k => { _cpCbMarcar(id, k); document.querySelector(`#${id}Lista .cp-cb-op[data-k="${k}"]`)?.scrollIntoView({ block: 'nearest' }); };
+  if (ev.key === 'ArrowDown') { ev.preventDefault(); mover(Math.min(cfg.ix + 1, n - 1)); }
+  else if (ev.key === 'ArrowUp') { ev.preventDefault(); mover(Math.max(cfg.ix - 1, 0)); }
+  else if (ev.key === 'Enter') { ev.preventDefault(); if (n) _cpCbEscolher(id, cfg.ix); }
+  else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); _cpCbFechar(id); }
+}
+
+function _cpCbEscolher(id, k) {
+  const cfg = _cpCb[id], o = _cpCbLista(id)[k];
+  if (!o) return;
+  _cpCbFechar(id);
+  if (o.acao === 'novo') return cpFornecedorRapido(cfg.q.trim(), id);
+  cpComboSet(id, o.acao === 'avulso' ? 'avulso:' + cfg.q.trim() : o.v);
+}
+
+// Define o valor, atualiza o rótulo e roda o "ao"
+function cpComboSet(id, valor) {
+  const cfg = _cpCb[id]; if (!cfg) return;
+  cfg.valor = valor;
+  const lab = document.getElementById(id + 'Lab');
+  if (lab) { const t = _cpCbLabel(cfg); lab.textContent = t; lab.style.color = 'var(--text)'; lab.style.fontWeight = '600'; }
+  if (cfg.ao) (new Function(cfg.ao.replace(/%v/g, JSON.stringify(valor))))();
+}
+const cpComboValor = id => _cpCb[id]?.valor ?? null;
+
+// Cadastro rápido de fornecedor (o completo fica em Configurações › Fornecedores)
+function cpFornecedorRapido(nome, comboId) {
+  _estModal('ovFornRap', 'Novo fornecedor', `
+    ${_estCampo('Nome *', `<input class="inp" id="frNome" value="${_estEsc(nome)}">`)}
+    <div class="f2">
+      ${_estCampo('Vendedor', `<input class="inp" id="frSeller" placeholder="opcional">`)}
+      ${_estCampo('Telefone / WhatsApp', `<input class="inp" id="frPhone" inputmode="tel" placeholder="(82) 99999-9999">`)}
+    </div>
+    ${_estCampo('CNPJ', `<input class="inp" id="frCnpj" inputmode="numeric" placeholder="opcional">`)}
+    <div style="font-size:var(--text-xs);color:var(--muted)">Prazo de entrega, pedido mínimo e insumos dá para completar depois em Configurações › Fornecedores.</div>`,
+    `_cpFornRapSalvar('${comboId}')`, 'Cadastrar', 500);
+  setTimeout(() => document.getElementById('frNome')?.focus(), 50);
+}
+
+function _cpFornRapSalvar(comboId) {
+  const name = document.getElementById('frNome').value.trim();
+  if (!name) return toast('Informe o nome', 'err');
+  if (suppliers.some(s => s.active !== false && _cpCbNorm(s.name) === _cpCbNorm(name))) return toast('Já existe um fornecedor com esse nome', 'err');
+  const nid = nextSid++;
+  suppliers.push({ id: nid, name, seller: document.getElementById('frSeller').value.trim(), phone: document.getElementById('frPhone').value.trim(),
+    cnpj: cpSoDigitos(document.getElementById('frCnpj').value), email: '', cats: '', diasPedido: [], categoria: [], confianca: 'backup', formaEntrega: 'entrega' });
+  if (typeof saveS === 'function') saveS();
+  try { logAudit('fornecedor_salvo', name, 'compras'); } catch (e) {}
+  document.getElementById('ovFornRap')?.remove();
+  toast(`Fornecedor "${name}" cadastrado`, 'ok');
+  cpComboSet(comboId, nid);
 }

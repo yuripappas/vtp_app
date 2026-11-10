@@ -232,7 +232,6 @@ function _cpNCRender() {
 
 function _cpNCPasso1() {
   const n = _cpNC;
-  const forns = (typeof suppliers !== 'undefined' ? suppliers : []).filter(s => s.active !== false).sort((a, b) => a.name.localeCompare(b.name));
   return `
     ${n.origem !== 'manual' ? `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--purple-xlight);font-size:var(--text-sm);margin-bottom:14px">
       ${lc('file-text', 14, 'var(--purple)')}<div>Dados lidos da nota (${n.origem === 'xml' ? 'XML da NF-e' : 'IA'}). Confira antes de seguir.</div></div>` : ''}
@@ -241,14 +240,8 @@ function _cpNCPasso1() {
       ${_estCampo('Número da nota', `<input class="inp" id="ncNumero" value="${_estEsc(n.numero)}" placeholder="nº da nota ou cupom">`)}
     </div>
     <div class="f2">
-      ${_estCampo('Fornecedor', `<select class="inp" id="ncForn" onchange="document.getElementById('ncFornOutroBox').style.display=this.value==='outro'?'':'none'">
-        <option value="">— Selecionar —</option>
-        ${forns.map(s => `<option value="${s.id}"${s.id === n.fornecedorId ? ' selected' : ''}>${_estEsc(s.name)}</option>`).join('')}
-        <option value="outro"${!n.fornecedorId && n.fornecedorNome ? ' selected' : ''}>Outro (compra presencial, mercado…)</option>
-      </select>`)}
-      <div id="ncFornOutroBox" style="${!n.fornecedorId && n.fornecedorNome ? '' : 'display:none'}">
-        ${_estCampo('Nome do local / fornecedor', `<input class="inp" id="ncFornNome" value="${_estEsc(!n.fornecedorId ? n.fornecedorNome : '')}" placeholder="ex: Assaí Atacadista">`)}
-      </div>
+      ${_estCampo('Fornecedor *', cpComboHtml('ncForn', { tipo: 'fornecedor', avulso: true, valor: n.fornecedorId || (n.fornecedorNome ? 'avulso:' + n.fornecedorNome : null) }))}
+      <div style="font-size:var(--text-xs);color:var(--muted);align-self:end;padding-bottom:12px">Não achou? Digite o nome para cadastrar ou usar só nesta compra (mercado, presencial).</div>
     </div>
     ${n.fornecedorDoc ? `<div style="font-size:var(--text-xs);color:var(--muted);margin:-6px 0 10px">CNPJ da nota: ${_estEsc(n.fornecedorDoc)}</div>` : ''}
     ${_estCampo('Observações', `<textarea class="inp" id="ncObs" rows="2" placeholder="opcional">${_estEsc(n.obs)}</textarea>`)}
@@ -343,8 +336,8 @@ function _cpNCLer() {
     n.data = document.getElementById('ncData')?.value || n.data;
     n.numero = document.getElementById('ncNumero')?.value.trim() || '';
     n.obs = document.getElementById('ncObs')?.value.trim() || '';
-    const f = document.getElementById('ncForn')?.value || '';
-    if (f === 'outro') { n.fornecedorId = null; n.fornecedorNome = document.getElementById('ncFornNome')?.value.trim() || ''; }
+    const f = cpComboValor('ncForn');
+    if (typeof f === 'string' && f.startsWith('avulso:')) { n.fornecedorId = null; n.fornecedorNome = f.slice(7); }
     else if (f) { n.fornecedorId = +f; n.fornecedorNome = cpFornecedor(+f)?.name || ''; }
     else { n.fornecedorId = null; n.fornecedorNome = ''; }
   }

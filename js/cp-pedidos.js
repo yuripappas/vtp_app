@@ -120,16 +120,14 @@ async function cpRenderAbaPedidos(forcar = false) {
 
 function cpNovoPedido() {
   const forns = (typeof suppliers !== 'undefined' ? suppliers : []).filter(s => s.active !== false).sort((a, b) => a.name.localeCompare(b.name));
-  const nItens = f => items.filter(i => i.active !== false && !i.isProd && _clDoFornecedor(i, f.id)).length;
   _estModal('ovPdNovo', 'Novo pedido', `
-    ${_estCampo('Fornecedor *', `<select class="inp" id="pdForn"><option value="">— Selecionar —</option>
-      ${forns.map(s => `<option value="${s.id}">${_estEsc(s.name)} · ${nItens(s)} insumo(s)</option>`).join('')}</select>`)}
+    ${_estCampo('Fornecedor *', cpComboHtml('pdForn', { tipo: 'fornecedor' }))}
     <div style="font-size:var(--text-xs);color:var(--muted);line-height:1.5">A tela abre com os insumos deste fornecedor e a sugestão pelo estoque. Insumos de outros fornecedores aparecem no fim, para habilitar se precisar.</div>`,
     '_pdCriar()', 'Montar pedido', 520);
 }
 
 function _pdCriar() {
-  const f = +document.getElementById('pdForn').value;
+  const f = +cpComboValor('pdForn');
   if (!f) return toast('Escolha o fornecedor', 'err');
   document.getElementById('ovPdNovo')?.remove();
   const aberto = (_pdDados?.pedidos || []).find(p => p.fornecedor_id === f && ['montagem', 'devolvido'].includes(p.status));
