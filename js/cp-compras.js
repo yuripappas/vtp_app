@@ -28,15 +28,14 @@ async function cpRenderAbaCompras(forcar = false) {
   if (!_cpComprasDados || _cpComprasDados.chave !== chave || forcar) {
     el.innerHTML = `<div style="padding:60px;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:var(--text-md)">${lc('refresh-cw', 16, 'currentColor')} Carregando compras…</div>`;
     try {
-      const [compras, listas, pedidos] = await Promise.all([
+      const [compras, pedidos] = await Promise.all([
         cpSelect('cp_compras', q => q.select('*').is('excluido_em', null).gte('data_compra', _cpPer.de).lte('data_compra', _cpPer.ate).order('data_compra', { ascending: false })),
-        cpSelect('cp_listas', q => q.select('id, status, semana_inicio').is('excluido_em', null).gte('semana_inicio', _cpPer.de).lte('semana_inicio', _cpPer.ate)),
         cpSelect('cp_pedidos', q => q.select('id, status, total_previsto, created_at').is('excluido_em', null).gte('created_at', _cpPer.de).lte('created_at', _cpPer.ate + 'T23:59:59')),
       ]);
       const ids = compras.map(c => c.id);
       const itens = ids.length ? await cpSelect('cp_compra_itens', q => q.select('compra_id').in('compra_id', ids)) : [];
       const nItens = {}; itens.forEach(i => { nItens[i.compra_id] = (nItens[i.compra_id] || 0) + 1; });
-      _cpComprasDados = { chave, compras, listas, pedidos, nItens };
+      _cpComprasDados = { chave, compras, pedidos, nItens };
     } catch (e) {
       el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui carregar as compras: ${_estEsc(e.message)}
         <div style="font-size:var(--text-sm);color:var(--muted);margin-top:6px">Se for a primeira vez, confira se a migração do módulo de compras foi rodada no Supabase.</div>
@@ -44,7 +43,7 @@ async function cpRenderAbaCompras(forcar = false) {
       return;
     }
   }
-  if (!document.getElementById('cpAbaBody')) return;
+  if (!document.getElementById('cpAbaBody') || _cpAba !== 'compras') return;   // trocou de aba enquanto carregava
   _cpRenderComprasConteudo();
 }
 
@@ -57,7 +56,7 @@ function _cpMudarSemana(delta) {
 
 function _cpRenderComprasConteudo() {
   const el = document.getElementById('cpAbaBody');
-  const { compras, listas, pedidos, nItens } = _cpComprasDados;
+  const { compras, pedidos, nItens } = _cpComprasDados;
   const total = compras.reduce((s, c) => s + (Number(c.total) || 0), 0);
   const ehSemanaAtual = _cpPer.de === cpSemana(0).de && _cpPer.ate === cpSemana(0).ate;
   const kpi = (t, v, sub) => `<div style="background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--r12);padding:16px 18px">
@@ -66,7 +65,6 @@ function _cpRenderComprasConteudo() {
     <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px">${sub}</div></div>`;
 
   // Status do ciclo (semana): listas → pedidos → recebidos
-  const nL = st => listas.filter(l => l.status === st).length;
   const nP = st => pedidos.filter(p => st.includes(p.status)).length;
   const avulsas = compras.filter(c => c.origem !== 'pedido').length;
   const etapa = (icon, titulo, valor, sub) => `<div style="flex:1;min-width:150px;padding:12px 14px;border-radius:var(--r8);background:var(--surface2)">
@@ -86,8 +84,7 @@ function _cpRenderComprasConteudo() {
       </div>
       ${ehSemanaAtual ? `<span class="badge b-purple">Semana atual</span>` : `<button class="btn btn-ghost btn-sm" onclick="_cpPer=cpSemana(0);cpRenderAbaCompras()">Voltar para a semana atual</button>`}
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-outline btn-sm" onclick="cpImportarNota()">${lc('upload', 14, 'currentColor')} Importar nota (XML, foto ou PDF)</button>
-        <button class="btn btn-primary btn-sm" onclick="cpNovaCompra()">${lc('plus', 14, '#fff')} Nova compra</button>
+        <button class="btn btn-primary" onclick="cpNovaCompra()">${lc('plus', 15, '#fff')} Nova compra</button>
       </div>
     </div>
 
@@ -100,10 +97,9 @@ function _cpRenderComprasConteudo() {
     <div class="card" style="padding:14px 16px;margin-bottom:16px">
       <div style="font-size:var(--text-md);font-weight:800;margin-bottom:10px">Status do ciclo de compras</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">
-        ${etapa('clipboard-list', 'Listas', `${nL('aprovada') + nL('arquivada')}/${listas.length}`, `aprovadas · ${nL('aguardando')} aguardando`)}${seta}
-        ${etapa('tag', 'Cotação', nP(['rascunho']), 'pedidos em rascunho')}${seta}
+        ${etapa('edit-3', 'Lançamento manual', avulsas, `${_estR(compras.filter(c => c.origem !== 'pedido').reduce((s, c) => s + (+c.total || 0), 0))} em compras avulsas`)}
         ${etapa('send', 'Pedido solicitado', nP(['solicitado', 'parcial']), 'aguardando entrega')}${seta}
-        ${etapa('check-circle', 'Recebidos', nP(['recebido']), `${_estR(compras.filter(c => c.origem === 'pedido').reduce((s, c) => s + (+c.total || 0), 0))}`)}
+        ${etapa('check-circle', 'Recebidos', nP(['recebido']), `${_estR(compras.filter(c => c.origem === 'pedido').reduce((s, c) => s + (+c.total || 0), 0))} em pedidos recebidos`)}
       </div>
     </div>
 
@@ -147,8 +143,10 @@ async function cpVerCompra(id) {
     ${c.obs ? `<div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:12px">${_estEsc(c.obs)}</div>` : ''}
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
       ${itens.map(i => `<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-top:1px solid var(--border);font-size:var(--text-sm)">
-        <div><strong>${_estEsc(i.item_nome)}</strong><div style="color:var(--muted);font-size:var(--text-xs)">${_estQ(i.qtd)} ${_estEsc(i.unidade || '')} × ${_estR(i.preco_unit)}${i.desc_nota ? ` · na nota: ${_estEsc(i.desc_nota)}` : ''}</div></div>
-        <strong style="white-space:nowrap">${_estR(i.total)}</strong></div>`).join('')}
+        <div><strong>${_estEsc(i.item_nome)}</strong><div style="color:var(--muted);font-size:var(--text-xs)">${i.apresentacao?.fator > 0 ? `${_estQ(i.qtd / i.apresentacao.fator)} ${_estEsc(i.apresentacao.nome)} = ` : ''}${_estQ(i.qtd)} ${_estEsc(i.unidade || '')} × ${_estR(i.preco_unit)}/${_estEsc(i.unidade || 'un')}${Number(i.acrescimo) ? ` (inclui ${_estR(i.acrescimo)} de impostos/desc. da nota)` : ''}${i.desc_nota ? ` · na nota: ${_estEsc(i.desc_nota)}` : ''}</div></div>
+        <strong style="white-space:nowrap">${_estR((+i.total || 0) + (+i.acrescimo || 0))}</strong></div>`).join('')}
+      ${[['ipi', 'IPI'], ['icms_st', 'ICMS ST'], ['seguro', 'Seguro'], ['outras', 'Outras despesas'], ['desconto', 'Desconto'], ['frete', 'Frete (fora do custo)']].filter(([k]) => Number(c[k])).map(([k, t]) =>
+        `<div style="display:flex;justify-content:space-between;padding:8px 12px;border-top:1px solid var(--border);font-size:var(--text-sm);color:var(--text2)"><span>${t}</span><span>${k === 'desconto' ? '−' : ''}${_estR(c[k])}</span></div>`).join('')}
       <div style="display:flex;justify-content:space-between;padding:12px;background:var(--surface2);font-weight:800"><span>Total da compra</span><span>${_estR(c.total)}</span></div>
     </div>
     <div style="font-size:var(--text-xs);color:var(--muted);margin-top:10px">Os itens entraram no estoque como ${c.origem === 'pedido' ? 'Recebimento' : 'Compra avulsa'} em ${_estDH(c.created_at)}, quando a compra foi registrada.</div>`,
@@ -183,23 +181,26 @@ function cpExcluirCompra(id) {
 
 // ══════════════════════════════════════════════════════════════
 // NOVA COMPRA (Dados gerais → Itens → Revisão)
+// Cada item: insumo, embalagem (unidade base ou apresentação cadastrada),
+// quantidade na embalagem e valor unitário ou total; mostra a conversão.
 // ══════════════════════════════════════════════════════════════
 
 let _cpNC = null;
 
 function _cpNCVazio() {
   return { passo: 1, data: cpIso(new Date()), fornecedorId: null, fornecedorNome: '', fornecedorDoc: '', numero: '', chave: null,
-           obs: '', origem: 'manual', arquivo: null, totalNota: null, itens: [] };
+           obs: '', origem: 'manual', arquivo: null, totalNota: null, extras: cpExtrasVazio(), itens: [] };
 }
 
 function cpNovaCompra(dados = null) {
   _cpNC = dados || _cpNCVazio();
+  if (!_cpNC.extras) _cpNC.extras = cpExtrasVazio();
   if (!_cpNC.itens.length) _cpNC.itens.push(_cpLinhaVazia());
-  _estModal('ovCpNC', 'Nova compra', '', '_cpNCAvancar()', 'Próximo', 860);
+  _estModal('ovCpNC', 'Nova compra', '', '_cpNCAvancar()', 'Próximo', 920);
   _cpNCRender();
 }
 
-const _cpLinhaVazia = () => ({ key: crypto.randomUUID(), item_id: null, qtd: null, preco_unit: null, total: null, fator: 1,
+const _cpLinhaVazia = () => ({ key: crypto.randomUUID(), item_id: null, ap: null, n: null, modo: 'unit', vUnit: null, vTotal: null, impNota: null,
   desc_nota: null, cod_nota: null, qtd_nota: null, unid_nota: null, valor_nota: null, sugestao: false, memoria: false });
 
 function _cpNCRender() {
@@ -214,6 +215,7 @@ function _cpNCRender() {
       <span style="font-size:var(--text-sm);font-weight:${on ? 700 : 500};color:${on ? 'var(--text)' : 'var(--muted)'}">${p}</span></div>`;
   }).join('')}</div>`;
   body.innerHTML = barra + (n.passo === 1 ? _cpNCPasso1() : n.passo === 2 ? _cpNCPasso2() : _cpNCPasso3());
+  if (n.passo === 2) _cpNCAtualizar();
 
   const salvar = document.getElementById('ovCpNC-salvar');
   if (salvar) salvar.textContent = n.passo === 3 ? 'Salvar compra e dar entrada no estoque' : 'Próximo';
@@ -255,42 +257,48 @@ function _cpNCPasso1() {
 }
 
 function _cpItemOpts(sel) {
-  return _estOptsItens(i => true, sel);
+  return _estOptsItens(i => !i.isProd, sel);
 }
 
 function _cpNCPasso2() {
   const n = _cpNC;
   const temNota = n.itens.some(l => l.desc_nota);
-  const soma = n.itens.reduce((s, l) => s + (Number(l.total) || 0), 0);
-  const linhas = n.itens.map((l, idx) => {
-    const item = items.find(i => i.id === l.item_id);
-    const un = item?.unit || '';
-    return `<div style="border:1.5px solid ${l.item_id ? 'var(--border)' : 'var(--warning-bg)'};border-radius:var(--r8);padding:10px 12px;margin-bottom:8px;background:var(--card-bg)">
-      ${l.desc_nota ? `<div style="display:flex;justify-content:space-between;gap:10px;font-size:var(--text-xs);color:var(--text2);margin-bottom:8px">
+  const linhas = n.itens.map((l, idx) => `<div id="ncL${idx}" style="border:1.5px solid ${l.item_id ? 'var(--border)' : 'var(--warning-bg)'};border-radius:var(--r8);padding:10px 12px;margin-bottom:8px;background:var(--card-bg);position:relative">
+      ${l.desc_nota ? `<div style="display:flex;justify-content:space-between;gap:10px;font-size:var(--text-xs);color:var(--text2);margin-bottom:8px;padding-right:30px">
         <span>Na nota: <strong>${_estEsc(l.desc_nota)}</strong>${l.cod_nota ? ` · cód. ${_estEsc(l.cod_nota)}` : ''}</span>
         <span style="white-space:nowrap">${_estQ(l.qtd_nota)} ${_estEsc(l.unid_nota || '')} · ${_estR(l.valor_nota)}</span></div>` : ''}
-      <div style="display:grid;grid-template-columns:minmax(220px,2.2fr) ${l.desc_nota ? 'minmax(130px,1fr) ' : ''}minmax(100px,.9fr) minmax(110px,1fr) minmax(110px,1fr) 32px;gap:8px;align-items:end">
-        <div class="field" style="margin:0"><label>Insumo ${l.sugestao ? '<span style="color:var(--warning-fg);text-transform:none;letter-spacing:0">· sugestão, confira</span>' : l.memoria ? '<span style="color:var(--success-fg);text-transform:none;letter-spacing:0">· reconhecido</span>' : ''}</label>
-          <select class="inp" onchange="_cpNCSetItem(${idx}, +this.value||null)">${_cpItemOpts(l.item_id)}</select></div>
-        ${l.desc_nota ? `<div class="field" style="margin:0"><label style="text-transform:none;letter-spacing:0">1 ${_estEsc(l.unid_nota || 'un')} da nota =</label>
-          <div style="display:flex;align-items:center;gap:4px"><input class="inp" type="number" min="0" step="0.001" value="${l.fator}" oninput="_cpNCSetFator(${idx}, this.value)"><span style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(un)}</span></div></div>` : ''}
-        <div class="field" style="margin:0"><label>Qtd ${un ? `(${_estEsc(un)})` : ''}</label>
-          <input class="inp" type="number" min="0" step="0.001" id="ncQ${idx}" value="${l.qtd ?? ''}" oninput="_cpNCSetCampo(${idx}, 'qtd', this.value)"></div>
-        <div class="field" style="margin:0"><label>Preço / ${_estEsc(un || 'un')}</label>
-          <input class="inp" type="number" min="0" step="0.01" id="ncP${idx}" value="${l.preco_unit ?? ''}" oninput="_cpNCSetCampo(${idx}, 'preco_unit', this.value)"></div>
-        <div class="field" style="margin:0"><label>Total</label>
-          <input class="inp" type="number" min="0" step="0.01" id="ncT${idx}" value="${l.total ?? ''}" oninput="_cpNCSetCampo(${idx}, 'total', this.value)"></div>
-        <button class="btn btn-ghost btn-xs" title="Remover" onclick="_cpNC.itens.splice(${idx},1);_cpNCRender()" style="color:var(--danger-fg)">${lc('trash-2', 14, 'currentColor')}</button>
-      </div></div>`;
-  }).join('');
+      <button class="btn btn-ghost btn-xs" title="Remover" onclick="_cpNC.itens.splice(${idx},1);_cpNCRender()" style="position:absolute;top:6px;right:6px;color:var(--danger-fg)">${lc('trash-2', 14, 'currentColor')}</button>
+      <div style="padding-right:${l.desc_nota ? 0 : 30}px">${cpLinhaCamposHtml(l, idx, '_cpNC')}</div></div>`).join('');
   return `
-    ${temNota ? `<div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:10px;line-height:1.5">Ligue cada produto da nota a um insumo e confira a conversão (ex.: 1 CX = 12 UN). A VTP lembra dessa ligação para as próximas notas deste fornecedor.</div>` : ''}
+    ${temNota ? `<div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:10px;line-height:1.5">Ligue cada produto da nota a um insumo e escolha a embalagem (ex.: 1 UN da nota = Lata 1,7 kg). A VTP lembra dessa ligação para as próximas notas deste fornecedor.</div>` : ''}
     ${linhas}
     <button class="btn btn-outline btn-sm" onclick="_cpNC.itens.push(_cpLinhaVazia());_cpNCRender()">${lc('plus', 13, 'currentColor')} Adicionar item</button>
-    <div style="display:flex;justify-content:flex-end;gap:18px;margin-top:12px;font-size:var(--text-md)">
-      ${n.totalNota !== null ? `<span style="color:var(--muted)">Total da nota: <strong style="color:var(--text)">${_estR(n.totalNota)}</strong></span>` : ''}
-      <span>Soma dos itens: <strong id="ncSoma">${_estR(soma)}</strong></span>
-    </div>`;
+    ${cpTotaisNotaHtml(n.extras, n.totalNota, '_cpNC', CP_EXTRAS.some(e => n.extras[e.k]))}
+    <div id="ncResumo" style="margin-top:12px"></div>`;
+}
+
+// Recalcula conversões e totais sem redesenhar (mantém o foco no campo)
+function _cpNCAtualizar() {
+  const n = _cpNC;
+  const rat = cpRatear(n.itens, n.extras);
+  n.itens.forEach((l, idx) => { const el = document.getElementById('_cpNCConv' + idx); if (el) el.innerHTML = cpConvTexto(l, rat.get(l) || 0); });
+  const r = document.getElementById('ncResumo');
+  if (r) r.innerHTML = cpTotaisResumoHtml(cpResumoNota(n.itens, n.extras), n.totalNota);
+}
+
+function _cpNCLinha(idx, campo, v) {
+  const l = _cpNC.itens[idx];
+  if (cpLinhaSet(l, campo, v)) {
+    const box = document.getElementById('ncL' + idx);
+    if (box) { const div = box.querySelector('.cp-linha')?.parentElement; if (div) div.innerHTML = cpLinhaCamposHtml(l, idx, '_cpNC'); box.style.borderColor = l.item_id ? 'var(--border)' : 'var(--warning-bg)'; }
+  }
+  _cpNCAtualizar();
+}
+
+function _cpNCExtra(k, v) {
+  if (k === 'totalNota') _cpNC.totalNota = cpNum(v);
+  else _cpNC.extras[k] = cpNum(v) || 0;
+  _cpNCAtualizar();
 }
 
 // Unidade da nota (CX, PCT, FD…) → quantos da unidade do insumo vêm nela, pela apresentação
@@ -305,64 +313,27 @@ function cpFatorUnidadeNota(item, unid) {
   return Number((casa || aps.find(a => a.padrao) || (aps.length === 1 ? aps[0] : null))?.qtd) || 0;
 }
 
-function _cpNCSetItem(idx, itemId) {
-  const l = _cpNC.itens[idx];
-  l.item_id = itemId; l.sugestao = false; l.memoria = false;
-  const item = items.find(i => i.id === itemId);
-  if (item && l.desc_nota && l.fator === 1 && l.unid_nota) { const f = cpFatorUnidadeNota(item, l.unid_nota); if (f > 0) l.fator = f; }
-  _cpNCRecalcNota(l);
-  if (item && !l.desc_nota && l.preco_unit === null && item.cost) { l.preco_unit = item.cost; if (l.qtd) l.total = _estRound(l.qtd * l.preco_unit); }
-  _cpNCRender();
-}
-
-function _cpNCSetFator(idx, v) {
-  const l = _cpNC.itens[idx];
-  l.fator = parseFloat(v) || 1;
-  _cpNCRecalcNota(l);
-  ['Q', 'P'].forEach(k => { const el = document.getElementById('nc' + k + idx); if (el) el.value = k === 'Q' ? (l.qtd ?? '') : (l.preco_unit ?? ''); });
-}
-
-// Linha vinda de nota: qtd = qtd da nota × fator; preço = valor ÷ qtd
-function _cpNCRecalcNota(l) {
-  if (!l.desc_nota) return;
-  if (l.qtd_nota > 0) l.qtd = _estRound(l.qtd_nota * (l.fator || 1));
-  if (l.valor_nota !== null) l.total = Math.round(l.valor_nota * 100) / 100;
-  if (l.qtd > 0 && l.total !== null) l.preco_unit = Math.round(l.total / l.qtd * 10000) / 10000;
-}
-
-function _cpNCSetCampo(idx, campo, v) {
-  const l = _cpNC.itens[idx];
-  l[campo] = v === '' ? null : parseFloat(v);
-  if (campo === 'total' && l.qtd > 0 && l.total !== null) l.preco_unit = Math.round(l.total / l.qtd * 10000) / 10000;
-  else if (l.qtd !== null && l.preco_unit !== null) l.total = Math.round(l.qtd * l.preco_unit * 100) / 100;
-  const set = (id, val) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = val ?? ''; };
-  set('ncP' + idx, l.preco_unit); set('ncT' + idx, l.total);
-  const soma = document.getElementById('ncSoma');
-  if (soma) soma.textContent = _estR(_cpNC.itens.reduce((s, x) => s + (Number(x.total) || 0), 0));
-}
-
 function _cpNCPasso3() {
   const n = _cpNC;
-  const validos = n.itens.filter(l => l.item_id && l.qtd > 0);
-  const soma = validos.reduce((s, l) => s + (Number(l.total) || 0), 0);
-  const dif = n.totalNota !== null ? soma - n.totalNota : 0;
+  const rat = cpRatear(n.itens, n.extras);
+  const validos = [...rat.keys()];
+  const r = cpResumoNota(n.itens, n.extras);
   const forn = n.fornecedorId ? cpFornecedor(n.fornecedorId)?.name : n.fornecedorNome;
   return `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px 18px;font-size:var(--text-sm);margin-bottom:14px">
       <div><div style="color:var(--muted)">Data</div><strong>${cpDataBr(n.data)}</strong></div>
       <div><div style="color:var(--muted)">Fornecedor</div><strong>${_estEsc(forn || '—')}</strong></div>
       <div><div style="color:var(--muted)">Nota</div><strong>${_estEsc(n.numero || '—')}</strong></div>
-      <div><div style="color:var(--muted)">Total</div><strong style="font-size:var(--text-lg)">${_estR(soma)}</strong></div>
+      <div><div style="color:var(--muted)">Total</div><strong style="font-size:var(--text-lg)">${_estR(r.total)}</strong></div>
     </div>
-    ${Math.abs(dif) > 0.05 ? `<div style="padding:10px 14px;border-radius:var(--r8);background:var(--warning-bg);color:var(--warning-fg);font-size:var(--text-sm);margin-bottom:12px">
-      A soma dos itens (${_estR(soma)}) está ${dif > 0 ? 'acima' : 'abaixo'} do total da nota (${_estR(n.totalNota)}) em ${_estR(Math.abs(dif))}. Pode ser desconto, frete ou item que ficou de fora.</div>` : ''}
     <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:6px">Vai entrar no estoque (${validos.length} itens)</div>
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
-      ${validos.map(l => { const it = items.find(i => i.id === l.item_id); const loc = estLocalEntrada(it); return `
+      ${validos.map(l => { const it = items.find(i => i.id === l.item_id); const loc = estLocalEntrada(it); const c = cpLinhaCalc(l); const acr = rat.get(l) || 0; return `
         <div style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-top:1px solid var(--border);font-size:var(--text-sm)">
-          <div><strong>${_estEsc(it?.name)}</strong><div style="font-size:var(--text-xs);color:var(--muted)">entrada em ${_estEsc(estLocalLabel(loc))} · custo passa a ${_estR(l.preco_unit)}/${_estEsc(it?.unit || '')}</div></div>
-          <div style="text-align:right;white-space:nowrap"><span style="color:var(--success-fg);font-weight:700">+${_estQ(l.qtd)} ${_estEsc(it?.unit || '')}</span><div style="font-size:var(--text-xs);color:var(--muted)">${_estR(l.total)}</div></div></div>`; }).join('')}
+          <div><strong>${_estEsc(it?.name)}</strong><div style="font-size:var(--text-xs);color:var(--muted)">${l.ap ? `${_estQ(c.n)} ${_estEsc(l.ap.nome)} · ` : ''}entrada em ${_estEsc(estLocalLabel(loc))} · custo passa a ${_estR((c.total + acr) / c.qtd)}/${_estEsc(it?.unit || '')}${Math.abs(acr) >= 0.005 ? ' (com impostos)' : ''}</div></div>
+          <div style="text-align:right;white-space:nowrap"><span style="color:var(--success-fg);font-weight:700">+${_estQ(c.qtd)} ${_estEsc(it?.unit || '')}</span><div style="font-size:var(--text-xs);color:var(--muted)">${_estR(c.total + acr)}</div></div></div>`; }).join('')}
     </div>
+    <div style="margin-top:12px">${cpTotaisResumoHtml(r, n.totalNota)}</div>
     ${n.itens.length > validos.length ? `<div style="font-size:var(--text-xs);color:var(--warning-fg);margin-top:8px">${n.itens.length - validos.length} linha(s) sem insumo ou sem quantidade ficam de fora.</div>` : ''}`;
 }
 
@@ -388,7 +359,7 @@ function _cpNCAvancar() {
     n.passo = 2; return _cpNCRender();
   }
   if (n.passo === 2) {
-    if (!n.itens.some(l => l.item_id && l.qtd > 0)) return toast('Adicione pelo menos um item com insumo e quantidade', 'err');
+    if (!n.itens.some(l => l.item_id && cpLinhaCalc(l).qtd > 0)) return toast('Adicione pelo menos um item com insumo e quantidade', 'err');
     n.passo = 3; return _cpNCRender();
   }
   _cpNCSalvar();
@@ -396,7 +367,6 @@ function _cpNCAvancar() {
 
 async function _cpNCSalvar() {
   const n = _cpNC;
-  const validos = n.itens.filter(l => l.item_id && l.qtd > 0);
   const btn = document.getElementById('ovCpNC-salvar');
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
   try {
@@ -406,20 +376,18 @@ async function _cpNCSalvar() {
     }
     const user = estUsuario();
     const anexoPath = n.arquivo ? await cpUploadAnexo(n.arquivo) : null;
-    const total = Math.round(validos.reduce((s, l) => s + (Number(l.total) || 0), 0) * 100) / 100;
+    const r = cpResumoNota(n.itens, n.extras);
+    const ex = n.extras;
     const [compra] = await cpInsert('cp_compras', {
       data_compra: n.data, fornecedor_id: n.fornecedorId, fornecedor_nome: n.fornecedorNome || null,
       fornecedor_doc: n.fornecedorDoc || null, numero_nota: n.numero || null, chave_nfe: n.chave || null,
-      origem: n.origem, total, obs: n.obs || null, anexo_path: anexoPath, criado_por: user,
+      origem: n.origem, total: r.total, frete: _cpR2(ex.frete), ipi: _cpR2(ex.ipi), icms_st: _cpR2(ex.icms_st),
+      seguro: _cpR2(ex.seguro), outras: _cpR2(ex.outras), desconto: _cpR2(ex.desconto),
+      obs: n.obs || null, anexo_path: anexoPath, criado_por: user,
     });
-    const linhas = await cpInsert('cp_compra_itens', validos.map(l => {
-      const it = items.find(i => i.id === l.item_id);
-      return { compra_id: compra.id, item_id: it.id, item_nome: it.name, unidade: it.unit || null, categoria: it.cat || null,
-        qtd: _estRound(l.qtd), preco_unit: l.preco_unit || 0, total: l.total || 0,
-        desc_nota: l.desc_nota, cod_nota: l.cod_nota, qtd_nota: l.qtd_nota, unid_nota: l.unid_nota, fator: l.fator || 1, criado_por: user };
-    }));
+    const linhas = await cpInsert('cp_compra_itens', cpLinhasParaSalvar(n.itens, ex, compra.id, user));
     await cpDarEntradaEstoque(compra, linhas);
-    await _cpSalvarMemoriaNota(n, validos);
+    await _cpSalvarMemoriaNota(n, linhas);
     _cpGuardarCnpjFornecedor(n);
     document.getElementById('ovCpNC')?.remove();
     _cpNC = null;
@@ -569,15 +537,21 @@ function cpParseNFe(texto) {
   const chave = (inf.getAttribute('Id') || '').replace(/\D/g, '') || null;
   const itens = [...inf.getElementsByTagNameNS('*', 'det')].map(det => {
     const p = det.getElementsByTagNameNS('*', 'prod')[0];
+    const imp = det.getElementsByTagNameNS('*', 'imposto')[0];
     const vProd = n(t(p, 'vProd')) || 0, vDesc = n(t(p, 'vDesc')) || 0;
+    // Acréscimos do item que viram custo (Simples Nacional): IPI, ICMS ST, seguro, outras − desconto
+    const acr = (n(t(imp?.getElementsByTagNameNS('*', 'IPI')[0], 'vIPI')) || 0) + (n(t(imp, 'vICMSST')) || 0)
+      + (n(t(p, 'vSeg')) || 0) + (n(t(p, 'vOutro')) || 0) - vDesc;
     return { descricao: t(p, 'xProd') || '', codigo: t(p, 'cProd'), quantidade: n(t(p, 'qCom')), unidade: t(p, 'uCom'),
-             valor_unitario: n(t(p, 'vUnCom')), valor_total: Math.round((vProd - vDesc) * 100) / 100 };
+             valor_unitario: n(t(p, 'vUnCom')), valor_total: Math.round(vProd * 100) / 100, acrescimo: Math.round(acr * 100) / 100 };
   });
   return {
     legivel: true, fornecedor_nome: t(emit, 'xNome'), fornecedor_doc: t(emit, 'CNPJ') || t(emit, 'CPF'),
     numero_nota: t(ide, 'nNF'), chave_nfe: chave && chave.length === 44 ? chave : null,
     data_emissao: (t(ide, 'dhEmi') || t(ide, 'dEmi') || '').slice(0, 10) || null,
     valor_total: n(t(tot, 'vNF')), itens,
+    extras: { ipi: n(t(tot, 'vIPI')) || 0, icms_st: n(t(tot, 'vST')) || 0, seguro: n(t(tot, 'vSeg')) || 0,
+              outras: n(t(tot, 'vOutro')) || 0, desconto: n(t(tot, 'vDesc')) || 0, frete: n(t(tot, 'vFrete')) || 0 },
   };
 }
 
@@ -590,6 +564,7 @@ async function _cpMontarCompraDaNota(nota, origem) {
     fornecedorId: f?.s.id || null, fornecedorNome: f?.s.name || nota.fornecedor_nome || '',
     fornecedorDoc: cpSoDigitos(nota.fornecedor_doc), numero: nota.numero_nota || '',
     chave: nota.chave_nfe || null, totalNota: nota.valor_total ?? null,
+    extras: { ...cpExtrasVazio(), ...(nota.extras || {}) },
   };
   // Memória do fornecedor (pelo CNPJ e pelo id do cadastro)
   const chaves = [...new Set([cpSoDigitos(nota.fornecedor_doc), f?.s.id ? 'forn:' + f.s.id : null].filter(Boolean))];
@@ -601,7 +576,8 @@ async function _cpMontarCompraDaNota(nota, origem) {
   const pool = items.filter(i => i.active !== false).map(i => ({ id: i.id, nome: i.name }));
   dados.itens = nota.itens.map(it => {
     const l = { ..._cpLinhaVazia(), desc_nota: it.descricao, cod_nota: it.codigo || null, qtd_nota: it.quantidade,
-                unid_nota: it.unidade, valor_nota: it.valor_total ?? (it.quantidade && it.valor_unitario ? it.quantidade * it.valor_unitario : null) };
+                unid_nota: it.unidade, valor_nota: it.valor_total ?? (it.quantidade && it.valor_unitario ? it.quantidade * it.valor_unitario : null),
+                impNota: nota.extras && it.acrescimo !== undefined ? it.acrescimo : null, fator: 1 };
     const lembrado = memoria.find(m => m.cod_produto === cpChaveProduto(it.codigo, it.descricao));
     if (lembrado && items.some(i => i.id === lembrado.item_id)) {
       l.item_id = lembrado.item_id; l.fator = Number(lembrado.fator) || 1; l.memoria = true;
@@ -616,7 +592,10 @@ async function _cpMontarCompraDaNota(nota, origem) {
         const f = cpFatorUnidadeNota(item, it.unidade); if (f > 0) l.fator = f;
       }
     }
-    _cpNCRecalcNota(l);
+    // Quantidade e valor como vieram na nota; a embalagem converte (1 UN = Lata 1,7 kg)
+    const item = items.find(i => i.id === l.item_id);
+    l.ap = item ? cpApDoFator(item, l.fator, l.unid_nota) : null;
+    l.n = it.quantidade; l.modo = 'total'; l.vTotal = l.valor_nota;
     return l;
   });
   return dados;

@@ -2,14 +2,12 @@
  * VTP Compras — Vai Ter Pizza!
  * cp-recebimento.js — Aba "Recebimento": um pedido por fornecedor
  *
- * Status:  Rascunho (gerado pela cotação) → Pedido solicitado (o comprador
- *          mandou a mensagem e marcou, com quem e quando) → Recebido parcial
- *          → Recebido · ou Cancelado (com motivo).
- * Destaques: rascunho parado há mais de 2 h, entrega atrasada (pela
- *          previsão de entrega do fornecedor).
- * Conferência: quantidade pedida × recebida, preço combinado × cobrado,
- *          fotos e nota fiscal (XML ou foto lida pela IA preenche os valores).
- *          Confirmar = gera a Compra (origem "pedido") e dá entrada no estoque.
+ * Chegam aqui os pedidos enviados na aba Cotação (Pedido solicitado).
+ * Status: Pedido solicitado → Recebido (com ou sem divergência) · ou Cancelado.
+ *         ("Recebido parcial" só existe no histórico antigo.)
+ * Conferência: embalagem, quantidade e valor de cada item como veio na nota,
+ *         impostos/frete; divergência só sinaliza, a baixa é geral.
+ *         Confirmar = gera a Compra (origem "pedido") e dá entrada no estoque.
  */
 
 let _rcDados = null;
@@ -20,13 +18,14 @@ const RC_STATUS = {
   solicitado: { label: 'Pedido solicitado', cls: 'b-purple', icon: 'send'         },
   parcial:    { label: 'Recebido parcial',  cls: 'b-orange', icon: 'package'      },
   recebido:   { label: 'Recebido',          cls: 'b-green',  icon: 'check-circle' },
+  aprovado:   { label: 'Aprovado · a enviar', cls: 'b-gray', icon: 'check'        },
   cancelado:  { label: 'Cancelado',         cls: 'b-red',    icon: 'x-circle'     },
 };
 
 const _rcAtivo = i => !i.removido_em;
 const _rcHoje = () => cpIso(new Date());
 
-const _rcAberto = p => ['rascunho', 'solicitado', 'parcial'].includes(p.status);
+const _rcAberto = p => ['solicitado', 'parcial'].includes(p.status);
 const _rcDataFech = p => (p.status === 'cancelado' ? p.cancelado_em : p.recebido_em) || p.updated_at || p.created_at;
 function _rcRecarregar() { cpRenderAbaRecebimento(true); }
 
@@ -40,8 +39,8 @@ async function cpRenderAbaRecebimento(forcar = false) {
       // Em aberto sempre aparecem; recebidos e cancelados pela data em que foram fechados, dentro do período
       const r = _perRange('cprec');
       const ini = _estMs(r.inicioISO), fim = _estMs(r.fimISO);
-      const pedidos = (await cpSelect('cp_pedidos', q => q.select('*').is('excluido_em', null)
-        .or(`status.in.(rascunho,solicitado,parcial),and(updated_at.gte.${r.inicioISO},created_at.lte.${r.fimISO})`).order('created_at', { ascending: false })))
+      const pedidos = (await cpSelect('cp_pedidos', q => q.select('*').is('excluido_em', null).in('status', ['solicitado', 'parcial', 'recebido', 'cancelado'])
+        .or(`status.in.(solicitado,parcial),and(updated_at.gte.${r.inicioISO},created_at.lte.${r.fimISO})`).order('created_at', { ascending: false })))
         .filter(p => _rcAberto(p) || (t => t >= ini && t <= fim)(_estMs(_rcDataFech(p))));
       const ids = pedidos.map(p => p.id);
       const itens = ids.length ? (await cpSelect('cp_pedido_itens', q => q.select('*').in('pedido_id', ids))).filter(_rcAtivo) : [];
@@ -60,14 +59,13 @@ async function cpRenderAbaRecebimento(forcar = false) {
       return;
     }
   }
-  if (!document.getElementById('cpAbaBody')) return;
+  if (!document.getElementById('cpAbaBody') || _cpAba !== 'recebimento') return;   // trocou de aba enquanto carregava
   _rcRenderLista();
 }
 
 function _rcAlerta(p) {
-  if (p.status === 'rascunho') {
-    const h = (Date.now() - _estMs(p.created_at)) / 36e5;
-    if (h >= 2) return `<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:var(--text-xs);font-weight:700;color:var(--orange-dark);white-space:nowrap">${lc('alert-triangle', 11, 'currentColor')} não enviado há ${h >= 48 ? Math.floor(h / 24) + ' dias' : Math.floor(h) + ' h'}</span>`;
+  if (p.status === 'recebido' && Array.isArray(p.divergencias) && p.divergencias.length) {
+    return `<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:var(--text-xs);font-weight:700;color:var(--orange-dark);white-space:nowrap">${lc('alert-triangle', 11, 'currentColor')} com divergência (${p.divergencias.length})</span>`;
   }
   if (['solicitado', 'parcial'].includes(p.status) && p.previsao_entrega && p.previsao_entrega < _rcHoje()) {
     return `<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:var(--text-xs);font-weight:700;color:var(--danger-fg);white-space:nowrap">${lc('clock', 11, 'currentColor')} entrega atrasada</span>`;
@@ -79,7 +77,6 @@ function _rcRenderLista() {
   const el = document.getElementById('cpAbaBody');
   const { pedidos, porPedido, avulsas = [], nAvulsa = new Map() } = _rcDados;
   // Lista única: em aberto primeiro (rascunho → solicitado → parcial), depois recebidos e cancelados
-  const ordem = { rascunho: 0, solicitado: 1, parcial: 2, recebido: 3, cancelado: 4 };
   // Em aberto primeiro; depois recebidos, compras avulsas e cancelados, do mais recente para o mais antigo
   const lista = [...pedidos.map(p => ({ k: 'p', p, t: _estMs(_rcAberto(p) ? p.created_at : _rcDataFech(p)) })),
                  ...avulsas.map(c => ({ k: 'c', c, t: _estMs(c.created_at) }))]
@@ -107,13 +104,13 @@ function _rcRenderLista() {
             <td style="padding:12px 14px">${btn('eye', 'Ver', `_rcVerCompra('${c.id}')`)}</td></tr>`;
           const its = porPedido.get(p.id) || [];
           const st = RC_STATUS[p.status];
-          const aberto = ['rascunho', 'solicitado', 'parcial'].includes(p.status);
+          const aberto = _rcAberto(p);
           const fundo = p.status === 'solicitado' ? 'background:color-mix(in srgb, var(--info-bg) 35%, transparent)'
             : p.status === 'recebido' ? 'background:color-mix(in srgb, var(--success-bg) 45%, transparent)'
             : p.status === 'cancelado' ? 'opacity:.6' : '';
           return `<tr style="border-top:1px solid var(--border);${fundo}">
             <td style="padding:12px 14px"><div style="font-weight:700">${_estEsc(p.fornecedor_nome)}</div>
-              <div style="font-size:var(--text-xs);color:var(--muted)">gerado ${_estDH(p.created_at)} por ${_estEsc(p.criado_por)}</div></td>
+              <div style="font-size:var(--text-xs);color:var(--muted)">montado ${_estDH(p.created_at)} por ${_estEsc(p.criado_por)}${p.aprovado_por ? ` · aprovado por ${_estEsc(p.aprovado_por)}` : ''}</div></td>
             <td style="padding:12px 14px"><span class="badge ${st.cls}" style="font-size:var(--text-xs);padding:4px 10px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${lc(st.icon, 11, 'currentColor')} ${st.label}</span>
               ${p.solicitado_em ? `<div style="font-size:var(--text-xs);color:var(--text2);margin-top:3px">enviado ${_estDH(p.solicitado_em)} por ${_estEsc(p.solicitado_por || '')}</div>` : ''}
               ${p.recebido_em ? `<div style="font-size:var(--text-xs);color:var(--text2);margin-top:3px">recebido ${_estDH(p.recebido_em)}${p.recebido_por ? ' por ' + _estEsc(p.recebido_por) : ''}</div>` : ''}
@@ -124,12 +121,11 @@ function _rcRenderLista() {
             <td style="padding:12px 14px;text-align:right;font-weight:700;white-space:nowrap">${_estR(p.total_previsto)}</td>
             <td style="padding:12px 14px"><div style="display:flex;gap:6px;flex-wrap:wrap">
               ${aberto ? btn('copy', 'Copiar mensagem', `_rcCopiarMsg('${p.id}')`) : ''}
-              ${p.status === 'rascunho' ? `<button class="btn btn-primary btn-xs" onclick="_rcMarcarEnviado('${p.id}')">${lc('send', 12, '#fff')} Marquei como enviado</button>` : ''}
-              ${aberto ? btn('clipboard-check', 'Conferir', `cpConferirPedido('${p.id}')`) : btn('eye', 'Ver', `cpConferirPedido('${p.id}')`)}
+              ${aberto ? `<button class="btn btn-primary btn-xs" onclick="event.stopPropagation();cpConferirPedido('${p.id}')">${lc('clipboard-check', 12, '#fff')} Conferir</button>` : btn('eye', 'Ver', `cpConferirPedido('${p.id}')`)}
               ${btn('printer', 'Imprimir', `_rcImprimir('${p.id}')`)}
               ${aberto ? btn('x', 'Cancelar', `_rcCancelar('${p.id}')`, 'style="color:var(--danger-fg)"') : ''}
             </div></td></tr>`;
-        }).join('') : `<tr><td colspan="6" style="padding:44px;text-align:center;color:var(--muted)">Nenhum pedido em aberto nem recebido no período. Os pedidos chegam aqui quando um lote de cotação é concluído.</td></tr>`}</tbody>
+        }).join('') : `<tr><td colspan="6" style="padding:44px;text-align:center;color:var(--muted)">Nenhum pedido em aberto nem recebido no período. Os pedidos chegam aqui quando são enviados ao fornecedor na aba Cotação.</td></tr>`}</tbody>
       </table></div>
     </div>`;
 }
@@ -158,7 +154,6 @@ function _rcMensagem(p, its) {
 function _rcCopiarMsg(id) {
   const p = _rcPedido(id);
   _ctCopiar(_rcMensagem(p, _rcDados.porPedido.get(id) || []));
-  if (p.status === 'rascunho') setTimeout(() => toast('Depois de mandar no WhatsApp, clique em "Marquei como enviado"', 'info'), 1600);
 }
 
 async function _rcMarcarEnviado(id) {
@@ -173,8 +168,6 @@ function _rcCancelar(id) {
   const p = _rcPedido(id);
   _estModal('ovRcCanc', `Cancelar pedido · ${_estEsc(p.fornecedor_nome)}`, `
     ${_estCampo('Motivo *', `<input class="inp" id="rcCancMotivo" placeholder="ex: fornecedor sem estoque, comprado em outro lugar">`)}
-    <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;text-transform:none;letter-spacing:0;color:var(--text);font-weight:500">
-      <input type="checkbox" id="rcCancDevolver" checked style="accent-color:var(--purple)"> Devolver os itens para uma nova cotação</label>
     ${p.status === 'parcial' ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:8px">O que já foi recebido continua no estoque; só o restante é cancelado.</div>` : ''}`,
     `_rcConfirmarCancelamento('${id}')`, 'Cancelar pedido', 520);
 }
@@ -182,18 +175,9 @@ function _rcCancelar(id) {
 async function _rcConfirmarCancelamento(id) {
   const motivo = document.getElementById('rcCancMotivo').value.trim();
   if (!motivo) return toast('Informe o motivo', 'err');
-  const devolver = document.getElementById('rcCancDevolver').checked;
   _estSalvarComBotao('ovRcCanc', async () => {
-    if (devolver) {
-      const its = _rcDados.porPedido.get(id) || [];
-      const lotes = its.map(i => i.lote_item_id).filter(Boolean);
-      if (lotes.length) {
-        const lis = await cpSelect('cp_lote_itens', q => q.select('id, lista_item_id').in('id', lotes));
-        for (const li of lis) if (li.lista_item_id) await cpUpdate('cp_lista_itens', li.lista_item_id, { lote_id: null });
-      }
-    }
     await cpUpdate('cp_pedidos', id, { status: 'cancelado', cancelado_por: estUsuario(), cancelado_em: new Date().toISOString(), cancelado_motivo: motivo });
-    toast(devolver ? 'Pedido cancelado — itens voltaram para a Cotação' : 'Pedido cancelado', 'ok');
+    toast('Pedido cancelado', 'ok');
   }).then(() => cpRenderAbaRecebimento(true));
 }
 
@@ -219,90 +203,123 @@ function _rcImprimir(id) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// CONFERÊNCIA
+// CONFERÊNCIA — cada item na embalagem em que veio (Caixa, Lata… ou kg),
+// valor unitário ou total, impostos/frete da nota. Se algo não bater com o
+// pedido, sinaliza, mas a baixa é geral: o pedido fecha. Para completar,
+// faz-se outro pedido.
 // ══════════════════════════════════════════════════════════════
+
+const _rcEhAberto = p => ['solicitado', 'parcial'].includes(p.status);
 
 function cpConferirPedido(id) {
   const p = _rcPedido(id);
-  const its = (_rcDados.porPedido.get(id) || []).map(i => {
-    const falta = Math.max(0, (Number(i.qtd_pedida) || 0) - (Number(i.qtd_recebida) || 0));
-    return { ...i, receber: falta, precoFinal: i.preco_final ?? i.preco_combinado ?? items.find(x => x.id === i.item_id)?.cost ?? 0, falta };
+  const its = _rcDados.porPedido.get(id) || [];
+  const aberto = _rcEhAberto(p);
+  if (!aberto) return _rcVerFechado(p, its);
+  const linhas = its.map(pi => {
+    const item = items.find(x => x.id === pi.item_id);
+    const falta = Math.max(0, (Number(pi.qtd_pedida) || 0) - (Number(pi.qtd_recebida) || 0));
+    const ap = pi.apresentacao && Number(pi.apresentacao.fator) > 0 ? { nome: pi.apresentacao.nome, fator: Number(pi.apresentacao.fator) } : null;
+    const f = ap?.fator || 1;
+    const precoBase = Number(pi.preco_combinado) || Number(item?.cost) || 0;
+    return { ..._cpLinhaVazia(), pi, falta, item_id: pi.item_id, ap, n: _estRound(falta / f), modo: 'unit', vUnit: precoBase ? Math.round(precoBase * f * 10000) / 10000 : null };
   });
   const primeira = its.every(i => !(Number(i.qtd_recebida) > 0));
-  _rcAtual = { p, its, fotos: [], nota: null, notaArquivo: null, numero: '', chave: null, doc: '', data: _rcHoje(), frete: primeira ? (Number(p.frete) || 0) : 0 };
-  const aberto = ['rascunho', 'solicitado', 'parcial'].includes(p.status);
-  _estModal('ovRcConf', `${aberto ? 'Conferência' : 'Pedido'} · ${_estEsc(p.fornecedor_nome)}`, '', aberto ? '_rcConfirmar()' : `document.getElementById('ovRcConf').remove()`, aberto ? 'Confirmar recebimento e dar entrada no estoque' : 'Fechar', 980);
+  _rcAtual = { p, linhas, fotos: [], nota: null, notaArquivo: null, numero: '', chave: null, doc: '', data: _rcHoje(),
+               extras: { ...cpExtrasVazio(), frete: primeira ? (Number(p.frete) || 0) : 0 }, totalNota: null };
+  _estModal('ovRcConf', `Conferência · ${_estEsc(p.fornecedor_nome)}`, '', '_rcConfirmar()', 'Dar baixa e entrada no estoque', 980);
   _rcRenderConf();
 }
 
+function _rcLinhaHtml(l, k) {
+  const it = items.find(i => i.id === l.item_id);
+  const u = it?.unit || l.pi?.unidade || 'un';
+  const ped = l.pi ? `Pedido: <strong>${_estEsc(estQtdApresentacao(l.falta, u, l.pi.apresentacao))}</strong>${Number(l.pi.preco_combinado) ? ` · estimado ${_estR(l.pi.preco_combinado)}/${_estEsc(u)}` : ''}` : '<span style="color:var(--orange-dark);font-weight:700">Fora do pedido</span>';
+  return `<div id="rcL${k}" style="border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 12px;margin-bottom:8px;background:var(--card-bg)">
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <div><strong style="font-size:var(--text-md)">${_estEsc(it?.name || l.pi?.item_nome || 'Item da nota')}</strong>
+        ${l.desc_nota ? `<div style="font-size:var(--text-xs);color:var(--muted)">na nota: ${_estEsc(l.desc_nota)} · ${_estQ(l.qtd_nota)} ${_estEsc(l.unid_nota || '')} · ${_estR(l.valor_nota)}</div>` : ''}</div>
+      <div style="font-size:var(--text-xs);color:var(--text2);text-align:right">${ped}
+        ${!l.pi ? `<button class="btn btn-ghost btn-xs" style="color:var(--danger-fg)" onclick="_rcAtual.linhas.splice(${k},1);_rcRenderConf()">${lc('trash-2', 12, 'currentColor')}</button>` : ''}</div>
+    </div>
+    <div>${cpLinhaCamposHtml(l, k, '_rc', { comItem: !l.pi })}</div>
+    <div id="_rcDiv${k}" style="font-size:var(--text-xs);font-weight:700;color:var(--orange-dark);margin-top:2px"></div>
+  </div>`;
+}
+
 function _rcRenderConf() {
-  const a = _rcAtual, p = a.p;
-  const aberto = ['rascunho', 'solicitado', 'parcial'].includes(p.status);
+  const a = _rcAtual;
   const body = document.getElementById('ovRcConf-body');
-  const th = (t, sub = '', al = 'right') => `<th style="padding:9px 10px;text-align:${al};font-size:var(--text-xs);font-weight:700;color:var(--muted);white-space:nowrap;vertical-align:bottom">${t}${sub ? `<div style="font-weight:500;font-size:var(--text-2xs)">${sub}</div>` : ''}</th>`;
-  const num = (k, campo, val, w = 100, extra = '') => `<input class="inp" type="text" inputmode="decimal" value="${val == null || val === '' ? '' : String(val).replace('.', ',')}" style="width:${w}px;text-align:right;font-weight:700;${extra}" oninput="_rcSet(${k},'${campo}',this.value)">`;
+  if (!body) return;
   body.innerHTML = `
-    ${aberto ? `<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
-      ${_estCampo('Data do recebimento', `<input class="inp" type="date" value="${a.data}" onchange="_rcAtual.data=this.value">`)}
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+      ${_estCampo('Data da nota', `<input class="inp" type="date" value="${a.data}" onchange="_rcAtual.data=this.value">`)}
       ${_estCampo('Nº da nota', `<input class="inp" value="${_estEsc(a.numero)}" oninput="_rcAtual.numero=this.value" placeholder="opcional">`)}
       <label class="btn btn-outline btn-sm" style="cursor:pointer;margin-bottom:2px">${lc('file-text', 13, 'currentColor')} ${a.notaArquivo ? 'Nota anexada ✓' : 'Anexar nota (XML, foto ou PDF)'}
         <input type="file" accept=".xml,.pdf,image/*" style="display:none" onchange="_rcAnexarNota(this.files[0])"></label>
       <label class="btn btn-outline btn-sm" style="cursor:pointer;margin-bottom:2px">${lc('camera', 13, 'currentColor')} Fotos do recebimento${a.fotos.length ? ` (${a.fotos.length})` : ''}
         <input type="file" accept="image/*" multiple capture="environment" style="display:none" onchange="_rcAtual.fotos.push(...this.files);_rcRenderConf()"></label>
       <span id="rcNotaStatus" style="font-size:var(--text-xs);color:var(--muted)"></span>
-    </div>` : ''}
-    <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
-        <thead style="background:var(--surface2)"><tr>
-          ${th('Produto', '', 'left')}${th('Pedido', 'quantidade')}${th('Já recebido', 'quantidade')}
-          ${aberto ? th('Recebido agora', 'quantidade') : ''}
-          ${th('Preço combinado', 'R$ por unidade')}${th(aberto ? 'Preço cobrado' : 'Preço final', 'R$ por unidade')}${th('Total', 'R$ = qtd × preço')}
-        </tr></thead>
-        <tbody>${a.its.map((i, k) => {
-          const u = _estEsc(i.unidade || 'un');
-          return `<tr style="border-top:1px solid var(--border)">
-            <td style="padding:9px 10px;font-weight:600">${_estEsc(i.item_nome)}${i.notaDesc ? `<div style="font-size:var(--text-xs);color:var(--muted);font-weight:400">na nota: ${_estEsc(i.notaDesc)}</div>` : ''}</td>
-            <td style="padding:9px 10px;text-align:right;white-space:nowrap">${_estQ(i.qtd_pedida)} ${u}${i.apresentacao?.fator > 0 ? `<div style="font-size:var(--text-xs);color:var(--text2)">${_estQ(i.qtd_pedida / i.apresentacao.fator)} ${_estEsc(i.apresentacao.nome)}</div>` : ''}</td>
-            <td style="padding:9px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${_estQ(i.qtd_recebida)} ${u}</td>
-            ${aberto ? `<td style="padding:9px 10px;text-align:right;white-space:nowrap">${num(k, 'receber', i.receber)} <span style="font-size:var(--text-xs);color:var(--muted)">${u}</span>
-              <div id="rcDifQ${k}" style="font-size:var(--text-2xs);color:var(--orange-dark)"></div></td>` : ''}
-            <td style="padding:9px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${i.preco_combinado ? `${_estR(i.preco_combinado)}/${u}` : '—'}</td>
-            <td style="padding:9px 10px;text-align:right;white-space:nowrap">${aberto ? `R$ ${num(k, 'precoFinal', i.precoFinal, 90)} <span style="font-size:var(--text-xs);color:var(--muted)">/${u}</span>
-              <div id="rcDifP${k}" style="font-size:var(--text-2xs);color:var(--danger-fg)"></div>` : `${i.preco_final ? `${_estR(i.preco_final)}/${u}` : '—'}`}</td>
-            <td style="padding:9px 10px;text-align:right;white-space:nowrap;font-weight:700" id="rcSub${k}">${_estR((aberto ? i.receber : i.qtd_recebida) * (aberto ? i.precoFinal : (i.preco_final || 0)))}</td></tr>`;
-        }).join('')}</tbody>
-        ${aberto ? `<tfoot>
-          <tr style="border-top:1.5px solid var(--border)"><td colspan="6" style="padding:8px 10px;text-align:right;color:var(--text2)">Itens</td><td style="padding:8px 10px;text-align:right" id="rcItens"></td></tr>
-          <tr><td colspan="6" style="padding:6px 10px;text-align:right;color:var(--text2)">Entrega (R$)</td><td style="padding:6px 10px;text-align:right">
-            <input class="inp" type="text" inputmode="decimal" value="${a.frete ? String(a.frete).replace('.', ',') : ''}" placeholder="0,00" style="width:100px;text-align:right" oninput="_rcAtual.frete=_rcNum(this.value);_rcTotal()"></td></tr>
-          <tr><td colspan="6" style="padding:10px;text-align:right;font-weight:700">Total desta entrega</td><td style="padding:10px;text-align:right;font-weight:800" id="rcTotal"></td></tr>
-        </tfoot>` : ''}
-      </table></div>
-    ${aberto ? _estDica(`Quantidade na unidade do insumo, preço em R$ por unidade (kg, un…) e total em reais. Se veio só uma parte, confirme o que chegou: o pedido fica como "Recebido parcial" e o restante continua em aberto. O preço cobrado vira o custo do item; a entrega entra no total da compra.${a.nota ? ' Valores preenchidos pela nota — confira.' : ''}`) : ''}`;
-  if (aberto) _rcTotal();
+    </div>
+    ${a.linhas.map(_rcLinhaHtml).join('')}
+    <button class="btn btn-ghost btn-sm" onclick="_rcAtual.linhas.push({..._cpLinhaVazia(), pi: null});_rcRenderConf()">${lc('plus', 13, 'currentColor')} Item que veio fora do pedido</button>
+    ${cpTotaisNotaHtml(a.extras, a.totalNota, '_rc', CP_EXTRAS.some(e => a.extras[e.k]) || !!a.nota)}
+    <div id="rcResumo" style="margin-top:12px"></div>
+    <div id="rcDivResumo" style="margin-top:10px"></div>`;
+  _rcAtualizar();
 }
 
-// Aceita "4,2", "4.2" e "1.234,56"
-const _rcNum = v => { let t = String(v ?? '').trim(); if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.'); const n = parseFloat(t); return isNaN(n) ? 0 : n; };
-function _rcSet(k, campo, v) { _rcAtual.its[k][campo] = _rcNum(v); _rcTotal(); }
+// Divergências da linha com o pedido (quantidade e custo por unidade)
+function _rcDivergencias(l, acr) {
+  if (!l.pi) return [];
+  const c = cpLinhaCalc(l), u = l.pi.unidade || '';
+  const out = [];
+  if (Math.abs(c.qtd - l.falta) > 0.0005) out.push({ item: l.pi.item_nome, tipo: 'qtd', pedido: _estRound(l.falta), recebido: _estRound(c.qtd), unidade: u,
+    txt: c.qtd <= 0.0005 ? 'não veio' : c.qtd < l.falta ? `veio ${_estQ(l.falta - c.qtd)} ${u} a menos` : `veio ${_estQ(c.qtd - l.falta)} ${u} a mais` });
+  const est = Number(l.pi.preco_combinado) || 0;
+  if (est > 0 && c.qtd > 0) {
+    const custo = (c.total + acr) / c.qtd;
+    if (Math.abs(custo - est) / est > 0.02) out.push({ item: l.pi.item_nome, tipo: 'preco', pedido: est, recebido: Math.round(custo * 10000) / 10000, unidade: u,
+      txt: `custo ${_estR(custo)}/${u} (${custo > est ? '+' : '−'}${Math.round(Math.abs(custo - est) / est * 100)}% do estimado)` });
+  }
+  return out;
+}
 
-// Recalcula na hora: total da linha (qtd × preço), avisos e totais
-function _rcTotal() {
+function _rcAtualizar() {
   const a = _rcAtual;
-  let itens = 0;
-  a.its.forEach((i, k) => {
-    const sub = (i.receber || 0) * (i.precoFinal || 0); itens += sub;
-    const el = document.getElementById('rcSub' + k); if (el) el.textContent = _estR(sub);
-    const dq = document.getElementById('rcDifQ' + k);
-    if (dq) dq.textContent = Math.abs((i.receber || 0) - i.falta) > 0.0005 ? ((i.receber || 0) < i.falta ? `faltou ${_estQ(i.falta - (i.receber || 0))}` : 'veio a mais') : '';
-    const dp = document.getElementById('rcDifP' + k);
-    if (dp) dp.textContent = i.preco_combinado && Math.abs((i.precoFinal || 0) - Number(i.preco_combinado)) > 0.005 ? 'diferente do combinado' : '';
+  const rat = cpRatear(a.linhas, a.extras);
+  const todas = [];
+  a.linhas.forEach((l, k) => {
+    const acr = rat.get(l) || 0;
+    const el = document.getElementById('_rcConv' + k); if (el) el.innerHTML = cpConvTexto(l, acr);
+    const dv = _rcDivergencias(l, acr); todas.push(...dv);
+    const d = document.getElementById('_rcDiv' + k); if (d) d.innerHTML = dv.map(x => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px">${lc('alert-triangle', 11, 'currentColor')} ${_estEsc(x.txt)}</span>`).join('');
+    const box = document.getElementById('rcL' + k); if (box) box.style.borderColor = dv.length ? 'var(--orange)' : 'var(--border)';
   });
-  const ei = document.getElementById('rcItens'); if (ei) ei.textContent = _estR(itens);
-  const el = document.getElementById('rcTotal'); if (el) el.textContent = _estR(itens + (a.frete || 0));
+  const r = document.getElementById('rcResumo');
+  if (r) r.innerHTML = cpTotaisResumoHtml(cpResumoNota(a.linhas, a.extras), a.totalNota);
+  const dr = document.getElementById('rcDivResumo');
+  if (dr) dr.innerHTML = todas.length ? `<div style="padding:9px 12px;border-radius:var(--r8);background:var(--orange-light);color:var(--orange-dark);font-size:var(--text-sm)">
+      <strong>${todas.length} divergência(s) com o pedido.</strong> A baixa é geral: o pedido fecha como "Recebido com divergência". Se faltou algo, faça outro pedido para completar.</div>` : '';
+  a.divs = todas;
 }
 
-// Nota anexada: preenche quantidades e preços dos itens que casarem
+function _rcLinha(k, campo, v) {
+  const l = _rcAtual.linhas[k];
+  if (cpLinhaSet(l, campo, v)) {
+    const box = document.getElementById('rcL' + k);
+    if (box) box.outerHTML = _rcLinhaHtml(l, k);
+  }
+  _rcAtualizar();
+}
+
+function _rcExtra(k, v) {
+  if (k === 'totalNota') _rcAtual.totalNota = cpNum(v);
+  else _rcAtual.extras[k] = cpNum(v) || 0;
+  _rcAtualizar();
+}
+
+// Nota anexada: preenche as linhas dos itens que casarem; o resto entra como "fora do pedido"
 async function _rcAnexarNota(file) {
   if (!file) return;
   const st = document.getElementById('rcNotaStatus');
@@ -323,22 +340,29 @@ async function _rcAnexarNota(file) {
     const dados = await _cpMontarCompraDaNota(nota, origem);
     const a = _rcAtual;
     let casados = 0;
+    const campos = ['ap', 'n', 'modo', 'vTotal', 'vUnit', 'impNota', 'desc_nota', 'cod_nota', 'qtd_nota', 'unid_nota', 'valor_nota', 'fator', 'memoria', 'sugestao'];
     for (const l of dados.itens) {
-      const alvo = a.its.find(i => i.item_id === l.item_id && !i.notaDesc);
-      if (!alvo || !(l.qtd > 0)) continue;
-      alvo.receber = l.qtd; alvo.precoFinal = l.preco_unit; alvo.notaDesc = l.desc_nota; alvo.notaLinha = l; casados++;
+      const alvo = l.item_id && a.linhas.find(x => x.pi && x.item_id === l.item_id && !x.desc_nota);
+      if (alvo) { campos.forEach(c => { alvo[c] = l[c]; }); casados++; }
+      else a.linhas.push({ ...l, pi: null });
     }
-    Object.assign(a, { nota: dados, notaArquivo: file, numero: dados.numero || a.numero, chave: dados.chave, doc: dados.fornecedorDoc, data: dados.data || a.data });
+    // Item do pedido que não está na nota: não veio
+    for (const x of a.linhas) if (x.pi && !x.desc_nota) x.n = 0;
+    Object.assign(a, { nota: dados, notaArquivo: file, numero: dados.numero || a.numero, chave: dados.chave, doc: dados.fornecedorDoc,
+                       data: dados.data || a.data, totalNota: dados.totalNota ?? a.totalNota,
+                       extras: { ...dados.extras, frete: dados.extras?.frete || a.extras.frete } });
     _rcRenderConf();
     const s2 = document.getElementById('rcNotaStatus');
-    if (s2) s2.innerHTML = `<span style="color:var(--success-fg)">${casados} de ${a.its.length} itens preenchidos pela nota</span>`;
+    if (s2) s2.innerHTML = `<span style="color:var(--success-fg)">${casados} de ${a.linhas.filter(x => x.pi).length} itens do pedido preenchidos pela nota</span>`;
   } catch (e) { msg(`<span style="color:var(--danger-fg)">Não consegui ler a nota: ${_estEsc(e.message)}</span>`); }
 }
 
 async function _rcConfirmar() {
   const a = _rcAtual, p = a.p;
-  const recebidos = a.its.filter(i => i.receber > 0);
-  if (!recebidos.length) return toast('Nada recebido — informe as quantidades que chegaram', 'err');
+  _rcAtualizar();
+  const rat = cpRatear(a.linhas, a.extras);
+  if (!rat.size) return toast('Nada recebido: informe as quantidades que chegaram', 'err');
+  if (a.linhas.some(l => !l.pi && !l.item_id && cpLinhaCalc(l).n > 0)) return toast('Ligue os itens fora do pedido a um insumo (ou remova a linha)', 'err');
   const btn = document.getElementById('ovRcConf-salvar');
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
   try {
@@ -350,34 +374,48 @@ async function _rcConfirmar() {
     const anexo = a.notaArquivo ? await cpUploadAnexo(a.notaArquivo) : null;
     const fotos = [];
     for (const f of a.fotos) fotos.push(await cpUploadAnexo(f, 'recebimentos'));
-    const frete = Math.round((a.frete || 0) * 100) / 100;
-    const total = Math.round((recebidos.reduce((t, i) => t + i.receber * (i.precoFinal || 0), 0) + frete) * 100) / 100;
+    const ex = a.extras, r = cpResumoNota(a.linhas, ex);
     const [compra] = await cpInsert('cp_compras', {
       data_compra: a.data, fornecedor_id: p.fornecedor_id, fornecedor_nome: p.fornecedor_nome, fornecedor_doc: a.doc || null,
-      numero_nota: a.numero || null, chave_nfe: a.chave || null, origem: 'pedido', pedido_id: p.id, total, frete,
+      numero_nota: a.numero || null, chave_nfe: a.chave || null, origem: 'pedido', pedido_id: p.id, total: r.total,
+      frete: _cpR2(ex.frete), ipi: _cpR2(ex.ipi), icms_st: _cpR2(ex.icms_st), seguro: _cpR2(ex.seguro), outras: _cpR2(ex.outras), desconto: _cpR2(ex.desconto),
       anexo_path: anexo, fotos: fotos.length ? fotos : null, criado_por: user,
     });
-    const linhas = await cpInsert('cp_compra_itens', recebidos.map(i => {
-      const it = items.find(x => x.id === i.item_id);
-      const l = i.notaLinha;
-      return { compra_id: compra.id, item_id: i.item_id, item_nome: i.item_nome, unidade: i.unidade, categoria: it?.cat || null,
-        qtd: _estRound(i.receber), preco_unit: i.precoFinal || 0, total: Math.round(i.receber * (i.precoFinal || 0) * 100) / 100,
-        desc_nota: l?.desc_nota || null, cod_nota: l?.cod_nota || null, qtd_nota: l?.qtd_nota ?? null, unid_nota: l?.unid_nota || null, fator: l?.fator || 1, criado_por: user };
-    }));
+    const validas = [...rat.keys()];
+    const linhas = await cpInsert('cp_compra_itens', cpLinhasParaSalvar(a.linhas, ex, compra.id, user));
     await cpDarEntradaEstoque(compra, linhas);
-    if (a.nota) await _cpSalvarMemoriaNota({ fornecedorDoc: a.doc, fornecedorId: p.fornecedor_id, fornecedorNome: p.fornecedor_nome },
-      recebidos.filter(i => i.notaLinha).map(i => ({ ...i.notaLinha, item_id: i.item_id })));
-    for (const i of recebidos) await cpUpdate('cp_pedido_itens', i.id, { qtd_recebida: _estRound((Number(i.qtd_recebida) || 0) + i.receber), preco_final: i.precoFinal || null });
-    const completo = a.its.every(i => (Number(i.qtd_recebida) || 0) + (i.receber || 0) >= Number(i.qtd_pedida) - 0.0005);
-    await cpUpdate('cp_pedidos', p.id, { status: completo ? 'recebido' : 'parcial', recebido_por: user, recebido_em: new Date().toISOString(),
+    const comNota = linhas.filter(l => l.desc_nota);
+    if (comNota.length) await _cpSalvarMemoriaNota({ fornecedorDoc: a.doc, fornecedorId: p.fornecedor_id, fornecedorNome: p.fornecedor_nome }, comNota);
+    // Atualiza o recebido de cada item do pedido (quem não veio fica com o que já tinha)
+    for (const l of a.linhas.filter(x => x.pi)) {
+      const k = validas.indexOf(l);
+      const q = k >= 0 ? cpLinhaCalc(l).qtd : 0;
+      await cpUpdate('cp_pedido_itens', l.pi.id, { qtd_recebida: _estRound((Number(l.pi.qtd_recebida) || 0) + q), preco_final: k >= 0 ? linhas[k].preco_unit : null });
+    }
+    const divs = (a.divs || []).map(({ txt, ...d }) => d);
+    await cpUpdate('cp_pedidos', p.id, { status: 'recebido', recebido_por: user, recebido_em: new Date().toISOString(), divergencias: divs.length ? divs : null,
       solicitado_em: p.solicitado_em || new Date().toISOString(), solicitado_por: p.solicitado_por || user });
     document.getElementById('ovRcConf')?.remove();
     _rcAtual = null;
-    toast(`${completo ? 'Pedido recebido' : 'Recebimento parcial registrado'} · ${linhas.length} item(ns) entraram no estoque`, 'ok');
+    toast(`Pedido recebido${divs.length ? ' com divergência' : ''} · ${linhas.length} item(ns) entraram no estoque`, 'ok');
     _cpComprasDados = null;
     cpRenderAbaRecebimento(true);
   } catch (e) {
     toast('Não consegui confirmar: ' + e.message, 'err');
-    if (btn) { btn.disabled = false; btn.textContent = 'Confirmar recebimento e dar entrada no estoque'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Dar baixa e entrada no estoque'; }
   }
+}
+
+// Pedido já fechado: o que foi pedido × o que veio
+function _rcVerFechado(p, its) {
+  const divs = Array.isArray(p.divergencias) ? p.divergencias : [];
+  _estModal('ovRcConf', `Pedido · ${_estEsc(p.fornecedor_nome)}`, `
+    <div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:10px">${RC_STATUS[p.status]?.label || p.status}${p.recebido_em ? ` em ${_estDH(p.recebido_em)}${p.recebido_por ? ' por ' + _estEsc(p.recebido_por) : ''}` : ''}</div>
+    ${divs.length ? `<div style="padding:9px 12px;border-radius:var(--r8);background:var(--orange-light);color:var(--orange-dark);font-size:var(--text-sm);margin-bottom:10px">
+      <strong>Divergências:</strong> ${divs.map(d => `${_estEsc(d.item)}: ${d.tipo === 'qtd' ? `pedido ${_estQ(d.pedido)} ${_estEsc(d.unidade || '')}, veio ${_estQ(d.recebido)}` : `estimado ${_estR(d.pedido)}, custou ${_estR(d.recebido)}`}`).join(' · ')}</div>` : ''}
+    <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
+      ${its.map(i => `<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-top:1px solid var(--border);font-size:var(--text-sm)">
+        <div><strong>${_estEsc(i.item_nome)}</strong><div style="font-size:var(--text-xs);color:var(--muted)">pedido ${_estEsc(estQtdApresentacao(i.qtd_pedida, i.unidade, i.apresentacao))}${i.preco_combinado ? ` · estimado ${_estR(i.preco_combinado)}/${_estEsc(i.unidade || 'un')}` : ''}</div></div>
+        <div style="text-align:right;white-space:nowrap">${_estQ(i.qtd_recebida)} ${_estEsc(i.unidade || '')}<div style="font-size:var(--text-xs);color:var(--muted)">${i.preco_final ? _estR(i.preco_final) + '/' + _estEsc(i.unidade || 'un') : '—'}</div></div></div>`).join('')}
+    </div>`, `document.getElementById('ovRcConf').remove()`, 'Fechar', 680);
 }
