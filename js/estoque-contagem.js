@@ -203,7 +203,7 @@ function _ctgRenderConteudo() {
   el.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
       <button class="btn btn-primary" onclick="estNovaContagem()">${lc('plus', 14, '#fff')} Nova contagem</button>
-      <button class="btn btn-outline" onclick="estImprimirAbertas()" title="Lista única com todos os insumos e uma coluna por local (contagens pendentes e em andamento)">${lc('printer', 14, 'currentColor')} Imprimir folhas</button>
+      <button class="btn btn-outline" onclick="estImprimirAbertas()" title="Um bloco por local, na ordem do card, das contagens pendentes e em andamento">${lc('printer', 14, 'currentColor')} Imprimir folhas</button>
       <button class="btn btn-outline" style="color:var(--danger-fg)" onclick="estExcluirRodada()">${lc('trash-2', 14, 'currentColor')} Excluir rodada de contagem</button>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         <select class="inp" style="width:auto;max-width:220px;font-size:var(--text-md)" onchange="_ctgFilCat=this.value;_ctgRenderConteudo()">
@@ -1136,8 +1136,9 @@ function _ctgOrdenarPorLocal(lista, localId) {
   });
 }
 
-// ids: contagens a imprimir. Lista única: uma linha por insumo, uma coluna por local
-// (só abre o campo onde o item está guardado) e o total. Página deitada, 2 blocos.
+// ids: contagens a imprimir. Um bloco por local, na MESMA ORDEM do card (para digitar
+// depois seguindo a folha), só na medida base do insumo. Página deitada, 2 colunas;
+// local que não cabe continua no bloco seguinte ("cont."). Não mostra o esperado.
 async function estImprimirContagens(ids) {
   const cs = ids.map(id => _ctgDados?.contagens.find(c => c.id === id)).filter(Boolean);
   if (!cs.length) return toast('Nenhuma contagem para imprimir', 'err');
@@ -1149,77 +1150,57 @@ async function estImprimirContagens(ids) {
     linhas = await _estSelectTodos(() => _estSb().from('est_contagem_itens').select('item_id, item_nome, unidade, categoria, contagem_id').in('contagem_id', cs.map(c => c.id)).is('removido_em', null));
   } catch (e) { w.close(); return toast('Não consegui carregar os itens: ' + e.message, 'err'); }
   const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-  // Locais na ordem do app
   const ordemLoc = _ctgLocaisCom(_ctgEscopo('cmv'));
-  const locais = [...new Set(cs.map(c => c.local_id))].sort((a, b) => ((ordemLoc.indexOf(a) + 1) || 99) - ((ordemLoc.indexOf(b) + 1) || 99));
-  const curto = l => {
-    const ws = estLocalLabel(l).split(/[\s\-–]+/).filter(x => x && x.length > 1);
-    if (ws.length <= 1) return (ws[0] || '?').slice(0, 6);
-    return ws.slice(0, -1).map(x => x[0].toUpperCase()).join('') + '. ' + ws[ws.length - 1].slice(0, 5);
-  };
-  const locDe = Object.fromEntries(cs.map(c => [c.id, c.local_id]));
-  // Insumo → locais em que ele tem card
-  const porItem = new Map();
-  for (const r of linhas) {
-    if (!porItem.has(r.item_id)) porItem.set(r.item_id, { ...r, locais: new Set() });
-    porItem.get(r.item_id).locais.add(locDe[r.contagem_id]);
+  const cards = [...cs].sort((a, b) => ((ordemLoc.indexOf(a.local_id) + 1) || 99) - ((ordemLoc.indexOf(b.local_id) + 1) || 99));
+  // Sequência de linhas: título do local + itens numerados como no card
+  const seq = [];
+  for (const c of cards) {
+    const its = _ctgOrdenarPorLocal(linhas.filter(r => r.contagem_id === c.id), c.local_id);
+    const nome = estLocalLabel(c.local_id);
+    seq.push({ tipo: 'local', nome, n: its.length });
+    its.forEach((r, k) => seq.push({ tipo: 'item', local: nome, k: k + 1, r }));
   }
-  const lista = [...porItem.values()].sort((a, b) => (a.categoria || '').localeCompare(b.categoria || '') || a.item_nome.localeCompare(b.item_nome));
-  const dica = r => {
-    const it = items.find(i => i.id === r.item_id);
-    const aps = estApresentacoes(it).filter(a => Number(a.qtd) !== 1).sort((a, b) => (!!b.padrao - !!a.padrao)).slice(0, 2);
-    return aps.map(a => esc(/\d/.test(a.nome) ? a.nome : `${a.nome} ${_estQ(a.qtd)}`)).join(' · ');
-  };
-  // Linhas (categoria vira uma linha de título) → páginas com 2 blocos lado a lado
-  const rows = [];
-  let cat = null;
-  for (const r of lista) {
-    if (r.categoria !== cat) rows.push(`<tr class="cat"><td colspan="${locais.length + 2}">${esc(cat = r.categoria || 'Sem categoria')}</td></tr>`);
-    rows.push(`<tr><td class="prod"><b>${esc(r.item_nome)}</b> <span class="un">${esc(r.unidade || '')}</span>${dica(r) ? `<div class="emb">${dica(r)}</div>` : ''}</td>
-      ${locais.map(l => `<td class="${r.locais.has(l) ? 'cel' : 'nao'}"></td>`).join('')}<td class="tot"></td></tr>`);
+  const POR_BLOCO_1 = 24, POR_BLOCO = 27;
+  const blocos = [];
+  for (let i = 0, b = 0; i < seq.length; b++) {
+    const cap = b < 2 ? POR_BLOCO_1 : POR_BLOCO;
+    let bl = seq.slice(i, i + cap); i += cap;
+    // título de local não fica sozinho no fim do bloco
+    while (bl.length && bl[bl.length - 1].tipo === 'local') { bl.pop(); i--; }
+    // bloco que começa no meio de um local repete o título
+    if (bl.length && bl[0].tipo === 'item') bl = [{ tipo: 'local', nome: bl[0].local, cont: true }, ...bl];
+    blocos.push(bl);
   }
-  const POR_BLOCO_1 = 22, POR_BLOCO = 25;   // 1ª página tem o cabeçalho
+  const unDe = r => r.unidade || items.find(i => i.id === r.item_id)?.unit || 'un';
+  const linha = x => x.tipo === 'local'
+    ? `<tr class="loc"><td colspan="5"><b>${esc(x.nome)}</b>${x.cont ? ' <span class="cont">(continuação)</span>' : ` <span class="cont">· ${x.n} itens · contado por ____________</span>`}</td></tr>`
+    : `<tr><td class="n">${x.k}</td><td class="prod">${esc(x.r.item_nome)}</td><td class="un">${esc(unDe(x.r))}</td><td class="q"></td><td class="ok"><span class="box"></span></td></tr>`;
+  const tabela = bl => bl.length ? `<table><thead><tr><th class="n">#</th><th>Insumo</th><th class="un">Un</th><th class="q">Quantidade</th><th class="ok">✓</th></tr></thead><tbody>${bl.map(linha).join('')}</tbody></table>` : '';
   const paginas = [];
-  for (let i = 0, pg = 0; i < rows.length; pg++) {
-    const n = pg === 0 ? POR_BLOCO_1 : POR_BLOCO;
-    let esq = rows.slice(i, i + n); i += n;
-    let dir = rows.slice(i, i + n); i += n;
-    // não deixa título de categoria sozinho no fim do bloco
-    for (const b of [esq, dir]) if (b.length && b[b.length - 1].startsWith('<tr class="cat"')) { i -= 1; b.pop(); }
-    paginas.push([esq, dir]);
-  }
-  const cabTabela = `<thead><tr><th class="prod">Insumo</th>${locais.map(l => `<th title="${esc(estLocalLabel(l))}">${esc(curto(l))}</th>`).join('')}<th>Total</th></tr></thead>`;
+  for (let k = 0; k < blocos.length; k += 2) paginas.push([blocos[k], blocos[k + 1] || []]);
   const datas = [...new Set(cs.map(c => _ctgDataBr(c.data_ref)))].join(', ');
   const tipo = cs.every(_ctgEhCmv) ? 'Contagem de CMV' : cs.some(_ctgEhCmv) ? 'Contagem' : 'Outras categorias';
   w.document.open();
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Folha de contagem</title><style>
-    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:12px;font-size:10px}
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:12px;font-size:10.5px}
     header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:6px;margin-bottom:6px}
     .marca{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#555} h1{font-size:18px;margin:1px 0}
-    .quem{text-align:right;line-height:1.9;font-size:11px} .l{display:inline-block;border-bottom:1px solid #111;vertical-align:bottom}
-    .info{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:9.5px;margin-bottom:6px}
-    .legenda span{margin-right:10px;white-space:nowrap} .legenda b{display:inline-block;min-width:0}
-    .pagina{display:flex;gap:7mm;align-items:flex-start} .pagina.nova{break-before:page;page-break-before:always;padding-top:2mm} .bloco{flex:1;min-width:0}
-    table{width:100%;border-collapse:collapse;break-inside:auto} thead{display:table-header-group}
-    th{font-size:8.5px;text-transform:uppercase;color:#333;border-bottom:1.5px solid #111;padding:3px 2px;text-align:center;white-space:nowrap}
-    th.prod{text-align:left} td{border:1px solid #999;height:23px;padding:1px 3px}
-    tr{break-inside:avoid;page-break-inside:avoid}
-    td.prod{border-left:none;line-height:1.15} td.prod b{font-size:9.5px} .un{color:#666;font-size:8.5px} .emb{color:#666;font-size:7.5px}
-    td.cel{width:11mm;background:#fff} td.nao{width:11mm;background:repeating-linear-gradient(135deg,#e6e6e6 0 2px,#fff 2px 5px)}
-    td.tot{width:13mm;background:#f4f4f4;border-left:1.5px solid #111}
-    tr.cat td{border:none;padding:6px 2px 2px;font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:#444;height:auto}
+    .dica{font-size:10px;color:#333;text-align:right;line-height:1.5}
+    .pagina{display:flex;gap:8mm;align-items:flex-start} .pagina.nova{break-before:page;page-break-before:always;padding-top:2mm} .bloco{flex:1;min-width:0}
+    table{width:100%;border-collapse:collapse} th{font-size:8.5px;text-transform:uppercase;color:#444;border-bottom:1.5px solid #111;padding:3px 3px;text-align:left}
+    td{border-bottom:1px solid #aaa;height:22px;padding:1px 3px} tr{break-inside:avoid;page-break-inside:avoid}
+    .n{width:22px;text-align:right;color:#666} .prod{font-weight:600} .un{width:26px;color:#555;text-align:center}
+    td.q{width:30mm;border:1px solid #777;background:#fff} th.q{text-align:center} .ok{width:20px;text-align:center}
+    .box{display:inline-block;width:11px;height:11px;border:1.4px solid #111}
+    tr.loc td{border-bottom:1.5px solid #111;padding:8px 2px 3px;font-size:12px;height:auto} .cont{font-size:9.5px;color:#555;font-weight:400}
     @page{size:A4 landscape;margin:8mm} @media print{body{padding:0}}
   </style></head><body>
     <header>
       <div><div class="marca">Vai Ter Pizza! · Folha de contagem</div><h1>${esc(tipo)} · ${esc(datas)}</h1></div>
-      <div class="quem">Contado por: <span class="l" style="width:170px"></span> &nbsp; Início: <span class="l" style="width:45px"></span> &nbsp; Fim: <span class="l" style="width:45px"></span></div>
+      <div class="dica">Conte na <b>unidade do item</b> (kg e L com vírgula: 2,350). Sem nada no local: escreva <b>0</b>.<br>
+        Digite depois no card de cada local: <b>o número da linha é a ordem do card</b>.</div>
     </header>
-    <div class="info">
-      <div class="legenda"><b>Locais:</b> ${locais.map(l => `<span><b>${esc(curto(l))}</b> = ${esc(estLocalLabel(l))}</span>`).join('')}</div>
-      <div>${lista.length} insumos · anote na unidade do item (embalagem fechada: ex. "2 cx + 3"). Campo listrado = item não fica nesse local. Sem nada: escreva 0.</div>
-    </div>
-    ${paginas.map(([esq, dir], k) => `<div class="pagina${k ? ' nova' : ''}">${[esq, dir].map(b => `<div class="bloco">${b.length ? `<table>${cabTabela}<tbody>${b.join('')}</tbody></table>` : ''}</div>`).join('')}</div>`).join('')}
-    <div style="margin-top:8px;font-size:9.5px"><b>Itens encontrados que não estão na lista</b> (insumo · local · quantidade): ____________________________________________________________________________________________</div>
+    ${paginas.map(([a, b], k) => `<div class="pagina${k ? ' nova' : ''}"><div class="bloco">${tabela(a)}</div><div class="bloco">${tabela(b)}</div></div>`).join('')}
     <script>window.onload=()=>setTimeout(()=>window.print(),200)<\/script></body></html>`);
   w.document.close();
 }
