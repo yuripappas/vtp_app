@@ -175,8 +175,9 @@ function _ctgRenderConteudo() {
 
   const card = c => {
     let extra = '', botao;
-    if (c.status === 'pendente') botao = `<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="estIniciarContagem('${c.id}')">${lc('play', 14, '#fff')} Iniciar</button>`;
-    else if (c.status === 'andamento') botao = `<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="estAbrirContagem('${c.id}')">Continuar</button>`;
+    const imprimir = `<button class="btn btn-outline" style="width:100%;justify-content:center" onclick="estImprimirContagens(['${c.id}'])">${lc('printer', 14, 'currentColor')} Imprimir folha</button>`;
+    if (c.status === 'pendente') botao = `<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="estIniciarContagem('${c.id}')">${lc('play', 14, '#fff')} Iniciar</button>${imprimir}`;
+    else if (c.status === 'andamento') botao = `<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="estAbrirContagem('${c.id}')">Continuar</button>${imprimir}`;
     else if (c.status === 'revisao') {
       extra = `<div style="font-size:var(--text-sm);color:var(--text2)">Ainda não aplicada ao estoque.</div>`;
       botao = `<button class="btn btn-primary" style="width:100%;justify-content:center" onclick="estAbrirContagem('${c.id}')">Revisar</button>`;
@@ -202,6 +203,7 @@ function _ctgRenderConteudo() {
   el.innerHTML = `
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
       <button class="btn btn-primary" onclick="estNovaContagem()">${lc('plus', 14, '#fff')} Nova contagem</button>
+      <button class="btn btn-outline" onclick="estImprimirAbertas()" title="Uma folha por local, das contagens pendentes e em andamento">${lc('printer', 14, 'currentColor')} Imprimir folhas</button>
       <button class="btn btn-outline" style="color:var(--danger-fg)" onclick="estExcluirRodada()">${lc('trash-2', 14, 'currentColor')} Excluir rodada de contagem</button>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         <select class="inp" style="width:auto;max-width:220px;font-size:var(--text-md)" onchange="_ctgFilCat=this.value;_ctgRenderConteudo()">
@@ -661,7 +663,8 @@ function _ctgRenderContar(el) {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
       <button class="btn btn-ghost" onclick="_ctgVoltar()">${lc('arrow-left', 16, 'currentColor')} Voltar</button>
-      <button class="btn btn-primary" ${pronto ? '' : 'disabled'} onclick="_ctgEnviarRevisao()">${lc('check-circle', 15, '#fff')} Enviar para revisão${pronto ? '' : ` (${conferidos}/${total})`}</button>
+      <span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-outline" onclick="estImprimirContagens(['${c.id}'])">${lc('printer', 15, 'currentColor')} Imprimir folha</button>
+      <button class="btn btn-primary" ${pronto ? '' : 'disabled'} onclick="_ctgEnviarRevisao()">${lc('check-circle', 15, '#fff')} Enviar para revisão${pronto ? '' : ` (${conferidos}/${total})`}</button></span>
     </div>
     ${_ctgCabecalho(c, conferidos, total, pct, `<div style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);color:var(--text2);margin-top:12px">${lc('grip-vertical', 14, 'currentColor')} Arraste os itens para reordenar a sequência de contagem</div>`)}
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:18px 0 12px">
@@ -1115,4 +1118,86 @@ function _ctgHistLista() {
       ${lc('arrow-right', 18, 'var(--muted)')}
     </div>`;
   }).join('') || '<div style="padding:20px;text-align:center;color:var(--muted)">Nenhuma contagem concluída ainda.</div>';
+}
+
+// ══════════════════════════════════════════════════════════════
+// FOLHA DE CONTAGEM (prancheta): imprime os cards para contar no papel e
+// digitar depois. Mesma ordem da tela; contagem cega (não mostra o esperado).
+// ══════════════════════════════════════════════════════════════
+
+function _ctgOrdenarPorLocal(lista, localId) {
+  const ordem = r => items.find(i => i.id === r.item_id)?.ordemContagem?.[localId];
+  return [...lista].sort((a, b) => {
+    const oa = ordem(a), ob = ordem(b);
+    if (oa != null && ob != null && oa !== ob) return oa - ob;
+    if (oa != null && ob == null) return -1;
+    if (oa == null && ob != null) return 1;
+    return (a.categoria || '').localeCompare(b.categoria || '') || a.item_nome.localeCompare(b.item_nome);
+  });
+}
+
+// ids: contagens a imprimir (uma folha por card/local)
+async function estImprimirContagens(ids) {
+  const cs = ids.map(id => _ctgDados?.contagens.find(c => c.id === id)).filter(Boolean);
+  if (!cs.length) return toast('Nenhuma contagem para imprimir', 'err');
+  const w = window.open('', '_blank', 'width=900,height=1000');
+  if (!w) return toast('Libere pop-ups para imprimir', 'err');
+  w.document.write('<p style="font-family:Arial;padding:30px">Montando as folhas…</p>');
+  let linhas;
+  try {
+    linhas = await _estSelectTodos(() => _estSb().from('est_contagem_itens').select('*').in('contagem_id', cs.map(c => c.id)).is('removido_em', null));
+  } catch (e) { w.close(); return toast('Não consegui carregar os itens: ' + e.message, 'err'); }
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const caixa = (rot) => `<span class="cx"><span class="rot">${esc(rot)}</span><span class="linha"></span></span>`;
+  const folha = c => {
+    const its = _ctgOrdenarPorLocal(linhas.filter(r => r.contagem_id === c.id), c.local_id);
+    const tit = _ctgTitulo(c);
+    return `<section class="folha">
+      <header>
+        <div><div class="marca">Vai Ter Pizza! · Folha de contagem</div><h1>${esc(estLocalLabel(c.local_id))}</h1>
+          <div class="sub">${esc(tit)} · ${_ctgDataBr(c.data_ref)}${_ctgEhCmv(c) ? ' · Contagem de CMV' : ' · Outras categorias'} · ${its.length} itens</div></div>
+        <div class="quem"><div>Contado por: <span class="l" style="width:170px"></span></div><div>Início: <span class="l" style="width:50px"></span> &nbsp; Fim: <span class="l" style="width:50px"></span></div></div>
+      </header>
+      <div class="dica">Conte tudo o que está no local. Anote as embalagens fechadas no campo de cada uma e o que sobrar aberto em <b>avulso</b>, na unidade do item. Se não tiver, escreva <b>0</b>: não deixe linha em branco.</div>
+      <table>
+        <thead><tr><th class="n">#</th><th>Produto</th><th>Contagem</th><th class="ok">✓</th></tr></thead>
+        <tbody>${its.map((r, k) => {
+          const un = r.unidade || items.find(i => i.id === r.item_id)?.unit || 'un';
+          const embs = _ctgEmbs(r);
+          return `<tr><td class="n">${k + 1}</td>
+            <td class="prod"><b>${esc(r.item_nome)}</b><div class="cat">${esc(r.categoria || '')}</div></td>
+            <td><div class="cont">${embs.map(e => caixa(`${e.nome}${/\d/.test(e.nome) ? '' : ` (${_estQ(e.fator)} ${un})`}`)).join('')}${caixa(embs.length ? `avulso (${un})` : un)}</div></td>
+            <td class="ok"><span class="box"></span></td></tr>`;
+        }).join('')}</tbody>
+      </table>
+      <div class="extra"><b>Itens encontrados que não estão na lista</b> (produto · quantidade · unidade)
+        ${'<div class="l2"></div>'.repeat(4)}</div>
+    </section>`;
+  };
+  w.document.open();
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Folhas de contagem</title><style>
+    *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:18px;font-size:12px}
+    .folha{page-break-after:always;break-after:page} .folha:last-child{page-break-after:auto;break-after:auto}
+    header{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;border-bottom:2px solid #111;padding-bottom:8px}
+    .marca{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#555} h1{font-size:22px;margin:2px 0} .sub{color:#444}
+    .quem{text-align:right;line-height:2} .l{display:inline-block;border-bottom:1px solid #111;vertical-align:bottom}
+    .dica{margin:8px 0 10px;padding:6px 8px;background:#f3f3f3;border-radius:4px;font-size:11px}
+    table{width:100%;border-collapse:collapse} th{text-align:left;font-size:10px;text-transform:uppercase;color:#555;border-bottom:1.5px solid #111;padding:5px 4px}
+    td{border-bottom:1px solid #bbb;padding:7px 4px;vertical-align:middle} tr{page-break-inside:avoid;break-inside:avoid}
+    .n{width:26px;color:#777;text-align:right} .prod{width:34%} .cat{font-size:9px;color:#777;text-transform:uppercase}
+    .cont{display:flex;flex-wrap:wrap;gap:6px 14px} .cx{display:inline-flex;align-items:flex-end;gap:4px} .rot{font-size:10px;color:#444;white-space:nowrap}
+    .cx .linha{display:inline-block;width:56px;height:18px;border-bottom:1.5px solid #111}
+    .ok{width:24px;text-align:center} .box{display:inline-block;width:13px;height:13px;border:1.5px solid #111}
+    .extra{margin-top:12px;font-size:11px} .l2{border-bottom:1px solid #999;height:22px}
+    @page{size:A4;margin:12mm} @media print{body{padding:0}}
+  </style></head><body>${cs.map(folha).join('')}<script>window.onload=()=>setTimeout(()=>window.print(),200)<\/script></body></html>`);
+  w.document.close();
+}
+
+// Botão do topo: imprime as contagens pendentes e em andamento (respeita o filtro de categoria)
+function estImprimirAbertas() {
+  const passa = c => !_ctgFilCat || _ctgDados.cats[c.id]?.has(_ctgFilCat);
+  const abertas = (_ctgDados?.contagens || []).filter(c => ['pendente', 'andamento'].includes(c.status) && passa(c));
+  if (!abertas.length) return toast('Nenhuma contagem pendente ou em andamento. Crie em "Nova contagem" e depois imprima.', 'info');
+  estImprimirContagens(abertas.map(c => c.id));
 }
