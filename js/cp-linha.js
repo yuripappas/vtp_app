@@ -410,8 +410,20 @@ const cpPagSoma = pag => Math.round((pag?.parcelas || []).reduce((s, p) => s + (
 const cpPagFormaLabel = f => CP_FORMAS.find(x => x[0] === f)?.[1] || f || '—';
 
 // "Boleto · 3x · 12/11, 12/12 e 12/01/2027"
+// Condição negociada, sem datas: "Boleto · 3x a cada 30 dias", "Boleto · 21 dias", "Pix · à vista"
+function cpPagCondTexto(pag) {
+  if (!pag?.forma) return '';
+  const c = pag.condicao === 'avista' ? 'à vista' : pag.condicao === 'prazo' ? `${pag.dias || 0} dias` : `${pag.n || 2}x a cada ${pag.intervalo || 30} dias`;
+  return `${cpPagFormaLabel(pag.forma)} · ${c}`;
+}
+// 1º vencimento a partir da data da nota/compra
+function cpPagPrimeiro(pag, baseIso) {
+  const b = baseIso || _cpHojeIso();
+  return pag.condicao === 'avista' ? b : _cpSomaDias(b, pag.condicao === 'prazo' ? (pag.dias || 0) : (pag.intervalo || 30));
+}
+
 function cpPagTexto(pag) {
-  if (!pag?.parcelas?.length) return '';
+  if (!pag?.parcelas?.length) return cpPagCondTexto(pag);
   const ps = pag.parcelas, d = iso => cpDataBr(iso);
   const cond = pag.condicao === 'avista' ? 'à vista' : ps.length === 1 ? 'a prazo' : `${ps.length}x`;
   const datas = ps.length === 1 ? d(ps[0].venc) : ps.slice(0, -1).map(p => d(p.venc).slice(0, 5)).join(', ') + ' e ' + d(ps[ps.length - 1].venc);
@@ -419,7 +431,8 @@ function cpPagTexto(pag) {
 }
 
 // Bloco editável (ns = prefixo do handler: ns + 'Pag'(campo, valor, k))
-function cpPagHtml(pag, total, ns, { editavel = true, aviso = '' } = {}) {
+function cpPagHtml(pag, total, ns, { editavel = true, aviso = '', semDatas = false } = {}) {
+  if (!editavel && semDatas) return `<div style="font-size:var(--text-sm);font-weight:700">${_estEsc(cpPagCondTexto(pag) || 'Não informado')}</div>`;
   if (!editavel) {
     if (!pag?.parcelas?.length) return `<div style="font-size:var(--text-sm);color:var(--muted)">Pagamento não informado</div>`;
     return `<div style="font-size:var(--text-sm)"><strong>${_estEsc(cpPagFormaLabel(pag.forma))}</strong> · ${_estEsc(CP_CONDICOES.find(c => c[0] === pag.condicao)?.[1] || '')}
@@ -433,8 +446,9 @@ function cpPagHtml(pag, total, ns, { editavel = true, aviso = '' } = {}) {
       ${f('Condição', sel('condicao', CP_CONDICOES, pag.condicao), 150)}
       ${pag.condicao === 'prazo' ? f('Prazo (dias)', `<input class="inp" type="number" min="0" value="${pag.dias ?? ''}" onchange="${ns}Pag('dias',this.value)">`, 110) : ''}
       ${pag.condicao === 'parcelado' ? f('Parcelas', `<input class="inp" type="number" min="2" max="24" value="${pag.n ?? 2}" onchange="${ns}Pag('n',this.value)">`, 90) + f('A cada (dias)', `<input class="inp" type="number" min="1" value="${pag.intervalo ?? 30}" onchange="${ns}Pag('intervalo',this.value)">`, 110) : ''}
-      ${f(pag.condicao === 'avista' ? 'Pagamento em' : '1º vencimento', `<input class="inp" type="date" value="${pag.primeiro || ''}" onchange="${ns}Pag('primeiro',this.value)">`, 160)}
+      ${semDatas ? '' : f(pag.condicao === 'avista' ? 'Pagamento em' : '1º vencimento', `<input class="inp" type="date" value="${pag.primeiro || ''}" onchange="${ns}Pag('primeiro',this.value)">`, 160)}
     </div>
+    ${semDatas ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:8px">As datas e os valores das parcelas são preenchidos no recebimento, pela nota.</div>` : `
     <div style="margin-top:10px;border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
       ${pag.parcelas.map((p, k) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;${k ? 'border-top:1px solid var(--border)' : ''}">
         <span style="width:44px;font-size:var(--text-sm);font-weight:700;color:var(--text2)">${k + 1}/${pag.parcelas.length}</span>
@@ -447,7 +461,7 @@ function cpPagHtml(pag, total, ns, { editavel = true, aviso = '' } = {}) {
       <span style="color:${Math.abs(dif) < 0.01 ? 'var(--success-fg)' : 'var(--danger-fg)'};font-weight:700">${Math.abs(dif) < 0.01 ? `✓ parcelas somam ${_estR(soma)}` : `Parcelas somam ${_estR(soma)}: ${dif > 0 ? 'sobram' : 'faltam'} ${_estR(Math.abs(dif))} para o total ${_estR(total)}`}</span>
       ${pag.manual ? `<button class="btn btn-ghost btn-xs" onclick="${ns}Pag('recalcular')">${lc('refresh-cw', 11, 'currentColor')} Recalcular parcelas</button>` : ''}
     </div>
-    ${aviso ? `<div style="margin-top:6px;font-size:var(--text-xs);color:var(--orange-dark);font-weight:600">${aviso}</div>` : ''}`;
+    ${aviso ? `<div style="margin-top:6px;font-size:var(--text-xs);color:var(--orange-dark);font-weight:600">${aviso}</div>` : ''}`}`;
 }
 
 // Aplica a mudança e regera as parcelas quando for o caso

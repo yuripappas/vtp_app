@@ -228,7 +228,9 @@ function cpConferirPedido(id) {
   _rcAtual = { p, linhas, fotos: [], nota: null, notaArquivo: null, numero: '', chave: null, doc: '', data: _rcHoje(),
                extras: { ...cpExtrasVazio(), frete: primeira ? (Number(p.frete) || 0) : 0 }, totalNota: null,
                // Pagamento: vem o combinado na cotação (parcelas recalculadas pelo total que chegou)
-               pag: p.pagamento ? { ...JSON.parse(JSON.stringify(p.pagamento)), manual: false } : null, pagCombinado: p.pagamento ? cpPagTexto(p.pagamento) : '' };
+               pag: p.pagamento ? { ...JSON.parse(JSON.stringify(p.pagamento)), parcelas: [], primeiro: null, manual: false } : null,
+               pagCombinado: p.pagamento ? JSON.parse(JSON.stringify(p.pagamento)) : null };
+  if (_rcAtual.pag) _rcAtual.pag.primeiro = cpPagPrimeiro(_rcAtual.pag, _rcAtual.data);
   _estModal('ovRcConf', `Conferência · ${_estEsc(p.fornecedor_nome)}`, '', '_rcConfirmar()', 'Dar baixa e entrada no estoque', 980);
   _rcRenderConf();
 }
@@ -291,7 +293,8 @@ function _rcDivergencias(l, acr) {
 
 function _rcRenderPag(total) {
   const a = _rcAtual, el = document.getElementById('rcPag'); if (!el) return;
-  const aviso = a.pag?.daNota && a.pagCombinado && a.pagCombinado !== cpPagTexto(a.pag) ? `Na cotação foi combinado: ${_estEsc(a.pagCombinado)}. A nota veio diferente.` : '';
+  const c = a.pagCombinado, nComb = c ? (c.condicao === 'parcelado' ? Number(c.n) || 2 : 1) : 0;
+  const aviso = a.pag?.daNota && c && (c.forma !== a.pag.forma || nComb !== a.pag.parcelas.length) ? `Na cotação foi combinado: ${_estEsc(cpPagCondTexto(c))}. A nota veio diferente.` : '';
   el.innerHTML = cpPagHtml(a.pag, total, '_rc', { aviso });
 }
 function _rcPag(campo, v, k) {

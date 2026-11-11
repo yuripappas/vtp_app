@@ -560,7 +560,7 @@ function _pdMarcarEnviado(id) {
 // Preços guardados por unidade base (kg, L, un); a tela mostra por embalagem.
 // ══════════════════════════════════════════════════════════════
 
-function _pdAbrirCotacao(p, modo) {
+async function _pdAbrirCotacao(p, modo) {
   document.getElementById('ovPdEd')?.remove();
   const ov = document.createElement('div'); ov.className = 'overlay open'; ov.id = 'ovPdEd';
   ov.innerHTML = `<div class="modal" style="width:1120px;max-width:calc(100vw - 24px);height:calc(100vh - 32px);display:flex;flex-direction:column;padding:0" onclick="event.stopPropagation()">
@@ -569,11 +569,18 @@ function _pdAbrirCotacao(p, modo) {
     <div id="pdFoot" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:12px 22px;border-top:1px solid var(--border)"></div>
   </div>`;
   document.body.appendChild(ov);
+  document.getElementById('pdBody').innerHTML = `<div style="padding:60px;text-align:center;color:var(--muted)">${lc('refresh-cw', 16, 'currentColor')} Carregando o estoque…</div>`;
+  let saldos = null;
+  try { saldos = await estSaldos(); } catch (e) { console.warn('[cotação] saldo:', e.message); }
   const linhas = (_pdDados?.porPedido.get(p.id) || []).map(r => {
     const item = items.find(i => i.id === r.item_id) || { id: r.item_id, name: r.item_nome, unit: r.unidade, cat: r.categoria };
     const ap = _pdAp(r), f = ap?.fator || 1, n = _estRound((Number(r.qtd_pedida) || 0) / f);
+    // Referência de quantidade para quem cota e aprova: estoque, mín/ideal e sugerido (desconta outros pedidos do ciclo)
+    const saldo = saldos?.porItem.get(item.id)?.total ?? (Number(item.qty) || 0);
+    const outros = _pdEmOutros(item.id, p.id);
+    const sugerida = Math.max(0, _estRound(_clSugestao(item, saldo) - outros.reduce((t, o) => t + o.qtd, 0)));
     return { r, item, ap, n, nAprov: n, cot: r.preco_cotado != null ? Number(r.preco_cotado) : null,
-      ref: Number(r.preco_referencia ?? r.preco_combinado) || 0, indisp: !!r.indisponivel };
+      ref: Number(r.preco_referencia ?? r.preco_combinado) || 0, indisp: !!r.indisponivel, saldo, outros, sugerida };
   }).sort((a, b) => (a.item.cat || '').localeCompare(b.item.cat || '') || a.item.name.localeCompare(b.item.name));
   _pdAtual = { cot: true, pedido: p, forn: p.fornecedor_id, modo, linhas,
     frete: Number(p.frete) || 0, previsao: p.previsao_entrega || '',
@@ -630,7 +637,11 @@ function _pdRenderCot() {
         <div style="font-size:var(--text-2xs);color:var(--muted);text-align:right">por ${_estEsc(un)}</div>`
       : `<div style="text-align:right;font-weight:700">${l.indisp ? '<span style="color:var(--danger-fg)">não tem</span>' : l.cot > 0 ? `${_estR(l.cot * f)}<div style="font-size:var(--text-2xs);color:var(--muted);font-weight:400">por ${_estEsc(un)}</div>` : '—'}</div>`;
     return `<tr style="border-top:1px solid var(--border);${l.indisp ? 'opacity:.55' : ''}">
-      <td style="padding:8px 10px"><div style="font-weight:600">${_estEsc(l.item.name)}</div><div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(l.item.cat || '')}</div></td>
+      <td style="padding:8px 10px"><div style="font-weight:600">${_estEsc(l.item.name)}</div><div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(l.item.cat || '')}</div>
+        ${l.outros.length ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);font-weight:600">${lc('alert-triangle', 11, 'currentColor')} Também em pedido p/ ${l.outros.map(o => `${_estEsc(o.forn)} (${_estQ(o.qtd)} ${_estEsc(u)})`).join(', ')}</div>` : ''}</td>
+      <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:${l.item.min > 0 && l.saldo < l.item.min ? 'var(--danger-fg)' : 'var(--text)'}">${_estQ(l.saldo)} ${_estEsc(u)}</td>
+      <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${l.item.min ? _estQ(l.item.min) : '—'} / ${l.item.ideal ? _estQ(l.item.ideal) : '—'}</td>
+      <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:${l.sugerida > 0 ? 'var(--purple)' : 'var(--muted)'};font-weight:600">${l.sugerida > 0 ? (l.ap ? `${Math.ceil(l.sugerida / f - 1e-9)} ${_estEsc(l.ap.nome)}<div style="font-size:var(--text-2xs);color:var(--muted);font-weight:400">(${_estQ(l.sugerida)} ${_estEsc(u)})</div>` : `${_estQ(l.sugerida)} ${_estEsc(u)}`) : '—'}</td>
       <td style="padding:8px 10px">${qtdCel}</td>
       <td style="padding:8px 10px">${precoCel}</td>
       <td style="padding:8px 10px;text-align:right;white-space:nowrap;color:var(--text2)">${l.ref ? `${_estR(l.ref * f)}<div style="font-size:var(--text-2xs);color:var(--muted)">por ${_estEsc(un)}</div>` : '—'}</td>
@@ -646,7 +657,7 @@ function _pdRenderCot() {
     ${aprovar ? `<div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:10px">Confira o cotado contra a referência (último preço pago). Ajuste a quantidade se precisar; zero corta o item.</div>` : ''}
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
-        <thead style="background:var(--surface2)"><tr>${th('Insumo', 'left')}${th(aprovar ? 'Aprovar qtd' : 'Quantidade')}${th('Preço cotado')}${th('Referência')}${th('Δ')}${th('Total')}${cotar ? th('Não tem', 'center') : ''}</tr></thead>
+        <thead style="background:var(--surface2)"><tr>${th('Insumo', 'left')}${th('Estoque')}${th('Mín / ideal')}${th('Sugerido')}${th(aprovar ? 'Aprovar qtd' : 'Quantidade')}${th('Preço cotado')}${th('Referência')}${th('Δ')}${th('Total')}${cotar ? th('Não tem', 'center') : ''}</tr></thead>
         <tbody>${a.linhas.map(linha).join('')}</tbody>
       </table></div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
@@ -655,7 +666,7 @@ function _pdRenderCot() {
       <div id="pdCResumo" style="margin-left:auto;text-align:right;font-size:var(--text-sm);color:var(--text2)">${_pdCResumoHtml()}</div>
     </div>
     <div style="margin-top:14px;border:1.5px solid var(--border);border-radius:var(--r8);padding:12px 14px">
-      <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:8px">Pagamento negociado <span style="font-weight:400;color:var(--muted)">· forma, condição e parcelas (sobre cotado + frete)</span></div>
+      <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:8px">Pagamento negociado <span style="font-weight:400;color:var(--muted)">· forma e condição</span></div>
       <div id="pdPag"></div></div>
     ${minimo ? `<div style="margin-top:10px;padding:8px 12px;border-radius:var(--r8);background:var(--warning-bg);color:var(--warning-fg);font-size:var(--text-sm)">Abaixo do pedido mínimo do fornecedor (${_estR(s.pedidoMinimo)}).</div>` : ''}`;
 
@@ -678,14 +689,14 @@ function _pdRenderCot() {
 }
 
 const _pdTotPag = () => { const r = _pdCResumo(); return Math.round((r.cot + r.frete) * 100) / 100; };
+// Na cotação fica só a condição negociada (forma, à vista / prazo / parcelas); datas e
+// valores das parcelas são preenchidos no recebimento, pela nota
 function _pdRenderPag() {
   const a = _pdAtual, el = document.getElementById('pdPag'); if (!el) return;
-  if (a.modo === 'cotar') {
-    if (!a.pag) a.pag = cpPagGerar(cpPagNovo(), _pdTotPag()); else cpPagTotal(a.pag, _pdTotPag());
-    el.innerHTML = cpPagHtml(a.pag, _pdTotPag(), '_pd');
-  } else el.innerHTML = cpPagHtml(a.pag, _pdTotPag(), '_pd', { editavel: false });
+  if (!a.pag && a.modo === 'cotar') a.pag = { ...cpPagNovo(), parcelas: [] };
+  el.innerHTML = cpPagHtml(a.pag, _pdTotPag(), '_pd', { editavel: a.modo === 'cotar', semDatas: true });
 }
-function _pdPag(campo, v, k) { cpPagSet(_pdAtual.pag, _pdTotPag(), campo, v, k); _pdRenderPag(); }
+function _pdPag(campo, v, k) { const g = _pdAtual.pag; cpPagSet(g, _pdTotPag(), campo, v, k); g.parcelas = []; g.primeiro = null; g.manual = false; _pdRenderPag(); }
 
 function _pdCResumoHtml() {
   const r = _pdCResumo();
@@ -749,7 +760,6 @@ async function _pdAprovarCot() {
   if (!a.linhas.some(l => !l.indisp && l.nAprov > 0)) return toast('Todos os itens foram cortados: devolva o pedido em vez de aprovar', 'err');
   const comentario = document.getElementById('pdComentario')?.value.trim() || null;
   try {
-    if (a.pag) cpPagTotal(a.pag, _pdTotPag());   // corte de quantidade muda o total das parcelas
     const total = await _pdGravarLinhasCot(true);
     await cpUpdate('cp_pedidos', a.pedido.id, { status: 'aprovado', total_previsto: total, aprovado_por: estUsuario(), aprovado_em: new Date().toISOString(), comentario_aprovacao: comentario,
       ...(a.pag ? { pagamento: a.pag, condicao_pagamento: cpPagTexto(a.pag) } : {}) });
