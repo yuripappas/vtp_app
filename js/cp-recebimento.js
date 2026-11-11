@@ -234,7 +234,7 @@ function cpConferirPedido(id) {
 function _rcLinhaHtml(l, k) {
   const it = items.find(i => i.id === l.item_id);
   const u = it?.unit || l.pi?.unidade || 'un';
-  const ped = l.pi ? `Pedido: <strong>${_estEsc(estQtdApresentacao(l.falta, u, l.pi.apresentacao))}</strong>${Number(l.pi.preco_combinado) ? ` · estimado ${_estR(l.pi.preco_combinado)}/${_estEsc(u)}` : ''}` : '<span style="color:var(--orange-dark);font-weight:700">Fora do pedido</span>';
+  const ped = l.pi ? `Pedido: <strong>${_estEsc(estQtdApresentacao(l.falta, u, l.pi.apresentacao))}</strong>${Number(l.pi.preco_combinado) ? ` · ${l.pi.preco_cotado != null ? 'cotado' : 'estimado'} ${_estR(l.pi.preco_combinado)}/${_estEsc(u)}` : ''}` : '<span style="color:var(--orange-dark);font-weight:700">Fora do pedido</span>';
   return `<div id="rcL${k}" style="border:1.5px solid var(--border);border-radius:var(--r8);padding:10px 12px;margin-bottom:8px;background:var(--card-bg)">
     <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
       <div><strong style="font-size:var(--text-md)">${_estEsc(it?.name || l.pi?.item_nome || 'Item da nota')}</strong>
@@ -280,7 +280,7 @@ function _rcDivergencias(l, acr) {
   if (est > 0 && c.qtd > 0) {
     const custo = (c.total + acr) / c.qtd;
     if (Math.abs(custo - est) / est > 0.02) out.push({ item: l.pi.item_nome, tipo: 'preco', pedido: est, recebido: Math.round(custo * 10000) / 10000, unidade: u,
-      txt: `custo ${_estR(custo)}/${u} (${custo > est ? '+' : '−'}${Math.round(Math.abs(custo - est) / est * 100)}% do estimado)` });
+      txt: `custo ${_estR(custo)}/${u} (${custo > est ? '+' : '−'}${Math.round(Math.abs(custo - est) / est * 100)}% do ${l.pi.preco_cotado != null ? 'cotado' : 'estimado'})` });
   }
   return out;
 }
@@ -416,7 +416,7 @@ function _rcVerFechado(p, its) {
       <strong>Divergências:</strong> ${divs.map(d => `${_estEsc(d.item)}: ${d.tipo === 'qtd' ? `pedido ${_estQ(d.pedido)} ${_estEsc(d.unidade || '')}, veio ${_estQ(d.recebido)}` : `estimado ${_estR(d.pedido)}, custou ${_estR(d.recebido)}`}`).join(' · ')}</div>` : ''}
     <div style="border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
       ${its.map(i => `<div style="display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border-top:1px solid var(--border);font-size:var(--text-sm)">
-        <div><strong>${_estEsc(i.item_nome)}</strong><div style="font-size:var(--text-xs);color:var(--muted)">pedido ${_estEsc(estQtdApresentacao(i.qtd_pedida, i.unidade, i.apresentacao))}${i.preco_combinado ? ` · estimado ${_estR(i.preco_combinado)}/${_estEsc(i.unidade || 'un')}` : ''}</div></div>
+        <div><strong>${_estEsc(i.item_nome)}</strong><div style="font-size:var(--text-xs);color:var(--muted)">pedido ${_estEsc(estQtdApresentacao(i.qtd_pedida, i.unidade, i.apresentacao))}${i.preco_combinado ? ` · ${i.preco_cotado != null ? 'cotado' : 'estimado'} ${_estR(i.preco_combinado)}/${_estEsc(i.unidade || 'un')}` : ''}</div></div>
         <div style="text-align:right;white-space:nowrap">${_estQ(i.qtd_recebida)} ${_estEsc(i.unidade || '')}<div style="font-size:var(--text-xs);color:var(--muted)">${i.preco_final ? _estR(i.preco_final) + '/' + _estEsc(i.unidade || 'un') : '—'}</div></div></div>`).join('')}
     </div>`, `document.getElementById('ovRcConf').remove()`, 'Fechar', 680);
 }
