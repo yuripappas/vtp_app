@@ -16,7 +16,7 @@ let _rcAtual = null;
 const RC_STATUS = {
   rascunho:   { label: 'Rascunho',          cls: 'b-gray',   icon: 'edit-3'       },
   solicitado: { label: 'Pedido solicitado', cls: 'b-purple', icon: 'send'         },
-  parcial:    { label: 'Recebido parcial',  cls: 'b-orange', icon: 'package'      },
+  parcial:    { label: 'Aguardando reenvio', cls: 'b-orange', icon: 'package'     },
   recebido:   { label: 'Recebido',          cls: 'b-green',  icon: 'check-circle' },
   aprovado:   { label: 'Aprovado · a enviar', cls: 'b-gray', icon: 'check'        },
   cancelado:  { label: 'Cancelado',         cls: 'b-red',    icon: 'x-circle'     },
@@ -64,6 +64,13 @@ async function cpRenderAbaRecebimento(forcar = false) {
 }
 
 function _rcAlerta(p) {
+  if (p.status === 'parcial') {
+    const its = (_rcDados?.porPedido.get(p.id) || []).filter(i => i.conferencia?.status === 'aguardando');
+    const desde = p.aguardando_desde || p.recebido_em;
+    const dias = desde ? Math.floor((Date.now() - _estMs(desde)) / 864e5) : 0;
+    const atrasado = dias >= RC_REENVIO_DIAS;
+    return `<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:var(--text-xs);font-weight:700;color:${atrasado ? 'var(--danger-fg)' : 'var(--orange-dark)'};white-space:nowrap">${lc(atrasado ? 'clock' : 'package', 11, 'currentColor')} ${atrasado ? 'reenvio atrasado · ' : ''}falta ${its.length || '?'} item(ns)${desde ? ` · desde ${cpDataBr(desde)}` : ''}</span>`;
+  }
   if (p.status === 'recebido' && Array.isArray(p.divergencias) && p.divergencias.length) {
     return `<span style="display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:var(--text-xs);font-weight:700;color:var(--orange-dark);white-space:nowrap">${lc('alert-triangle', 11, 'currentColor')} com divergência (${p.divergencias.length})</span>`;
   }
@@ -210,31 +217,36 @@ function _rcImprimir(id) {
 
 const _rcEhAberto = p => ['solicitado', 'parcial'].includes(p.status);
 const RC_TIPOS = [['qtd', 'Quantidade diferente'], ['preco', 'Preço diferente'], ['errado', 'Produto errado / outra marca'], ['avariado', 'Avariado / vencido'], ['nao_veio', 'Não veio']];
-const RC_ACOES = { aceitar: 'Aceitar assim', devolver: 'Devolver', pedir: 'Pedir de novo', cancelar: 'Cancelar item' };
+const RC_ACOES = { aceitar: 'Aceitar assim', devolver: 'Devolver', aguardar: 'Aguardar reenvio', pedir: 'Pedir de novo', cancelar: 'Cancelar item', abater: 'Não vem: abater do pagamento' };
+const RC_REENVIO_DIAS = 3;   // depois disso o pedido aguardando reenvio fica vermelho
 
 function cpConferirPedido(id) {
   const p = _rcPedido(id);
-  const its = _rcDados.porPedido.get(id) || [];
+  let its = _rcDados.porPedido.get(id) || [];
   const aberto = _rcEhAberto(p);
   if (!aberto) return _rcVerFechado(p, its);
+  // Reenvio: só os itens que estão aguardando, presos à mesma nota
+  const reenvio = p.status === 'parcial' && its.some(i => i.conferencia?.status === 'aguardando');
+  if (reenvio) its = its.filter(i => i.conferencia?.status === 'aguardando');
   const linhas = its.map(pi => {
     const item = items.find(x => x.id === pi.item_id);
-    const falta = Math.max(0, (Number(pi.qtd_pedida) || 0) - (Number(pi.qtd_recebida) || 0));
+    const falta = reenvio ? Number(pi.conferencia.qtd_aguardando) || 0 : Math.max(0, (Number(pi.qtd_pedida) || 0) - (Number(pi.qtd_recebida) || 0));
     const ap = pi.apresentacao && Number(pi.apresentacao.fator) > 0 ? { nome: pi.apresentacao.nome, fator: Number(pi.apresentacao.fator) } : null;
     const f = ap?.fator || 1;
-    const precoBase = Number(pi.preco_combinado) || Number(item?.cost) || 0;
+    const precoBase = (reenvio && Number(pi.preco_final)) || Number(pi.preco_combinado) || Number(item?.cost) || 0;
     return { ..._cpLinhaVazia(), pi, falta, item_id: pi.item_id, ap, n: _estRound(falta / f), modo: 'unit', vUnit: precoBase ? Math.round(precoBase * f * 10000) / 10000 : null,
       conf: 'pendente', prob: null };
   });
   const primeira = its.every(i => !(Number(i.qtd_recebida) > 0));
-  _rcAtual = { p, linhas, fotos: [], nota: null, notaArquivo: null, numero: '', chave: null, doc: '', data: _rcHoje(), filtro: 'todos',
+  _rcAtual = { p, linhas, reenvio, fotos: [], nota: null, notaArquivo: null, numero: '', chave: null, doc: '', data: _rcHoje(), filtro: 'todos',
                extras: { ...cpExtrasVazio(), frete: primeira ? (Number(p.frete) || 0) : 0 }, totalNota: null,
                pag: p.pagamento ? { ...JSON.parse(JSON.stringify(p.pagamento)), parcelas: [], primeiro: null, manual: false } : null,
                pagCombinado: p.pagamento ? JSON.parse(JSON.stringify(p.pagamento)) : null };
   if (_rcAtual.pag) _rcAtual.pag.primeiro = cpPagPrimeiro(_rcAtual.pag, _rcAtual.data);
-  _estModal('ovRcConf', `Conferência · ${_estEsc(p.fornecedor_nome)}`, '', '_rcConfirmar()', 'Dar baixa e entrada no estoque', 1000);
+  _estModal('ovRcConf', `${reenvio ? 'Reenvio' : 'Conferência'} · ${_estEsc(p.fornecedor_nome)}`, '', '_rcConfirmar()', 'Dar baixa e entrada no estoque', 1000);
   _rcRodapeDiscreto(p, true);
   _rcRenderConf();
+  if (reenvio) _rcCarregarCompraOriginal();
 }
 
 const _rcUn = l => items.find(i => i.id === l.item_id)?.unit || l.pi?.unidade || 'un';
@@ -244,7 +256,7 @@ const _rcNomeItem = l => items.find(i => i.id === l.item_id)?.name || l.pi?.item
 // Linha como ela entra de fato (devolução tira a parte devolvida; cancelado não entra)
 function _rcEfetiva(l) {
   const a = l.prob?.acao;
-  if (l.conf === 'problema' && a === 'cancelar') return { ...l, n: 0 };
+  if (l.conf === 'problema' && (a === 'cancelar' || a === 'abater')) return { ...l, n: 0 };
   if (l.conf === 'problema' && a === 'devolver') {
     const n = Number(l.n) || 0, dev = Math.min(n, Number(l.prob.devN) || 0), frac = n > 0 ? (n - dev) / n : 0;
     return { ...l, n: _estRound(n - dev), vTotal: l.modo === 'total' && l.vTotal != null ? Math.round(l.vTotal * frac * 100) / 100 : l.vTotal };
@@ -284,7 +296,10 @@ function _rcLinhaHtml(l, k) {
 function _rcProbHtml(l, k) {
   const pr = l.prob || {}, un = l.ap ? l.ap.nome : _rcUn(l);
   const chip = (on, txt, fn, cor = 'var(--purple)') => `<button type="button" onclick="${fn}" style="padding:5px 11px;border-radius:99px;font-size:var(--text-xs);font-weight:700;font-family:inherit;cursor:pointer;border:1.5px solid ${on ? cor : 'var(--border)'};background:${on ? 'var(--card-bg)' : 'transparent'};color:${on ? cor : 'var(--text2)'}">${on ? '● ' : ''}${txt}</button>`;
-  const acoes = l.pi ? (Number(l.n) > 0 ? ['aceitar', 'devolver', 'pedir'] : ['pedir', 'cancelar']) : ['aceitar', 'devolver'];
+  const veio = Number(l.n) > 0;
+  const acoes = !l.pi ? ['aceitar', 'devolver']
+    : _rcAtual.reenvio ? (veio ? ['aceitar', 'aguardar'] : ['aguardar', 'abater', 'pedir'])
+    : (veio ? ['aceitar', 'devolver', 'aguardar', 'pedir'] : ['aguardar', 'pedir', 'cancelar']);
   const num = (campo, val) => `<input class="inp" type="text" inputmode="decimal" value="${cpFmtNum(val)}" style="width:90px;text-align:right;font-weight:700" oninput="_rcProb(${k},'${campo}',this.value)">`;
   return `<div style="margin-top:10px;padding:10px 12px;border-radius:var(--r8);background:var(--orange-light)">
     <div style="font-size:var(--text-xs);font-weight:800;color:var(--orange-dark);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">O que houve</div>
@@ -296,9 +311,12 @@ function _rcProbHtml(l, k) {
         <label style="display:flex;gap:6px;align-items:center;font-size:var(--text-sm);cursor:pointer;text-transform:none;letter-spacing:0;color:var(--text);font-weight:500;padding-bottom:8px">
           <input type="checkbox" ${pr.repor ? 'checked' : ''} onchange="_rcProb(${k},'repor',this.checked)" style="accent-color:var(--purple)"> Pedir de novo o que foi devolvido</label>` : ''}
       ${pr.acao === 'pedir' ? `<div class="field" style="margin:0"><label>Pedir de novo quanto (${_estEsc(un)})</label>${num('repN', pr.repN)}</div>` : ''}
+      ${pr.acao === 'aguardar' ? `<div class="field" style="margin:0"><label>Aguardando quanto (${_estEsc(un)})</label>${num('aguN', pr.aguN)}</div>` : ''}
       <div class="field" style="margin:0;flex:1;min-width:220px"><label>Observação${pr.acao === 'aceitar' ? ' * (motivo)' : ''}</label>
         <input class="inp" value="${_estEsc(pr.obs || '')}" placeholder="${pr.acao === 'aceitar' ? 'ex.: preço subiu na semana, marca trocada aceitável' : 'ex.: veio amassado, motorista avisou'}" oninput="_rcProb(${k},'obs',this.value,true)"></div>
     </div>
+    ${pr.acao === 'aguardar' ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);font-weight:700;margin-top:6px">Vem na mesma nota: o pagamento não muda e o pedido fica "Aguardando reenvio".</div>` : ''}
+    ${pr.acao === 'abater' ? `<div style="font-size:var(--text-xs);color:var(--orange-dark);font-weight:700;margin-top:6px">${_estR(_rcValorFalta(l))} saem das parcelas em aberto desta nota.</div>` : ''}
     ${pr.acao === 'devolver' ? `<div id="rcDevV${k}" style="font-size:var(--text-xs);color:var(--orange-dark);font-weight:700;margin-top:6px">Valor devolvido: ${_estR(_rcDevolvidoLinha(l))} · abatido do pagamento</div>` : ''}
   </div>`;
 }
@@ -323,7 +341,7 @@ function _rcConf(k, estado) {
   if (estado === 'problema' && !l.prob) {
     const dv = _rcDivergencias(l, 0), c = cpLinhaCalc(l);
     const f = _rcF(l), faltaN = l.pi ? Math.max(0, _estRound((l.falta - c.qtd) / f)) : 0;
-    l.prob = { tipo: _rcTipoAuto(l, dv), acao: null, devN: Number(l.n) || 0, repN: faltaN || null, repor: false, obs: '' };
+    l.prob = { tipo: _rcTipoAuto(l, dv), acao: null, devN: Number(l.n) || 0, repN: faltaN || null, aguN: faltaN || null, repor: false, obs: '' };
   }
   if (estado === 'pendente') l.prob = null;
   _rcRedesenharLinha(k);
@@ -332,10 +350,11 @@ function _rcConf(k, estado) {
 
 function _rcProb(k, campo, v, semRedesenho) {
   const l = _rcAtual.linhas[k];
-  if (campo === 'devN' || campo === 'repN') l.prob[campo] = cpNum(v);
+  if (['devN', 'repN', 'aguN'].includes(campo)) l.prob[campo] = cpNum(v);
   else l.prob[campo] = v;
   if (campo === 'acao' && v === 'pedir' && !(l.prob.repN > 0)) l.prob.repN = Math.max(0, _estRound((l.falta - cpLinhaCalc(l).qtd) / _rcF(l))) || null;
-  if (!semRedesenho && !['devN', 'repN'].includes(campo)) _rcRedesenharLinha(k);
+  if (campo === 'acao' && v === 'aguardar' && !(l.prob.aguN > 0)) l.prob.aguN = Math.max(0, _estRound((l.falta - cpLinhaCalc(l).qtd) / _rcF(l))) || null;
+  if (!semRedesenho && !['devN', 'repN', 'aguN'].includes(campo)) _rcRedesenharLinha(k);
   if (campo === 'devN') { const el = document.getElementById('rcDevV' + k); if (el) el.textContent = `Valor devolvido: ${_estR(_rcDevolvidoLinha(l))} · abatido do pagamento`; }
   _rcAtualizar();
 }
@@ -349,7 +368,12 @@ function _rcRenderConf() {
   const a = _rcAtual;
   const body = document.getElementById('ovRcConf-body');
   if (!body) return;
-  body.innerHTML = `
+  body.innerHTML = a.reenvio ? `
+    <div style="padding:10px 12px;border-radius:var(--r8);background:var(--purple-xlight);font-size:var(--text-sm);margin-bottom:12px;line-height:1.5">
+      ${lc('package', 14, 'var(--purple)')} <strong>Reenvio da mesma nota.</strong> Confira só o que estava faltando. A nota e o pagamento já foram registrados no primeiro recebimento${a.compraOrig ? ` (nota ${_estEsc(a.compraOrig.numero_nota || '—')} de ${cpDataBr(a.compraOrig.data_compra)})` : ''}.</div>
+    <div id="rcProg" style="position:sticky;top:-16px;z-index:5;background:var(--card-bg);padding:8px 0;margin-bottom:6px;border-bottom:1px solid var(--border)"></div>
+    ${a.linhas.map(_rcLinhaHtml).join('')}
+    <div id="rcResumo" style="margin-top:12px"></div>` : `
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
       ${_estCampo('Data da nota', `<input class="inp" type="date" value="${a.data}" onchange="_rcAtual.data=this.value">`)}
       ${_estCampo('Nº da nota', `<input class="inp" value="${_estEsc(a.numero)}" oninput="_rcAtual.numero=this.value" placeholder="opcional">`)}
@@ -362,10 +386,10 @@ function _rcRenderConf() {
     <div id="rcProg" style="position:sticky;top:-16px;z-index:5;background:var(--card-bg);padding:8px 0;margin-bottom:6px;border-bottom:1px solid var(--border)"></div>
     ${a.linhas.map(_rcLinhaHtml).join('')}
     <button class="btn btn-ghost btn-sm" onclick="_rcAtual.linhas.push({..._cpLinhaVazia(), pi: null, conf: 'pendente', prob: null});_rcRenderConf()">${lc('plus', 13, 'currentColor')} Item que veio fora do pedido</button>
-    ${cpTotaisNotaHtml(a.extras, a.totalNota, '_rc', CP_EXTRAS.some(e => a.extras[e.k]) || !!a.nota)}
+    ${a.reenvio ? '' : cpTotaisNotaHtml(a.extras, a.totalNota, '_rc', CP_EXTRAS.some(e => a.extras[e.k]) || !!a.nota)}
     <div id="rcResumo" style="margin-top:12px"></div>
-    <div style="margin-top:14px;border:1.5px solid var(--border);border-radius:var(--r8);padding:12px 14px;background:var(--card-bg)">
-      <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:8px">Pagamento <span style="font-weight:400;color:var(--muted)">· vem o combinado na cotação; com XML, valem as duplicatas da nota; devolução é abatida</span></div><div id="rcPag"></div></div>`;
+    ${a.reenvio ? '' : `<div style="margin-top:14px;border:1.5px solid var(--border);border-radius:var(--r8);padding:12px 14px;background:var(--card-bg)">
+      <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:8px">Pagamento <span style="font-weight:400;color:var(--muted)">· vem o combinado na cotação; com XML, valem as duplicatas da nota; devolução é abatida</span></div><div id="rcPag"></div></div>`}`;
   _rcAtualizar();
 }
 
@@ -387,12 +411,21 @@ function _rcDivergencias(l, acr) {
   return out;
 }
 
-// Totais: nota (o que veio) × a pagar (nota − devolvido)
+// Preço por embalagem da linha (o digitado; senão o do pedido)
+const _rcPrecoAp = l => { const c = cpLinhaCalc(l); return c.n > 0 && c.total > 0 ? c.total / c.n : (Number(l.pi?.preco_final) || Number(l.pi?.preco_combinado) || 0) * _rcF(l); };
+// Valor do que falta (para abater quando não vem)
+const _rcValorFalta = l => Math.round((l.falta / _rcF(l)) * _rcPrecoAp(l) * 100) / 100;
+
+// Totais: nota = o que chegou + o que vem no reenvio (está na mesma nota); a pagar = nota − devolvido
 function _rcTotais() {
   const a = _rcAtual;
-  const nota = cpResumoNota(a.linhas, a.extras);
-  const devolvido = Math.round(a.linhas.reduce((t, l) => t + (l.conf === 'problema' && l.prob?.acao === 'devolver' ? _rcDevolvidoLinha(l) : 0), 0) * 100) / 100;
-  return { nota, devolvido, aPagar: Math.round((nota.total - devolvido) * 100) / 100 };
+  const chegou = cpResumoNota(a.linhas, a.extras);
+  const sum = f => Math.round(a.linhas.reduce((t, l) => t + (l.conf === 'problema' ? f(l) : 0), 0) * 100) / 100;
+  const devolvido = sum(l => l.prob?.acao === 'devolver' ? _rcDevolvidoLinha(l) : 0);
+  const aguardando = sum(l => l.prob?.acao === 'aguardar' ? (Number(l.prob.aguN) || 0) * _rcPrecoAp(l) : 0);
+  const abatido = sum(l => l.prob?.acao === 'abater' ? _rcValorFalta(l) : 0);
+  const nota = { ...chegou, itens: Math.round((chegou.itens + aguardando) * 100) / 100, total: Math.round((chegou.total + aguardando) * 100) / 100 };
+  return { nota, chegou, devolvido, aguardando, abatido, aPagar: Math.round((nota.total - devolvido) * 100) / 100 };
 }
 
 function _rcRenderPag(total) {
@@ -435,11 +468,17 @@ function _rcAtualizar() {
   a.divs = divs;
   const t = _rcTotais();
   const r = document.getElementById('rcResumo');
-  if (r) r.innerHTML = cpTotaisResumoHtml(t.nota, a.totalNota) + (t.devolvido ? `<div style="text-align:right;font-size:var(--text-sm);margin-top:4px;color:var(--orange-dark);font-weight:700">Devolvido ao fornecedor −${_estR(t.devolvido)} · a pagar ${_estR(t.aPagar)}</div>` : '');
-  if (!a.pag) a.pag = cpPagGerar(cpPagNovo(), t.aPagar);
-  else if (a.pag.daNota) _rcAjustarPagNota(a.pag, t.aPagar);
-  else cpPagTotal(a.pag, t.aPagar);
-  _rcRenderPag(t.aPagar);
+  if (r) r.innerHTML = a.reenvio
+    ? `<div style="text-align:right;font-size:var(--text-sm);color:var(--text2)">Itens deste reenvio <strong style="color:var(--text)">${_estR(t.chegou.itens)}</strong>${t.abatido ? ` · <span style="color:var(--orange-dark);font-weight:700">abatido do pagamento −${_estR(t.abatido)}</span>` : ''}${a.compraOrig ? ` · nota ${_estEsc(a.compraOrig.numero_nota || '—')} de ${cpDataBr(a.compraOrig.data_compra)}` : ''}</div>`
+    : cpTotaisResumoHtml(t.nota, a.totalNota)
+      + (t.aguardando ? `<div style="text-align:right;font-size:var(--text-sm);margin-top:4px;color:var(--orange-dark);font-weight:700">Inclui ${_estR(t.aguardando)} aguardando reenvio (mesma nota)</div>` : '')
+      + (t.devolvido ? `<div style="text-align:right;font-size:var(--text-sm);margin-top:4px;color:var(--orange-dark);font-weight:700">Devolvido ao fornecedor −${_estR(t.devolvido)} · a pagar ${_estR(t.aPagar)}</div>` : '');
+  if (!a.reenvio) {
+    if (!a.pag) a.pag = cpPagGerar(cpPagNovo(), t.aPagar);
+    else if (a.pag.daNota) _rcAjustarPagNota(a.pag, t.aPagar);
+    else cpPagTotal(a.pag, t.aPagar);
+    _rcRenderPag(t.aPagar);
+  }
   // Progresso
   const reais = a.linhas.filter(l => l.pi || l.item_id);
   const n = s => reais.filter(l => l.conf === s).length;
@@ -460,11 +499,14 @@ function _rcProbOk(l) {
   if (p.acao === 'aceitar' && !(p.obs || '').trim()) return false;
   if (p.acao === 'devolver' && !(p.devN > 0)) return false;
   if (p.acao === 'pedir' && !(p.repN > 0)) return false;
+  if (p.acao === 'aguardar' && !(p.aguN > 0)) return false;
   return true;
 }
 
 function _rcLinha(k, campo, v) {
   const l = _rcAtual.linhas[k];
+  // Mudou a quantidade numa linha com total digitado/da nota: mantém o preço por embalagem
+  if (campo === 'n' && l.modo === 'total') { const c = cpLinhaCalc(l); if (c.n > 0 && c.total > 0) { l.vUnit = Math.round(c.total / c.n * 10000) / 10000; l.modo = 'unit'; } }
   if (cpLinhaSet(l, campo, v)) _rcRedesenharLinha(k);
   else cpLinhaSincronizar(l, k, '_rc', campo);
   // Mexeu num item já conferido e agora não bate: vira problema
@@ -534,12 +576,16 @@ function _rcConfirmar() {
   const rep = reais.filter(l => l.prob?.acao === 'pedir' || (l.prob?.acao === 'devolver' && l.prob.repor)).length;
   const acc = reais.filter(l => l.prob?.acao === 'aceitar').length;
   const canc = reais.filter(l => l.prob?.acao === 'cancelar').length;
+  const agu = reais.filter(l => l.prob?.acao === 'aguardar').length;
+  const abat = reais.filter(l => l.prob?.acao === 'abater').length;
   vtpConfirm({
     title: 'Dar baixa no recebimento?',
     message: [`${entram} item(ns) entram no estoque`, acc && `${acc} aceito(s) com divergência`, dev && `${dev} devolução(ões) · ${_estR(t.devolvido)} abatidos do pagamento`,
-      rep && `${rep} item(ns) num pedido novo em Rascunho`, canc && `${canc} cancelado(s)`, `A pagar: ${_estR(t.aPagar)}`].filter(Boolean).join('\n'),
+      rep && `${rep} item(ns) num pedido novo em Rascunho`, canc && `${canc} cancelado(s)`,
+      agu && `${agu} item(ns) aguardando reenvio na mesma nota (pedido continua aberto)`, abat && `${abat} não vem · ${_estR(t.abatido)} abatidos das parcelas`,
+      !a.reenvio && `A pagar: ${_estR(t.aPagar)}`].filter(Boolean).join('\n'),
     confirmLabel: 'Dar baixa', danger: false,
-    onConfirm: () => _rcGravar(),
+    onConfirm: () => (a.reenvio ? _rcGravarReenvio() : _rcGravar()),
   });
 }
 
@@ -581,7 +627,8 @@ async function _rcGravar() {
     for (let k = 0; k < a.linhas.length; k++) {
       const l = a.linhas[k], e = ef[k], i = validas.indexOf(e);
       const qRec = i >= 0 ? cpLinhaCalc(e).qtd : 0, f = _rcF(l), pr = l.prob;
-      const status = l.conf === 'ok' ? 'ok' : { aceitar: 'aceito', devolver: 'devolvido', pedir: 'repedido', cancelar: 'cancelado' }[pr?.acao];
+      const status = l.conf === 'ok' ? 'ok' : { aceitar: 'aceito', devolver: 'devolvido', pedir: 'repedido', cancelar: 'cancelado', aguardar: 'aguardando' }[pr?.acao];
+      const qAgu = pr?.acao === 'aguardar' ? _estRound((Number(pr.aguN) || 0) * f) : 0;
       const qRep = pr?.acao === 'pedir' ? _estRound((Number(pr.repN) || 0) * f) : pr?.acao === 'devolver' && pr.repor ? _estRound(cpLinhaCalc(l).qtd - qRec) : 0;
       if (qRep > 0 && l.item_id) repor.push({ l, qtd: qRep });
       if (l.conf === 'problema') divergencias.push({ item: _rcNomeItem(l), tipo: pr.tipo, acao: pr.acao, obs: pr.obs || null,
@@ -589,7 +636,7 @@ async function _rcGravar() {
       if (!l.pi) continue;
       await cpUpdate('cp_pedido_itens', l.pi.id, { qtd_recebida: _estRound((Number(l.pi.qtd_recebida) || 0) + qRec), preco_final: i >= 0 ? linhas[i].preco_unit : null,
         conferencia: { status, tipo: pr?.tipo || null, obs: pr?.obs || null, qtd_recebida: _estRound(qRec), qtd_devolvida: pr?.acao === 'devolver' ? _estRound(cpLinhaCalc(l).qtd - qRec) : 0,
-          valor_devolvido: pr?.acao === 'devolver' ? _rcDevolvidoLinha(l) : 0, qtd_repedida: qRep } });
+          valor_devolvido: pr?.acao === 'devolver' ? _rcDevolvidoLinha(l) : 0, qtd_repedida: qRep, qtd_aguardando: qAgu } });
     }
     // Pedido novo em Rascunho com o que precisa repor
     let novo = null;
@@ -603,11 +650,13 @@ async function _rcGravar() {
           apresentacao: l.pi?.apresentacao || l.ap || null, preco_combinado: pc, preco_referencia: Number(l.pi?.preco_referencia) || pc, criado_por: user };
       }));
     }
-    await cpUpdate('cp_pedidos', p.id, { status: 'recebido', recebido_por: user, recebido_em: new Date().toISOString(), divergencias: divergencias.length ? divergencias : null,
+    const aguardando = a.linhas.some(l => l.pi && l.conf === 'problema' && l.prob?.acao === 'aguardar');
+    await cpUpdate('cp_pedidos', p.id, { status: aguardando ? 'parcial' : 'recebido', aguardando_desde: aguardando ? new Date().toISOString() : null,
+      recebido_por: user, recebido_em: new Date().toISOString(), divergencias: divergencias.length ? divergencias : null,
       solicitado_em: p.solicitado_em || new Date().toISOString(), solicitado_por: p.solicitado_por || user });
     document.getElementById('ovRcConf')?.remove();
     _rcAtual = null;
-    toast(`Pedido recebido · ${linhas.length} item(ns) no estoque${t.devolvido ? ` · ${_estR(t.devolvido)} devolvidos` : ''}${novo ? ' · pedido de reposição em Rascunho na Cotação' : ''}`, 'ok');
+    toast(`${aguardando ? 'Recebido em parte · aguardando reenvio' : 'Pedido recebido'} · ${linhas.length} item(ns) no estoque${t.devolvido ? ` · ${_estR(t.devolvido)} devolvidos` : ''}${novo ? ' · pedido de reposição em Rascunho na Cotação' : ''}`, 'ok');
     _cpComprasDados = null; _pdDados = null;
     cpRenderAbaRecebimento(true);
   } catch (e) {
@@ -644,4 +693,88 @@ function _rcRodapeDiscreto(p, aberto) {
   foot.insertBefore(box, foot.firstChild);
   const c = foot.querySelector('.btn-outline');
   if (c) { if (aberto) c.textContent = 'Fechar'; else c.remove(); }   // não confundir com "Cancelar pedido"
+}
+
+// ══════════════════════════════════════════════════════════════
+// REENVIO (mesma nota): só os itens aguardando; entram na compra original,
+// sem nota nova nem pagamento novo. Se não vier: abater das parcelas em aberto
+// ou pedir de novo. O pedido fecha quando nada mais fica aguardando.
+// ══════════════════════════════════════════════════════════════
+
+async function _rcCarregarCompraOriginal() {
+  const a = _rcAtual;
+  try {
+    const rows = await cpSelect('cp_compras', q => q.select('*').eq('pedido_id', a.p.id).is('excluido_em', null).order('created_at', { ascending: true }));
+    a.compraOrig = rows[0] || null;
+    if (_rcAtual === a) _rcRenderConf();
+  } catch (e) { console.warn('[reenvio] compra original:', e.message); }
+}
+
+async function _rcGravarReenvio() {
+  const a = _rcAtual, p = a.p;
+  const btn = document.getElementById('ovRcConf-salvar');
+  if (btn) { btn.dataset.salvando = '1'; btn.disabled = true; btn.textContent = 'Salvando…'; }
+  try {
+    const user = estUsuario(), t = _rcTotais();
+    let compra = a.compraOrig;
+    if (!compra) {   // pedido antigo sem a compra ligada: registra uma compra para o reenvio
+      [compra] = await cpInsert('cp_compras', { data_compra: _rcHoje(), fornecedor_id: p.fornecedor_id, fornecedor_nome: p.fornecedor_nome, origem: 'pedido',
+        pedido_id: p.id, total: t.chegou.total, criado_por: user, obs: 'Reenvio' });
+    }
+    const ef = a.linhas.map(_rcEfetiva);
+    const rat = cpRatear(ef, cpExtrasVazio());
+    const validas = [...rat.keys()];
+    const linhas = validas.length ? await cpInsert('cp_compra_itens', cpLinhasParaSalvar(ef, cpExtrasVazio(), compra.id, user)) : [];
+    if (linhas.length) await cpDarEntradaEstoque(compra, linhas);
+    // Não vem: sai do total da nota e das parcelas em aberto (das últimas para as primeiras)
+    if (t.abatido > 0 && a.compraOrig) {
+      await cpUpdate('cp_compras', compra.id, { total: Math.round(((+compra.total || 0) - t.abatido) * 100) / 100, devolvido: Math.round(((+compra.devolvido || 0) + t.abatido) * 100) / 100 });
+      const parc = await cpSelect('cp_compra_parcelas', q => q.select('*').eq('compra_id', compra.id).eq('status', 'aberta').order('vencimento', { ascending: false }));
+      let resta = t.abatido;
+      for (const pc of parc) {
+        if (resta <= 0.004) break;
+        const tira = Math.min(resta, Number(pc.valor) || 0);
+        const novo = Math.round(((Number(pc.valor) || 0) - tira) * 100) / 100;
+        await cpUpdate('cp_compra_parcelas', pc.id, novo > 0.004 ? { valor: novo } : { valor: 0, status: 'cancelada' });
+        resta = Math.round((resta - tira) * 100) / 100;
+      }
+    }
+    const repor = [], divergencias = Array.isArray(p.divergencias) ? [...p.divergencias] : [];
+    let aindaAguarda = false;
+    for (let k = 0; k < a.linhas.length; k++) {
+      const l = a.linhas[k], e = ef[k], i = validas.indexOf(e), pr = l.prob, f = _rcF(l);
+      const qRec = i >= 0 ? cpLinhaCalc(e).qtd : 0;
+      const acao = l.conf === 'ok' ? 'ok' : pr?.acao;
+      const qAgu = acao === 'aguardar' ? _estRound((Number(pr.aguN) || 0) * f) : 0;
+      if (qAgu > 0) aindaAguarda = true;
+      const qRep = acao === 'pedir' ? _estRound((Number(pr.repN) || 0) * f) : 0;
+      if (qRep > 0) repor.push({ l, qtd: qRep });
+      if (l.conf === 'problema') divergencias.push({ item: _rcNomeItem(l), tipo: pr.tipo, acao: pr.acao, obs: pr.obs || null, reenvio: true,
+        pedido: _estRound(l.falta), recebido: _estRound(cpLinhaCalc(l).qtd), unidade: _rcUn(l), devolvido: acao === 'abater' ? _rcValorFalta(l) : 0, repedido: qRep });
+      const ant = l.pi.conferencia || {};
+      await cpUpdate('cp_pedido_itens', l.pi.id, { qtd_recebida: _estRound((Number(l.pi.qtd_recebida) || 0) + qRec), ...(i >= 0 ? { preco_final: linhas[i].preco_unit } : {}),
+        conferencia: { ...ant, status: { ok: 'ok', aceitar: 'aceito', aguardar: 'aguardando', abater: 'cancelado', pedir: 'repedido' }[acao] || ant.status,
+          qtd_aguardando: qAgu, reenvio_em: new Date().toISOString(), qtd_reenvio: _estRound(qRec), obs_reenvio: pr?.obs || null,
+          ...(acao === 'abater' ? { valor_abatido: _rcValorFalta(l) } : {}), ...(qRep ? { qtd_repedida: qRep } : {}) } });
+    }
+    if (repor.length) {
+      const [novo] = await cpInsert('cp_pedidos', { fornecedor_id: p.fornecedor_id, fornecedor_nome: p.fornecedor_nome, status: 'montagem', criado_por: user,
+        comentario_aprovacao: `Reposição do reenvio de ${cpDataBr(_rcHoje())}` });
+      await cpInsert('cp_pedido_itens', repor.map(({ l, qtd }) => ({ pedido_id: novo.id, item_id: l.item_id, item_nome: _rcNomeItem(l), unidade: _rcUn(l), qtd_pedida: qtd,
+        apresentacao: l.pi?.apresentacao || l.ap || null, preco_combinado: Number(l.pi?.preco_combinado) || null, preco_referencia: Number(l.pi?.preco_referencia) || null, criado_por: user })));
+    }
+    // Itens que já estavam fechados no pedido continuam fechados; aguardando decide o status
+    const outrosAguardando = (_rcDados.porPedido.get(p.id) || []).some(i => i.conferencia?.status === 'aguardando' && !a.linhas.some(l => l.pi?.id === i.id));
+    const fica = aindaAguarda || outrosAguardando;
+    await cpUpdate('cp_pedidos', p.id, { status: fica ? 'parcial' : 'recebido', divergencias: divergencias.length ? divergencias : null,
+      ...(fica ? {} : { aguardando_desde: null }), recebido_por: user, recebido_em: new Date().toISOString() });
+    document.getElementById('ovRcConf')?.remove();
+    _rcAtual = null;
+    toast(`Reenvio conferido · ${linhas.length} item(ns) no estoque${t.abatido ? ` · ${_estR(t.abatido)} abatidos` : ''}${fica ? ' · ainda aguardando' : ' · pedido recebido'}`, 'ok');
+    _cpComprasDados = null; _pdDados = null;
+    cpRenderAbaRecebimento(true);
+  } catch (e) {
+    toast('Não consegui confirmar o reenvio: ' + e.message, 'err');
+    if (btn) { delete btn.dataset.salvando; btn.disabled = false; btn.textContent = 'Dar baixa e entrada no estoque'; }
+  }
 }
