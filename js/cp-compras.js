@@ -267,7 +267,9 @@ function _cpNCPasso2() {
     ${linhas}
     <button class="btn btn-outline btn-sm" onclick="_cpNC.itens.push(_cpLinhaVazia());_cpNCRender()">${lc('plus', 13, 'currentColor')} Adicionar item</button>
     ${cpTotaisNotaHtml(n.extras, n.totalNota, '_cpNC', CP_EXTRAS.some(e => n.extras[e.k]))}
-    <div id="ncResumo" style="margin-top:12px"></div>`;
+    <div id="ncResumo" style="margin-top:12px"></div>
+    <div style="margin-top:14px;border:1.5px solid var(--border);border-radius:var(--r8);padding:12px 14px;background:var(--card-bg)">
+      <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:8px">Pagamento</div><div id="ncPag"></div></div>`;
 }
 
 // Recalcula conversões e totais sem redesenhar (mantém o foco no campo)
@@ -275,8 +277,19 @@ function _cpNCAtualizar() {
   const n = _cpNC;
   const rat = cpRatear(n.itens, n.extras);
   n.itens.forEach((l, idx) => { const el = document.getElementById('_cpNCConv' + idx); if (el) el.innerHTML = cpConvTexto(l, rat.get(l) || 0); });
+  const res = cpResumoNota(n.itens, n.extras);
   const r = document.getElementById('ncResumo');
-  if (r) r.innerHTML = cpTotaisResumoHtml(cpResumoNota(n.itens, n.extras), n.totalNota);
+  if (r) r.innerHTML = cpTotaisResumoHtml(res, n.totalNota);
+  if (!n.pagamento) n.pagamento = cpPagGerar(cpPagNovo({ forma: 'pix', condicao: 'avista' }), res.total);
+  else cpPagTotal(n.pagamento, res.total);
+  const pg = document.getElementById('ncPag');
+  if (pg) pg.innerHTML = cpPagHtml(n.pagamento, res.total, '_cpNC');
+}
+
+function _cpNCPag(campo, v, k) {
+  const tot = cpResumoNota(_cpNC.itens, _cpNC.extras).total;
+  cpPagSet(_cpNC.pagamento, tot, campo, v, k);
+  document.getElementById('ncPag').innerHTML = cpPagHtml(_cpNC.pagamento, tot, '_cpNC');
 }
 
 function _cpNCLinha(idx, campo, v) {
@@ -377,9 +390,10 @@ async function _cpNCSalvar() {
       fornecedor_doc: n.fornecedorDoc || null, numero_nota: n.numero || null, chave_nfe: n.chave || null,
       origem: n.origem, total: r.total, frete: _cpR2(ex.frete), ipi: _cpR2(ex.ipi), icms_st: _cpR2(ex.icms_st),
       seguro: _cpR2(ex.seguro), outras: _cpR2(ex.outras), desconto: _cpR2(ex.desconto),
-      obs: n.obs || null, anexo_path: anexoPath, criado_por: user,
+      obs: n.obs || null, anexo_path: anexoPath, criado_por: user, pagamento: n.pagamento || null,
     });
     const linhas = await cpInsert('cp_compra_itens', cpLinhasParaSalvar(n.itens, ex, compra.id, user));
+    await cpGravarParcelas(compra, n.pagamento, user);
     await cpDarEntradaEstoque(compra, linhas);
     await _cpSalvarMemoriaNota(n, linhas);
     _cpGuardarCnpjFornecedor(n);
@@ -544,6 +558,9 @@ function cpParseNFe(texto) {
     numero_nota: t(ide, 'nNF'), chave_nfe: chave && chave.length === 44 ? chave : null,
     data_emissao: (t(ide, 'dhEmi') || t(ide, 'dEmi') || '').slice(0, 10) || null,
     valor_total: n(t(tot, 'vNF')), itens,
+    // Fatura: duplicatas (vencimento e valor) e forma de pagamento
+    duplicatas: [...inf.getElementsByTagNameNS('*', 'dup')].map(d => ({ venc: t(d, 'dVenc'), valor: n(t(d, 'vDup')) || 0 })).filter(d => d.venc),
+    forma: ({ '01': 'dinheiro', '03': 'credito', '04': 'debito', '15': 'boleto', '16': 'transferencia', '17': 'pix', '18': 'transferencia' })[t(inf, 'tPag')] || null,
     extras: { ipi: n(t(tot, 'vIPI')) || 0, icms_st: n(t(tot, 'vST')) || 0, seguro: n(t(tot, 'vSeg')) || 0,
               outras: n(t(tot, 'vOutro')) || 0, desconto: n(t(tot, 'vDesc')) || 0, frete: n(t(tot, 'vFrete')) || 0 },
   };
@@ -559,6 +576,7 @@ async function _cpMontarCompraDaNota(nota, origem) {
     fornecedorDoc: cpSoDigitos(nota.fornecedor_doc), numero: nota.numero_nota || '',
     chave: nota.chave_nfe || null, totalNota: nota.valor_total ?? null,
     extras: { ...cpExtrasVazio(), ...(nota.extras || {}) },
+    pagamento: cpPagDaNota(nota),
   };
   // Memória do fornecedor (pelo CNPJ e pelo id do cadastro)
   const chaves = [...new Set([cpSoDigitos(nota.fornecedor_doc), f?.s.id ? 'forn:' + f.s.id : null].filter(Boolean))];

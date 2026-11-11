@@ -374,3 +374,114 @@ function _cpFornRapSalvar(comboId) {
   toast(`Fornecedor "${name}" cadastrado`, 'ok');
   cpComboSet(comboId, nid);
 }
+
+// ══════════════════════════════════════════════════════════════
+// PAGAMENTO NEGOCIADO (cotação, recebimento, nova compra)
+// pag = { forma, condicao: 'avista'|'prazo'|'parcelado', n, intervalo, dias, primeiro,
+//         parcelas: [{ venc: 'AAAA-MM-DD', valor }], manual }
+// As parcelas saem da condição e do total; editar uma data/valor marca "manual".
+// No recebimento a nota manda: duplicatas do XML viram as parcelas.
+// ══════════════════════════════════════════════════════════════
+
+const CP_FORMAS = [['pix', 'Pix'], ['boleto', 'Boleto'], ['credito', 'Cartão de crédito'], ['debito', 'Cartão de débito'], ['dinheiro', 'Dinheiro'], ['transferencia', 'Transferência']];
+const CP_CONDICOES = [['avista', 'À vista'], ['prazo', 'A prazo (1x)'], ['parcelado', 'Parcelado']];
+const _cpHojeIso = () => cpIso(new Date());
+const _cpSomaDias = (iso, d) => { const x = new Date((iso || _cpHojeIso()) + 'T12:00:00'); x.setDate(x.getDate() + (Number(d) || 0)); return cpIso(x); };
+const _cpSomaMes = (iso, m) => { const x = new Date(iso + 'T12:00:00'); const dia = x.getDate(); x.setDate(1); x.setMonth(x.getMonth() + m); x.setDate(Math.min(dia, new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate())); return cpIso(x); };
+
+function cpPagNovo(base = {}) {
+  return { forma: 'boleto', condicao: 'prazo', n: 3, intervalo: 30, dias: 21, primeiro: null, parcelas: [], manual: false, ...base };
+}
+
+// Gera as parcelas pela condição (intervalo de 30 dias = mesmo dia nos meses seguintes)
+function cpPagGerar(pag, total) {
+  const n = pag.condicao === 'parcelado' ? Math.max(2, Math.min(24, parseInt(pag.n) || 2)) : 1;
+  if (!pag.primeiro) pag.primeiro = pag.condicao === 'prazo' ? _cpSomaDias(_cpHojeIso(), pag.dias || 21) : _cpHojeIso();
+  const cent = Math.round((Number(total) || 0) * 100), parte = Math.floor(cent / n);
+  pag.parcelas = Array.from({ length: n }, (_, k) => ({
+    venc: k === 0 ? pag.primeiro : (Number(pag.intervalo) === 30 ? _cpSomaMes(pag.primeiro, k) : _cpSomaDias(pag.primeiro, k * (Number(pag.intervalo) || 30))),
+    valor: (k === n - 1 ? cent - parte * (n - 1) : parte) / 100,
+  }));
+  pag.manual = false;
+  return pag;
+}
+
+const cpPagSoma = pag => Math.round((pag?.parcelas || []).reduce((s, p) => s + (Number(p.valor) || 0), 0) * 100) / 100;
+const cpPagFormaLabel = f => CP_FORMAS.find(x => x[0] === f)?.[1] || f || '—';
+
+// "Boleto · 3x · 12/11, 12/12 e 12/01/2027"
+function cpPagTexto(pag) {
+  if (!pag?.parcelas?.length) return '';
+  const ps = pag.parcelas, d = iso => cpDataBr(iso);
+  const cond = pag.condicao === 'avista' ? 'à vista' : ps.length === 1 ? 'a prazo' : `${ps.length}x`;
+  const datas = ps.length === 1 ? d(ps[0].venc) : ps.slice(0, -1).map(p => d(p.venc).slice(0, 5)).join(', ') + ' e ' + d(ps[ps.length - 1].venc);
+  return `${cpPagFormaLabel(pag.forma)} · ${cond} · ${datas}`;
+}
+
+// Bloco editável (ns = prefixo do handler: ns + 'Pag'(campo, valor, k))
+function cpPagHtml(pag, total, ns, { editavel = true, aviso = '' } = {}) {
+  if (!editavel) {
+    if (!pag?.parcelas?.length) return `<div style="font-size:var(--text-sm);color:var(--muted)">Pagamento não informado</div>`;
+    return `<div style="font-size:var(--text-sm)"><strong>${_estEsc(cpPagFormaLabel(pag.forma))}</strong> · ${_estEsc(CP_CONDICOES.find(c => c[0] === pag.condicao)?.[1] || '')}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${pag.parcelas.map((p, k) => `<span class="badge b-gray" style="font-size:var(--text-xs)">${k + 1}/${pag.parcelas.length} · ${cpDataBr(p.venc)} · ${_estR(p.valor)}</span>`).join('')}</div></div>`;
+  }
+  const sel = (campo, ops, v) => `<select class="inp" onchange="${ns}Pag('${campo}',this.value)">${ops.map(([k, t]) => `<option value="${k}"${k === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+  const f = (rot, html, w = 160) => `<div class="field" style="margin:0;width:${w}px"><label>${rot}</label>${html}</div>`;
+  const soma = cpPagSoma(pag), dif = Math.round((soma - (Number(total) || 0)) * 100) / 100;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      ${f('Forma', sel('forma', CP_FORMAS, pag.forma))}
+      ${f('Condição', sel('condicao', CP_CONDICOES, pag.condicao), 150)}
+      ${pag.condicao === 'prazo' ? f('Prazo (dias)', `<input class="inp" type="number" min="0" value="${pag.dias ?? ''}" onchange="${ns}Pag('dias',this.value)">`, 110) : ''}
+      ${pag.condicao === 'parcelado' ? f('Parcelas', `<input class="inp" type="number" min="2" max="24" value="${pag.n ?? 2}" onchange="${ns}Pag('n',this.value)">`, 90) + f('A cada (dias)', `<input class="inp" type="number" min="1" value="${pag.intervalo ?? 30}" onchange="${ns}Pag('intervalo',this.value)">`, 110) : ''}
+      ${f(pag.condicao === 'avista' ? 'Pagamento em' : '1º vencimento', `<input class="inp" type="date" value="${pag.primeiro || ''}" onchange="${ns}Pag('primeiro',this.value)">`, 160)}
+    </div>
+    <div style="margin-top:10px;border:1.5px solid var(--border);border-radius:var(--r8);overflow:hidden">
+      ${pag.parcelas.map((p, k) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;${k ? 'border-top:1px solid var(--border)' : ''}">
+        <span style="width:44px;font-size:var(--text-sm);font-weight:700;color:var(--text2)">${k + 1}/${pag.parcelas.length}</span>
+        <input class="inp" type="date" value="${p.venc}" style="width:160px" onchange="${ns}Pag('venc',this.value,${k})">
+        <span style="font-size:var(--text-xs);color:var(--muted)">R$</span>
+        <input class="inp" type="text" inputmode="decimal" value="${cpFmtNum(p.valor)}" style="width:120px;text-align:right;font-weight:700" onchange="${ns}Pag('valor',this.value,${k})">
+      </div>`).join('')}
+    </div>
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:var(--text-xs)">
+      <span style="color:${Math.abs(dif) < 0.01 ? 'var(--success-fg)' : 'var(--danger-fg)'};font-weight:700">${Math.abs(dif) < 0.01 ? `✓ parcelas somam ${_estR(soma)}` : `Parcelas somam ${_estR(soma)}: ${dif > 0 ? 'sobram' : 'faltam'} ${_estR(Math.abs(dif))} para o total ${_estR(total)}`}</span>
+      ${pag.manual ? `<button class="btn btn-ghost btn-xs" onclick="${ns}Pag('recalcular')">${lc('refresh-cw', 11, 'currentColor')} Recalcular parcelas</button>` : ''}
+    </div>
+    ${aviso ? `<div style="margin-top:6px;font-size:var(--text-xs);color:var(--orange-dark);font-weight:600">${aviso}</div>` : ''}`;
+}
+
+// Aplica a mudança e regera as parcelas quando for o caso
+function cpPagSet(pag, total, campo, v, k) {
+  if (campo === 'venc') { pag.parcelas[k].venc = v; pag.manual = true; if (k === 0) pag.primeiro = v; return; }
+  if (campo === 'valor') { pag.parcelas[k].valor = cpNum(v) || 0; pag.manual = true; return; }
+  if (campo === 'recalcular') return cpPagGerar(pag, total);
+  if (campo === 'condicao') { pag.condicao = v; pag.primeiro = null; if (v === 'avista' && ['boleto'].includes(pag.forma)) pag.forma = 'pix'; }
+  else if (campo === 'dias') { pag.dias = parseInt(v) || 0; pag.primeiro = _cpSomaDias(_cpHojeIso(), pag.dias); }
+  else if (['n', 'intervalo'].includes(campo)) pag[campo] = parseInt(v) || 0;
+  else pag[campo] = v;
+  if (campo !== 'forma') cpPagGerar(pag, total);
+}
+
+// Total mudou (preço/frete): só regera se ninguém editou as parcelas à mão
+function cpPagTotal(pag, total) { if (pag && !pag.manual) cpPagGerar(pag, total); }
+
+// Parcelas da compra confirmada → linhas de conta a pagar
+async function cpGravarParcelas(compra, pag, user) {
+  if (!pag?.parcelas?.length) return;
+  const paga = pag.condicao === 'avista' && ['pix', 'dinheiro', 'debito'].includes(pag.forma);
+  await cpInsert('cp_compra_parcelas', pag.parcelas.map((p, k) => ({
+    compra_id: compra.id, numero: k + 1, total_parcelas: pag.parcelas.length, vencimento: p.venc, valor: Math.round((Number(p.valor) || 0) * 100) / 100,
+    forma: pag.forma, fornecedor_id: compra.fornecedor_id || null, fornecedor_nome: compra.fornecedor_nome || null, numero_nota: compra.numero_nota || null,
+    status: paga ? 'paga' : 'aberta', pago_em: paga ? new Date().toISOString() : null, pago_por: paga ? user : null, criado_por: user,
+  })));
+}
+
+// Duplicatas da NF-e (<cobr><dup>) + forma (<detPag><tPag>) → pagamento
+function cpPagDaNota(nota) {
+  const dups = nota?.duplicatas || [];
+  if (!dups.length && !nota?.forma) return null;
+  const forma = nota.forma || 'boleto';
+  const parcelas = dups.length ? dups.map(d => ({ venc: d.venc, valor: d.valor })) : [];
+  return { ...cpPagNovo(), forma, condicao: parcelas.length > 1 ? 'parcelado' : parcelas.length === 1 && parcelas[0].venc > _cpHojeIso() ? 'prazo' : 'avista',
+    n: parcelas.length || 1, primeiro: parcelas[0]?.venc || _cpHojeIso(), parcelas, manual: !!parcelas.length, daNota: true };
+}

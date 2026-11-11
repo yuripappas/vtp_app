@@ -507,7 +507,7 @@ function _pdMensagem(p, tipo = 'pedido') {
   const linha = i => { const a = ap(i), f = a?.fator || 1, pu = Number(i.preco_combinado) || 0;
     return `• ${i.item_nome} — ${qtd(i)}${pu ? ` × ${_estR(pu * f)}/${a?.nome || i.unidade || 'un'} = ${_estR(pu * (+i.qtd_pedida || 0))}` : ''}`; };
   const tot = its.reduce((t, i) => t + (+i.qtd_pedida || 0) * (+i.preco_combinado || 0), 0), fr = Number(p.frete) || 0;
-  return `${_ctSaudacao(s)}\nSegue nosso pedido confirmado, com os valores da cotação:\n\n${its.map(linha).join('\n')}\n\n${fr ? `Frete: ${_estR(fr)}\n` : ''}Total: ${_estR(tot + fr)}${p.condicao_pagamento ? `\nPagamento: ${p.condicao_pagamento}` : ''}${p.previsao_entrega ? `\nEntrega prevista: ${cpDataBr(p.previsao_entrega)}` : ''}\nObrigado!`;
+  return `${_ctSaudacao(s)}\nSegue nosso pedido confirmado, com os valores da cotação:\n\n${its.map(linha).join('\n')}\n\n${fr ? `Frete: ${_estR(fr)}\n` : ''}Total: ${_estR(tot + fr)}${(p.pagamento ? cpPagTexto(p.pagamento) : p.condicao_pagamento) ? `\nPagamento: ${p.pagamento ? cpPagTexto(p.pagamento) : p.condicao_pagamento}` : ''}${p.previsao_entrega ? `\nEntrega prevista: ${cpDataBr(p.previsao_entrega)}` : ''}\nObrigado!`;
 }
 const _pdPed = id => _pdDados?.pedidos.find(x => x.id === id);
 function _pdCopiar(id, tipo = 'pedido') { const p = _pdPed(id); if (p) _ctCopiar(_pdMensagem(p, tipo)); }
@@ -576,7 +576,8 @@ function _pdAbrirCotacao(p, modo) {
       ref: Number(r.preco_referencia ?? r.preco_combinado) || 0, indisp: !!r.indisponivel };
   }).sort((a, b) => (a.item.cat || '').localeCompare(b.item.cat || '') || a.item.name.localeCompare(b.item.name));
   _pdAtual = { cot: true, pedido: p, forn: p.fornecedor_id, modo, linhas,
-    frete: Number(p.frete) || 0, previsao: p.previsao_entrega || '', pagamento: p.condicao_pagamento || '' };
+    frete: Number(p.frete) || 0, previsao: p.previsao_entrega || '',
+    pag: p.pagamento ? JSON.parse(JSON.stringify(p.pagamento)) : null };
   _pdRenderCot();
 }
 
@@ -651,11 +652,14 @@ function _pdRenderCot() {
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-top:14px">
       ${campo('Frete (R$)', cotar ? inp(a.frete || null, `_pdCSet(-1,'frete',this.value)`, 120) : `<div style="font-weight:700;padding:8px 0">${a.frete ? _estR(a.frete) : '—'}</div>`)}
       ${campo('Previsão de entrega', cotar ? `<input class="inp" type="date" value="${a.previsao}" onchange="_pdAtual.previsao=this.value">` : `<div style="font-weight:700;padding:8px 0">${a.previsao ? cpDataBr(a.previsao) : '—'}</div>`)}
-      ${campo('Condição de pagamento', cotar ? `<input class="inp" value="${_estEsc(a.pagamento)}" placeholder="ex: boleto 21 dias" oninput="_pdAtual.pagamento=this.value">` : `<div style="font-weight:700;padding:8px 0">${_estEsc(a.pagamento || '—')}</div>`)}
       <div id="pdCResumo" style="margin-left:auto;text-align:right;font-size:var(--text-sm);color:var(--text2)">${_pdCResumoHtml()}</div>
     </div>
+    <div style="margin-top:14px;border:1.5px solid var(--border);border-radius:var(--r8);padding:12px 14px">
+      <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:8px">Pagamento negociado <span style="font-weight:400;color:var(--muted)">· forma, condição e parcelas (sobre cotado + frete)</span></div>
+      <div id="pdPag"></div></div>
     ${minimo ? `<div style="margin-top:10px;padding:8px 12px;border-radius:var(--r8);background:var(--warning-bg);color:var(--warning-fg);font-size:var(--text-sm)">Abaixo do pedido mínimo do fornecedor (${_estR(s.pedidoMinimo)}).</div>` : ''}`;
 
+  _pdRenderPag();
   const f = document.getElementById('pdFoot');
   if (cotar) f.innerHTML = `<button class="btn btn-ghost" style="margin-right:auto" onclick="_pdVoltarRascunho()">${lc('corner-up-left', 14, 'currentColor')} Voltar para rascunho</button>
       <button class="btn btn-outline" onclick="_pdCopiar('${p.id}','cotacao')">${lc('copy', 14, 'currentColor')} Pedido de cotação</button>
@@ -672,6 +676,16 @@ function _pdRenderCot() {
       ${p.status === 'aprovacao' ? `<button class="btn btn-outline" onclick="_pdVoltarCotacao()">Voltar para cotação</button>` : ''}
       <button class="btn btn-primary" onclick="_pdFechar()">Fechar</button>`;
 }
+
+const _pdTotPag = () => { const r = _pdCResumo(); return Math.round((r.cot + r.frete) * 100) / 100; };
+function _pdRenderPag() {
+  const a = _pdAtual, el = document.getElementById('pdPag'); if (!el) return;
+  if (a.modo === 'cotar') {
+    if (!a.pag) a.pag = cpPagGerar(cpPagNovo(), _pdTotPag()); else cpPagTotal(a.pag, _pdTotPag());
+    el.innerHTML = cpPagHtml(a.pag, _pdTotPag(), '_pd');
+  } else el.innerHTML = cpPagHtml(a.pag, _pdTotPag(), '_pd', { editavel: false });
+}
+function _pdPag(campo, v, k) { cpPagSet(_pdAtual.pag, _pdTotPag(), campo, v, k); _pdRenderPag(); }
 
 function _pdCResumoHtml() {
   const r = _pdCResumo();
@@ -695,6 +709,7 @@ function _pdCSet(k, campo, v) {
   const tt = document.getElementById('pdTotal'); if (tt) tt.textContent = _estR(r.cot + r.frete);
   const rf = document.getElementById('pdRef'); if (rf) rf.textContent = _estR(r.ref);
   const rs = document.getElementById('pdCResumo'); if (rs) rs.innerHTML = _pdCResumoHtml();
+  _pdRenderPag();
 }
 
 async function _pdGravarLinhasCot(aprovacao) {
@@ -722,7 +737,7 @@ async function _pdSalvarCot(enviar) {
     const user = estUsuario();
     const total = await _pdGravarLinhasCot(false);
     await cpUpdate('cp_pedidos', a.pedido.id, { total_previsto: total, frete: a.frete || 0, previsao_entrega: a.previsao || null,
-      condicao_pagamento: a.pagamento || null, cotado_por: user, cotado_em: new Date().toISOString(), ...(enviar ? { status: 'aprovacao' } : {}) });
+      pagamento: a.pag || null, condicao_pagamento: a.pag ? cpPagTexto(a.pag) : null, cotado_por: user, cotado_em: new Date().toISOString(), ...(enviar ? { status: 'aprovacao' } : {}) });
     toast(enviar ? 'Cotação enviada para aprovação' : 'Cotação salva', 'ok');
     _pdFechar();
   } catch (e) { toast('Não consegui salvar: ' + e.message, 'err'); }
@@ -734,8 +749,10 @@ async function _pdAprovarCot() {
   if (!a.linhas.some(l => !l.indisp && l.nAprov > 0)) return toast('Todos os itens foram cortados: devolva o pedido em vez de aprovar', 'err');
   const comentario = document.getElementById('pdComentario')?.value.trim() || null;
   try {
+    if (a.pag) cpPagTotal(a.pag, _pdTotPag());   // corte de quantidade muda o total das parcelas
     const total = await _pdGravarLinhasCot(true);
-    await cpUpdate('cp_pedidos', a.pedido.id, { status: 'aprovado', total_previsto: total, aprovado_por: estUsuario(), aprovado_em: new Date().toISOString(), comentario_aprovacao: comentario });
+    await cpUpdate('cp_pedidos', a.pedido.id, { status: 'aprovado', total_previsto: total, aprovado_por: estUsuario(), aprovado_em: new Date().toISOString(), comentario_aprovacao: comentario,
+      ...(a.pag ? { pagamento: a.pag, condicao_pagamento: cpPagTexto(a.pag) } : {}) });
     toast('Pedido aprovado: agora é confirmar com o fornecedor', 'ok');
     await _pdFechar();
     _pdMsgModal(a.pedido.id, 'pedido');

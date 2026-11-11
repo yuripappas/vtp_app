@@ -226,7 +226,9 @@ function cpConferirPedido(id) {
   });
   const primeira = its.every(i => !(Number(i.qtd_recebida) > 0));
   _rcAtual = { p, linhas, fotos: [], nota: null, notaArquivo: null, numero: '', chave: null, doc: '', data: _rcHoje(),
-               extras: { ...cpExtrasVazio(), frete: primeira ? (Number(p.frete) || 0) : 0 }, totalNota: null };
+               extras: { ...cpExtrasVazio(), frete: primeira ? (Number(p.frete) || 0) : 0 }, totalNota: null,
+               // Pagamento: vem o combinado na cotação (parcelas recalculadas pelo total que chegou)
+               pag: p.pagamento ? { ...JSON.parse(JSON.stringify(p.pagamento)), manual: false } : null, pagCombinado: p.pagamento ? cpPagTexto(p.pagamento) : '' };
   _estModal('ovRcConf', `Conferência · ${_estEsc(p.fornecedor_nome)}`, '', '_rcConfirmar()', 'Dar baixa e entrada no estoque', 980);
   _rcRenderConf();
 }
@@ -265,6 +267,8 @@ function _rcRenderConf() {
     <button class="btn btn-ghost btn-sm" onclick="_rcAtual.linhas.push({..._cpLinhaVazia(), pi: null});_rcRenderConf()">${lc('plus', 13, 'currentColor')} Item que veio fora do pedido</button>
     ${cpTotaisNotaHtml(a.extras, a.totalNota, '_rc', CP_EXTRAS.some(e => a.extras[e.k]) || !!a.nota)}
     <div id="rcResumo" style="margin-top:12px"></div>
+    <div style="margin-top:14px;border:1.5px solid var(--border);border-radius:var(--r8);padding:12px 14px;background:var(--card-bg)">
+      <div style="font-size:var(--text-sm);font-weight:700;margin-bottom:8px">Pagamento <span style="font-weight:400;color:var(--muted)">· vem o combinado na cotação; com XML, valem as duplicatas da nota</span></div><div id="rcPag"></div></div>
     <div id="rcDivResumo" style="margin-top:10px"></div>`;
   _rcAtualizar();
 }
@@ -285,6 +289,17 @@ function _rcDivergencias(l, acr) {
   return out;
 }
 
+function _rcRenderPag(total) {
+  const a = _rcAtual, el = document.getElementById('rcPag'); if (!el) return;
+  const aviso = a.pag?.daNota && a.pagCombinado && a.pagCombinado !== cpPagTexto(a.pag) ? `Na cotação foi combinado: ${_estEsc(a.pagCombinado)}. A nota veio diferente.` : '';
+  el.innerHTML = cpPagHtml(a.pag, total, '_rc', { aviso });
+}
+function _rcPag(campo, v, k) {
+  const tot = cpResumoNota(_rcAtual.linhas, _rcAtual.extras).total;
+  cpPagSet(_rcAtual.pag, tot, campo, v, k);
+  _rcRenderPag(tot);
+}
+
 function _rcAtualizar() {
   const a = _rcAtual;
   const rat = cpRatear(a.linhas, a.extras);
@@ -296,8 +311,11 @@ function _rcAtualizar() {
     const d = document.getElementById('_rcDiv' + k); if (d) d.innerHTML = dv.map(x => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px">${lc('alert-triangle', 11, 'currentColor')} ${_estEsc(x.txt)}</span>`).join('');
     const box = document.getElementById('rcL' + k); if (box) box.style.borderColor = dv.length ? 'var(--orange)' : 'var(--border)';
   });
+  const res = cpResumoNota(a.linhas, a.extras);
   const r = document.getElementById('rcResumo');
-  if (r) r.innerHTML = cpTotaisResumoHtml(cpResumoNota(a.linhas, a.extras), a.totalNota);
+  if (r) r.innerHTML = cpTotaisResumoHtml(res, a.totalNota);
+  if (!a.pag) a.pag = cpPagGerar(cpPagNovo(), res.total); else cpPagTotal(a.pag, res.total);
+  _rcRenderPag(res.total);
   const dr = document.getElementById('rcDivResumo');
   if (dr) dr.innerHTML = todas.length ? `<div style="padding:9px 12px;border-radius:var(--r8);background:var(--orange-light);color:var(--orange-dark);font-size:var(--text-sm)">
       <strong>${todas.length} divergência(s) com o pedido.</strong> A baixa é geral: o pedido fecha como "Recebido com divergência". Se faltou algo, faça outro pedido para completar.</div>` : '';
@@ -351,7 +369,8 @@ async function _rcAnexarNota(file) {
     for (const x of a.linhas) if (x.pi && !x.desc_nota) x.n = 0;
     Object.assign(a, { nota: dados, notaArquivo: file, numero: dados.numero || a.numero, chave: dados.chave, doc: dados.fornecedorDoc,
                        data: dados.data || a.data, totalNota: dados.totalNota ?? a.totalNota,
-                       extras: { ...dados.extras, frete: dados.extras?.frete || a.extras.frete } });
+                       extras: { ...dados.extras, frete: dados.extras?.frete || a.extras.frete },
+                       ...(dados.pagamento ? { pag: dados.pagamento } : {}) });
     _rcRenderConf();
     const s2 = document.getElementById('rcNotaStatus');
     if (s2) s2.innerHTML = `<span style="color:var(--success-fg)">${casados} de ${a.linhas.filter(x => x.pi).length} itens do pedido preenchidos pela nota</span>`;
@@ -380,10 +399,11 @@ async function _rcConfirmar() {
       data_compra: a.data, fornecedor_id: p.fornecedor_id, fornecedor_nome: p.fornecedor_nome, fornecedor_doc: a.doc || null,
       numero_nota: a.numero || null, chave_nfe: a.chave || null, origem: 'pedido', pedido_id: p.id, total: r.total,
       frete: _cpR2(ex.frete), ipi: _cpR2(ex.ipi), icms_st: _cpR2(ex.icms_st), seguro: _cpR2(ex.seguro), outras: _cpR2(ex.outras), desconto: _cpR2(ex.desconto),
-      anexo_path: anexo, fotos: fotos.length ? fotos : null, criado_por: user,
+      anexo_path: anexo, fotos: fotos.length ? fotos : null, criado_por: user, pagamento: a.pag || null,
     });
     const validas = [...rat.keys()];
     const linhas = await cpInsert('cp_compra_itens', cpLinhasParaSalvar(a.linhas, ex, compra.id, user));
+    await cpGravarParcelas(compra, a.pag, user);
     await cpDarEntradaEstoque(compra, linhas);
     const comNota = linhas.filter(l => l.desc_nota);
     if (comNota.length) await _cpSalvarMemoriaNota({ fornecedorDoc: a.doc, fornecedorId: p.fornecedor_id, fornecedorNome: p.fornecedor_nome }, comNota);
