@@ -108,7 +108,7 @@ function _rcRenderLista() {
           const fundo = p.status === 'solicitado' ? 'background:color-mix(in srgb, var(--info-bg) 35%, transparent)'
             : p.status === 'recebido' ? 'background:color-mix(in srgb, var(--success-bg) 45%, transparent)'
             : p.status === 'cancelado' ? 'opacity:.6' : '';
-          return `<tr style="border-top:1px solid var(--border);${fundo}">
+          return `<tr onclick="cpConferirPedido('${p.id}')" style="border-top:1px solid var(--border);cursor:pointer;${fundo}">
             <td style="padding:12px 14px"><div style="font-weight:700">${_estEsc(p.fornecedor_nome)}</div>
               <div style="font-size:var(--text-xs);color:var(--muted)">montado ${_estDH(p.created_at)} por ${_estEsc(p.criado_por)}${p.aprovado_por ? ` · aprovado por ${_estEsc(p.aprovado_por)}` : ''}</div></td>
             <td style="padding:12px 14px"><span class="badge ${st.cls}" style="font-size:var(--text-xs);padding:4px 10px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${lc(st.icon, 11, 'currentColor')} ${st.label}</span>
@@ -119,12 +119,7 @@ function _rcRenderLista() {
             <td style="padding:12px 14px;white-space:nowrap">${p.previsao_entrega ? cpDataBr(p.previsao_entrega) : '<span style="color:var(--muted)">—</span>'}</td>
             <td style="padding:12px 14px;text-align:right">${its.length}</td>
             <td style="padding:12px 14px;text-align:right;font-weight:700;white-space:nowrap">${_estR(p.total_previsto)}</td>
-            <td style="padding:12px 14px"><div style="display:flex;gap:6px;flex-wrap:wrap">
-              ${aberto ? btn('copy', 'Copiar mensagem', `_rcCopiarMsg('${p.id}')`) : ''}
-              ${aberto ? `<button class="btn btn-primary btn-xs" onclick="event.stopPropagation();cpConferirPedido('${p.id}')">${lc('clipboard-check', 12, '#fff')} Conferir</button>` : btn('eye', 'Ver', `cpConferirPedido('${p.id}')`)}
-              ${btn('printer', 'Imprimir', `_rcImprimir('${p.id}')`)}
-              ${aberto ? btn('x', 'Cancelar', `_rcCancelar('${p.id}')`, 'style="color:var(--danger-fg)"') : ''}
-            </div></td></tr>`;
+            <td style="padding:12px 14px">${aberto ? `<button class="btn btn-primary btn-xs" onclick="event.stopPropagation();cpConferirPedido('${p.id}')">${lc('clipboard-check', 12, '#fff')} Conferir</button>` : btn('eye', 'Ver', `cpConferirPedido('${p.id}')`)}</td></tr>`;
         }).join('') : `<tr><td colspan="6" style="padding:44px;text-align:center;color:var(--muted)">Nenhum pedido em aberto nem recebido no período. Os pedidos chegam aqui quando são enviados ao fornecedor na aba Cotação.</td></tr>`}</tbody>
       </table></div>
     </div>`;
@@ -238,6 +233,7 @@ function cpConferirPedido(id) {
                pagCombinado: p.pagamento ? JSON.parse(JSON.stringify(p.pagamento)) : null };
   if (_rcAtual.pag) _rcAtual.pag.primeiro = cpPagPrimeiro(_rcAtual.pag, _rcAtual.data);
   _estModal('ovRcConf', `Conferência · ${_estEsc(p.fornecedor_nome)}`, '', '_rcConfirmar()', 'Dar baixa e entrada no estoque', 1000);
+  _rcRodapeDiscreto(p, true);
   _rcRenderConf();
 }
 
@@ -635,4 +631,17 @@ function _rcVerFechado(p, its) {
           <div style="font-size:var(--text-xs);color:var(--muted)">pedido ${_estEsc(estQtdApresentacao(i.qtd_pedida, i.unidade, i.apresentacao))}${i.preco_combinado ? ` · ${i.preco_cotado != null ? 'cotado' : 'estimado'} ${_estR(i.preco_combinado)}/${_estEsc(i.unidade || 'un')}` : ''}</div></div>
         <div style="text-align:right;white-space:nowrap">${_estQ(i.qtd_recebida)} ${_estEsc(i.unidade || '')}<div style="font-size:var(--text-xs);color:var(--muted)">${i.preco_final ? _estR(i.preco_final) + '/' + _estEsc(i.unidade || 'un') : '—'}</div></div></div>`).join('')}
     </div>`, `document.getElementById('ovRcConf').remove()`, 'Fechar', 680);
+  _rcRodapeDiscreto(p, false);
+}
+
+// Ações secundárias no rodapé fixo do modal (à esquerda, discretas)
+function _rcRodapeDiscreto(p, aberto) {
+  const foot = document.querySelector('#ovRcConf .fm-foot'); if (!foot) return;
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-right:auto;display:flex;gap:4px';
+  box.innerHTML = `<button class="btn btn-ghost btn-sm" style="color:var(--text2)" onclick="_rcImprimir('${p.id}')">${lc('printer', 14, 'currentColor')} Imprimir</button>
+    ${aberto ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger-fg)" onclick="document.getElementById('ovRcConf').remove();_rcCancelar('${p.id}')">${lc('x', 14, 'currentColor')} Cancelar pedido</button>` : ''}`;
+  foot.insertBefore(box, foot.firstChild);
+  const c = foot.querySelector('.btn-outline');
+  if (c) { if (aberto) c.textContent = 'Fechar'; else c.remove(); }   // não confundir com "Cancelar pedido"
 }
