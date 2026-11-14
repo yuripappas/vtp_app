@@ -13,7 +13,10 @@ const _EST_ABAS = [
   { id: 'movimentacoes', icon: 'repeat',     label: 'Movimentações' },
 ];
 
-let _estFil = { local: '', q: '', cat: '', abaixo: false, zerados: false, proc: false, sort: 'nome', dir: 1 };
+// Filtros: categorias (várias) + 3 filtros rápidos de 2 opções (vazio = todos)
+let _estFil = { local: '', q: '', cats: [], cmv: '', tipo: '', nivel: '', sort: 'nome', dir: 1 };
+function _estFilToggle(grupo, valor) { window._estCatsAberto = false; _estFil[grupo] = _estFil[grupo] === valor ? '' : valor; _estRerender(); }
+function _estFilCat(c, on) { const s = new Set(_estFil.cats); on ? s.add(c) : s.delete(c); _estFil.cats = [...s]; _estRerender(true); }
 
 function _estTopTabsHtml() {
   return `<div style="display:flex;gap:2px;border-bottom:1.5px solid var(--border);margin-bottom:20px">
@@ -105,11 +108,11 @@ function _estRenderAbaEstoqueConteudo(dados) {
   let linhas = todas
     .filter(r => !f.local || estLocaisDoItem(r.item).includes(f.local))
     .filter(r => !q || r.item.name.toLowerCase().includes(q) || (r.item.cat || '').toLowerCase().includes(q))
-    .filter(r => !f.cat || (r.item.cat || 'Outros') === f.cat)
-    .filter(r => !f.proc || r.item.isProd)
+    .filter(r => !f.cats.length || f.cats.includes(r.item.cat || 'Outros'))
+    .filter(r => !f.cmv || (f.cmv === 'cmv') === estItemNoCMV(r.item, foraCmv))
+    .filter(r => !f.tipo || (f.tipo === 'proc') === !!r.item.isProd)
     .map(r => { const saldo = _estLinhaSaldo(r, f.local); return { r, saldo, st: _estStatus(r, saldo, f.local) }; })
-    .filter(x => !f.abaixo  || x.st.id === 'abaixo' || x.st.id === 'negativo')
-    .filter(x => !f.zerados || x.st.id === 'zerado');
+    .filter(x => !f.nivel || (f.nivel === 'ideal') === (x.st.id === 'ok'));
 
   const chave = {
     nome:   x => x.r.item.name.toLowerCase(),
@@ -122,8 +125,8 @@ function _estRenderAbaEstoqueConteudo(dados) {
   }[f.sort] || (x => x.r.item.name.toLowerCase());
   linhas.sort((a, b) => { const A = chave(a), B = chave(b); return (A < B ? -1 : A > B ? 1 : 0) * f.dir; });
 
-  const nAbaixo  = todas.filter(r => _estStatus(r, r.total, '').id === 'abaixo' || r.total < -0.0005).length;
-  const nZerados = todas.filter(r => _estStatus(r, r.total, '').id === 'zerado').length;
+  const nOk = todas.filter(r => _estStatus(r, r.total, '').id === 'ok').length;
+  const nCmv = todas.filter(r => estItemNoCMV(r.item, foraCmv)).length;
   const cats = [...new Set(todas.map(r => r.item.cat || 'Outros'))].sort();
 
   const card = (titulo, icone, corpo) => `
@@ -136,6 +139,12 @@ function _estRenderAbaEstoqueConteudo(dados) {
   const chip = (on, onclick, txt, cor = 'var(--purple)', bg = 'var(--purple-xlight)') => `<button onclick="${onclick}"
     style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:99px;font-size:var(--text-sm);font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;
     border:1.5px solid ${on ? cor : 'var(--border)'};background:${on ? bg : 'var(--card-bg)'};color:${on ? cor : 'var(--text2)'}">${txt}</button>`;
+
+  // Filtro rápido de 2 opções (clicar na ativa volta para todos)
+  const seg = (grupo, ops) => `<div style="display:inline-flex;border:1.5px solid var(--border);border-radius:99px;overflow:hidden;background:var(--card-bg)">${ops.map(([v, txt], k) => {
+    const on = f[grupo] === v;
+    return `<button onclick="_estFilToggle('${grupo}','${v}')" style="padding:7px 13px;font-size:var(--text-sm);font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap;border:none;${k ? 'border-left:1.5px solid var(--border);' : ''}background:${on ? 'var(--purple-xlight)' : 'transparent'};color:${on ? 'var(--purple)' : 'var(--text2)'}">${txt}</button>`;
+  }).join('')}</div>`;
 
   const th = (id, txt, align = 'left') => {
     const on = f.sort === id;
@@ -174,13 +183,23 @@ function _estRenderAbaEstoqueConteudo(dados) {
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <input class="inp" placeholder="Buscar produto…" value="${_estEsc(f.q)}" style="flex:1;min-width:200px;max-width:340px;font-size:var(--text-md)"
           oninput="_estFil.q=this.value;clearTimeout(window._estQT);window._estQT=setTimeout(_estRerender,180)" id="estBusca">
-        <select class="inp" style="width:auto;font-size:var(--text-md)" onchange="_estFil.cat=this.value;_estRerender()">
-          <option value="">Todas as categorias</option>
-          ${cats.map(c => `<option value="${_estEsc(c)}"${f.cat === c ? ' selected' : ''}>${_estEsc(c)}</option>`).join('')}
-        </select>
-        ${chip(f.abaixo,  `_estFil.abaixo=!_estFil.abaixo;_estFil.zerados=false;_estRerender()`, `Abaixo (${nAbaixo})`, 'var(--warning-fg)', 'var(--warning-bg)')}
-        ${chip(f.zerados, `_estFil.zerados=!_estFil.zerados;_estFil.abaixo=false;_estRerender()`, `Zerados (${nZerados})`, 'var(--danger-fg)', 'var(--danger-bg)')}
-        ${chip(f.proc,    `_estFil.proc=!_estFil.proc;_estRerender()`, `Processados (${nPrep})`)}
+        <details id="estCatsDd" style="position:relative" ${window._estCatsAberto ? 'open' : ''} ontoggle="window._estCatsAberto=this.open">
+          <summary class="inp" style="width:auto;font-size:var(--text-md);cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;white-space:nowrap;${f.cats.length ? 'border-color:var(--purple);color:var(--purple);font-weight:700' : ''}">
+            ${lc('filter', 13, 'currentColor')} ${f.cats.length === 0 ? 'Todas as categorias' : f.cats.length === 1 ? _estEsc(f.cats[0]) : `${f.cats.length} categorias`} ${lc('chevron-down', 13, 'currentColor')}</summary>
+          <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--r10);box-shadow:0 10px 28px rgba(0,0,0,.15);padding:8px;min-width:260px;max-height:340px;overflow-y:auto">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 6px 6px;border-bottom:1px solid var(--border);margin-bottom:4px">
+              <span style="font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Categorias</span>
+              <span style="display:flex;gap:8px"><button class="btn btn-ghost btn-xs" onclick="_estFil.cats=${_estEsc(JSON.stringify(cats))};_estRerender(true)">Todas</button><button class="btn btn-ghost btn-xs" onclick="_estFil.cats=[];_estRerender(true)">Limpar</button></span>
+            </div>
+            ${cats.map(c => `<label style="display:flex;align-items:center;gap:8px;padding:6px;border-radius:var(--r6);cursor:pointer;font-size:var(--text-sm);text-transform:none;letter-spacing:0;color:var(--text);font-weight:500">
+              <input type="checkbox" ${f.cats.includes(c) ? 'checked' : ''} onchange="_estFilCat(${_estEsc(JSON.stringify(c))}, this.checked)" style="accent-color:var(--purple);width:15px;height:15px"> ${_estEsc(c)}
+              <span style="margin-left:auto;font-size:var(--text-xs);color:var(--muted)">${todas.filter(r => (r.item.cat || 'Outros') === c).length}</span></label>`).join('')}
+          </div>
+        </details>
+        ${seg('cmv', [['cmv', `CMV ${nCmv}`], ['outras', `Outras ${todas.length - nCmv}`]])}
+        ${seg('tipo', [['ins', `Insumos ${nIns}`], ['proc', `Processados ${nPrep}`]])}
+        ${seg('nivel', [['ideal', `Ideal ${nOk}`], ['abaixo', `Abaixo ${todas.length - nOk}`]])}
+        ${f.cats.length || f.cmv || f.tipo || f.nivel ? `<button class="btn btn-ghost btn-sm" style="color:var(--muted)" onclick="Object.assign(_estFil,{cats:[],cmv:'',tipo:'',nivel:''});_estRerender()">${lc('x', 12, 'currentColor')} Limpar filtros</button>` : ''}
         </div>
       </div>
       <div style="overflow-x:auto">
