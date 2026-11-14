@@ -49,10 +49,14 @@ async function cpRenderAbaRecebimento(forcar = false) {
       // Compras avulsas (lançadas direto na aba Compras) também são recebimentos
       const avulsas = await cpSelect('cp_compras', q => q.select('*').is('excluido_em', null).neq('origem', 'pedido')
         .gte('created_at', r.inicioISO).lte('created_at', r.fimISO));
+      // Valor real: o que foi lançado na compra (nota) de cada pedido recebido
+      const comprasPed = ids.length ? await cpSelect('cp_compras', q => q.select('id, pedido_id, total, devolvido, numero_nota, data_compra').is('excluido_em', null).in('pedido_id', ids)) : [];
+      const realPorPedido = new Map();
+      comprasPed.forEach(c => { const x = realPorPedido.get(c.pedido_id) || { total: 0, notas: [] }; x.total += Number(c.total) || 0; x.notas.push(c); realPorPedido.set(c.pedido_id, x); });
       const nAvulsa = new Map();
       if (avulsas.length) (await cpSelect('cp_compra_itens', q => q.select('compra_id').in('compra_id', avulsas.map(c => c.id))))
         .forEach(i => nAvulsa.set(i.compra_id, (nAvulsa.get(i.compra_id) || 0) + 1));
-      _rcDados = { pedidos, porPedido, avulsas, nAvulsa };
+      _rcDados = { pedidos, porPedido, avulsas, nAvulsa, realPorPedido };
     } catch (e) {
       el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--red)">Não consegui carregar os pedidos: ${_estEsc(e.message)}
         <br><button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="cpRenderAbaRecebimento(true)">Tentar de novo</button></div>`;
@@ -100,7 +104,7 @@ function _rcRenderLista() {
         <thead style="background:var(--surface2)"><tr>${['Fornecedor', 'Status', 'Previsão', 'Itens', 'Total', 'Ações'].map((h, i) =>
           `<th style="padding:11px 14px;text-align:${[3, 4].includes(i) ? 'right' : 'left'};font-size:var(--text-xs);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">${h}</th>`).join('')}</tr></thead>
         <tbody>${lista.length ? lista.map(({ k, p, c }) => {
-          if (k === 'c') return `<tr style="border-top:1px solid var(--border);background:color-mix(in srgb, var(--info-bg) 25%, transparent)">
+          if (k === 'c') return `<tr onclick="_rcVerCompra('${c.id}')" style="border-top:1px solid var(--border);cursor:pointer;background:color-mix(in srgb, var(--success-bg) 45%, transparent)">
             <td style="padding:12px 14px"><div style="font-weight:700">${_estEsc(c.fornecedor_nome || '—')}</div>
               <div style="font-size:var(--text-xs);color:var(--muted)">nota de ${cpDataBr(c.data_compra)}${c.numero_nota ? ' · NF ' + _estEsc(c.numero_nota) : ''}</div></td>
             <td style="padding:12px 14px"><span class="badge" style="background:var(--info-bg);color:var(--info-fg);font-size:var(--text-xs);padding:4px 10px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap">${lc('shopping-cart', 11, 'currentColor')} Compra avulsa</span>
@@ -123,9 +127,11 @@ function _rcRenderLista() {
               ${p.recebido_em ? `<div style="font-size:var(--text-xs);color:var(--text2);margin-top:3px">recebido ${_estDH(p.recebido_em)}${p.recebido_por ? ' por ' + _estEsc(p.recebido_por) : ''}</div>` : ''}
               ${p.status === 'cancelado' && p.cancelado_motivo ? `<div style="font-size:var(--text-xs);color:var(--muted);margin-top:3px">"${_estEsc(p.cancelado_motivo)}"</div>` : ''}
               <div>${_rcAlerta(p)}</div></td>
-            <td style="padding:12px 14px;white-space:nowrap">${p.previsao_entrega ? cpDataBr(p.previsao_entrega) : '<span style="color:var(--muted)">—</span>'}</td>
+            <td style="padding:12px 14px;white-space:nowrap">${aberto
+              ? `<button class="btn btn-ghost btn-xs" style="padding:2px 6px;font-weight:600;color:${p.previsao_entrega && p.previsao_entrega < _rcHoje() ? 'var(--danger-fg)' : 'var(--text)'}" title="Renegociar a data de entrega" onclick="event.stopPropagation();_rcRenegociar('${p.id}')">${p.previsao_entrega ? cpDataBr(p.previsao_entrega) : 'definir'} ${lc('edit-3', 11, 'currentColor')}</button>${(p.previsao_historico || []).length ? `<div style="font-size:var(--text-2xs);color:var(--muted);padding-left:6px">renegociado ${p.previsao_historico.length}x</div>` : ''}`
+              : p.previsao_entrega ? cpDataBr(p.previsao_entrega) : '<span style="color:var(--muted)">—</span>'}</td>
             <td style="padding:12px 14px;text-align:right">${its.length}</td>
-            <td style="padding:12px 14px;text-align:right;font-weight:700;white-space:nowrap">${_estR(p.total_previsto)}</td>
+            <td style="padding:12px 14px;text-align:right;font-weight:700;white-space:nowrap" title="${_rcDados.realPorPedido?.get(p.id) ? `Valor da nota (cotado ${_estR(p.total_previsto)})` : 'Valor cotado'}">${_estR(_rcValorPedido(p))}</td>
             <td style="padding:12px 14px">${aberto ? `<button class="btn btn-primary btn-xs" onclick="event.stopPropagation();cpConferirPedido('${p.id}')">${lc('clipboard-check', 12, '#fff')} Conferir</button>` : btn('eye', 'Ver', `cpConferirPedido('${p.id}')`)}</td></tr>`;
         }).join('') : `<tr><td colspan="6" style="padding:44px;text-align:center;color:var(--muted)">Nenhum pedido em aberto nem recebido no período. Os pedidos chegam aqui quando são enviados ao fornecedor na aba Cotação.</td></tr>`}</tbody>
       </table></div>
@@ -140,6 +146,40 @@ function _rcVerCompra(id) {
 }
 
 const _rcPedido = id => _rcDados?.pedidos.find(p => p.id === id);
+// Recebido: vale o total lançado na nota; em aberto: o cotado/aprovado
+const _rcValorPedido = p => { const r = _rcDados?.realPorPedido?.get(p.id); return r && r.notas.length ? r.total : Number(p.total_previsto) || 0; };
+
+// Renegociar o prazo de entrega com o fornecedor (fica o histórico)
+function _rcRenegociar(id) {
+  const p = _rcPedido(id); if (!p) return;
+  const hist = p.previsao_historico || [];
+  _estModal('ovRcPrazo', `Data de entrega · ${_estEsc(p.fornecedor_nome)}`, `
+    <div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:10px">Previsão atual: <strong>${p.previsao_entrega ? cpDataBr(p.previsao_entrega) : 'não definida'}</strong>${p.previsao_entrega && p.previsao_entrega < _rcHoje() ? ' <span style="color:var(--danger-fg);font-weight:700">· atrasada</span>' : ''}</div>
+    <div class="f2">
+      ${_estCampo('Nova data de entrega *', `<input class="inp" type="date" id="rcPrazoData" value="${p.previsao_entrega && p.previsao_entrega >= _rcHoje() ? p.previsao_entrega : ''}" min="${_rcHoje()}">`)}
+      ${_estCampo('Motivo', `<input class="inp" id="rcPrazoMotivo" placeholder="ex.: fornecedor sem estoque, entrega na segunda">`)}
+    </div>
+    ${hist.length ? `<div style="font-size:var(--text-xs);color:var(--muted);line-height:1.6;margin-top:6px"><strong>Renegociações:</strong><br>${hist.map(h => `${h.de ? cpDataBr(h.de) : '—'} → ${cpDataBr(h.para)} · ${_estEsc(h.por || '')} em ${_estDH(h.em)}${h.motivo ? ` · "${_estEsc(h.motivo)}"` : ''}`).join('<br>')}</div>` : ''}`,
+    `_rcSalvarPrazo('${id}')`, 'Salvar data', 520);
+}
+async function _rcSalvarPrazo(id) {
+  const p = _rcPedido(id);
+  const para = document.getElementById('rcPrazoData')?.value;
+  if (!para) return toast('Escolha a nova data', 'err');
+  const motivo = document.getElementById('rcPrazoMotivo')?.value.trim() || null;
+  const hist = [...(p.previsao_historico || []), { de: p.previsao_entrega || null, para, motivo, por: estUsuario(), em: new Date().toISOString() }];
+  try {
+    await cpUpdate('cp_pedidos', id, { previsao_entrega: para, previsao_historico: hist });
+    Object.assign(p, { previsao_entrega: para, previsao_historico: hist });
+    document.getElementById('ovRcPrazo')?.remove();
+    toast(`Entrega renegociada para ${cpDataBr(para)}`, 'ok');
+    if (_rcAtual?.p?.id === id) { _rcAtual.p = p; const el = document.getElementById('rcPrazoInfo'); if (el) el.outerHTML = _rcPrazoHtml(p); }
+    _rcRenderLista();
+  } catch (e) { toast('Não consegui salvar: ' + e.message, 'err'); }
+}
+const _rcPrazoHtml = p => `<span id="rcPrazoInfo" style="display:inline-flex;align-items:center;gap:6px;font-size:var(--text-sm);margin-bottom:2px">${lc('truck', 14, 'var(--muted)')} Entrega prevista:
+  <strong style="color:${p.previsao_entrega && p.previsao_entrega < _rcHoje() ? 'var(--danger-fg)' : 'var(--text)'}">${p.previsao_entrega ? cpDataBr(p.previsao_entrega) : '—'}</strong>
+  <button class="btn btn-ghost btn-xs" onclick="_rcRenegociar('${p.id}')">${lc('edit-3', 11, 'currentColor')} Renegociar</button></span>`;
 
 // Mensagem do pedido a partir dos itens atuais (reflete ajustes)
 function _rcMensagem(p, its) {
@@ -382,6 +422,7 @@ function _rcRenderConf() {
       <label class="btn btn-outline btn-sm" style="cursor:pointer;margin-bottom:2px">${lc('camera', 13, 'currentColor')} Fotos do recebimento${a.fotos.length ? ` (${a.fotos.length})` : ''}
         <input type="file" accept="image/*" multiple capture="environment" style="display:none" onchange="_rcAtual.fotos.push(...this.files);_rcRenderConf()"></label>
       <span id="rcNotaStatus" style="font-size:var(--text-xs);color:var(--muted)"></span>
+      <span style="margin-left:auto">${_rcPrazoHtml(a.p)}</span>
     </div>
     <div id="rcProg" style="position:sticky;top:-16px;z-index:5;background:var(--card-bg);padding:8px 0;margin-bottom:6px;border-bottom:1px solid var(--border)"></div>
     ${a.linhas.map(_rcLinhaHtml).join('')}
@@ -670,7 +711,12 @@ function _rcVerFechado(p, its) {
   const divs = Array.isArray(p.divergencias) ? p.divergencias : [];
   const conf = c => c ? ({ ok: '✓ conferido', aceito: 'aceito com divergência', devolvido: 'devolvido', repedido: 'pedido de novo', cancelado: 'cancelado' }[c.status] || '') : '';
   _estModal('ovRcConf', `Pedido · ${_estEsc(p.fornecedor_nome)}`, `
-    <div style="font-size:var(--text-sm);color:var(--text2);margin-bottom:10px">${RC_STATUS[p.status]?.label || p.status}${p.recebido_em ? ` em ${_estDH(p.recebido_em)}${p.recebido_por ? ' por ' + _estEsc(p.recebido_por) : ''}` : ''}</div>
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:var(--text-sm);color:var(--text2);margin-bottom:10px">
+      <span>${RC_STATUS[p.status]?.label || p.status}${p.recebido_em ? ` em ${_estDH(p.recebido_em)}${p.recebido_por ? ' por ' + _estEsc(p.recebido_por) : ''}` : ''}</span>
+      ${(() => { const r = _rcDados?.realPorPedido?.get(p.id); return r?.notas.length
+        ? `<span>Total da nota <strong style="color:var(--text);font-size:var(--text-md)">${_estR(r.total)}</strong>${r.notas.map(n => n.numero_nota ? ` · NF ${_estEsc(n.numero_nota)}` : '').join('')}${Math.abs(r.total - (+p.total_previsto || 0)) > 0.01 ? ` <span style="color:var(--muted)">(cotado ${_estR(p.total_previsto)})</span>` : ''}</span>`
+        : `<span>Total ${_estR(p.total_previsto)}</span>`; })()}
+    </div>
     ${divs.length ? `<div style="padding:9px 12px;border-radius:var(--r8);background:var(--orange-light);color:var(--orange-dark);font-size:var(--text-sm);margin-bottom:10px;line-height:1.6">
       <strong>Ocorrências:</strong><br>${divs.map(d => d.acao ? `• ${_estEsc(d.item)}: ${_estEsc((RC_TIPOS.find(x => x[0] === d.tipo) || [])[1] || d.tipo || '')} → ${_estEsc(RC_ACOES[d.acao] || d.acao)}${d.devolvido ? ` (${_estR(d.devolvido)})` : ''}${d.obs ? ` · "${_estEsc(d.obs)}"` : ''}`
         : `• ${_estEsc(d.item)}: ${d.tipo === 'qtd' ? `pedido ${_estQ(d.pedido)} ${_estEsc(d.unidade || '')}, veio ${_estQ(d.recebido)}` : `estimado ${_estR(d.pedido)}, custou ${_estR(d.recebido)}`}`).join('<br>')}</div>` : ''}
