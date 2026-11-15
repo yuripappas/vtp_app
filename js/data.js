@@ -444,8 +444,8 @@ let PERMS = {
     label: 'Gestor', icon: 'crown', color: '#6B21D4', bg: '#EDE9FE', mutavel: false,
     perms: [
       'Ver Dashboard','Omnichannel',
-      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
-      'Pré-produção','Desperdício','Previsão',
+      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações','Estoque: Atender requisições',
+      'Pré-produção','Pré-produção: Criar ordens','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
@@ -461,7 +461,7 @@ let PERMS = {
     perms: [
       'Ver Dashboard','Omnichannel',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
-      'Pré-produção','Desperdício','Previsão',
+      'Pré-produção','Pré-produção: Criar ordens','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
@@ -534,6 +534,27 @@ let PERMS = {
     if (u.role === 'gerente' && Array.isArray(u.perms) && !u.perms.includes('Gestão')) { u.perms.push('Gestão'); mudouUsers = true; }
   });
   cfg.permGestaoMigrado = true;
+  db._set('vtp_config', cfg);
+  if (mudouPerfis) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
+  if (mudouUsers)  setTimeout(() => typeof saveU === 'function' && saveU(), 0);
+})();
+// Pré-produção / requisição (15/11/2026): os perfis salvos substituem o
+// padrão, então ganham uma vez as permissões novas — atender requisição só o
+// Gestor; criar ordens Gestor e Supervisor. Depois disso vale o que estiver em
+// Configurações › Usuários › Perfis.
+(function() {
+  const cfg = db._get('vtp_config', {}) || {};
+  if (cfg.permPreProdMigrado) return;
+  let mudouPerfis = false, mudouUsers = false;
+  const dar = (lista, perm) => { if (Array.isArray(lista) && !lista.includes(perm)) { lista.push(perm); return true; } return false; };
+  if (dar(PERMS.gerente?.perms, 'Estoque: Atender requisições')) mudouPerfis = true;
+  ['gerente', 'supervisor'].forEach(k => { if (PERMS[k]?.perms?.includes('Pré-produção') && dar(PERMS[k].perms, 'Pré-produção: Criar ordens')) mudouPerfis = true; });
+  (users || []).forEach(u => {
+    if (u.role !== 'gerente' || !Array.isArray(u.perms)) return;
+    if (dar(u.perms, 'Estoque: Atender requisições')) mudouUsers = true;
+    if (u.perms.includes('Pré-produção') && dar(u.perms, 'Pré-produção: Criar ordens')) mudouUsers = true;
+  });
+  cfg.permPreProdMigrado = true;
   db._set('vtp_config', cfg);
   if (mudouPerfis) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
   if (mudouUsers)  setTimeout(() => typeof saveU === 'function' && saveU(), 0);

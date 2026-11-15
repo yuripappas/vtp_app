@@ -11,6 +11,7 @@ const _EST_ABAS = [
   { id: 'estoque',   icon: 'package',        label: 'Estoque'  },
   { id: 'contagens', icon: 'clipboard-list', label: 'Contagem' },
   { id: 'movimentacoes', icon: 'repeat',     label: 'Movimentações' },
+  { id: 'requisicoes',   icon: 'clipboard',  label: 'Requisições' },
 ];
 
 // Filtros: categorias (várias) + 3 filtros rápidos de 2 opções (vazio = todos)
@@ -27,7 +28,9 @@ function _estTopTabsHtml() {
         font-size:var(--text-md);font-weight:${on ? 700 : 500};color:${on ? 'var(--purple)' : 'var(--text2)'};
         border-bottom:2.5px solid ${on ? 'var(--purple)' : 'transparent'};margin-bottom:-1.5px">
         ${lc(a.icon, 15, 'currentColor')} ${a.label}${a.id === 'contagens' ? (() => { const n = typeof estCtgQtdAndamento === 'function' ? estCtgQtdAndamento() : 0;
-          return ` <span id="estCtgBadge" class="badge b-red" style="min-width:20px;justify-content:center;${n ? '' : 'display:none'}">${n}</span>`; })() : ''}</button>`;
+          return ` <span id="estCtgBadge" class="badge b-red" style="min-width:20px;justify-content:center;${n ? '' : 'display:none'}">${n}</span>`; })()
+          : a.id === 'requisicoes' ? (() => { const n = typeof estReqPendentes === 'function' ? estReqPendentes() : 0;
+          return ` <span id="estReqBadge" class="badge b-yellow" style="min-width:20px;justify-content:center;${n ? '' : 'display:none'}">${n}</span>`; })() : ''}</button>`;
     }).join('')}
   </div>`;
 }

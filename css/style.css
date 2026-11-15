@@ -2271,3 +2271,27 @@ body:not(.vtp-omnichannel) iframe[src*="ifood"] {
 .cad-kpi { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: var(--r8); background: var(--bg-subtle); margin-bottom: 16px; }
 .cad-kpi .v { font-size: var(--text-2xl); font-weight: 800; }
 @media (max-width: 900px) { .cad-grid { grid-template-columns: 1fr; } }
+
+/* ── Abas do grupo (Pré-produção / Patrimônio) — #grupoTabs em cima da página ── */
+.grupo-tabs { display:flex; gap:2px; border-bottom:1.5px solid var(--border); padding:0 24px; background:var(--bg); overflow-x:auto; scrollbar-width:none; }
+.grupo-tabs::-webkit-scrollbar { display:none; }
+.grupo-tab { display:inline-flex; align-items:center; gap:7px; padding:12px 16px 10px; border:none; background:none; cursor:pointer; font-family:inherit;
+  font-size:var(--text-md); font-weight:500; color:var(--text2); border-bottom:2.5px solid transparent; margin-bottom:-1.5px; white-space:nowrap; }
+.grupo-tab:hover { color:var(--text); }
+.grupo-tab.on { font-weight:700; color:var(--purple); border-bottom-color:var(--purple); }
+@media (max-width: 768px) { .grupo-tabs { padding:0 12px; } .grupo-tab { padding:11px 12px 9px; } }
+
+/* ── Pré-produção: quadro de ordens ── */
+.pp-quadro { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:start; }
+.pp-col { background:var(--surface2); border-radius:var(--r12); padding:10px; min-height:120px; }
+.pp-col-h { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 6px 10px; font-size:var(--text-sm); font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--text2); }
+.pp-card { background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r10); padding:12px; margin-bottom:8px; cursor:pointer; }
+.pp-card:hover { border-color:var(--purple); }
+.pp-tipo { display:inline-flex; align-items:center; gap:4px; font-size:var(--text-2xs); font-weight:800; padding:2px 7px; border-radius:999px; text-transform:uppercase; letter-spacing:.03em; }
+.pp-tipo.preparar  { background:var(--orange-bg, #FFF4E5); color:var(--orange-fg, #B45309); }
+.pp-tipo.porcionar { background:var(--info-bg, #E0F2FE); color:var(--info-fg, #0369A1); }
+@media (max-width: 900px) { .pp-quadro { grid-template-columns:1fr; } }
+.pp-agenda { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:8px; }
+.pp-dia { background:var(--surface); border:1.5px solid var(--border); border-radius:var(--r10); padding:8px; min-height:140px; }
+.pp-dia.hoje { border-color:var(--purple); }
+@media (max-width: 900px) { .pp-agenda { grid-template-columns:1fr; } .pp-dia { min-height:0; } }

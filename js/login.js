@@ -14,6 +14,7 @@ const MODULE_PERMISSIONS = {
   operacao:      ['gerente', 'supervisor', 'comprador', 'funcionario'],
   estoque:       ['gerente', 'supervisor', 'comprador'],
   preproducao:   ['gerente', 'supervisor', 'comprador'],
+  ppagenda:      ['gerente', 'supervisor', 'comprador'],
   desperdicio:   ['gerente', 'supervisor'],
   compras:       ['gerente', 'supervisor', 'comprador'],
   vendas:        ['gerente', 'supervisor'],
@@ -44,6 +45,7 @@ const MOD_PERM_LABEL = {
   marketing:     'Marketing',
   estoque:       'Estoque',
   preproducao:   'Pré-produção',
+  ppagenda:      'Pré-produção',
   desperdicio:   'Desperdício',
   compras:       'Compras',
   vendas:        'Vendas',
@@ -221,23 +223,24 @@ function applyPermissions(user) {
   const role  = user.role;
   const perms = typeof getUserPerms === 'function' ? getUserPerms(user) : [];
 
-  // Submódulos que só existem dentro do flyout de Operação — sem nav próprio no sidebar
-  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
-
-  // nav-operacao: visível se o usuário tem acesso a pelo menos 1 submódulo real
-  const hasOperacaoAccess = _OPERACAO_MODS.some(m => {
-    const viaPerms = _hasModPerm(perms, m);
-    return viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS[m] || []).includes(role);
+  const pode = mod => {
+    const viaPerms = _hasModPerm(perms, mod);
+    return viaPerms !== null ? viaPerms : (MODULE_PERMISSIONS[mod] || []).includes(role);
+  };
+  // Grupos (Pré-produção / Patrimônio): o item do sidebar aparece se o perfil
+  // vê pelo menos uma das abas
+  const noGrupo = new Set();
+  Object.entries(typeof MOD_GRUPOS !== 'undefined' ? MOD_GRUPOS : {}).forEach(([g, grupo]) => {
+    grupo.abas.forEach(a => noGrupo.add(a.mod));
+    const nav = document.getElementById(`nav-${g}`);
+    if (nav) nav.style.display = grupo.abas.some(a => pode(a.mod)) ? '' : 'none';
   });
-  const navOp = document.getElementById('nav-operacao');
-  if (navOp) navOp.style.display = hasOperacaoAccess ? '' : 'none';
 
-  Object.entries(MODULE_PERMISSIONS).forEach(([mod, roles]) => {
-    if (mod === 'operacao' || _OPERACAO_MODS.includes(mod)) return; // controlado via nav-operacao
+  Object.keys(MODULE_PERMISSIONS).forEach(mod => {
+    if (mod === 'operacao' || noGrupo.has(mod)) return; // controlado pelo item do grupo
     const navEl = document.getElementById(`nav-${mod}`);
     if (!navEl) return;
-    const viaPerms = _hasModPerm(perms, mod);
-    navEl.style.display = (viaPerms !== null ? viaPerms : roles.includes(role)) ? '' : 'none';
+    navEl.style.display = pode(mod) ? '' : 'none';
   });
   // Espelha a visibilidade de Notificações na cópia mobile do header
   const alertasM = document.getElementById('nav-alertas-m');

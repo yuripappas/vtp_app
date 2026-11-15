@@ -232,6 +232,9 @@ function _cpCbOpcoes(cfg) {
   }
   if (cfg.tipo === 'insumo') return items.filter(i => i.active !== false && !i.isProd)
     .map(i => ({ v: i.id, label: i.name, sub: i.cat || '', tag: i.unit === 'un' ? 'unidade' : (i.unit || '') }));
+  // 'processado' = só processados; 'item' = insumos e processados (Pré-produção / requisição)
+  if (cfg.tipo === 'processado' || cfg.tipo === 'item') return items.filter(i => i.active !== false && (cfg.tipo === 'item' || i.isProd))
+    .map(i => ({ v: i.id, label: i.name, sub: (i.cat || '') + (cfg.tipo === 'item' ? (i.isProd ? ' · processado' : ' · insumo') : ''), tag: i.unit === 'un' ? 'unidade' : (i.unit || '') }));
   return (typeof suppliers !== 'undefined' ? suppliers : []).filter(s => s.active !== false).map(s => {
     const n = items.filter(i => i.active !== false && !i.isProd && _clDoFornecedor(i, s.id)).length;
     return { v: s.id, label: s.name, sub: s.seller || '', tag: `${n} insumo${n === 1 ? '' : 's'}` };
@@ -250,7 +253,7 @@ function cpComboHtml(id, { tipo = 'insumo', valor = null, ao = '', avulso = fals
   const lab = _cpCbLabel(_cpCb[id]);
   return `<div class="cp-cb" id="${id}" style="position:relative">
     <button type="button" class="inp" onclick="cpComboAbrir('${id}')" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;text-align:left;cursor:pointer;font-family:inherit">
-      <span id="${id}Lab" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${lab ? 'font-weight:600;color:var(--text)' : 'color:var(--muted)'}">${lab ? _estEsc(lab) : (placeholder || (tipo === 'insumo' ? 'Selecionar insumo…' : 'Selecionar fornecedor…'))}</span>
+      <span id="${id}Lab" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${lab ? 'font-weight:600;color:var(--text)' : 'color:var(--muted)'}">${lab ? _estEsc(lab) : (placeholder || ({ insumo: 'Selecionar insumo…', processado: 'Selecionar processado…', item: 'Selecionar item…' }[tipo] || 'Selecionar fornecedor…'))}</span>
       ${lc('search', 15, 'var(--muted)')}</button>
   </div>`;
 }
@@ -312,7 +315,7 @@ function _cpCbFiltrar(id) {
         <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${o.v === cfg.valor ? 'font-weight:800' : 'font-weight:600'}">${_estEsc(o.label)}</span>
         ${o.sub && !o.acao ? `<span style="display:block;font-size:var(--text-2xs);color:var(--muted)">${_estEsc(o.sub)}</span>` : o.sub ? `<span style="display:block;font-size:var(--text-2xs);color:var(--muted);font-weight:400">${_estEsc(o.sub)}</span>` : ''}</span></span>
       ${o.tag ? `<span class="badge b-gray" style="font-size:var(--text-2xs);white-space:nowrap">${_estEsc(o.tag)}</span>` : ''}</div>`).join('')
-    : `<div style="padding:12px;color:var(--muted);font-size:var(--text-sm)">${cfg.tipo === 'insumo' ? 'Nenhum insumo encontrado' : cfg.tipo === 'categoria' ? 'Nenhuma categoria encontrada. Cadastre em Configurações.' : 'Digite o nome para buscar ou cadastrar'}</div>`;
+    : `<div style="padding:12px;color:var(--muted);font-size:var(--text-sm)">${['insumo', 'processado', 'item'].includes(cfg.tipo) ? 'Nenhum item encontrado' : cfg.tipo === 'categoria' ? 'Nenhuma categoria encontrada. Cadastre em Configurações.' : 'Digite o nome para buscar ou cadastrar'}</div>`;
 }
 
 function _cpCbMarcar(id, k) {

@@ -133,9 +133,9 @@
           <span class="sb-label">Compras</span>
         </button>
 
-        <button class="sb-item" id="nav-etiquetagem" onclick="goModule('etiquetagem')">
-          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span>
-          <span class="sb-label">Etiquetagem</span>
+        <button class="sb-item" id="nav-preproducao" onclick="goGrupo('preproducao')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" y1="17" x2="18" y2="17"/></svg></span>
+          <span class="sb-label">Pré-produção</span>
         </button>
 
         <button class="sb-item" id="nav-kds" onclick="goModule('kds')">
@@ -159,10 +159,9 @@
           <span class="sb-caret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
         </button>
 
-        <button class="sb-item" id="nav-operacao" onclick="_handleNavOperacao()">
-          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></span>
-          <span class="sb-label">Operação</span>
-          <span class="sb-caret"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+        <button class="sb-item" id="nav-patrimonio" onclick="goGrupo('patrimonio')">
+          <span class="sb-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span>
+          <span class="sb-label">Patrimônio</span>
         </button>
 
         <button class="sb-item" id="nav-gestao" onclick="goModule('gestao')">
@@ -219,31 +218,16 @@
   <div class="main">
     <div class="content">
 
+      <!-- Abas do grupo (Pré-produção / Patrimônio) — preenchida por goModule() -->
+      <div id="grupoTabs" style="display:none"></div>
+
       <!-- DASHBOARD -->
       <div class="page active" id="page-dashboard" style="padding:0"></div>
 
 
-      <!-- PRÉ-PRODUÇÃO -->
-      <!-- PRÉ-PRODUÇÃO -->
-      <div class="page" id="page-preproducao">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
-          <div>
-            <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Pré-produção</h2>
-            <div style="font-size:.72rem;color:var(--muted)">Ordens de produção · processados em <a href="#" onclick="goModule('cadastros')" style="color:var(--purple)">Cadastros</a></div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline btn-sm" onclick="openExportPDF()">Exportar PDF</button>
-            <button class="btn btn-red btn-sm" onclick="zerarCicloPrepara()">Zerar ciclo</button>
-            <button class="btn btn-primary btn-sm" onclick="openOrdemModal()">+ Nova Ordem</button>
-          </div>
-        </div>
-        <div class="kpi-row" id="prepKpi" style="margin-bottom:14px"></div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-          <div class="filter-bar" id="prepFiltroBar"></div>
-          <input class="inp" style="max-width:200px;padding:7px 12px;margin-left:auto" id="prepSearch" placeholder=" Buscar processado..." oninput="renderPreproducao()">
-        </div>
-        <div id="prepGrid"></div>
-      </div>
+      <!-- PRÉ-PRODUÇÃO (js/pre-producao.js) — abas: Previsão do dia · Ordens · Agenda · Etiquetas -->
+      <div class="page" id="page-preproducao" style="padding:0"></div>
+      <div class="page" id="page-ppagenda" style="padding:0"></div>
 
             <div class="page" id="page-desperdicio">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:12px">
@@ -290,8 +274,8 @@
       <!-- PREVISÃO -->
       <div class="page" id="page-previsao">
         <div style="margin-bottom:20px">
-          <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Previsão de Demanda</h2>
-          <div style="font-size:.72rem;color:var(--muted)">Planejamento do dia · Massas · Fermento · Motoboys</div>
+          <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:2px">Previsão do dia</h2>
+          <div style="font-size:.72rem;color:var(--muted)">Pedidos previstos · Massas · Processados · Insumos</div>
         </div>
         <div id="previsaoContent"></div>
       </div>
@@ -489,21 +473,6 @@
 
       <!-- RH -->
       <div class="page" id="page-rh" style="padding:0"></div>
-      <div class="page" id="page-operacao" style="padding:0">
-        <div class="settings-layout">
-          <nav class="settings-nav" id="opSettingsNav">
-            <button class="settings-nav-item active" id="opNav-estoque"     onclick="setOpSection('estoque')"></button>
-            <button class="settings-nav-item"        id="opNav-preproducao" onclick="setOpSection('preproducao')"></button>
-            <button class="settings-nav-item"        id="opNav-desperdicio" onclick="setOpSection('desperdicio')"></button>
-            <button class="settings-nav-item"        id="opNav-previsao"    onclick="setOpSection('previsao')"></button>
-            <button class="settings-nav-item"        id="opNav-checklist"   onclick="setOpSection('checklist')"></button>
-            <button class="settings-nav-item"        id="opNav-manutencao"  onclick="setOpSection('manutencao')"></button>
-            <button class="settings-nav-item"        id="opNav-inventario"  onclick="setOpSection('inventario')"></button>
-            <button class="settings-nav-item"        id="opNav-etiquetagem" onclick="setOpSection('etiquetagem')"></button>
-          </nav>
-          <div class="settings-content" id="opSectionContent" style="padding:0"></div>
-        </div>
-      </div>
       <div class="page" id="page-omnichannel" style="padding:0"></div>
 
       <!-- MARKETING — Rede de Criadores/Afiliados -->
@@ -1197,56 +1166,6 @@
   </div>
 </div>
 
-<!-- Modal: Ordem de Produção -->
-<div class="overlay" id="ovOrdem">
-  <div class="mbox wide">
-    <div class="mh"><div class="mt">Nova Ordem de Produção</div><button class="mc" onclick="closeModal('ovOrdem')"></button></div>
-    <div class="mb">
-      <div class="f2">
-        <div class="field"><label>Processado</label><select class="inp" id="opItem" onchange="_ppUpdateCusto()"><option value="">Selecionar...</option></select></div>
-        <div class="field"><label>Quantidade</label><input class="inp" type="number" id="opQty" placeholder="0" min="0" step="0.1" oninput="_ppUpdateCusto()"></div>
-      </div>
-      <div class="f2">
-        <div class="field"><label>Data prevista</label><input class="inp" type="date" id="opDate"></div>
-        <div class="field"><label>Responsável</label><select class="inp" id="opResp"></select></div>
-      </div>
-      <div class="f2">
-        <div class="field"><label>Conferente</label><select class="inp" id="opConf"></select></div>
-        <div class="field"><label>Turno</label><select class="inp" id="opTurno"><option>Manhã</option><option>Tarde</option><option>Noite</option></select></div>
-      </div>
-      <div class="field"><label>Observações</label><textarea class="inp" id="opObs" rows="2"></textarea></div>
-      <!-- Custo calculado da ficha técnica -->
-      <div id="opCustoInfo" style="display:none;margin-top:4px"></div>
-    </div>
-    <div class="mf">
-      <button class="btn btn-outline" onclick="closeModal('ovOrdem')">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveOrdem()">Criar Ordem</button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: PDF -->
-<div class="overlay" id="ovPDF">
-  <div class="mbox wide">
-    <div class="mh"><div class="mt"> Exportar Ordens de Produção</div><button class="mc" onclick="closeModal('ovPDF')"></button></div>
-    <div class="mb">
-      <div class="f2">
-        <div class="field"><label>De</label><input class="inp" type="date" id="pdfDe"></div>
-        <div class="field"><label>Até</label><input class="inp" type="date" id="pdfAte"></div>
-      </div>
-      <div class="field"><label>Status</label><select class="inp" id="pdfStatus"><option value="">Todos</option><option value="pendente">Pendentes</option><option value="produzido">Produzidos</option></select></div>
-      <div id="pdfOrdensList" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto"></div>
-      <div id="pdfEmpty" style="display:none;text-align:center;color:var(--muted);font-size:.8rem;padding:20px">Nenhuma ordem encontrada.</div>
-    </div>
-    <div class="mf">
-      <button class="btn btn-outline" onclick="closeModal('ovPDF')">Cancelar</button>
-      <button class="btn btn-primary" onclick="generatePDF()">
-      Gerar PDF</button>
-    </div>
-  </div>
-</div>
-
-
 </div><!-- /appScreen -->
 
 <!-- Modal: Sabor de Pizza -->
@@ -1334,7 +1253,7 @@
 <script src="js/icons.js?v=3"></script>
 <script src="js/db.js?v=118"></script>
 <script src="js/config.js"></script>
-<script src="js/init.js?v=300"></script>
+<script src="js/init.js?v=301"></script>
 
 <!-- Modal: Configurações da Previsão -->
 <div class="overlay" id="ovCfgPrevisao">

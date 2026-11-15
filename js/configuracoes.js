@@ -1884,8 +1884,8 @@ function abrirCadastroNaConfig(tab) {
 
 // Todos os IDs de permissão (folhas da árvore) — mantido para compatibilidade
 const _CFG_ALL_PERMS = [
-  'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
-  'Pré-produção','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
+  'Ver Dashboard','Omnichannel','Marketing','Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações','Estoque: Atender requisições',
+  'Pré-produção','Pré-produção: Criar ordens','Desperdício','Previsão','Compras','Aprovação de compras','Fornecedores','Relatórios',
   'Checklist Meu','Checklist','Manutenção','Inventário','RH','Performance','Vendas','CMV','Alertas',
   'Gestão: Plano de Ação','Gestão: Raio X','Gestão: Processos',
   'Gerenciar usuários','Configurações',
@@ -1903,10 +1903,15 @@ const _CFG_PERMS_TREE = [
       { id:'Estoque: Contagem Semanal',  label:'Contagem semanal'           },
       { id:'Estoque: Movimentações',     label:'Registrar movimentações'    },
       { id:'Estoque: Editar movimentações', label:'Editar e excluir movimentações' },
+      { id:'Estoque: Atender requisições',  label:'Atender requisições (entregar insumos)' },
     ]},
-  { id:'Pré-produção',       label:'Pré-produção',        icon:'chef-hat'        },
+  { id:'_preproducao',       label:'Pré-produção',        icon:'chef-hat',
+    sub:[
+      { id:'Pré-produção',              label:'Ver e executar ordens · agenda' },
+      { id:'Pré-produção: Criar ordens', label:'Criar e cancelar ordens'        },
+    ]},
   { id:'Desperdício',        label:'Desperdício',         icon:'trash-2'         },
-  { id:'Previsão',           label:'Previsão de Demanda', icon:'trending-up'     },
+  { id:'Previsão',           label:'Previsão do dia',     icon:'trending-up'     },
   { id:'_compras',           label:'Compras',             icon:'shopping-cart',
     sub:[
       { id:'Compras',               label:'Criar e gerenciar listas' },

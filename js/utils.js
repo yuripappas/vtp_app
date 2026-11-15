@@ -97,12 +97,47 @@ function toggleMobileMenu() {
 }
 
 // Submenu items de Operação
-const _OPERACAO_SUBMENU_ITEMS = [
-  { id: 'preproducao', icon: 'chef-hat',     label: 'Pré-produção' },
-  { id: 'previsao',    icon: 'trending-up',  label: 'Previsão'     },
-  { id: 'manutencao',  icon: 'wrench',       label: 'Manutenção'   },
-  { id: 'inventario',  icon: 'layers',       label: 'Inventário'   },
-];
+// ── Grupos de módulos com abas no topo ────────────────────────
+// Pré-produção e Patrimônio são um item só no sidebar; cada aba continua
+// sendo um módulo próprio (rota, permissão e render), só que mostrado com a
+// barra de abas do grupo (#grupoTabs) em cima da página.
+const MOD_GRUPOS = {
+  preproducao: { label: 'Pré-produção', padrao: 'preproducao', abas: [
+    { mod: 'previsao',    icon: 'trending-up', label: 'Previsão do dia' },
+    { mod: 'preproducao', icon: 'chef-hat',    label: 'Ordens'          },
+    { mod: 'ppagenda',    icon: 'calendar',    label: 'Agenda'          },
+    { mod: 'etiquetagem', icon: 'tag',         label: 'Etiquetas'       },
+  ]},
+  patrimonio: { label: 'Patrimônio', padrao: 'inventario', abas: [
+    { mod: 'inventario', icon: 'layers', label: 'Inventário' },
+    { mod: 'manutencao', icon: 'wrench', label: 'Manutenção' },
+  ]},
+};
+const modGrupoDe = mod => Object.keys(MOD_GRUPOS).find(g => MOD_GRUPOS[g].abas.some(a => a.mod === mod)) || null;
+const _grupoUltima = {};
+const _grupoPode = mod => typeof canAccess !== 'function' || canAccess(mod);
+
+// Clique no item do sidebar: volta à última aba usada (ou à padrão) que o perfil pode ver
+function goGrupo(g) {
+  const grupo = MOD_GRUPOS[g]; if (!grupo) return;
+  const ord = [_grupoUltima[g], grupo.padrao, ...grupo.abas.map(a => a.mod)].filter(Boolean);
+  const mod = ord.find(_grupoPode);
+  if (!mod) return toast('Acesso não permitido para seu perfil', 'err');
+  goModule(mod);
+}
+
+function _grupoTabsRender(mod) {
+  const el = document.getElementById('grupoTabs'); if (!el) return;
+  const g = modGrupoDe(mod);
+  if (!g) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  _grupoUltima[g] = mod;
+  const abas = MOD_GRUPOS[g].abas.filter(a => _grupoPode(a.mod));
+  el.style.display = '';
+  el.innerHTML = `<div class="grupo-tabs">${abas.map(a => {
+    const on = a.mod === mod;
+    return `<button onclick="goModule('${a.mod}')" class="grupo-tab${on ? ' on' : ''}">${lc(a.icon, 15, 'currentColor')} ${a.label}</button>`;
+  }).join('')}</div>`;
+}
 
 // Submenu items de Vendas
 function _openMobileSubmenu(items, parentLabel) {
@@ -205,15 +240,8 @@ function toggleBrandSwitcher(anchorEl) {
   wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
 }
 
-function _handleNavOperacao() {
-  _openMobileSubmenu(
-    _OPERACAO_SUBMENU_ITEMS.map(item => ({
-      ...item,
-      action: `goModule('${item.id}');`
-    })),
-    'Operação'
-  );
-}
+// Operação deixou de existir (15/11/2026): virou Pré-produção + Patrimônio
+function _handleNavOperacao() { goGrupo('preproducao'); }
 
 // Submenu items de Omnichannel
 const _OMNI_SUBMENU_ITEMS = [
@@ -280,27 +308,28 @@ function _cfgMarcarSubmenu() {
 
 const modInfo = {
   dashboard:      { title: 'Dashboard',             sub: 'Visão geral do sistema' },
-  operacao:       { title: 'Operação',              sub: 'Pré-produção · Desperdício · Previsão · Manutenção · Inventário' },
+  operacao:       { title: 'Pré-produção',          sub: 'Previsão do dia · Ordens · Agenda · Etiquetas' },
   omnichannel:    { title: 'Omnichannel',           sub: 'Central de atendimento e canais de venda' },
   marketing:      { title: 'Marketing',             sub: 'Rede de Criadores · Cupons · Ranking & Desafios' },
   estoque:        { title: 'Estoque',               sub: 'Contagem e movimentações' },
-  preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção interna' },
+  preproducao:    { title: 'Pré-produção',           sub: 'Ordens de produção · requisição de insumos' },
+  ppagenda:       { title: 'Pré-produção',           sub: 'Agenda da semana · preparo e porcionamento' },
   desperdicio:    { title: 'Controle de Desperdício', sub: 'Monitore perdas e seu impacto financeiro' },
   compras:        { title: 'Compras',               sub: 'Lista · Cotação · Aprovação · OC · Recebimento · Fornecedores' },
   vendas:         { title: 'Vendas',                sub: 'Vendas por canal · Curva ABC — interpretado dos pedidos' },
   cmv:            { title: 'CMV',                   sub: 'CMV do ciclo · CMV projetado · Consumo de insumos · Precificação' },
   cadastros:      { title: 'Cadastros',             sub: 'Insumos · Fornecedores · Pré-preparo' },
-  previsao:       { title: 'Previsão de Demanda',   sub: 'Planejamento do dia · Massas · Fermento · Motoboys' },
+  previsao:       { title: 'Pré-produção',          sub: 'Previsão do dia · Massas · Processados · Insumos' },
   configuracoes:  { title: 'Configurações',         sub: 'WhatsApp da empresa · preferências do sistema' },
   relatorios:     { title: 'Relatórios',            sub: 'Histórico, análises e inteligência' },
   usuarios:       { title: 'Usuários & Permissões', sub: 'Gestão de acesso à plataforma' },
   checklist:      { title: 'Checklist',             sub: 'Tarefas diárias · Controle de equipe' },
-  manutencao:     { title: 'Manutenção',             sub: 'Equipamentos · Preventiva · Documentos · Histórico' },
-  inventario:     { title: 'Inventário',             sub: 'Ativos · Utensílios · Contagem mensal' },
+  manutencao:     { title: 'Patrimônio',             sub: 'Manutenção · Equipamentos · Preventiva · Documentos' },
+  inventario:     { title: 'Patrimônio',             sub: 'Inventário · Ativos · Utensílios · Contagem mensal' },
   alertas:        { title: 'Alertas',                sub: 'Notificações de movimentações e eventos do sistema' },
   rh:             { title: 'RH',                     sub: 'Escala · Presença · Horas Extras · Materiais · Indicadores' },
   auditoria:      { title: 'Auditoria',              sub: 'Log de ações · Rastreabilidade · Histórico do sistema' },
-  etiquetagem:    { title: 'Etiquetagem',             sub: 'Impressão · Validades · Produção · Cadastros' },
+  etiquetagem:    { title: 'Pré-produção',            sub: 'Etiquetas · Validades · Produção' },
   kds:            { title: 'KDS',                     sub: 'Pizzaiolo · Finalização · Pedido' },
   gestao:         { title: 'Gestão',                  sub: 'Plano de Ação · Raio X · Processos' },
 };
@@ -498,8 +527,8 @@ function _vtpRestoreRoute() {
 }
 
 function goModule(mod) {
-  // Operação e Configurações sem seção definida → abrem submenu no sidebar
-  if (mod === 'operacao') { _handleNavOperacao(); return; }
+  // Operação deixou de existir: links antigos caem na Pré-produção
+  if (mod === 'operacao') { goGrupo('preproducao'); return; }
 
   // A página de Desperdício virou Estoque › Movimentações filtrado em Baixa
   if (mod === 'desperdicio') {
@@ -521,20 +550,16 @@ function goModule(mod) {
   if (_mobileSubmenuActive) _closeMobileSubmenu();
   if (_mobileMenuOpen) toggleMobileMenu();
 
-  const _OPERACAO_MODS = ['preproducao','desperdicio','previsao','manutencao','inventario'];
-
   // Mostra widget iFood apenas no Omnichannel
   document.body.classList.toggle('vtp-omnichannel', mod === 'omnichannel');
   // Tela cheia do KDS (esconde sidebar/topbar) só vale dentro do KDS
   if (mod !== 'kds') document.body.classList.remove('kds-full');
 
   document.querySelectorAll('.sb-item').forEach(e => e.classList.remove('active'));
-  // Submódulos de Operação destacam o item "Operação" no sidebar
-  if (_OPERACAO_MODS.includes(mod)) {
-    document.getElementById('nav-operacao')?.classList.add('active');
-  } else {
-    document.getElementById(`nav-${mod}`)?.classList.add('active');
-  }
+  // Abas de um grupo (Pré-produção / Patrimônio) destacam o item do grupo
+  const _grupo = modGrupoDe(mod);
+  document.getElementById(`nav-${_grupo || mod}`)?.classList.add('active');
+  _grupoTabsRender(mod);
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(`page-${mod}`)?.classList.add('active');
   const info = modInfo[mod];
@@ -545,8 +570,7 @@ function goModule(mod) {
     const mobileTitle = document.getElementById('mobileModuleTitle');
     if (mobileTitle) mobileTitle.textContent = info.title;
   }
-  if (mod === 'operacao')        renderOperacao();
-  else if (mod === 'omnichannel') renderOmnichannel();
+  if (mod === 'omnichannel') renderOmnichannel();
   else if (mod === 'marketing')   renderMarketing();
   else if (mod === 'dashboard')  renderDashboard();
   else if (mod === 'estoque')    {
@@ -556,6 +580,7 @@ function goModule(mod) {
     renderComprasLayout();
   }
   else if (mod === 'preproducao') renderPreproducao();
+  else if (mod === 'ppagenda')    renderPpAgenda();
   else if (mod === 'compras')    renderComprasModule();
   else if (mod === 'vendas')     renderVendas();
   else if (mod === 'cmv')        renderCMVModulo();
