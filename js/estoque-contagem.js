@@ -559,6 +559,8 @@ async function estAbrirContagem(id) {
     });
   }
   _ctgAtual = { c, itens, ultimas, q: '', cat: '', az: false, abertos: new Set(), rasc: {}, grupo: 'todos', ordemRev: 'seq', editRev: null };
+  // Saldo do sistema neste local — só para a trava de digitação (a contagem continua cega)
+  estSaldos().then(sd => { if (_ctgAtual?.c.id === id) _ctgAtual.saldos = sd; }).catch(() => {});
   if (c.status === 'andamento' || c.status === 'pendente') {
     const prox = _ctgOrdenados().find(i => i.contado === null);
     if (prox) _ctgAtual.abertos.add(prox.id);
@@ -761,32 +763,64 @@ function _ctgPasso(rowId, campo, delta) {
   const inp = document.getElementById(`ctgIn-${rowId}-${campo}`); if (inp) inp.value = r[campo];
   _ctgAtualizarTotais(row);
 }
-// Trava contra quantidade digitada em gramas num item em kg (ou ml em L):
-// muito acima do normal = mais de 10× a referência (ideal, última contagem ou saldo esperado)
-function _ctgSuspeito(row, tot) {
-  if (tot === null || !/^(kg|l)$/i.test(_ctgUn(row))) return false;
-  const it = _ctgItem(row), ult = _ctgAtual?.ultimas?.get(row.item_id);
-  const ref = Math.max(Number(it?.ideal) || 0, Number(ult?.contado) || 0, Number(row.esperado) || 0);
-  return tot > Math.max(ref * 10, 30);
+// ── Trava contra erro de digitação na contagem ──
+// Compara o total com a referência do item (saldo esperado no sistema e a
+// última contagem; ideal só para "acima") e devolve um alerta, ou null:
+//  • decimal: item em unidade com vírgula (1,437 un → quis dizer 1437?)
+//  • gramas:  item em kg/L mais de 10× acima (pesado em g/ml)
+//  • acima:   mais de 10× o normal
+//  • abaixo:  menos de 10% do esperado (vírgula/ponto trocados, zero a menos…)
+// Ao conferir, o alerta pede confirmação; a ação (quando há) corrige com 1 toque.
+const CTG_UN_INTEIRA = /^(un|und|unid|unidade|cx|pct)$/i;
+function _ctgAlerta(row, tot) {
+  if (tot === null || isNaN(tot)) return null;
+  const u = _ctgUn(row), it = _ctgItem(row), ult = _ctgAtual?.ultimas?.get(row.item_id);
+  const sist = row.esperado ?? _ctgAtual?.saldos?.porItem.get(row.item_id)?.porLocal[_ctgAtual.c.local_id]?.saldo;
+  const esperado = Math.max(Number(sist) || 0, 0), ultima = Number(ult?.contado) || 0;
+  const refBaixo = Math.max(esperado, ultima);
+  const refAlto = Math.max(Number(it?.ideal) || 0, esperado, ultima);
+  if (CTG_UN_INTEIRA.test(u) && Math.abs(tot - Math.round(tot)) > 1e-9) {
+    const mil = _estRound(tot * 1000);
+    const ehMil = Math.abs(mil - Math.round(mil)) < 1e-9;
+    return { tipo: 'decimal', titulo: 'Unidade com vírgula',
+      // número sem ponto de milhar (1437), para não confundir de novo
+      msg: `${_estQ(tot)} ${u} — este item é contado em unidades inteiras, não leva vírgula.${ehMil ? ` Se você quis dizer ${Math.round(mil)} unidades, escreva só os números: ${Math.round(mil)}.` : ''}`,
+      acao: ehMil ? { label: `Corrigir para ${Math.round(mil)} ${u}`, fator: 1000 } : null };
+  }
+  if (/^(kg|l)$/i.test(u) && tot > Math.max(refAlto * 10, 30))
+    return { tipo: 'gramas', titulo: 'Quantidade muito acima do normal',
+      msg: `${_estQ(tot)} ${u} é mais de 10 vezes o normal — parece que foi pesado em ${u.toLowerCase() === 'kg' ? 'gramas' : 'ml'}.`,
+      acao: { label: `Converter para ${_estQ(tot / 1000)} ${u}`, fator: 1 / 1000 } };
+  if (refAlto > 0 && tot > Math.max(refAlto * 10, 50))
+    return { tipo: 'acima', titulo: 'Quantidade muito acima do normal',
+      msg: `${_estQ(tot)} ${u} é mais de 10 vezes o normal deste item. Confira se não sobrou um zero.`, acao: null };
+  if (refBaixo >= 1 && tot > 0 && tot < refBaixo / 10)
+    return { tipo: 'abaixo', titulo: 'Quantidade muito abaixo do esperado',
+      msg: `${_estQ(tot)} ${u} é menos de 10% do que costuma ter neste local. Confira vírgula e ponto (1,437 é "um vírgula quatro"; mil quatrocentos e trinta e sete se escreve 1437) e se não faltou um zero.`,
+      acao: null };
+  return null;
 }
 function _ctgTotHtml(row) {
   const tot = _ctgTotalRasc(row), u = _estEsc(_ctgUn(row));
   if (tot === null) return 'Digite a quantidade (0 se não houver) para conferir';
+  const al = _ctgAlerta(row, tot);
   return `Total contado: <strong style="font-size:var(--text-lg)">${_estQ(tot)} ${u}</strong>`
-    + (_ctgSuspeito(row, tot) ? `<div style="margin-top:6px;font-size:var(--text-sm);color:var(--danger-fg);font-weight:600">${lc('alert-triangle', 13, 'currentColor')} Muito acima do normal — parece que foi pesado em ${u === 'kg' ? 'gramas' : 'ml'}.
-        <button class="btn btn-outline btn-xs" style="margin-left:6px" onclick="event.stopPropagation();_ctgConverterMil('${row.id}')">Converter para ${_estQ(tot / 1000)} ${u}</button></div>` : '');
+    + (al ? `<div style="margin-top:6px;font-size:var(--text-sm);color:var(--danger-fg);font-weight:600">${lc('alert-triangle', 13, 'currentColor')} ${_estEsc(al.msg)}
+        ${al.acao ? `<button class="btn btn-outline btn-xs" style="margin-left:6px" onclick="event.stopPropagation();_ctgCorrigirFator('${row.id}',${al.acao.fator})">${_estEsc(al.acao.label)}</button>` : ''}</div>` : '');
 }
-// Divide todos os campos por 1.000 (gramas → kg)
-function _ctgConverterMil(rowId) {
+// Multiplica o campo avulso (gramas → kg: ÷1000; "1,437 un" → 1437: ×1000).
+// Embalagens são contadas em unidades e ficam como estão.
+function _ctgCorrigirFator(rowId, fator) {
   const row = _ctgAtual.itens.find(i => i.id === rowId);
   const r = _ctgRasc(row);
   for (const c of _ctgCampos(row)) {
-    if (c.v === null || c.k !== 'avulso') continue;   // embalagens são contadas em unidades
-    r[c.k] = String(_estRound(c.v / 1000)).replace('.', ',');
+    if (c.v === null || c.k !== 'avulso') continue;
+    r[c.k] = String(_estRound(c.v * fator)).replace('.', ',');
     const inp = document.getElementById(`ctgIn-${rowId}-${c.k}`); if (inp) inp.value = r[c.k];
   }
   _ctgAtualizarTotais(row);
 }
+const _ctgConverterMil = rowId => _ctgCorrigirFator(rowId, 1 / 1000);
 
 function _ctgAtualizarTotais(row) {
   const u = _estEsc(_ctgUn(row));
@@ -803,13 +837,13 @@ async function _ctgSalvarContado(row, refazer) {
   if (cs.every(c => c.v === null)) { toast('Digite a quantidade (0 se não houver)', 'err'); return false; }
   if (cs.some(c => c.v !== null && (isNaN(c.v) || c.v < 0))) { toast('Quantidade inválida', 'err'); return false; }
   const total = _ctgTotalRasc(row);
-  if (_ctgSuspeito(row, total) && row._okGrande !== total) {
-    const u = _ctgUn(row);
+  const al = _ctgAlerta(row, total);
+  if (al && row._okAlerta !== total) {
     vtpConfirm({
-      title: 'Quantidade muito acima do normal',
-      message: `${_estQ(total)} ${u} de ${row.item_nome}? É mais de 10 vezes o normal para este item. Se foi pesado em ${u.toLowerCase() === 'kg' ? 'gramas' : 'ml'}, cancele e use "Converter para ${_estQ(total / 1000)} ${u}".`,
-      confirmLabel: `Está certo: ${_estQ(total)} ${u}`, danger: true,
-      onConfirm: () => { row._okGrande = total; refazer?.(); },
+      title: al.titulo,
+      message: `${row.item_nome}: ${al.msg} Se o número está certo, confirme.${al.acao ? ` Se não, cancele e use "${al.acao.label}".` : ' Se não, cancele e corrija.'}`,
+      confirmLabel: `Está certo: ${_estQ(total)} ${_ctgUn(row)}`, danger: true,
+      onConfirm: () => { row._okAlerta = total; refazer?.(); },
     });
     return false;
   }
