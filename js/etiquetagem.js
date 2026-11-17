@@ -400,15 +400,16 @@ function _etqStep2(el) {
   const usadas = new Set(allItems.map(i => i.cat));
   const todasCats = catLista().filter(c => usadas.has(c));
   const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
-  // Processados ficam na categoria real (ex.: Mussarela Triturada em
-  // Laticínios), mas a produção etiqueta quase só eles — atalho no topo.
-  if (allItems.some(i => i.isProd)) cats.unshift(ETQ_CAT_PROCESSADOS);
+  // "Processado" não é categoria: é um tipo de item. Cada um fica na categoria
+  // real (ex.: Mussarela Triturada em Laticínios) e, dentro dela, o filtro
+  // Processados × Insumos e o selo no card separam os dois.
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
       ${cats.map(cat => {
-        const count = _etqItensDaCat(allItems, cat).length;
-        const icon  = cat === ETQ_CAT_PROCESSADOS ? 'chef-hat' : _etqIconCat(cat);
+        const doCat = _etqItensDaCat(allItems, cat).filter(i => i.active !== false);
+        const count = doCat.length, nProc = doCat.filter(i => i.isProd).length;
+        const icon  = _etqIconCat(cat);
         return `
           <button onclick="_etqWizardState._tipo='';_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
           }';_etqWizNext()"
@@ -420,7 +421,7 @@ function _etqStep2(el) {
               ${lc(icon, 20, '#fff')}
             </div>
             <div style="font-size:.8rem;font-weight:700;color:var(--text);line-height:1.2">${cat}</div>
-            <div style="font-size:.66rem;color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
+            <div style="font-size:.66rem;color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}${nProc ? ` · <b style="color:var(--brand-purple)">${nProc} processado${nProc > 1 ? 's' : ''}</b>` : ''}</div>
           </button>
         `;
       }).join('')}
