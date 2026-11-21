@@ -182,6 +182,20 @@ async function doLogin() {
   applyPermissions(user);
   showApp();
 
+  // Cria sessão Supabase Auth para que edge functions com exigirUsuarioApp funcionem.
+  // Silencioso: falha não bloqueia o login nem mostra erro ao usuário.
+  try {
+    const _sbAuth = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    });
+    _sbAuth.auth.signInWithPassword({ email, password }).then(({ data, error }) => {
+      if (data?.session) {
+        window._vtpAccessToken = data.session.access_token;
+        window._vtpSbAuth = _sbAuth;
+      }
+    });
+  } catch (_) {}
+
   if (user.role === 'funcionario') {
     goModule('checklist');
   } else {

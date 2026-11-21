@@ -7,17 +7,14 @@
  * pela Edge Function enviar-mensagem (ela fala com a Evolution API).
  */
 
-let _atdSbClient = null;
 function _atdGetSbClient() {
-  // Reutiliza o cliente global com sessão Auth (ds/padronizacao) ou cria um próprio (main)
-  if (!_atdSbClient) {
-    _atdSbClient = (typeof vtpSb === 'function')
-      ? vtpSb()
-      : supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY, {
-          auth: { persistSession: true, autoRefreshToken: true },
-        });
-  }
-  return _atdSbClient;
+  // Prefere o cliente Auth criado no login (window._vtpSbAuth),
+  // depois o cliente global da migração (vtpSb), por fim cria um próprio.
+  return window._vtpSbAuth
+    || (typeof vtpSb === 'function' ? vtpSb() : null)
+    || supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY, {
+         auth: { persistSession: true, autoRefreshToken: true },
+       });
 }
 
 // Garante sessão Supabase Auth ativa antes de chamar edge functions.
