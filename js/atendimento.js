@@ -9,7 +9,14 @@
 
 let _atdSbClient = null;
 function _atdGetSbClient() {
-  if (!_atdSbClient) _atdSbClient = vtpSb(); // cliente único (sessão do Auth)
+  // Reutiliza o cliente global com sessão Auth (ds/padronizacao) ou cria um próprio (main)
+  if (!_atdSbClient) {
+    _atdSbClient = (typeof vtpSb === 'function')
+      ? vtpSb()
+      : supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY, {
+          auth: { persistSession: true, autoRefreshToken: true },
+        });
+  }
   return _atdSbClient;
 }
 
