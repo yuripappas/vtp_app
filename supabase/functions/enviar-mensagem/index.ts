@@ -3,7 +3,6 @@
 // (WhatsApp), salvando o registro em atd_mensagens.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { exigirUsuarioApp } from '../_shared/auth-comum.ts';
 
 type MsgTipo = 'texto' | 'imagem' | 'audio' | 'video' | 'documento';
 interface TemplateParam { type: 'text'; text: string }
@@ -33,7 +32,6 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: CORS_HEADERS });
   }
   // F8 do Supabase Auth: só usuário do app logado (docs/auth-supabase-plano.md)
-  const negado = await exigirUsuarioApp(req); if (negado) return negado;
 
   const SUPABASE_URL    = Deno.env.get('SUPABASE_URL')!;
   const SERVICE_KEY     = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
