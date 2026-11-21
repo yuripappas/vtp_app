@@ -3,8 +3,10 @@
 // (WhatsApp), salvando o registro em atd_mensagens.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { exigirUsuarioApp } from '../_shared/auth-comum.ts';
 
 type MsgTipo = 'texto' | 'imagem' | 'audio' | 'video' | 'documento';
+interface TemplateParam { type: 'text'; text: string }
 interface Body {
   conversa_id: string;
   texto?: string;
@@ -13,6 +15,10 @@ interface Body {
   tipo?: MsgTipo;
   url?: string;
   nome_arquivo?: string;
+  // Envio de template HSM (mensagem proativa fora da janela de 24h)
+  template_name?: string;
+  template_language?: string;       // ex: 'pt_BR'
+  template_params?: TemplateParam[]; // parâmetros do corpo do template
 }
 
 // Chamada direto do navegador (inbox) — precisa de CORS e tratar o preflight OPTIONS.
@@ -26,6 +32,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: CORS_HEADERS });
   }
+  // F8 do Supabase Auth: só usuário do app logado (docs/auth-supabase-plano.md)
+  const negado = await exigirUsuarioApp(req); if (negado) return negado;
 
   const SUPABASE_URL    = Deno.env.get('SUPABASE_URL')!;
   const SERVICE_KEY     = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -36,8 +44,9 @@ Deno.serve(async (req) => {
 
   const body: Body = await req.json();
   const tipo = body.tipo || 'texto';
-  if (!body.conversa_id || (!body.texto && !body.url)) {
-    return new Response(JSON.stringify({ error: 'conversa_id e (texto ou url) são obrigatórios' }), { status: 400, headers: CORS_HEADERS });
+  const isTemplate = !!body.template_name;
+  if (!body.conversa_id || (!body.texto && !body.url && !isTemplate)) {
+    return new Response(JSON.stringify({ error: 'conversa_id e (texto, url ou template_name) são obrigatórios' }), { status: 400, headers: CORS_HEADERS });
   }
 
   const visibilidade = body.visibilidade || 'publica';
@@ -87,6 +96,58 @@ Deno.serve(async (req) => {
     const numero = digits.startsWith('55') ? digits : `55${digits}`;
 
     let waBody: Record<string, unknown>;
+
+    // Template HSM — mensagem proativa fora da janela de 24h
+    if (isTemplate) {
+      const components: Record<string, unknown>[] = [];
+      if (body.template_params?.length) {
+        components.push({
+          type: 'body',
+          parameters: body.template_params.map(p => ({ type: 'text', text: p.text })),
+        });
+      }
+      waBody = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: numero,
+        type: 'template',
+        template: {
+          name: body.template_name,
+          language: { code: body.template_language || 'pt_BR' },
+          ...(components.length ? { components } : {}),
+        },
+      };
+
+      const waRes = await fetch(waUrl, { method: 'POST', headers: waHeaders, body: JSON.stringify(waBody) });
+      if (!waRes.ok) {
+        const detalhe = await waRes.text();
+        return new Response(JSON.stringify({ error: `Meta WABA HTTP ${waRes.status}`, detalhe }), { status: 502, headers: CORS_HEADERS });
+      }
+      const waData = await waRes.json();
+      externalId = waData?.messages?.[0]?.id ?? null;
+
+      // Monta preview do texto para registrar na conversa
+      const textoTemplate = body.texto || `[Template: ${body.template_name}]`;
+      await sb.from('atd_mensagens').insert({
+        conversa_id:  body.conversa_id,
+        origem:       'atendente',
+        atendente_id: body.atendente_id ?? null,
+        visibilidade: 'publica',
+        tipo:         'texto',
+        conteudo:     { texto: textoTemplate },
+        external_id:  externalId,
+      });
+      const { data: convTemplate } = await sb.from('atd_conversas').select('status').eq('id', body.conversa_id).single();
+      const updTemplate: Record<string, unknown> = { atualizado_em: new Date().toISOString() };
+      if (body.atendente_id) updTemplate.atendente_id = body.atendente_id;
+      if (convTemplate?.status === 'concluida' || convTemplate?.status === 'expirada') {
+        updTemplate.status = 'em_atendimento';
+        updTemplate.concluida_em = null;
+        updTemplate.concluida_por_id = null;
+      }
+      await sb.from('atd_conversas').update(updTemplate).eq('id', body.conversa_id);
+      return new Response(JSON.stringify({ ok: true }), { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
+    }
 
     if (tipo !== 'texto' && body.url) {
       const mediaTypeMap: Record<string, string> = { imagem: 'image', audio: 'audio', video: 'video', documento: 'document' };

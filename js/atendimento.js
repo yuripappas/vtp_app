@@ -9,8 +9,47 @@
 
 let _atdSbClient = null;
 function _atdGetSbClient() {
-  if (!_atdSbClient) _atdSbClient = supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY);
+  if (!_atdSbClient) _atdSbClient = vtpSb(); // cliente único (sessão do Auth)
   return _atdSbClient;
+}
+
+// Garante sessão Supabase Auth ativa antes de chamar edge functions.
+// Se não houver sessão, mostra toast e redireciona para login.
+async function _atdGarantirSessao() {
+  const sb = _atdGetSbClient();
+  const { data } = await sb.auth.getSession();
+  if (data?.session?.access_token) return true;
+  toast('Sessão expirada. Faça login novamente.', 'err');
+  setTimeout(() => { if (typeof showLogin === 'function') showLogin(); }, 1500);
+  return false;
+}
+
+// Wrapper para fetch de edge functions: injeta o bearer atualizado e trata erros de auth.
+async function _atdFetch(url, opts = {}) {
+  // Tenta renovar a sessão antes de enviar (evita 401 por token expirado)
+  const sb = _atdGetSbClient();
+  let { data: sessData } = await sb.auth.getSession();
+  if (!sessData?.session) {
+    // Sem sessão local → tenta refresh
+    const { data: refreshed } = await sb.auth.refreshSession();
+    sessData = refreshed;
+  }
+  const token = sessData?.session?.access_token || VTP_SUPABASE_KEY;
+  opts.headers = { ...(opts.headers || {}), Authorization: 'Bearer ' + token };
+  const res = await fetch(url, opts);
+  if (res.status === 401 || res.status === 403) {
+    const json = await res.json().catch(() => ({}));
+    const msg = json.erro || json.error || json.message || 'Sessão expirada';
+    toast(msg + '. Faça login novamente.', 'err');
+    setTimeout(() => { if (typeof showLogin === 'function') showLogin(); }, 1500);
+    throw new Error(msg);
+  }
+  return res;
+}
+
+// Extrai mensagem de erro de qualquer formato de resposta JSON.
+function _atdErroJson(json) {
+  return json.erro || json.error || json.message || json.detalhe || JSON.stringify(json);
 }
 
 const _atdState = {
@@ -151,7 +190,7 @@ function renderOmnichannel() {
       .atd-alerta-2 { border-left:3px solid var(--red) !important; background:var(--red-light) !important; animation:atd-pulse-red 1s infinite; }
       .atd-alerta-3 { border-left:3px solid var(--red) !important; background:#fecaca !important; animation:atd-pulse-red .6s infinite, atd-shake 1.2s infinite; }
       /* F1: bot ativo — ícone ⚡ na lista */
-      .atd-bot-badge { display:inline-flex;align-items:center;gap:2px;font-size:9px;font-weight:700;color:var(--green);background:#dcfce7;padding:1px 5px;border-radius:999px;flex-shrink:0; }
+      .atd-bot-badge { display:inline-flex;align-items:center;gap:2px;font-size:9px;font-weight:700;color:var(--success-fg);background:#dcfce7;padding:1px 5px;border-radius:999px;flex-shrink:0; }
       /* Rodapé de presença — atendentes online */
       .atd-presenca-footer { flex-shrink:0;height:38px;border-top:1px solid var(--border);background:var(--bg-subtle);display:flex;align-items:center;gap:6px;padding:0 10px;overflow:hidden; }
       .atd-presenca-avatar { position:relative;width:24px;height:24px;flex-shrink:0; }
@@ -163,7 +202,7 @@ function renderOmnichannel() {
       /* Badge aguardando atendimento (cliente esperando) */
       .atd-badge-aguard { display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:var(--warning-fg);background:var(--warning-bg);padding:1px 6px;border-radius:999px;white-space:nowrap;flex-shrink:0; }
       @keyframes atd-pulse-aguard { 0%,100%{opacity:1}50%{opacity:.5} }
-      .atd-badge-aguard.atrasado { color:var(--danger);background:var(--danger-bg);animation:atd-pulse-aguard 1.2s infinite; }
+      .atd-badge-aguard.atrasado { color:var(--danger-fg);background:var(--danger-bg);animation:atd-pulse-aguard 1.2s infinite; }
       @media (max-width:900px) { .atd-panel { display:none !important; } }
     `;
     document.head.appendChild(s);
@@ -194,7 +233,7 @@ function renderOmnichannel() {
 
 function _atdRenderInbox() {
   document.getElementById('page-omnichannel').innerHTML = `
-    <div class="atd-layout" style="display:flex;height:calc(100vh - 104px);background:var(--bg-elevated);border-radius:var(--r16);overflow:hidden;border:1px solid var(--border)">
+    <div class="atd-layout" style="display:flex;height:calc(100vh - 104px);background:var(--bg-elevated);border-radius:var(--radius-box);overflow:hidden;border:1px solid var(--border)">
 
       <!-- COLUNA A — lista de conversas -->
       <div class="atd-sidebar" style="width:300px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface2)">
@@ -202,10 +241,10 @@ function _atdRenderInbox() {
 
           <!-- F1: Toggle Bot Global -->
           <div id="atdBotGlobalBar" onclick="_atdToggleBotGlobal()"
-            style="cursor:pointer;border-radius:var(--r8);padding:8px 10px;margin-bottom:10px;display:flex;align-items:center;gap:8px;transition:background .2s;border:1.5px solid;
+            style="cursor:pointer;border-radius:var(--radius-field);padding:8px 10px;margin-bottom:10px;display:flex;align-items:center;gap:8px;transition:background .2s;border:1px solid;
               ${_atdState.botGlobalAtivo
                 ? 'background:#dcfce7;border-color:#86efac;'
-                : 'background:var(--surface3);border-color:var(--border);'}">
+                : 'background:var(--bg-hover);border-color:var(--border);'}">
             <span style="flex-shrink:0;color:${_atdState.botGlobalAtivo ? 'var(--green)' : 'var(--fg-muted)'}">
               ${lc('cpu', 16, 'currentColor')}
             </span>
@@ -213,11 +252,11 @@ function _atdRenderInbox() {
               <div style="font-size:var(--text-xs);font-weight:800;color:${_atdState.botGlobalAtivo ? '#166534' : 'var(--text)'}">
                 ${_atdState.botGlobalAtivo ? 'Respostas automáticas ativas' : 'Ativar respostas automáticas'}
               </div>
-              ${_atdState.botGlobalAtivo ? `<div style="font-size:10px;color:#15803d">Clique para desativar</div>` : ''}
+              ${_atdState.botGlobalAtivo ? `<div style="font-size:var(--text-2xs);color:#15803d">Clique para desativar</div>` : ''}
             </div>
-            <div style="width:32px;height:18px;border-radius:999px;position:relative;flex-shrink:0;transition:background .2s;
+            <div style="width:32px;height:18px;border-radius:var(--radius-selector);position:relative;flex-shrink:0;transition:background .2s;
               background:${_atdState.botGlobalAtivo ? 'var(--green)' : 'var(--border)'}">
-              <div style="position:absolute;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s;
+              <div style="position:absolute;top:2px;width:14px;height:14px;border-radius:50%;background:var(--bg-elevated);box-shadow:var(--shadow-sm);transition:left .2s;
                 left:${_atdState.botGlobalAtivo ? '16px' : '2px'}"></div>
             </div>
           </div>
@@ -238,7 +277,7 @@ function _atdRenderInbox() {
               ${lc('search', 13, 'var(--fg-subtle)')}
             </span>
             <input id="atdBuscaRapida" type="text" placeholder="Buscar conversas..."
-              style="width:100%;padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:var(--r8);font-size:var(--text-xs);background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"
+              style="width:100%;padding:7px 10px 7px 30px;border:1px solid var(--border);border-radius:var(--radius-field);font-size:var(--text-xs);background:var(--bg);color:var(--text);outline:none;box-sizing:border-box"
               oninput="_atdBuscaRapidaFiltrar(this.value)" />
             <button id="atdBuscaAvancadaBtn" onclick="_atdAbrirBuscaAvancada()"
               style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center;color:var(--fg-subtle)"
@@ -250,26 +289,26 @@ function _atdRenderInbox() {
           <!-- Ativos / Concluídos / Buscar pedidos -->
           <div style="display:flex;gap:5px">
             <button id="atdTabAtivos" class="atd-canal-tab active" onclick="_atdSetViewMode('ativos')"
-              style="flex:1;justify-content:center;font-size:10px;padding:4px 8px">Ativos</button>
+              style="flex:1;justify-content:center;font-size:var(--text-2xs);padding:4px 8px">Ativos</button>
             <button id="atdTabConcluidos" class="atd-canal-tab" onclick="_atdSetViewMode('concluidos')"
-              style="flex:1;justify-content:center;font-size:10px;padding:4px 8px">Concluídos</button>
-            <button class="btn btn-warm" onclick="_atdAbrirBuscaPedido()"
-              style="font-size:10px;padding:4px 8px;white-space:nowrap">
+              style="flex:1;justify-content:center;font-size:var(--text-2xs);padding:4px 8px">Concluídos</button>
+            <button class="btn d-btn btn-warm d-btn-secondary" onclick="_atdAbrirBuscaPedido()"
+              style="font-size:var(--text-2xs);padding:4px 8px;white-space:nowrap">
               ${lc('package', 12, 'var(--text)')} Pedidos
             </button>
           </div>
         </div>
 
         <!-- F3: Barra de seleção em massa (aparece quando há itens selecionados) -->
-        <div id="atdBulkBar" style="display:none;padding:8px 12px;background:var(--purple);color:#fff;align-items:center;gap:8px;font-size:var(--text-xs)">
+        <div id="atdBulkBar" style="display:none;padding:8px 12px;background:var(--purple);color:var(--fg-on-brand);align-items:center;gap:8px;font-size:var(--text-xs)">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex-shrink:0">
             <input type="checkbox" id="atdCheckAll" onchange="_atdToggleSelecionarTodos(this.checked)"
               style="accent-color:#fff;width:15px;height:15px;cursor:pointer">
             <span id="atdBulkCount" style="font-weight:700"></span>
           </label>
           <div style="flex:1"></div>
-          <button onclick="_atdConcluirSelecionadas()" class="btn btn-xs"
-            style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4);font-size:10px;padding:4px 10px;white-space:nowrap">
+          <button onclick="_atdConcluirSelecionadas()" class="btn d-btn btn-xs d-btn-xs"
+            style="background:rgba(255,255,255,.2);color:var(--fg-on-brand);border:1px solid rgba(255,255,255,.4);font-size:var(--text-2xs);padding:4px 10px;white-space:nowrap">
             ${lc('check-circle', 11, '#fff')} Concluir
           </button>
           <button onclick="_atdLimparSelecao()" style="background:none;border:none;cursor:pointer;padding:2px;color:rgba(255,255,255,.7)">
@@ -405,11 +444,11 @@ function _atdRenderPresencaFooter() {
   }).join('');
 
   const extraHtml = extra > 0
-    ? `<span style="font-size:9px;color:var(--fg-subtle);font-weight:700">+${extra}</span>`
+    ? `<span style="font-size:var(--text-2xs);color:var(--fg-subtle);font-weight:700">+${extra}</span>`
     : '';
 
   el.innerHTML = `
-    <span style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-right:2px">Online</span>
+    <span style="font-size:var(--text-2xs);color:var(--fg-subtle);font-weight:700;margin-right:2px">Online</span>
     ${avatares}${extraHtml}`;
 }
 
@@ -497,14 +536,14 @@ function _atdAbrirBuscaAvancada() {
   const chkIg  = f.canais.includes('instagram') ? 'checked' : '';
   const selSt  = (v) => f.statusResposta === v ? 'selected' : '';
   const starHtml = (n) => [1,2,3,4,5].map(i =>
-    `<span onclick="_atdFiltroEstrela(${n===i?0:i})" style="cursor:pointer;font-size:22px;color:${i<=(f.avaliacao||0)?'#F5A800':'var(--border)'}">★</span>`
+    `<span onclick="_atdFiltroEstrela(${n===i?0:i})" style="cursor:pointer;font-size:var(--text-2xl);color:${i<=(f.avaliacao||0)?'#F5A800':'var(--border)'}">★</span>`
   ).join('');
 
   const overlay = document.createElement('div');
   overlay.id = 'atdBuscaAvancadaOverlay';
   overlay.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px';
   overlay.innerHTML = `
-    <div onclick="event.stopPropagation()" style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.22);overflow:hidden">
+    <div onclick="event.stopPropagation()" style="background:var(--bg-elevated);border-radius:var(--radius-box);width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;box-shadow:var(--shadow-popover);overflow:hidden">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
         <div style="font-weight:800;font-size:var(--text-sm);display:flex;align-items:center;gap:8px">
           ${lc('sliders', 15, 'var(--purple)')} Filtrar conversas
@@ -517,13 +556,13 @@ function _atdAbrirBuscaAvancada() {
 
         <!-- Canal -->
         <div style="margin-bottom:18px">
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Canal</div>
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">Canal</div>
           <div style="display:flex;gap:8px">
-            <label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);cursor:pointer;flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+            <label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);cursor:pointer;flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-field)">
               <input type="checkbox" id="atdFiltroWpp" ${chkWpp} style="accent-color:#25D366">
               <span style="font-weight:600;color:#25D366">WhatsApp</span>
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);cursor:pointer;flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+            <label style="display:flex;align-items:center;gap:6px;font-size:var(--text-sm);cursor:pointer;flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-field)">
               <input type="checkbox" id="atdFiltroIg" ${chkIg} style="accent-color:#E1306C">
               <span style="font-weight:600;color:#E1306C">Instagram</span>
             </label>
@@ -532,76 +571,76 @@ function _atdAbrirBuscaAvancada() {
 
         <!-- Período -->
         <div style="margin-bottom:18px">
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Período</div>
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">Período</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
             <div>
-              <label style="font-size:10px;color:var(--fg-muted);display:block;margin-bottom:3px">De</label>
-              <input id="atdBuscaDataInicio" class="inp" type="date" value="${f.de}" style="font-size:var(--text-xs)">
+              <label style="font-size:var(--text-2xs);color:var(--fg-muted);display:block;margin-bottom:3px">De</label>
+              <input id="atdBuscaDataInicio" class="inp d-input" type="date" value="${f.de}" style="font-size:var(--text-xs)">
             </div>
             <div>
-              <label style="font-size:10px;color:var(--fg-muted);display:block;margin-bottom:3px">Até</label>
-              <input id="atdBuscaDataFim" class="inp" type="date" value="${f.ate}" style="font-size:var(--text-xs)">
+              <label style="font-size:var(--text-2xs);color:var(--fg-muted);display:block;margin-bottom:3px">Até</label>
+              <input id="atdBuscaDataFim" class="inp d-input" type="date" value="${f.ate}" style="font-size:var(--text-xs)">
             </div>
           </div>
         </div>
 
         <!-- Status de resposta -->
         <div style="margin-bottom:18px">
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Status de resposta</div>
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">Status de resposta</div>
           <div style="display:flex;flex-direction:column;gap:6px">
-            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-field)">
               <input type="radio" name="atdStatusResp" value="" ${selSt('')} onchange="_atdState.filtrosAvancados.statusResposta=this.value" style="accent-color:var(--purple)">
               Todas as conversas
             </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-field)">
               <input type="radio" name="atdStatusResp" value="nao_respondidas" ${selSt('nao_respondidas')} onchange="_atdState.filtrosAvancados.statusResposta=this.value" style="accent-color:var(--purple)">
-              <span>Não respondidas <span style="font-size:10px;color:var(--fg-subtle)">(cliente esperando equipe)</span></span>
+              <span>Não respondidas <span style="font-size:var(--text-2xs);color:var(--fg-subtle)">(cliente esperando equipe)</span></span>
             </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8)">
+            <label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-field)">
               <input type="radio" name="atdStatusResp" value="respondidas" ${selSt('respondidas')} onchange="_atdState.filtrosAvancados.statusResposta=this.value" style="accent-color:var(--purple)">
-              <span>Respondidas <span style="font-size:10px;color:var(--fg-subtle)">(equipe respondeu por último)</span></span>
+              <span>Respondidas <span style="font-size:var(--text-2xs);color:var(--fg-subtle)">(equipe respondeu por último)</span></span>
             </label>
           </div>
         </div>
 
         <!-- Avaliação -->
         <div style="margin-bottom:18px">
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">Avaliação mínima</div>
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--fg-subtle);margin-bottom:6px">Avaliação mínima</div>
           <div style="display:flex;align-items:center;gap:4px">
             ${starHtml(f.avaliacao||0)}
-            ${f.avaliacao ? `<span style="font-size:10px;color:var(--fg-subtle);margin-left:6px">${f.avaliacao}★ ou mais</span>` : '<span style="font-size:10px;color:var(--fg-subtle);margin-left:6px">Todas</span>'}
+            ${f.avaliacao ? `<span style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-left:6px">${f.avaliacao}★ ou mais</span>` : '<span style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-left:6px">Todas</span>'}
           </div>
-          <div style="font-size:10px;color:var(--fg-subtle);margin-top:4px">Clique numa estrela para filtrar · clique novamente para remover</div>
+          <div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:4px">Clique numa estrela para filtrar · clique novamente para remover</div>
         </div>
 
         <!-- F4: Toggle emoji stories -->
         <div style="margin-bottom:18px">
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Instagram</div>
-          <label style="display:flex;align-items:center;gap:10px;font-size:var(--text-sm);cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r8)">
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">Instagram</div>
+          <label style="display:flex;align-items:center;gap:10px;font-size:var(--text-sm);cursor:pointer;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-field)">
             <input type="checkbox" id="atdFiltroEmojiStory" ${_atdState.filtrosAvancados.ocultarEmojiStory !== false ? 'checked' : ''}
               onchange="_atdState.filtrosAvancados.ocultarEmojiStory=this.checked"
               style="accent-color:var(--purple);width:16px;height:16px;cursor:pointer">
             <div>
               <div style="font-weight:600">Ocultar reações de story (emojis)</div>
-              <div style="font-size:10px;color:var(--fg-subtle);margin-top:1px">Esconde comentários com apenas emojis (ex: "🔥", "❤️")</div>
+              <div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:1px">Esconde comentários com apenas emojis (ex: "🔥", "❤️")</div>
             </div>
           </label>
         </div>
 
         <!-- Busca por nome / pedido -->
         <div style="margin-bottom:18px">
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Nome ou telefone</div>
-          <input id="atdBuscaNome" class="inp" type="text" placeholder="Camila Oliveira ou 11999..." style="font-size:var(--text-sm)">
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">Nome ou telefone</div>
+          <input id="atdBuscaNome" class="inp d-input" type="text" placeholder="Camila Oliveira ou 11999..." style="font-size:var(--text-sm)">
         </div>
         <div style="margin-bottom:8px">
-          <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">Número do pedido</div>
-          <input id="atdBuscaPedidoNum" class="inp" type="text" placeholder="Ex: 1042" style="font-size:var(--text-sm)">
+          <div style="font-size:var(--text-xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">Número do pedido</div>
+          <input id="atdBuscaPedidoNum" class="inp d-input" type="text" placeholder="Ex: 1042" style="font-size:var(--text-sm)">
         </div>
 
       </div>
       <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0">
-        <button class="btn btn-ghost" style="flex:1" onclick="_atdLimparFiltrosAvancados()">Limpar</button>
-        <button class="btn btn-primary" style="flex:1" onclick="_atdExecutarBuscaAvancada()">
+        <button class="btn d-btn btn-ghost d-btn-ghost" style="flex:1" onclick="_atdLimparFiltrosAvancados()">Limpar</button>
+        <button class="btn d-btn btn-primary d-btn-primary" style="flex:1" onclick="_atdExecutarBuscaAvancada()">
           ${lc('search', 13, '#fff')} Aplicar
         </button>
       </div>
@@ -640,7 +679,7 @@ function _atdAtualizarBotaoFiltro() {
   if (count > 0) {
     btn.style.color = 'var(--purple)';
     btn.title = `${count} filtro(s) ativo(s)`;
-    btn.innerHTML = lc('sliders', 13, 'var(--purple)') + `<span style="background:var(--purple);color:#fff;font-size:9px;border-radius:999px;padding:0 4px;min-width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px">${count}</span>`;
+    btn.innerHTML = lc('sliders', 13, 'var(--purple)') + `<span style="background:var(--purple);color:var(--fg-on-brand);font-size:var(--text-2xs);border-radius:var(--radius-selector);padding:0 4px;min-width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;margin-left:2px">${count}</span>`;
   } else {
     btn.style.color = '';
     btn.title = 'Busca avançada';
@@ -895,7 +934,7 @@ function _atdRenderLista() {
     em_atendimento:     { label: 'Atendendo',   cor: 'var(--green)',       bg: 'var(--success-bg)'    },
     aguardando_cliente: { label: 'Aguardando',  cor: 'var(--warning-fg)',  bg: 'var(--warning-bg)'    },
     concluida:          { label: 'Concluída',   cor: 'var(--fg-subtle)',   bg: 'var(--surface2)'      },
-    expirada:           { label: 'Expirada',    cor: 'var(--danger)',      bg: 'var(--danger-bg)'     },
+    expirada:           { label: 'Expirada',    cor: 'var(--danger-fg)',      bg: 'var(--danger-bg)'     },
   };
 
   el.innerHTML = lista.map(c => {
@@ -910,18 +949,18 @@ function _atdRenderLista() {
     // F3: wrapper do avatar — ao hover mostra checkbox, ao selecionar substitui avatar
     const avatarImg = contato.avatar_url
       ? `<img class="conv-avatar" src="${contato.avatar_url}" alt="${inicial}" style="${isConcluida ? 'opacity:.55' : ''}" onerror="this.outerHTML='<div class=conv-avatar-inicial style=\\'${isConcluida ? 'opacity:.55' : ''}\\'>  ${inicial}</div>'">`
-      : `<div class="conv-avatar-inicial" style="${isConcluida ? 'opacity:.55;background:var(--surface3)' : ''}">${inicial}</div>`;
+      : `<div class="conv-avatar-inicial" style="${isConcluida ? 'opacity:.55;background:var(--bg-hover)' : ''}">${inicial}</div>`;
     const avatar = `
       <div class="conv-avatar-wrap" style="position:relative;flex-shrink:0;width:40px;height:40px">
         <div class="conv-avatar-img" style="transition:opacity .15s;${selecionada ? 'opacity:0;pointer-events:none' : ''}">${avatarImg}</div>
         <div class="conv-cb-wrap" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:${selecionada ? '1' : '0'};transition:opacity .15s">
           <input type="checkbox" ${selecionada ? 'checked' : ''} onclick="event.stopPropagation();_atdToggleSelecionar('${c.id}',this.checked)"
-            style="width:20px;height:20px;accent-color:var(--purple);cursor:pointer;border-radius:4px">
+            style="width:20px;height:20px;accent-color:var(--purple);cursor:pointer;border-radius:var(--radius-xs)">
         </div>
       </div>`;
 
     const st = STATUS_CONV[c.status] || STATUS_CONV.aberta;
-    const statusBadge = `<span style="font-size:9px;font-weight:700;color:${st.cor};background:${st.bg};padding:1px 6px;border-radius:999px;white-space:nowrap;flex-shrink:0">${st.label}</span>`;
+    const statusBadge = `<span style="font-size:var(--text-2xs);font-weight:700;color:${st.cor};background:${st.bg};padding:1px 6px;border-radius:var(--radius-selector);white-space:nowrap;flex-shrink:0">${st.label}</span>`;
 
     // Badge "Aguardando" — só aparece quando cliente enviou a última mensagem (item 3)
     let aguardandoBadge = '';
@@ -946,9 +985,9 @@ function _atdRenderLista() {
       if (refTs) {
         const diffMin = Math.floor((agora - new Date(refTs).getTime()) / 60000);
         if (diffMin >= 1) {
-          const cor = diffMin >= 60 ? 'var(--danger)' : diffMin >= 15 ? 'var(--warning-fg)' : 'var(--fg-subtle)';
+          const cor = diffMin >= 60 ? 'var(--danger-fg)' : diffMin >= 15 ? 'var(--warning-fg)' : 'var(--fg-subtle)';
           const label = diffMin < 60 ? `${diffMin}min` : `${Math.floor(diffMin/60)}h${diffMin%60 ? String(diffMin%60).padStart(2,'0')+'m' : ''}`;
-          timerHtml = `<span style="font-size:9px;color:${cor};font-weight:600;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('clock', 9, cor)} ${label}</span>`;
+          timerHtml = `<span style="font-size:var(--text-2xs);color:${cor};font-weight:600;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('clock', 9, cor)} ${label}</span>`;
         }
       }
     }
@@ -980,7 +1019,7 @@ function _atdRenderLista() {
       const atendenteId = ultiMsg.atendente_id;
       const nomeAtendente = atendenteId ? (_atdState.perfisCache[atendenteId] || '') : '';
       const labelAtendente = nomeAtendente ? nomeAtendente.split(' ')[0] : 'Você';
-      previewPrefix = `<span style="font-size:9px;font-weight:700;color:var(--purple);flex-shrink:0;white-space:nowrap">${labelAtendente}:</span>`;
+      previewPrefix = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--purple);flex-shrink:0;white-space:nowrap">${labelAtendente}:</span>`;
     }
 
     // Data/hora relativa
@@ -991,18 +1030,18 @@ function _atdRenderLista() {
       const dataLabel = diffH < 24
         ? ts.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
         : ts.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      dataHtml = `<span style="font-size:10px;color:var(--fg-subtle);flex-shrink:0;white-space:nowrap">${dataLabel}</span>`;
+      dataHtml = `<span style="font-size:var(--text-2xs);color:var(--fg-subtle);flex-shrink:0;white-space:nowrap">${dataLabel}</span>`;
     }
 
     // Pedido vinculado (se tiver)
     const pedidoHtml = c.pedido_data?.display_id
-      ? `<span style="font-size:9px;color:var(--fg-subtle);background:var(--surface3);padding:1px 5px;border-radius:4px;flex-shrink:0">#${c.pedido_data.display_id}</span>`
+      ? `<span style="font-size:var(--text-2xs);color:var(--fg-subtle);background:var(--bg-hover);padding:1px 5px;border-radius:var(--radius-xs);flex-shrink:0">#${c.pedido_data.display_id}</span>`
       : '';
 
     // Badge influenciador Instagram (>5000 seguidores)
     const isInfluencer = c.canal_tipo === 'instagram' && (contato.ig_followers || 0) >= 5000;
     const influencerBadge = isInfluencer
-      ? `<span style="font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:1px 6px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('star', 9, '#E1306C')} Influencer</span>`
+      ? `<span style="font-size:var(--text-2xs);font-weight:700;color:#E1306C;background:#fde8f0;padding:1px 6px;border-radius:var(--radius-selector);flex-shrink:0;display:flex;align-items:center;gap:2px">${lc('star', 9, '#E1306C')} Influencer</span>`
       : '';
 
     const botBadge = ''; // bot é global — não tem badge por conversa
@@ -1015,7 +1054,7 @@ function _atdRenderLista() {
       alertaClass = minAguard >= 5 ? 'atd-alerta-3' : minAguard >= 2 ? 'atd-alerta-2' : 'atd-alerta-1';
       const alertaCor = minAguard >= 2 ? 'var(--red)' : 'var(--yellow)';
       const alertaLabel = minAguard < 60 ? `${minAguard}min` : `${Math.floor(minAguard/60)}h${minAguard%60?String(minAguard%60).padStart(2,'0')+'m':''}`;
-      alertaTimerHtml = `<span style="font-size:9px;color:${alertaCor};font-weight:800;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:2px;animation:atd-pulse-${minAguard>=2?'red':'yellow'} 1.5s infinite">
+      alertaTimerHtml = `<span style="font-size:var(--text-2xs);color:${alertaCor};font-weight:800;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:2px;animation:atd-pulse-${minAguard>=2?'red':'yellow'} 1.5s infinite">
         ${lc('alert-circle', 9, alertaCor)} ${alertaLabel} sem resposta
       </span>`;
     }
@@ -1169,26 +1208,26 @@ function _atdRenderChat(conversa) {
             ${lc('map-pin', 14, classe === 'cliente' ? 'var(--text)' : '#fff')}
             <span style="font-weight:700">Localização</span>
           </div>
-          <div style="width:240px;height:80px;background:var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--fg-subtle);margin-bottom:8px">
+          <div style="width:240px;height:80px;background:var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:var(--text-xs);color:var(--fg-subtle);margin-bottom:8px">
             📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}
           </div>
           <div style="display:flex;gap:6px">
-            <a href="${mapsUrl}" target="_blank" style="flex:1;text-align:center;padding:5px 8px;background:rgba(0,0,0,.12);border-radius:6px;font-size:11px;font-weight:700;color:inherit;text-decoration:none">
+            <a href="${mapsUrl}" target="_blank" style="flex:1;text-align:center;padding:5px 8px;background:rgba(0,0,0,.12);border-radius:var(--radius-sm);font-size:var(--text-2xs);font-weight:700;color:inherit;text-decoration:none">
               ${lc('external-link', 11, 'currentColor')} Abrir Maps
             </a>
-            <button onclick="_atdEncaminharLocalizacao(${lat},${lng})" style="flex:1;padding:5px 8px;background:rgba(0,0,0,.12);border:none;border-radius:6px;font-size:11px;font-weight:700;color:inherit;cursor:pointer">
+            <button onclick="_atdEncaminharLocalizacao(${lat},${lng})" style="flex:1;padding:5px 8px;background:rgba(0,0,0,.12);border:none;border-radius:var(--radius-sm);font-size:var(--text-2xs);font-weight:700;color:inherit;cursor:pointer">
               ${lc('send', 11, 'currentColor')} Encaminhar
             </button>
           </div>
         </div>`;
     } else if (m.tipo === 'imagem' && m.conteudo?.expirado) {
-      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('image-off',13,'currentColor')} Imagem expirada</div>`;
+      conteudoHtml = `<div style="padding:10px 14px;font-size:var(--text-xs);opacity:.6;display:flex;align-items:center;gap:6px">${lc('image-off',13,'currentColor')} Imagem expirada</div>`;
     } else if (m.tipo === 'audio' && m.conteudo?.expirado) {
-      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('mic-off',13,'currentColor')} Áudio expirado</div>`;
+      conteudoHtml = `<div style="padding:10px 14px;font-size:var(--text-xs);opacity:.6;display:flex;align-items:center;gap:6px">${lc('mic-off',13,'currentColor')} Áudio expirado</div>`;
     } else if (m.tipo === 'video' && m.conteudo?.expirado) {
-      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('video-off',13,'currentColor')} Vídeo expirado</div>`;
+      conteudoHtml = `<div style="padding:10px 14px;font-size:var(--text-xs);opacity:.6;display:flex;align-items:center;gap:6px">${lc('video-off',13,'currentColor')} Vídeo expirado</div>`;
     } else if (m.tipo === 'documento' && m.conteudo?.expirado) {
-      conteudoHtml = `<div style="padding:10px 14px;font-size:12px;opacity:.6;display:flex;align-items:center;gap:6px">${lc('file-x',13,'currentColor')} Documento expirado</div>`;
+      conteudoHtml = `<div style="padding:10px 14px;font-size:var(--text-xs);opacity:.6;display:flex;align-items:center;gap:6px">${lc('file-x',13,'currentColor')} Documento expirado</div>`;
     } else if (m.tipo === 'imagem' && m.conteudo?.url) {
       const legenda = m.conteudo.texto
         ? `<div style="padding:4px 10px 2px;font-size:var(--text-xs);opacity:.9">${m.conteudo.texto}</div>` : '';
@@ -1232,12 +1271,12 @@ function _atdRenderChat(conversa) {
       const ext = nomeArq.split('.').pop().toUpperCase();
       conteudoHtml = `__MEDIA_BUBBLE__
         <a href="${m.conteudo.url}" target="_blank" download style="display:flex;align-items:center;gap:12px;padding:12px 14px;text-decoration:none;color:inherit">
-          <div style="width:40px;height:40px;border-radius:8px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:800">
+          <div style="width:40px;height:40px;border-radius:var(--radius-sm);background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:var(--text-2xs);font-weight:800">
             ${ext}
           </div>
           <div style="min-width:0">
             <div style="font-weight:600;font-size:var(--text-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${nomeArq}</div>
-            <div style="font-size:10px;opacity:.7;margin-top:2px">Toque para baixar</div>
+            <div style="font-size:var(--text-2xs);opacity:.7;margin-top:2px">Toque para baixar</div>
           </div>
           ${lc('download', 14, 'currentColor')}
         </a>`;
@@ -1257,10 +1296,10 @@ function _atdRenderChat(conversa) {
           </div>
           <div>
             <div style="font-weight:700;font-size:var(--text-xs)">Mencionou no story</div>
-            <div style="font-size:10px;opacity:.7">Este contato citou o seu perfil em um story</div>
+            <div style="font-size:var(--text-2xs);opacity:.7">Este contato citou o seu perfil em um story</div>
           </div>
         </div>
-        ${storyUrl ? `<a href="${storyUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:${classe==='cliente'?'var(--purple)':'rgba(255,255,255,.8)'};text-decoration:none;padding-top:4px;border-top:1px solid rgba(255,255,255,.15)">
+        ${storyUrl ? `<a href="${storyUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:5px;font-size:var(--text-2xs);font-weight:600;color:${classe==='cliente'?'var(--purple)':'rgba(255,255,255,.8)'};text-decoration:none;padding-top:4px;border-top:1px solid rgba(255,255,255,.15)">
           ${lc('external-link', 11, 'currentColor')} Ver story
         </a>` : ''}`;
     } else if (m.tipo === 'story_comment') {
@@ -1272,8 +1311,8 @@ function _atdRenderChat(conversa) {
       const tipoLabel = isStory ? 'Comentou no seu story' : (m.conteudo?.media_type === 'REELS' ? 'Comentou no seu Reels' : 'Comentou no seu post');
       const linkColor = classe === 'cliente' ? 'var(--purple)' : 'rgba(255,255,255,.8)';
       const thumbHtml = mediaThumb
-        ? `<a href="${mediaUrl || mediaThumb}" target="_blank" rel="noopener" style="display:block;margin-bottom:6px;border-radius:8px;overflow:hidden;max-width:180px">
-            <img src="${mediaThumb}" alt="Story" style="width:100%;display:block;border-radius:8px" onerror="this.parentElement.style.display='none'">
+        ? `<a href="${mediaUrl || mediaThumb}" target="_blank" rel="noopener" style="display:block;margin-bottom:6px;border-radius:var(--radius-sm);overflow:hidden;max-width:180px">
+            <img src="${mediaThumb}" alt="Story" style="width:100%;display:block;border-radius:var(--radius-sm)" onerror="this.parentElement.style.display='none'">
           </a>`
         : '';
       conteudoHtml = `
@@ -1284,8 +1323,8 @@ function _atdRenderChat(conversa) {
           </div>
           <div>
             <div style="font-weight:700;font-size:var(--text-xs)">${tipoLabel}</div>
-            ${mediaUrl ? `<a href="${mediaUrl}" target="_blank" rel="noopener" style="font-size:10px;color:${linkColor};opacity:.8;text-decoration:none">Ver publicação ↗</a>`
-                       : `<div style="font-size:10px;opacity:.6">Publicação não disponível</div>`}
+            ${mediaUrl ? `<a href="${mediaUrl}" target="_blank" rel="noopener" style="font-size:var(--text-2xs);color:${linkColor};opacity:.8;text-decoration:none">Ver publicação ↗</a>`
+                       : `<div style="font-size:var(--text-2xs);opacity:.6">Publicação não disponível</div>`}
           </div>
         </div>
         ${texto ? `<div style="font-size:var(--text-sm);padding-top:6px;border-top:1px solid rgba(255,255,255,.15);margin-top:4px">"${texto}"</div>` : ''}`;
@@ -1298,14 +1337,14 @@ function _atdRenderChat(conversa) {
             const isVid = previewUrl && (previewUrl.endsWith('.mp4') || previewUrl.includes('video'));
             const mediaEl = previewUrl
               ? (isVid
-                  ? `<video src="${previewUrl}" style="width:100%;max-width:180px;border-radius:6px;max-height:140px;display:block;margin-bottom:4px;background:#000" muted playsinline preload="auto" controls></video>`
-                  : `<img src="${previewUrl}" alt="Story" style="width:100%;max-width:160px;display:block;border-radius:6px;margin-bottom:4px" onerror="this.style.display='none'">`)
+                  ? `<video src="${previewUrl}" style="width:100%;max-width:180px;border-radius:var(--radius-sm);max-height:140px;display:block;margin-bottom:4px;background:#000" muted playsinline preload="auto" controls></video>`
+                  : `<img src="${previewUrl}" alt="Story" style="width:100%;max-width:160px;display:block;border-radius:var(--radius-sm);margin-bottom:4px" onerror="this.style.display='none'">`)
               : '';
             const link = (storyReply.story_url || previewUrl)
-              ? `<a href="${storyReply.story_url || previewUrl}" target="_blank" rel="noopener" style="font-size:10px;opacity:.7;color:inherit">Ver story ↗</a>`
-              : '<span style="font-size:10px;opacity:.6">Story não disponível</span>';
-            return `<div style="border-left:3px solid rgba(255,255,255,.4);padding:6px 8px;margin-bottom:6px;border-radius:0 6px 6px 0;background:rgba(0,0,0,.12)">
-              <div style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:700;opacity:.8;margin-bottom:4px">
+              ? `<a href="${storyReply.story_url || previewUrl}" target="_blank" rel="noopener" style="font-size:var(--text-2xs);opacity:.7;color:inherit">Ver story ↗</a>`
+              : '<span style="font-size:var(--text-2xs);opacity:.6">Story não disponível</span>';
+            return `<div style="border-left:3px solid rgba(255,255,255,.4);padding:6px 8px;margin-bottom:6px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;background:rgba(0,0,0,.12)">
+              <div style="display:flex;align-items:center;gap:4px;font-size:var(--text-2xs);font-weight:700;opacity:.8;margin-bottom:4px">
                 ${lc('image', 10, 'currentColor')} Respondeu ao seu story
               </div>
               ${mediaEl}${link}
@@ -1320,7 +1359,7 @@ function _atdRenderChat(conversa) {
       ? (_atdState.perfisCache?.[m.atendente_id] || 'Atendente')
       : null;
     const labelAtendente = nomeAtendente
-      ? `<div style="text-align:right;font-size:9px;font-weight:700;color:var(--fg-subtle);margin-bottom:2px;padding-right:2px">${nomeAtendente}</div>`
+      ? `<div style="text-align:right;font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);margin-bottom:2px;padding-right:2px">${nomeAtendente}</div>`
       : '';
 
     // Mídia: bolha sem padding interno (a mídia ocupa todo o espaço)
@@ -1329,7 +1368,7 @@ function _atdRenderChat(conversa) {
     }
     if (conteudoHtml.startsWith('__MEDIA_BUBBLE__')) {
       const inner = conteudoHtml.slice(16);
-      return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0">${inner}<div style="font-size:10px;opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
+      return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}" style="padding:0">${inner}<div style="font-size:var(--text-2xs);opacity:.7;margin-top:4px;padding:0 10px 6px">${hora}</div></div>`;
     }
     // Check de status (só para mensagens do atendente)
     const statusCheck = (() => {
@@ -1339,7 +1378,7 @@ function _atdRenderChat(conversa) {
       if (s === 'delivered') return `<span title="Entregue" style="display:inline-flex;margin-left:3px;vertical-align:middle">${_atdDoubleCheck('rgba(255,255,255,.5)')}</span>`;
       return `<span title="Enviada" style="display:inline-flex;margin-left:3px;vertical-align:middle">${_atdSingleCheck('rgba(255,255,255,.5)')}</span>`;
     })();
-    return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:10px;opacity:.7;margin-top:4px;display:flex;align-items:center;justify-content:flex-end;gap:2px">${hora}${statusCheck}</div></div>`;
+    return `${sepData}${labelAtendente}<div class="msg-bubble ${classe}">${conteudoHtml}<div style="font-size:var(--text-2xs);opacity:.7;margin-top:4px;display:flex;align-items:center;justify-content:flex-end;gap:2px">${hora}${statusCheck}</div></div>`;
   }).join('');
 
   _atdState.modoNotaInterna = false;
@@ -1352,7 +1391,7 @@ function _atdRenderChat(conversa) {
 
   // Stats Instagram
   const igStatsHtml = isIg && igFollowers != null ? `
-    <div style="display:flex;gap:14px;font-size:11px;color:var(--fg-subtle);margin-top:2px">
+    <div style="display:flex;gap:14px;font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:2px">
       ${ct.ig_posts     != null ? `<span><strong style="color:var(--text);font-weight:600">${_atdFmtNum(ct.ig_posts)}</strong> publicações</span>` : ''}
       ${ct.ig_followers != null ? `<span><strong style="color:var(--text);font-weight:600">${_atdFmtNum(ct.ig_followers)}</strong> seguidores</span>` : ''}
       ${ct.ig_following != null ? `<span><strong style="color:var(--text);font-weight:600">${_atdFmtNum(ct.ig_following)}</strong> seguindo</span>` : ''}
@@ -1362,18 +1401,18 @@ function _atdRenderChat(conversa) {
   const igLogoSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="5" stroke="#E1306C" stroke-width="2"/><circle cx="12" cy="12" r="4.5" stroke="#E1306C" stroke-width="2"/><circle cx="17.5" cy="6.5" r="1.2" fill="#E1306C"/></svg>`;
   const wppLogoSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.978-1.413A9.953 9.953 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a7.95 7.95 0 01-4.073-1.117l-.292-.174-3.018.857.872-2.944-.19-.302A7.95 7.95 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z"/></svg>`;
   const canalHtml = isIg
-    ? `<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--fg-subtle);margin-top:4px">${igLogoSvg}<span>Via Instagram${ct.nome ? '' : ''}</span></div>`
-    : `<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--fg-subtle);margin-top:4px">${wppLogoSvg}<span>Via WhatsApp</span></div>`;
+    ? `<div style="display:flex;align-items:center;gap:5px;font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:4px">${igLogoSvg}<span>Via Instagram${ct.nome ? '' : ''}</span></div>`
+    : `<div style="display:flex;align-items:center;gap:5px;font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:4px">${wppLogoSvg}<span>Via WhatsApp</span></div>`;
 
   // Nome — rosa clicável no Instagram
   const nomeHtml = isIg && igUsername
     ? `<a href="https://instagram.com/${igUsername}" target="_blank" rel="noopener"
-        style="font-weight:700;font-size:15px;color:#E1306C;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</a>`
-    : `<span style="font-weight:700;font-size:15px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</span>`;
+        style="font-weight:700;font-size:var(--text-base);color:#E1306C;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</a>`
+    : `<span style="font-weight:700;font-size:var(--text-base);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${nome}</span>`;
 
   // Badge influencer
   const influencerBadge = isInfluencer
-    ? `<span title="Influenciador (${_atdFmtNum(igFollowers)} seguidores)" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:#E1306C;background:#fde8f0;padding:2px 7px;border-radius:999px;flex-shrink:0">${lc('star', 9, '#E1306C')} Influencer</span>`
+    ? `<span title="Influenciador (${_atdFmtNum(igFollowers)} seguidores)" style="display:inline-flex;align-items:center;gap:3px;font-size:var(--text-2xs);font-weight:700;color:#E1306C;background:#fde8f0;padding:2px 7px;border-radius:var(--radius-selector);flex-shrink:0">${lc('star', 9, '#E1306C')} Influencer</span>`
     : '';
 
   // Botão de tags com contagem
@@ -1381,12 +1420,12 @@ function _atdRenderChat(conversa) {
   const tagsAtivas = _atdState.todasTags.filter(t => tagsConv.includes(t.id));
   const tagBtnColor = tagsAtivas.length > 0 ? 'var(--purple)' : 'var(--fg-subtle)';
   const tagCountBadge = tagsAtivas.length > 0
-    ? `<span style="background:var(--purple);color:#fff;font-size:9px;font-weight:700;border-radius:999px;padding:0 5px;min-width:16px;text-align:center;line-height:16px">${tagsAtivas.length}</span>`
+    ? `<span style="background:var(--purple);color:var(--fg-on-brand);font-size:var(--text-2xs);font-weight:700;border-radius:var(--radius-selector);padding:0 5px;min-width:16px;text-align:center;line-height:16px">${tagsAtivas.length}</span>`
     : '';
   const tagBtnHtml = `
     <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
-      ${tagsAtivas.map(t => `<span style="background:${t.cor||'var(--purple)'};color:#fff;font-size:9px;font-weight:600;padding:2px 8px;border-radius:999px;cursor:pointer;white-space:nowrap" title="Remover tag" onclick="_atdToggleTag('${conversa.id}','${t.id}')">${t.nome}</span>`).join('')}
-      <button onclick="_atdAbrirTagPickerHeader('${conversa.id}')" title="Tags" class="btn btn-ghost btn-xs" style="padding:3px 6px;display:flex;align-items:center;gap:3px;color:${tagBtnColor}">
+      ${tagsAtivas.map(t => `<span style="background:${t.cor||'var(--purple)'};color:var(--fg-on-brand);font-size:var(--text-2xs);font-weight:600;padding:2px 8px;border-radius:var(--radius-selector);cursor:pointer;white-space:nowrap" title="Remover tag" onclick="_atdToggleTag('${conversa.id}','${t.id}')">${t.nome}</span>`).join('')}
+      <button onclick="_atdAbrirTagPickerHeader('${conversa.id}')" title="Tags" class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" style="padding:3px 6px;display:flex;align-items:center;gap:3px;color:${tagBtnColor}">
         ${lc('tag', 13, tagBtnColor)}${tagCountBadge}
       </button>
     </div>`;
@@ -1396,12 +1435,12 @@ function _atdRenderChat(conversa) {
   // F2: banner de alerta — aparece acima das mensagens quando precisa_humano
   const alertaBannerHtml = isPrecisaHumano ? `
     <div id="atdAlertaHumano" style="background:#fef3c7;border-bottom:1px solid #fcd34d;padding:8px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
-      <span style="font-size:16px">🚨</span>
+      <span style="font-size:var(--text-lg)">🚨</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:var(--text-xs);font-weight:800;color:#92400e">Intervenção humana necessária</div>
-        <div style="font-size:10px;color:#b45309">A IA identificou que este cliente precisa de atenção especial</div>
+        <div style="font-size:var(--text-2xs);color:#b45309">A IA identificou que este cliente precisa de atenção especial</div>
       </div>
-      <button onclick="_atdAssumirConversa('${conversa.id}')" class="btn btn-sm" style="background:#d97706;color:#fff;border-color:#d97706;white-space:nowrap;flex-shrink:0">
+      <button onclick="_atdAssumirConversa('${conversa.id}')" class="btn d-btn btn-sm d-btn-sm" style="background:#d97706;color:var(--fg-on-brand);border-color:#d97706;white-space:nowrap;flex-shrink:0">
         ${lc('user-check', 12, '#fff')} Assumir
       </button>
     </div>` : '';
@@ -1411,7 +1450,7 @@ function _atdRenderChat(conversa) {
     <div style="padding:10px 16px 8px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">
-          <button class="btn btn-ghost btn-xs atd-btn-voltar" onclick="_atdVoltarLista()" style="flex-shrink:0;padding:6px">
+          <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs atd-btn-voltar" onclick="_atdVoltarLista()" style="flex-shrink:0;padding:6px">
             ${lc('arrow-left', 18, 'var(--text)')}
           </button>
           <div style="min-width:0;flex:1">
@@ -1435,40 +1474,40 @@ function _atdRenderChat(conversa) {
     </div>
     <!-- TOOLBAR compacta: textarea em cima, ícones + ações embaixo -->
     <div style="padding:10px 14px 12px;border-top:1px solid var(--border);position:relative">
-      <div id="atdRespostasRapidasDropdown" style="display:none;position:absolute;bottom:100%;left:14px;right:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 16px rgba(0,0,0,.1);max-height:180px;overflow-y:auto;margin-bottom:4px;z-index:10"></div>
+      <div id="atdRespostasRapidasDropdown" style="display:none;position:absolute;bottom:100%;left:14px;right:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-field);box-shadow:var(--shadow-md);max-height:180px;overflow-y:auto;margin-bottom:4px;z-index:10"></div>
       <input type="file" id="atdInputArquivo" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,*/*"
         onchange="_atdPreviewArquivo('${conversa.id}', this)">
       <div id="atdPreviewAnexo" style="display:none;padding:6px 14px 0"></div>
-      <textarea id="atdCampoTexto" class="inp" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
+      <textarea id="atdCampoTexto" class="inp d-textarea" rows="2" placeholder="Digite sua resposta... (/ pra respostas rápidas)"
         style="width:100%;resize:none;box-sizing:border-box;margin-bottom:7px" oninput="_atdCampoOnInput()"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_atdEnviarMensagem('${conversa.id}')}"></textarea>
       <div style="display:flex;align-items:center;gap:4px">
         <div style="display:flex;gap:2px;flex:1">
-          <button id="atdBtnNotaInterna" class="btn btn-ghost btn-xs" title="Nota interna (só a equipe vê)" onclick="_atdToggleNotaInterna('${conversa.id}')" style="padding:4px 7px">
+          <button id="atdBtnNotaInterna" class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" title="Nota interna (só a equipe vê)" onclick="_atdToggleNotaInterna('${conversa.id}')" style="padding:4px 7px">
             ${lc('lock', 13, 'var(--fg-muted)')}
           </button>
-          <button class="btn btn-ghost btn-xs" title="Enviar arquivo (imagem, vídeo, PDF, documento...)" onclick="document.getElementById('atdInputArquivo').click()" style="padding:4px 7px">
+          <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" title="Enviar arquivo (imagem, vídeo, PDF, documento...)" onclick="document.getElementById('atdInputArquivo').click()" style="padding:4px 7px">
             ${lc('paperclip', 13, 'var(--fg-muted)')}
           </button>
           <div style="position:relative;display:inline-block">
-            <button class="btn btn-ghost btn-xs" title="Inserir emoji" onclick="_atdToggleEmojiPicker()" style="padding:4px 7px">
+            <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" title="Inserir emoji" onclick="_atdToggleEmojiPicker()" style="padding:4px 7px">
               ${lc('smile', 13, 'var(--fg-muted)')}
             </button>
-            <div id="atdEmojiPicker" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 -4px 24px rgba(0,0,0,.15);width:300px;z-index:100;overflow:hidden"></div>
+            <div id="atdEmojiPicker" style="display:none;position:absolute;bottom:calc(100% + 4px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-field);box-shadow:var(--shadow-popover);width:300px;z-index:100;overflow:hidden"></div>
           </div>
-          <button id="atdBtnGerarResposta" class="btn btn-ghost btn-xs" title="Gerar resposta ideal com IA" onclick="_atdGerarResposta('${conversa.id}')" style="padding:4px 7px">
+          <button id="atdBtnGerarResposta" class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" title="Gerar resposta ideal com IA" onclick="_atdGerarResposta('${conversa.id}')" style="padding:4px 7px">
             ${lc('zap', 13, 'var(--purple)')}
           </button>
-          <button id="atdBtnCorrecaoAuto" class="btn btn-ghost btn-xs" title="${corrigirAtivo ? 'Correção automática ATIVADA — clique para desativar' : 'Correção automática DESATIVADA — clique para ativar'}"
+          <button id="atdBtnCorrecaoAuto" class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" title="${corrigirAtivo ? 'Correção automática ATIVADA — clique para desativar' : 'Correção automática DESATIVADA — clique para ativar'}"
             style="padding:4px 7px;${corrigirAtivo ? 'background:var(--purple);' : ''}" onclick="_atdToggleModoCorrecao('${conversa.id}')">
             ${lc('pencil', 13, corrigirAtivo ? '#fff' : 'var(--fg-muted)')}
           </button>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-primary btn-sm" onclick="_atdEnviarMensagem('${conversa.id}')">
+          <button class="btn d-btn btn-primary d-btn-primary btn-sm d-btn-sm" onclick="_atdEnviarMensagem('${conversa.id}')">
             ${lc('send', 13, '#fff')} Enviar
           </button>
-          <button class="btn btn-sm" style="background:var(--green);color:#fff;border-color:var(--green);white-space:nowrap" onclick="_atdConcluirConversa('${conversa.id}')">
+          <button class="btn d-btn btn-sm d-btn-sm" style="background:var(--green);color:var(--fg-on-brand);border-color:var(--green);white-space:nowrap" onclick="_atdConcluirConversa('${conversa.id}')">
             ${lc('check-circle', 13, '#fff')} Concluir
           </button>
         </div>
@@ -1497,11 +1536,11 @@ function _atdFmtNum(n) {
 function _atdTagsHeaderHtml(conversaId) {
   const marcadas = _atdState.todasTags.filter(t => _atdState.tagsConversaAtual.includes(t.id));
   const chips = marcadas.map(t =>
-    `<span style="background:${t.cor||'var(--purple)'};color:#fff;font-size:10px;font-weight:600;padding:2px 9px;border-radius:999px;cursor:pointer;line-height:18px"
+    `<span style="background:${t.cor||'var(--purple)'};color:var(--fg-on-brand);font-size:var(--text-2xs);font-weight:600;padding:2px 9px;border-radius:var(--radius-selector);cursor:pointer;line-height:18px"
       title="Clique para remover tag" onclick="_atdToggleTag('${conversaId}','${t.id}')">${t.nome}</span>`
   ).join('');
   const btnAdd = `<button onclick="_atdAbrirTagPickerHeader('${conversaId}')"
-    style="background:none;border:1px dashed var(--border);border-radius:999px;padding:1px 8px;font-size:10px;color:var(--fg-subtle);cursor:pointer;display:flex;align-items:center;gap:3px;line-height:18px">
+    style="background:none;border:1px dashed var(--border);border-radius:var(--radius-selector);padding:1px 8px;font-size:var(--text-2xs);color:var(--fg-subtle);cursor:pointer;display:flex;align-items:center;gap:3px;line-height:18px">
     ${lc('plus', 9, 'currentColor')} tag
   </button>`;
   return chips + btnAdd;
@@ -1521,11 +1560,11 @@ function _atdAbrirTagPickerHeader(conversaId) {
 
   const dropdown = document.createElement('div');
   dropdown.id = 'atdTagPickerDropdown';
-  dropdown.style.cssText = `position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:var(--r8);box-shadow:0 4px 16px rgba(0,0,0,.12);padding:6px;z-index:200;display:flex;flex-wrap:wrap;gap:4px;max-width:260px`;
+  dropdown.style.cssText = `position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-field);box-shadow:var(--shadow-md);padding:6px;z-index:200;display:flex;flex-wrap:wrap;gap:4px;max-width:260px`;
 
   dropdown.innerHTML = _atdState.todasTags.map(t => {
     const ativa = _atdState.tagsConversaAtual.includes(t.id);
-    return `<span style="background:${ativa ? (t.cor||'var(--purple)') : 'transparent'};color:${ativa ? '#fff' : (t.cor||'var(--purple)')};border:1px solid ${t.cor||'var(--purple)'};font-size:10px;font-weight:600;padding:2px 9px;border-radius:999px;cursor:pointer;line-height:18px"
+    return `<span style="background:${ativa ? (t.cor||'var(--purple)') : 'transparent'};color:${ativa ? '#fff' : (t.cor||'var(--purple)')};border:1px solid ${t.cor||'var(--purple)'};font-size:var(--text-2xs);font-weight:600;padding:2px 9px;border-radius:var(--radius-selector);cursor:pointer;line-height:18px"
       onclick="_atdToggleTag('${conversaId}','${t.id}');document.getElementById('atdTagPickerDropdown')?.remove()">${t.nome}</span>`;
   }).join('');
 
@@ -1605,11 +1644,11 @@ async function _atdGerarResposta(conversaId) {
   try {
     const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/gerar-resposta`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() },
       body: JSON.stringify({ conversa_id: conversaId }),
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'falha ao gerar resposta');
+    if (!res.ok) throw new Error(_atdErroJson(json));
     campo.value = json.resposta;
     campo.focus();
   } catch (e) {
@@ -1637,16 +1676,16 @@ async function _atdRenderPainel(conversa) {
   // Cabeçalho e pedido vinculado imediatos (sem esperar histórico)
   const avatarHtml = c.avatar_url
     ? `<img src="${c.avatar_url}" style="width:56px;height:56px;border-radius:50%;object-fit:cover;margin:0 auto 8px;display:block">`
-    : `<span style="width:56px;height:56px;border-radius:50%;background:var(--purple);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;margin:0 auto 8px">${nome.charAt(0).toUpperCase()}</span>`;
+    : `<span style="width:56px;height:56px;border-radius:50%;background:var(--purple);color:var(--fg-on-brand);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:var(--text-xl);margin:0 auto 8px">${nome.charAt(0).toUpperCase()}</span>`;
 
   const pedidoVinculadoHtml = pedido ? `
     <div style="padding:12px 14px;border-bottom:1px solid var(--border)">
-      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">Pedido vinculado</div>
+      <div style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);margin-bottom:6px">Pedido vinculado</div>
       <div style="font-size:var(--text-sm);color:var(--text);font-weight:700">#${pedido.display_id ?? '—'}</div>
       <div style="font-size:var(--text-xs);color:var(--fg-muted)">${({'CONCLUDED':'Concluído','CLOSED':'Concluído','CANCELLED':'Cancelado','CANCELED':'Cancelado','CANCELLED_BY_RESTAURANT':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega','PENDING':'Pendente'}[(pedido.status||'').toUpperCase()] || pedido.status || '')}</div>
       ${pedido.total ? `<div style="font-size:var(--text-sm);color:var(--text);font-weight:700;margin-top:2px">R$ ${Number(pedido.total).toFixed(2)}</div>` : ''}
       ${pedido.delivery_address ? `
-        <button class="btn btn-ghost" style="margin-top:8px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(pedido.delivery_address).replace(/"/g, '&quot;')})">
+        <button class="btn d-btn btn-ghost d-btn-ghost" style="margin-top:8px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(pedido.delivery_address).replace(/"/g, '&quot;')})">
           ${lc('map-pin', 13, 'var(--purple)')} Ver endereço de entrega
         </button>` : ''}
     </div>` : '';
@@ -1662,7 +1701,7 @@ async function _atdRenderPainel(conversa) {
     ${pedidoVinculadoHtml}
     <div id="atdPedidoVinculadoAuto" style="display:none;padding:12px 14px;border-bottom:1px solid var(--border)"></div>
     <div id="atdHistoricoCliente" style="padding:12px 14px">
-      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+      <div style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">
         ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
       </div>
       <div style="color:var(--fg-subtle);font-size:var(--text-xs)">Carregando...</div>
@@ -1674,7 +1713,7 @@ async function _atdRenderPainel(conversa) {
     _atdCarregarHistoricoCliente(c.telefone, !pedido);
   } else {
     document.getElementById('atdHistoricoCliente').innerHTML = `
-      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+      <div style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">
         ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
       </div>
       <div style="color:var(--fg-subtle);font-size:var(--text-xs)">Sem telefone cadastrado</div>
@@ -1706,7 +1745,7 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
 
   if (!pedidos || pedidos.length === 0) {
     el.innerHTML = `
-      <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+      <div style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">
         ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
       </div>
       <div style="color:var(--fg-subtle);font-size:var(--text-xs)">Nenhum pedido encontrado</div>`;
@@ -1720,7 +1759,7 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
     if (elVinculado) {
       const dataP0 = p0.cw_created_at ? new Date(p0.cw_created_at).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
       elVinculado.innerHTML = `
-        <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:6px">
+        <div style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);margin-bottom:6px">
           ${lc('package', 11, 'currentColor')} Pedido mais recente
         </div>
         <div style="display:flex;justify-content:space-between;align-items:baseline">
@@ -1729,7 +1768,7 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
         </div>
         <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">${({'CONCLUDED':'Concluído','CLOSED':'Concluído','CANCELLED':'Cancelado','CANCELED':'Cancelado','CANCELLED_BY_RESTAURANT':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega','PENDING':'Pendente'}[(p0.status||'').toUpperCase()] || p0.status || '')} ${p0.total ? `· R$ ${Number(p0.total).toFixed(2)}` : ''}</div>
         ${p0.delivery_address ? `
-          <button class="btn btn-ghost" style="margin-top:6px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(p0.delivery_address).replace(/"/g, '&quot;')})">
+          <button class="btn d-btn btn-ghost d-btn-ghost" style="margin-top:6px;width:100%;font-size:var(--text-xs)" onclick="_atdAbrirEndereco(${JSON.stringify(p0.delivery_address).replace(/"/g, '&quot;')})">
             ${lc('map-pin', 12, 'var(--purple)')} Ver endereço de entrega
           </button>` : ''}
       `;
@@ -1745,7 +1784,7 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
     const valor = p.total ? `R$ ${Number(p.total).toFixed(2)}` : '—';
     const _cwStatusUp = (p.status || '').toUpperCase();
     const _cwStatusPt = { 'CONCLUDED':'Concluído','CLOSED':'Concluído','CANCELLED':'Cancelado','CANCELED':'Cancelado','CANCELLED_BY_RESTAURANT':'Cancelado','PLACED':'Recebido','CONFIRMED':'Confirmado','RELEASED':'Liberado','DISPATCHED':'Em entrega','READY':'Pronto','DELIVERING':'Em entrega','PENDING':'Pendente','PROCESSING':'Processando' };
-    const _cwStatusCores = { 'CONCLUDED':'var(--green)','CLOSED':'var(--green)','CANCELLED':'var(--danger)','CANCELED':'var(--danger)','CANCELLED_BY_RESTAURANT':'var(--danger)','PLACED':'var(--warning-fg)','CONFIRMED':'var(--purple)','RELEASED':'var(--purple)','DISPATCHED':'var(--warning-fg)','READY':'var(--green)','DELIVERING':'var(--warning-fg)' };
+    const _cwStatusCores = { 'CONCLUDED':'var(--green)','CLOSED':'var(--green)','CANCELLED':'var(--danger-fg)','CANCELED':'var(--danger-fg)','CANCELLED_BY_RESTAURANT':'var(--danger-fg)','PLACED':'var(--warning-fg)','CONFIRMED':'var(--purple)','RELEASED':'var(--purple)','DISPATCHED':'var(--warning-fg)','READY':'var(--green)','DELIVERING':'var(--warning-fg)' };
     const statusCor = _cwStatusCores[_cwStatusUp] || 'var(--fg-subtle)';
     const statusPt = _cwStatusPt[_cwStatusUp] || p.status || '—';
 
@@ -1772,29 +1811,29 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
               const preco = o.unit_price > 0 ? ` <span style="color:var(--fg-muted)">+R$${Number(o.unit_price).toFixed(2)}</span>` : '';
               return `<span>${o.name}${preco}</span>`;
             }).join('<span style="color:var(--border)"> · </span>');
-            return `<div style="font-size:9px;color:var(--fg-subtle);margin-top:2px"><span style="font-weight:600">${grupo}:</span> ${itens}</div>`;
+            return `<div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:2px"><span style="font-weight:600">${grupo}:</span> ${itens}</div>`;
           }).join('');
         }
 
-        return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border-subtle)">
+        return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid var(--border)">
           <div style="flex:1;min-width:0">
-            <span style="font-size:10px;color:var(--text)">${qtd}× ${nome}</span>
+            <span style="font-size:var(--text-2xs);color:var(--text)">${qtd}× ${nome}</span>
             ${saboresHtml}
-            ${obs ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:1px;font-style:italic">${obs}</div>` : ''}
+            ${obs ? `<div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:1px;font-style:italic">${obs}</div>` : ''}
           </div>
-          ${preco ? `<span style="font-size:10px;color:var(--fg-muted);white-space:nowrap">${preco}</span>` : ''}
+          ${preco ? `<span style="font-size:var(--text-2xs);color:var(--fg-muted);white-space:nowrap">${preco}</span>` : ''}
         </div>`;
       }).join('');
       const endHtml = p.delivery_address ? (() => {
         const a = typeof p.delivery_address === 'string' ? JSON.parse(p.delivery_address) : p.delivery_address;
         const linha = [a.street_name, a.street_number, a.neighborhood, a.city].filter(Boolean).join(', ');
-        return linha ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:6px;padding-top:6px;border-top:1px solid var(--border-subtle)">${lc('map-pin',10,'currentColor')} ${linha}</div>` : '';
+        return linha ? `<div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">${lc('map-pin',10,'currentColor')} ${linha}</div>` : '';
       })() : '';
       const canalLabel = { 'WHATSAPP': 'WhatsApp', 'IFOOD': 'iFood', 'SITE': 'Site', 'INSTAGRAM': 'Instagram', 'RAPPI': 'Rappi', 'UBER_EATS': 'Uber Eats' }[p.sales_channel] || p.sales_channel || '';
       const orderTypePt = { 'DELIVERY': 'Entrega', 'TAKEOUT': 'Retirada', 'INDOOR': 'Mesa', 'TABLE': 'Mesa', 'DINE_IN': 'Mesa', 'SCHEDULED': 'Agendado', 'CATALOG': 'Catálogo' }[p.order_type] || p.order_type || '';
       detalhesHtml = `
-        <div id="atdPedDetalhe_${idx}" style="display:none;margin-top:6px;padding:8px;background:var(--bg-subtle);border-radius:var(--r6)">
-          ${canalLabel ? `<div style="font-size:9px;color:var(--fg-subtle);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.4px">${canalLabel}${orderTypePt ? ` · ${orderTypePt}` : ''}</div>` : ''}
+        <div id="atdPedDetalhe_${idx}" style="display:none;margin-top:6px;padding:8px;background:var(--bg-subtle);border-radius:var(--radius-sm)">
+          ${canalLabel ? `<div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-bottom:6px;font-weight:600;">${canalLabel}${orderTypePt ? ` · ${orderTypePt}` : ''}</div>` : ''}
           ${linhasItens}
           ${endHtml}
         </div>`;
@@ -1807,11 +1846,11 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
           ${temDetalhe ? `onclick="const d=document.getElementById('atdPedDetalhe_${idx}');d.style.display=d.style.display==='none'?'block':'none'"` : ''}>
           <div style="display:flex;align-items:center;gap:5px">
             <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">#${p.display_id || p.id?.slice(0,6)}</span>
-            <span style="font-size:10px;color:${statusCor};font-weight:600">${statusPt}</span>
+            <span style="font-size:var(--text-2xs);color:${statusCor};font-weight:600">${statusPt}</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <span style="font-size:var(--text-xs);font-weight:700;color:var(--text)">${valor}</span>
-            <span style="font-size:10px;color:var(--fg-subtle)">${data}</span>
+            <span style="font-size:var(--text-2xs);color:var(--fg-subtle)">${data}</span>
             ${temDetalhe ? lc('chevron-down', 11, 'var(--fg-subtle)') : ''}
           </div>
         </div>
@@ -1820,25 +1859,25 @@ async function _atdCarregarHistoricoCliente(telefone, autoLinkPedido = false) {
   }).join('');
 
   el.innerHTML = `
-    <div style="font-size:var(--text-2xs);font-weight:700;text-transform:uppercase;color:var(--fg-subtle);margin-bottom:8px">
+    <div style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);margin-bottom:8px">
       ${lc('package', 12, 'currentColor')} Histórico no CardápioWeb
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;text-align:center">
-      <div style="background:var(--bg-subtle);border-radius:var(--r8);padding:8px 4px">
-        <div style="font-size:15px;font-weight:800;color:var(--purple)">${pedidos.length}</div>
-        <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Pedidos</div>
+      <div style="background:var(--bg-subtle);border-radius:var(--radius-field);padding:8px 4px">
+        <div style="font-size:var(--text-base);font-weight:800;color:var(--purple)">${pedidos.length}</div>
+        <div style="font-size:var(--text-2xs);color:var(--fg-subtle);font-weight:700;">Pedidos</div>
       </div>
-      <div style="background:var(--bg-subtle);border-radius:var(--r8);padding:8px 4px">
-        <div style="font-size:13px;font-weight:800;color:var(--text)">R$${ticketMedio.toFixed(0)}</div>
-        <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Ticket médio</div>
+      <div style="background:var(--bg-subtle);border-radius:var(--radius-field);padding:8px 4px">
+        <div style="font-size:var(--text-sm);font-weight:800;color:var(--text)">R$${ticketMedio.toFixed(0)}</div>
+        <div style="font-size:var(--text-2xs);color:var(--fg-subtle);font-weight:700;">Ticket médio</div>
       </div>
-      <div style="background:var(--bg-subtle);border-radius:var(--r8);padding:8px 4px">
-        <div style="font-size:13px;font-weight:800;color:var(--text)">R$${totalGasto.toFixed(0)}</div>
-        <div style="font-size:9px;color:var(--fg-subtle);font-weight:700;text-transform:uppercase">Total gasto</div>
+      <div style="background:var(--bg-subtle);border-radius:var(--radius-field);padding:8px 4px">
+        <div style="font-size:var(--text-sm);font-weight:800;color:var(--text)">R$${totalGasto.toFixed(0)}</div>
+        <div style="font-size:var(--text-2xs);color:var(--fg-subtle);font-weight:700;">Total gasto</div>
       </div>
     </div>
     <div>${linhas}</div>
-    ${pedidos.length > 10 ? `<div style="font-size:10px;color:var(--fg-subtle);text-align:center;padding-top:6px">+${pedidos.length - 10} pedidos anteriores</div>` : ''}
+    ${pedidos.length > 10 ? `<div style="font-size:var(--text-2xs);color:var(--fg-subtle);text-align:center;padding-top:6px">+${pedidos.length - 10} pedidos anteriores</div>` : ''}
   `;
 }
 
@@ -1917,7 +1956,7 @@ async function _atdEnviarMensagem(conversaId) {
     try {
       const resCorrecao = await fetch(`${VTP_SUPABASE_URL}/functions/v1/corrigir-mensagem`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() },
         body: JSON.stringify({ texto }),
       });
       const jsonCorrecao = await resCorrecao.json();
@@ -1928,13 +1967,14 @@ async function _atdEnviarMensagem(conversaId) {
   }
 
   try {
-    const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
+    const res = await _atdFetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conversa_id: conversaId, texto, atendente_id: user?.id ?? null, visibilidade }),
     });
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'falha ao enviar');
+    console.log('[atd-enviar] status:', res.status, '| body:', JSON.stringify(json));
+    if (!res.ok) throw new Error(_atdErroJson(json));
     // Se veio de Concluídos, troca aba agora (envio confirmado → status já foi atualizado no backend)
     if (eraConcluido) {
       _atdMudarParaAtivos(conversaId);
@@ -1949,6 +1989,7 @@ async function _atdEnviarMensagem(conversaId) {
     }
     await _atdAbrirConversa(conversaId);
   } catch (e) {
+    console.error('[atd-enviar] erro completo:', e.message);
     toast('Erro ao enviar mensagem: ' + e.message, 'err');
   } finally {
     campo.disabled = false;
@@ -1988,17 +2029,17 @@ function _atdToggleBotGlobal() {
   const modal = document.createElement('div');
   modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:2000;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:380px;padding:24px;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+    <div style="background:var(--bg-elevated);border-radius:var(--radius-box);width:100%;max-width:380px;padding:24px;box-shadow:var(--shadow-popover)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <span style="color:${ativo ? 'var(--danger)' : 'var(--purple)'}">
+        <span style="color:${ativo ? 'var(--danger-fg)' : 'var(--purple)'}">
           ${lc('cpu', 20, 'currentColor')}
         </span>
         <div style="font-size:var(--text-base);font-weight:800;color:var(--text)">${titulo}</div>
       </div>
       <div style="font-size:var(--text-sm);color:var(--fg-muted);line-height:1.5;margin-bottom:20px">${msg}</div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="this.closest('[style*=fixed]').remove()">Cancelar</button>
-        <button class="btn ${btnClass}" style="font-size:var(--text-xs)" onclick="_atdConfirmarToggleBot(${!ativo}); this.closest('[style*=fixed]').remove()">${btnLabel}</button>
+        <button class="btn d-btn btn-ghost d-btn-ghost" style="font-size:var(--text-xs)" onclick="this.closest('[style*=fixed]').remove()">Cancelar</button>
+        <button class="btn d-btn ${btnClass}" style="font-size:var(--text-xs)" onclick="_atdConfirmarToggleBot(${!ativo}); this.closest('[style*=fixed]').remove()">${btnLabel}</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -2043,7 +2084,7 @@ async function _atdBotAutoResponder(conversaId) {
   try {
     const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/gerar-resposta`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() },
       body: JSON.stringify({ conversa_id: conversaId }),
     });
     if (!res.ok) return;
@@ -2069,7 +2110,7 @@ async function _atdBotAutoResponder(conversaId) {
       const user = getCurrentUser();
       await fetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+        headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() },
         body: JSON.stringify({ conversa_id: conversaId, texto: json.resposta, atendente_id: user?.id ?? null, visibilidade: 'publica' }),
       });
     }
@@ -2120,7 +2161,7 @@ function _atdPreviewArquivo(conversaId, input) {
   if (file.type.startsWith('image/')) {
     icone = '🖼️';
     const url = URL.createObjectURL(file);
-    extra = `<img src="${url}" style="max-height:80px;max-width:160px;border-radius:6px;display:block;margin-top:4px;object-fit:cover">`;
+    extra = `<img src="${url}" style="max-height:80px;max-width:160px;border-radius:var(--radius-sm);display:block;margin-top:4px;object-fit:cover">`;
   } else if (file.type.startsWith('video/')) {
     icone = '🎬';
   } else if (file.type.startsWith('audio/')) {
@@ -2132,7 +2173,7 @@ function _atdPreviewArquivo(conversaId, input) {
   const sizeKb = (file.size / 1024).toFixed(0);
   preview.style.display = 'block';
   preview.innerHTML = `
-    <div style="display:flex;align-items:flex-start;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r8);padding:8px 10px;font-size:var(--text-sm)">
+    <div style="display:flex;align-items:flex-start;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-field);padding:8px 10px;font-size:var(--text-sm)">
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:5px">
           <span>${icone}</span>
@@ -2141,7 +2182,7 @@ function _atdPreviewArquivo(conversaId, input) {
         </div>
         ${extra}
       </div>
-      <button onclick="_atdCancelarAnexo()" title="Remover anexo" style="background:none;border:none;cursor:pointer;color:var(--fg-muted);padding:0;flex-shrink:0;font-size:16px;line-height:1">✕</button>
+      <button onclick="_atdCancelarAnexo()" title="Remover anexo" style="background:none;border:none;cursor:pointer;color:var(--fg-muted);padding:0;flex-shrink:0;font-size:var(--text-lg);line-height:1">✕</button>
     </div>`;
 }
 
@@ -2192,12 +2233,12 @@ function _atdRenderEmojiPicker(picker) {
   const cats = _ATD_EMOJI_CATS.map(c => c.id === 'recentes' ? { ...c, emojis: _atdEmojiRecentes.slice(0, 27) } : c);
   picker.innerHTML = `
     <div style="padding:8px 8px 0">
-      <input class="atd-emoji-busca inp" placeholder="🔍 Buscar emoji..." style="width:100%;box-sizing:border-box;padding:5px 8px;font-size:13px;height:30px"
+      <input class="atd-emoji-busca inp d-input" placeholder="🔍 Buscar emoji..." style="width:100%;box-sizing:border-box;padding:5px 8px;font-size:var(--text-sm);height:30px"
         oninput="_atdEmojiSearch(this.value)">
     </div>
     <div style="display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid var(--border);overflow-x:auto">
       ${cats.map(c => `<button title="${c.label}" onclick="_atdEmojiSetCat('${c.id}')"
-        style="background:${_atdEmojiCatAtual===c.id?'var(--purple-xlight)':'none'};border:none;cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;flex-shrink:0" id="atdEmojiTab_${c.id}">${c.icon}</button>`).join('')}
+        style="background:${_atdEmojiCatAtual===c.id?'var(--purple-xlight)':'none'};border:none;cursor:pointer;font-size:var(--text-lg);padding:4px 6px;border-radius:var(--radius-sm);flex-shrink:0" id="atdEmojiTab_${c.id}">${c.icon}</button>`).join('')}
     </div>
     <div id="atdEmojiGrid" style="padding:6px 8px;height:200px;overflow-y:auto">
       ${_atdEmojiRenderGrid(cats)}
@@ -2207,10 +2248,10 @@ function _atdRenderEmojiPicker(picker) {
 function _atdEmojiRenderGrid(cats) {
   const cat = cats.find(c => c.id === _atdEmojiCatAtual);
   const emojis = cat?.emojis || [];
-  if (!emojis.length) return `<div style="color:var(--fg-subtle);font-size:13px;text-align:center;padding:32px 0">Nenhum recente ainda</div>`;
+  if (!emojis.length) return `<div style="color:var(--fg-subtle);font-size:var(--text-sm);text-align:center;padding:32px 0">Nenhum recente ainda</div>`;
   return `<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px">
     ${emojis.map(e => `<button onclick="_atdInsertEmoji('${e}')" title="${e}"
-      style="background:none;border:none;cursor:pointer;font-size:20px;padding:3px;border-radius:6px;line-height:1;transition:background .1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`).join('')}
+      style="background:none;border:none;cursor:pointer;font-size:var(--text-xl);padding:3px;border-radius:var(--radius-sm);line-height:1;transition:background .1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`).join('')}
   </div>`;
 }
 
@@ -2239,7 +2280,7 @@ function _atdEmojiSearch(termo) {
   const encontrados = todos.filter((e, i, arr) => arr.indexOf(e) === i); // sem dups
   grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:2px">
     ${encontrados.map(e => `<button onclick="_atdInsertEmoji('${e}')" title="${e}"
-      style="background:none;border:none;cursor:pointer;font-size:20px;padding:3px;border-radius:6px;line-height:1" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`).join('')}
+      style="background:none;border:none;cursor:pointer;font-size:var(--text-xl);padding:3px;border-radius:var(--radius-sm);line-height:1" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='none'">${e}</button>`).join('')}
   </div>`;
 }
 
@@ -2291,13 +2332,13 @@ async function _atdUploadArquivo(conversaId, input) {
   if (!url) { toast('Erro ao gerar URL do arquivo', 'err'); return; }
 
   // Envia via edge function
-  const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
+  const res = await _atdFetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ conversa_id: conversaId, tipo, url, nome_arquivo: file.name, atendente_id: user?.id ?? null, visibilidade: 'publica' }),
   });
   const json = await res.json();
-  if (!res.ok) { toast('Erro ao enviar arquivo: ' + (json.error || ''), 'err'); return; }
+  if (!res.ok) { toast('Erro ao enviar arquivo: ' + _atdErroJson(json), 'err'); return; }
 
   toast(`${tipo === 'imagem' ? 'Imagem' : tipo === 'audio' ? 'Áudio' : tipo === 'video' ? 'Vídeo' : 'Arquivo'} enviado!`, 'ok');
   await _atdAbrirConversa(conversaId);
@@ -2314,11 +2355,11 @@ async function _atdAbrirTransferencia(conversaId) {
   // Busca atendentes disponíveis (profiles com role gerente/atendente)
   const { data: perfis } = await sb
     .from('profiles')
-    .select('id, nome, role')
+    .select('id:vtp_user_id, nome, role') // id do vtp_users (profiles.id é o uuid do Auth)
     .in('role', ['gerente', 'atendente', 'supervisor'])
     .order('nome');
 
-  const lista = (perfis || []).filter(p => p.id !== user?.id);
+  const lista = (perfis || []).filter(p => String(p.id) !== String(user?.id));
 
   // Cria modal
   const overlay = document.createElement('div');
@@ -2331,14 +2372,14 @@ async function _atdAbrirTransferencia(conversaId) {
       <div class="mbox">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
           <div style="font-weight:700;font-size:var(--text-base)">${lc('users', 16, 'var(--purple)')} Transferir conversa</div>
-          <button class="btn btn-ghost" onclick="document.getElementById('atdModalTransferencia').remove()">${lc('x', 16, 'var(--fg-muted)')}</button>
+          <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('atdModalTransferencia').remove()">${lc('x', 16, 'var(--fg-muted)')}</button>
         </div>
         ${lista.length === 0
           ? `<div style="color:var(--fg-subtle);font-size:var(--text-sm);text-align:center;padding:24px 0">Nenhum outro atendente disponível.</div>`
           : `<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">
               ${lista.map(p => `
                 <button onclick="_atdConfirmarTransferencia('${conversaId}','${p.id}','${(p.nome || '').replace(/'/g, "\\'")}')"
-                  style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r8);background:var(--surface);cursor:pointer;text-align:left;width:100%">
+                  style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-field);background:var(--surface);cursor:pointer;text-align:left;width:100%">
                   <div style="width:32px;height:32px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:var(--text-sm)">${(p.nome || '?').charAt(0).toUpperCase()}</div>
                   <div>
                     <div style="font-weight:600;font-size:var(--text-sm);color:var(--text)">${p.nome || 'Sem nome'}</div>
@@ -2476,13 +2517,13 @@ function _atdAbrirBuscaPedido() {
           <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-md);font-weight:700;color:var(--text)">
             ${lc('search', 16, 'var(--purple)')} Pedidos de hoje
           </div>
-          <button class="btn btn-ghost btn-xs" onclick="document.getElementById('popupAtdBuscaPedido').remove()">${lc('x', 16, 'var(--muted)')}</button>
+          <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="document.getElementById('popupAtdBuscaPedido').remove()">${lc('x', 16, 'var(--muted)')}</button>
         </div>
         <div style="padding:14px 20px 10px;flex-shrink:0">
-          <input id="atdBuscaInput" class="inp" placeholder="Filtrar por nome ou número do pedido..." autocomplete="off" oninput="_atdRenderPedidos()">
+          <input id="atdBuscaInput" class="inp d-input" placeholder="Filtrar por nome ou número do pedido..." autocomplete="off" oninput="_atdRenderPedidos()">
           <div id="atdFiltrosStatus" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
             ${['todos', 'aguardando', 'em_preparo', 'pronto', 'em_rota', 'entregue'].map(s => `
-              <button class="btn btn-ghost btn-xs atd-filtro-status ${s === 'todos' ? 'active' : ''}" data-status="${s}" onclick="_atdFiltrarPedidosPorStatus('${s}')">
+              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs atd-filtro-status ${s === 'todos' ? 'active' : ''}" data-status="${s}" onclick="_atdFiltrarPedidosPorStatus('${s}')">
                 ${s === 'todos' ? 'Todos' : ATD_STATUS_LABELS[s]}
               </button>`).join('')}
           </div>
@@ -2546,7 +2587,7 @@ function _atdRenderPedidos() {
   resEl.innerHTML = lista.map(p => {
     const canal = ATD_CANAL_LABELS[_cwMapCanal(p.sales_channel)] || 'Site';
     return `
-    <div class="conv-item" style="border-radius:var(--r8);border-bottom:none;margin-bottom:4px" onclick='_atdAbrirConversaDePedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
+    <div class="conv-item" style="border-radius:var(--radius-field);border-bottom:none;margin-bottom:4px" onclick='_atdAbrirConversaDePedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
       <span style="width:34px;height:34px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:var(--text-xs)">#${p.display_id ?? '—'}</span>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:5px">
@@ -2612,7 +2653,170 @@ async function _atdAbrirConversaDePedido(pedido) {
   document.getElementById('popupAtdBuscaPedido')?.remove();
   await _atdCarregarConversas();
   await _atdAbrirConversa(conversaId);
-  toast('Conversa vinculada ao pedido #' + (pedido.display_id ?? pedido.id), 'ok');
+
+  // Oferece envio de template para iniciar/reativar conversa
+  _atdAbrirModalTemplate(conversaId, pedido);
+}
+
+// ── TEMPLATES HSM ────────────────────────────────────────────────
+
+function _atdGetTemplates() {
+  try { return JSON.parse(localStorage.getItem('vtp_atd_templates') || '[]'); } catch { return []; }
+}
+function _atdSalvarTemplates(list) {
+  localStorage.setItem('vtp_atd_templates', JSON.stringify(list));
+}
+
+function _atdAbrirModalTemplate(conversaId, pedido) {
+  const templates = _atdGetTemplates();
+
+  document.getElementById('popupAtdTemplate')?.remove();
+  const popup = document.createElement('div');
+  popup.id = 'popupAtdTemplate';
+  popup.className = 'overlay open';
+  popup.style.zIndex = '950';
+
+  const templateOptions = templates.map((t, i) =>
+    `<option value="${i}">${t.titulo}</option>`
+  ).join('');
+
+  popup.innerHTML = `
+    <div class="modal" style="max-width:440px">
+      <div class="mbox" style="padding:20px 24px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-md);font-weight:700;color:var(--text)">
+            ${lc('send', 16, 'var(--purple)')} Enviar mensagem ao cliente
+          </div>
+          <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="document.getElementById('popupAtdTemplate').remove()">${lc('x', 16, 'var(--muted)')}</button>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;margin-bottom:16px;font-size:var(--text-sm);color:var(--fg-muted)">
+          ${lc('info', 14, 'var(--purple)')} Para iniciar uma conversa no WhatsApp ou reativar uma conversa inativa há mais de 24h, é necessário usar um <strong>template aprovado pelo Meta</strong>.
+        </div>
+        ${templates.length === 0 ? `
+          <div style="text-align:center;padding:20px 0;color:var(--fg-subtle);font-size:var(--text-sm)">
+            Nenhum template cadastrado.<br>
+            <button class="btn d-btn btn-ghost d-btn-ghost btn-sm d-btn-sm" style="margin-top:10px" onclick="document.getElementById('popupAtdTemplate').remove();_atdSetPaginaAtiva('configuracoes');_atdRenderConfiguracoes()">
+              Cadastrar template
+            </button>
+          </div>
+        ` : `
+          <div class="field" style="margin-bottom:12px">
+            <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TEMPLATE</label>
+            <select id="atdTemplateSelect" class="inp d-select" onchange="_atdTemplateOnChange(this, ${JSON.stringify(JSON.stringify(pedido)).replace(/"/g,'&quot;')})">
+              <option value="">— Selecione —</option>
+              ${templateOptions}
+            </select>
+          </div>
+          <div id="atdTemplateParams" style="margin-bottom:16px"></div>
+          <div id="atdTemplatePreview" style="display:none;background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;font-size:var(--text-sm);color:var(--text);margin-bottom:16px;white-space:pre-wrap"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('popupAtdTemplate').remove()">Pular</button>
+            <button id="atdTemplateBtnEnviar" class="btn d-btn btn-primary d-btn-primary" disabled onclick="_atdEnviarTemplate('${conversaId}')">
+              ${lc('send', 14, '#fff')} Enviar template
+            </button>
+          </div>
+        `}
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+function _atdTemplateOnChange(sel, pedidoJson) {
+  const pedido = typeof pedidoJson === 'string' ? JSON.parse(pedidoJson) : pedidoJson;
+  const templates = _atdGetTemplates();
+  const idx = parseInt(sel.value);
+  const paramsEl = document.getElementById('atdTemplateParams');
+  const previewEl = document.getElementById('atdTemplatePreview');
+  const btnEnviar = document.getElementById('atdTemplateBtnEnviar');
+  if (!paramsEl || isNaN(idx)) return;
+
+  const t = templates[idx];
+  if (!t) { paramsEl.innerHTML = ''; previewEl.style.display = 'none'; if (btnEnviar) btnEnviar.disabled = true; return; }
+
+  // Detecta variáveis {{1}}, {{2}}... no template
+  const variaveis = [...(t.corpo_preview || '').matchAll(/\{\{(\d+)\}\}/g)].map(m => parseInt(m[1])).filter((v, i, a) => a.indexOf(v) === i).sort();
+
+  // Sugestão automática para variáveis comuns
+  const sugestoes = {
+    nome: pedido.customer_name || '',
+    pedido: `#${pedido.display_id ?? pedido.id}`,
+    endereco: pedido.delivery_address || '',
+    total: pedido.total ? `R$ ${Number(pedido.total).toFixed(2)}` : '',
+  };
+
+  paramsEl.innerHTML = variaveis.map(n => `
+    <div class="field" style="margin-bottom:8px">
+      <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">PARÂMETRO {{${n}}}</label>
+      <input class="inp d-input atd-tpl-param" data-pos="${n}" value="${_atdTemplateSugerirParam(n, sugestoes)}" oninput="_atdTemplateAtualizarPreview()">
+    </div>`).join('');
+
+  if (btnEnviar) btnEnviar.disabled = false;
+  _atdTemplateAtualizarPreview();
+}
+
+function _atdTemplateSugerirParam(pos, sugestoes) {
+  // Sugestão baseada na posição: 1=nome, 2=pedido, 3=endereço, 4=total
+  const ordem = ['nome', 'pedido', 'endereco', 'total'];
+  return sugestoes[ordem[pos - 1]] || '';
+}
+
+function _atdTemplateAtualizarPreview() {
+  const templates = _atdGetTemplates();
+  const sel = document.getElementById('atdTemplateSelect');
+  const idx = parseInt(sel?.value);
+  if (isNaN(idx) || !templates[idx]) return;
+  const t = templates[idx];
+  const params = [...document.querySelectorAll('.atd-tpl-param')];
+
+  let preview = t.corpo_preview || '';
+  params.forEach(inp => {
+    preview = preview.replace(new RegExp(`\\{\\{${inp.dataset.pos}\\}\\}`, 'g'), inp.value || `{{${inp.dataset.pos}}}`);
+  });
+
+  const previewEl = document.getElementById('atdTemplatePreview');
+  if (previewEl) { previewEl.style.display = 'block'; previewEl.textContent = preview; }
+}
+
+async function _atdEnviarTemplate(conversaId) {
+  const templates = _atdGetTemplates();
+  const sel = document.getElementById('atdTemplateSelect');
+  const idx = parseInt(sel?.value);
+  if (isNaN(idx) || !templates[idx]) return;
+  const t = templates[idx];
+
+  const params = [...document.querySelectorAll('.atd-tpl-param')].map(inp => ({ type: 'text', text: inp.value }));
+  const user = getCurrentUser();
+
+  // Texto de preview (para registrar na conversa)
+  let textoPreview = t.corpo_preview || `[Template: ${t.nome}]`;
+  params.forEach((p, i) => { textoPreview = textoPreview.replace(new RegExp(`\\{\\{${i + 1}\\}\\}`, 'g'), p.text); });
+
+  const btn = document.getElementById('atdTemplateBtnEnviar');
+  if (btn) { btn.disabled = true; btn.innerHTML = lc('loader', 14, '#fff') + ' Enviando...'; }
+
+  try {
+    const res = await _atdFetch(`${VTP_SUPABASE_URL}/functions/v1/enviar-mensagem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversa_id: conversaId,
+        atendente_id: user?.id ?? null,
+        template_name: t.nome,
+        template_language: t.idioma || 'pt_BR',
+        template_params: params,
+        texto: textoPreview,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(_atdErroJson(json));
+    document.getElementById('popupAtdTemplate')?.remove();
+    toast('Template enviado!', 'ok');
+    await _atdAbrirConversa(conversaId);
+  } catch (e) {
+    toast('Erro: ' + e.message, 'err');
+    if (btn) { btn.disabled = false; btn.innerHTML = lc('send', 14, '#fff') + ' Enviar template'; }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2660,19 +2864,19 @@ async function _atdRenderAvaliacoesIfood() {
       <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:20px;gap:12px;flex-wrap:wrap">
         <div style="display:flex;gap:8px;align-items:center">
           <select id="atdIfoodFiltro" onchange="_atdIfoodAplicarFiltro(this.value)"
-            style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--r8);font-size:var(--text-xs);background:var(--bg);color:var(--text);outline:none">
+            style="padding:7px 10px;border:1px solid var(--border);border-radius:var(--radius-field);font-size:var(--text-xs);background:var(--bg);color:var(--text);outline:none">
             <option value="">Todas</option>
             <option value="NOT_REPLIED">Sem resposta</option>
             <option value="REPLIED">Respondidas</option>
           </select>
-          <button class="btn btn-ghost" onclick="_atdIfoodCarregar(true)" style="font-size:var(--text-xs)">
+          <button class="btn d-btn btn-ghost d-btn-ghost" onclick="_atdIfoodCarregar(true)" style="font-size:var(--text-xs)">
             ${lc('refresh-cw', 13, 'currentColor')} Atualizar
           </button>
         </div>
       </div>
 
       <!-- Aviso de credenciais -->
-      <div id="atdIfoodAvisoCredenciais" style="display:none;background:var(--warning-bg);border:1px solid var(--warning-border,#fde68a);border-radius:var(--r8);padding:12px 16px;margin-bottom:16px;font-size:var(--text-xs);color:var(--warning-fg);display:flex;align-items:flex-start;gap:8px">
+      <div id="atdIfoodAvisoCredenciais" style="display:none;background:var(--warning-bg);border:1px solid var(--warning-border,#fde68a);border-radius:var(--radius-field);padding:12px 16px;margin-bottom:16px;font-size:var(--text-xs);color:var(--warning-fg);display:flex;align-items:flex-start;gap:8px">
         ${lc('alert-triangle', 16, 'currentColor')}
         <div>
           <strong>Credenciais iFood não configuradas.</strong> Para ativar, cadastre <code>IFOOD_CLIENT_ID</code> e <code>IFOOD_CLIENT_SECRET</code> nos Secrets da Edge Function no painel do Supabase.
@@ -2710,7 +2914,7 @@ async function _atdIfoodCarregar(resetPagina = false) {
     if (_atdIfoodState.filtroStatus) params.set('status', _atdIfoodState.filtroStatus);
 
     const r = await fetch(`${base}?${params}`, {
-      headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` }
+      headers: { Authorization: vtpBearer() }
     });
     const data = await r.json();
 
@@ -2718,7 +2922,7 @@ async function _atdIfoodCarregar(resetPagina = false) {
       const isCredErr = (data.error ?? '').includes('CLIENT_ID') || (data.error ?? '').includes('CLIENT_SECRET') || (data.error ?? '').includes('não configurados');
       const aviso = document.getElementById('atdIfoodAvisoCredenciais');
       if (aviso) aviso.style.display = isCredErr ? 'flex' : 'none';
-      lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);font-size:var(--text-sm)">${lc('alert-circle', 18, 'currentColor')} ${data.error ?? 'Erro ao carregar avaliações.'}</div>`;
+      lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger-fg);font-size:var(--text-sm)">${lc('alert-circle', 18, 'currentColor')} ${data.error ?? 'Erro ao carregar avaliações.'}</div>`;
       return;
     }
 
@@ -2733,7 +2937,7 @@ async function _atdIfoodCarregar(resetPagina = false) {
     _atdIfoodRenderLista();
     _atdIfoodRenderPaginacao();
   } catch (e) {
-    lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);font-size:var(--text-sm)">${lc('wifi-off', 18, 'currentColor')} Erro de conexão: ${e.message}</div>`;
+    lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger-fg);font-size:var(--text-sm)">${lc('wifi-off', 18, 'currentColor')} Erro de conexão: ${e.message}</div>`;
   } finally {
     _atdIfoodState.carregando = false;
   }
@@ -2759,21 +2963,21 @@ function _atdIfoodRenderLista() {
     const id          = rv.id ?? rv.reviewId ?? '';
 
     const estrelasHtml = Array.from({ length: 5 }, (_, i) =>
-      `<span style="color:${i < estrelas ? '#F5A800' : 'var(--border)'};font-size:15px">★</span>`
+      `<span style="color:${i < estrelas ? '#F5A800' : 'var(--border)'};font-size:var(--text-base)">★</span>`
     ).join('');
 
     const respostaHtml = respondida
-      ? `<div style="margin-top:10px;padding:10px 12px;background:var(--success-bg);border-radius:var(--r8);border:1px solid var(--success-border,#bbf7d0);font-size:var(--text-xs);color:var(--fg-muted)">
-           <div style="font-weight:700;color:var(--green);margin-bottom:4px;display:flex;align-items:center;gap:4px">${lc('check-circle', 12, 'currentColor')} Você respondeu:</div>
+      ? `<div style="margin-top:10px;padding:10px 12px;background:var(--success-bg);border-radius:var(--radius-field);border:1px solid var(--success-border,#bbf7d0);font-size:var(--text-xs);color:var(--fg-muted)">
+           <div style="font-weight:700;color:var(--success-fg);margin-bottom:4px;display:flex;align-items:center;gap:4px">${lc('check-circle', 12, 'currentColor')} Você respondeu:</div>
            ${resposta}
          </div>`
       : `<div style="margin-top:10px">
            <textarea id="atdIfoodResp_${id}" placeholder="Escreva sua resposta (10–300 caracteres)..."
-             style="width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r8);font-size:var(--text-xs);background:var(--bg);color:var(--text);resize:vertical;box-sizing:border-box;outline:none;font-family:inherit"
+             style="width:100%;min-height:70px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-field);font-size:var(--text-xs);background:var(--bg);color:var(--text);resize:vertical;box-sizing:border-box;outline:none;font-family:inherit"
              oninput="_atdIfoodContarChars('${id}', this.value)"></textarea>
            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
-             <span id="atdIfoodCount_${id}" style="font-size:10px;color:var(--fg-subtle)">0 / 300</span>
-             <button class="btn btn-primary" style="font-size:var(--text-xs);padding:6px 14px"
+             <span id="atdIfoodCount_${id}" style="font-size:var(--text-2xs);color:var(--fg-subtle)">0 / 300</span>
+             <button class="btn d-btn btn-primary d-btn-primary" style="font-size:var(--text-xs);padding:6px 14px"
                onclick="_atdIfoodResponder('${id}')">
                ${lc('send', 12, '#fff')} Responder
              </button>
@@ -2781,14 +2985,14 @@ function _atdIfoodRenderLista() {
          </div>`;
 
     return `
-      <div id="atdIfoodCard_${id}" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r12);padding:16px">
+      <div id="atdIfoodCard_${id}" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-box);padding:16px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px">
           <div>
             <div style="font-weight:700;font-size:var(--text-sm);color:var(--text)">${nomeCliente}</div>
             <div style="margin-top:2px">${estrelasHtml} <span style="font-size:var(--text-xs);color:var(--fg-muted);margin-left:4px">${data}</span></div>
           </div>
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;
-            ${respondida ? 'background:var(--success-bg);color:var(--green)' : 'background:var(--warning-bg);color:var(--warning-fg)'}">
+          <span style="font-size:var(--text-2xs);font-weight:700;padding:2px 8px;border-radius:var(--radius-selector);white-space:nowrap;
+            ${respondida ? 'background:var(--success-bg);color:var(--success-fg)' : 'background:var(--warning-bg);color:var(--warning-fg)'}">
             ${respondida ? 'Respondida' : 'Pendente'}
           </span>
         </div>
@@ -2803,7 +3007,7 @@ function _atdIfoodContarChars(id, valor) {
   if (!count) return;
   const n = valor.length;
   count.textContent = `${n} / 300`;
-  count.style.color = n > 300 ? 'var(--danger)' : (n < 10 && n > 0 ? 'var(--warning-fg)' : 'var(--fg-subtle)');
+  count.style.color = n > 300 ? 'var(--danger-fg)' : (n < 10 && n > 0 ? 'var(--warning-fg)' : 'var(--fg-subtle)');
 }
 
 async function _atdIfoodResponder(reviewId) {
@@ -2818,7 +3022,7 @@ async function _atdIfoodResponder(reviewId) {
     const base = _ATD_IFOOD_BASE();
     const r = await fetch(`${base}?action=reply`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: vtpBearer(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ reviewId, message }),
     });
     const data = await r.json();
@@ -2848,11 +3052,11 @@ function _atdIfoodRenderPaginacao() {
   if (totalPages <= 1) { pag.style.display = 'none'; return; }
   pag.style.display = 'flex';
   pag.innerHTML = `
-    <button class="btn btn-ghost" style="font-size:var(--text-xs)" ${_atdIfoodState.page <= 1 ? 'disabled' : ''} onclick="_atdIfoodPagina(${_atdIfoodState.page - 1})">
+    <button class="btn d-btn btn-ghost d-btn-ghost" style="font-size:var(--text-xs)" ${_atdIfoodState.page <= 1 ? 'disabled' : ''} onclick="_atdIfoodPagina(${_atdIfoodState.page - 1})">
       ${lc('chevron-left', 14, 'currentColor')} Anterior
     </button>
     <span style="font-size:var(--text-xs);color:var(--fg-muted)">Página ${_atdIfoodState.page} de ${totalPages}</span>
-    <button class="btn btn-ghost" style="font-size:var(--text-xs)" ${_atdIfoodState.page >= totalPages ? 'disabled' : ''} onclick="_atdIfoodPagina(${_atdIfoodState.page + 1})">
+    <button class="btn d-btn btn-ghost d-btn-ghost" style="font-size:var(--text-xs)" ${_atdIfoodState.page >= totalPages ? 'disabled' : ''} onclick="_atdIfoodPagina(${_atdIfoodState.page + 1})">
       Próxima ${lc('chevron-right', 14, 'currentColor')}
     </button>`;
 }
@@ -2972,15 +3176,15 @@ function _atdGerarConteudoIA(secId, dados) {
 function _atdIACampoHTML(campo, valor) {
   const v = valor ?? '';
   if (campo.tipo === 'input') {
-    return `<input id="iaq_${campo.id}" class="inp" style="font-size:var(--text-sm)" placeholder="${campo.placeholder || ''}" value="${String(v).replace(/"/g, '&quot;')}">`;
+    return `<input id="iaq_${campo.id}" class="inp d-input" style="font-size:var(--text-sm)" placeholder="${campo.placeholder || ''}" value="${String(v).replace(/"/g, '&quot;')}">`;
   }
   if (campo.tipo === 'textarea') {
-    return `<textarea id="iaq_${campo.id}" class="inp" rows="3" style="font-size:var(--text-sm);resize:vertical" placeholder="${campo.placeholder || ''}">${v}</textarea>`;
+    return `<textarea id="iaq_${campo.id}" class="inp d-textarea" rows="3" style="font-size:var(--text-sm);resize:vertical" placeholder="${campo.placeholder || ''}">${v}</textarea>`;
   }
   if (campo.tipo === 'radio') {
     return `<div style="display:flex;flex-wrap:wrap;gap:6px">
       ${(campo.opcoes || []).map(op => `
-        <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);background:var(--surface);user-select:none"
+        <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:var(--text-xs);background:var(--surface);user-select:none"
           onclick="document.querySelectorAll('[name=iaq_${campo.id}]').forEach(r=>{r.closest('label').style.borderColor='var(--border)';r.closest('label').style.background='var(--surface)';r.closest('label').style.color='var(--text)'}); this.style.borderColor='var(--purple)'; this.style.background='var(--purple-xlight)'; this.style.color='var(--purple)';"
           style="${v === op ? 'border-color:var(--purple);background:var(--purple-xlight);color:var(--purple)' : 'color:var(--text)'}">
           <input type="radio" name="iaq_${campo.id}" value="${op}" ${v === op ? 'checked' : ''} style="display:none"> ${op}
@@ -2992,7 +3196,7 @@ function _atdIACampoHTML(campo, valor) {
     return `<div style="display:flex;flex-wrap:wrap;gap:6px">
       ${(campo.opcoes || []).map(op => {
         const checked = selecionados.includes(op);
-        return `<label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--r6);cursor:pointer;font-size:var(--text-xs);background:var(--surface);user-select:none;${checked ? 'border-color:var(--purple);background:var(--purple-xlight);color:var(--purple)' : 'color:var(--text)'}"
+        return `<label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:var(--text-xs);background:var(--surface);user-select:none;${checked ? 'border-color:var(--purple);background:var(--purple-xlight);color:var(--purple)' : 'color:var(--text)'}"
           onclick="this.querySelector('input').checked=!this.querySelector('input').checked; this.style.borderColor=this.querySelector('input').checked?'var(--purple)':'var(--border)'; this.style.background=this.querySelector('input').checked?'var(--purple-xlight)':'var(--surface)'; this.style.color=this.querySelector('input').checked?'var(--purple)':'var(--text)';">
           <input type="checkbox" name="iaq_${campo.id}" value="${op}" ${checked ? 'checked' : ''} style="display:none"> ${op}
         </label>`;
@@ -3028,7 +3232,7 @@ async function _atdIARender() {
 
   const sb = _atdGetSbClient();
   const { data, error } = await sb.from('atd_base_conhecimento').select('*').eq('ativo', true);
-  if (error) { el.innerHTML = `<div style="color:var(--danger)">Erro ao carregar.</div>`; return; }
+  if (error) { el.innerHTML = `<div style="color:var(--danger-fg)">Erro ao carregar.</div>`; return; }
 
   _atdIAPorSecao = {};
   (data || []).forEach(r => { _atdIAPorSecao[r.secao] = r; });
@@ -3038,7 +3242,7 @@ async function _atdIARender() {
   const pct = Math.round((preenchidas / total) * 100);
 
   el.innerHTML = `
-    <div class="card" style="padding:0;overflow:hidden">
+    <div class="card d-card ds-card" style="padding:0;overflow:hidden">
       <!-- barra de progresso no topo do card -->
       <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border);background:var(--bg-elevated)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -3047,8 +3251,8 @@ async function _atdIARender() {
             ${pct === 100 ? lc('check-circle', 11, 'var(--green)') + ' Completo' : `${pct}%`}
           </span>
         </div>
-        <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
-          <div style="height:100%;width:${pct}%;background:${pct === 100 ? 'var(--green)' : 'var(--purple)'};border-radius:3px;transition:width .4s"></div>
+        <div style="height:5px;background:var(--border);border-radius:var(--radius-xs);overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${pct === 100 ? 'var(--green)' : 'var(--purple)'};border-radius:var(--radius-xs);transition:width .4s"></div>
         </div>
       </div>
       <!-- grid: nav lateral + editor -->
@@ -3058,13 +3262,13 @@ async function _atdIARender() {
           ${_ATD_IA_SECOES.map((s, i) => {
             const ok = !!_atdIAPorSecao[s.id]?.conteudo;
             return `<button data-ia-sec="${s.id}" onclick="_atdIASecaoClick('${s.id}')"
-              style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:none;border-radius:var(--r6);cursor:pointer;text-align:left;width:100%;transition:background .15s;background:${i === 0 ? 'var(--purple-xlight)' : 'transparent'};color:${i === 0 ? 'var(--purple)' : 'var(--text)'}">
-              <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${ok ? 'var(--green)' : 'var(--border)'};border:1.5px solid ${ok ? 'var(--green)' : 'var(--fg-subtle)'}"></span>
+              style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:none;border-radius:var(--radius-sm);cursor:pointer;text-align:left;width:100%;transition:background .15s;background:${i === 0 ? 'var(--purple-xlight)' : 'transparent'};color:${i === 0 ? 'var(--purple)' : 'var(--text)'}">
+              <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${ok ? 'var(--green)' : 'var(--border)'};border:1px solid ${ok ? 'var(--green)' : 'var(--fg-subtle)'}"></span>
               <span style="font-size:var(--text-xs);font-weight:600">${s.label}</span>
             </button>`;
           }).join('')}
           <div style="margin-top:auto;padding:10px 8px 4px;border-top:1px solid var(--border);margin-left:-8px;margin-right:-8px;padding-left:16px">
-            <div style="font-size:10px;color:var(--fg-subtle);line-height:1.5;display:flex;gap:4px;align-items:flex-start">
+            <div style="font-size:var(--text-2xs);color:var(--fg-subtle);line-height:1.5;display:flex;gap:4px;align-items:flex-start">
               ${lc('zap', 9, 'var(--purple)')}
               <span>A IA usa todas as seções para responder no chat.</span>
             </div>
@@ -3102,7 +3306,7 @@ function _atdIASecaoRender(secId) {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         ${lc(secInfo.icon, 16, 'var(--purple)')}
         <span style="font-weight:800;font-size:var(--text-base);color:var(--text)">${secInfo.label}</span>
-        <span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:4px;${ok ? 'color:var(--green);background:var(--success-bg)' : 'color:var(--fg-subtle);background:var(--bg-subtle)'}">
+        <span style="font-size:var(--text-2xs);font-weight:700;padding:1px 7px;border-radius:var(--radius-xs);${ok ? 'color:var(--success-fg);background:var(--success-bg)' : 'color:var(--fg-subtle);background:var(--bg-subtle)'}">
           ${ok ? '✓ Configurado' : 'Não preenchido'}
         </span>
       </div>
@@ -3111,34 +3315,34 @@ function _atdIASecaoRender(secId) {
       <div style="display:flex;flex-direction:column;gap:14px">
         ${campos.map(campo => `
           <div>
-            <label style="display:block;font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${campo.label}</label>
+            <label style="display:block;font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);margin-bottom:6px">${campo.label}</label>
             ${_atdIACampoHTML(campo, dados[campo.id])}
           </div>`).join('')}
       </div>
 
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
-        <button class="btn btn-ghost btn-sm" onclick="_atdIATestarSecao('${secId}')">
+        <button class="btn d-btn btn-ghost d-btn-ghost btn-sm d-btn-sm" onclick="_atdIATestarSecao('${secId}')">
           ${lc('play', 12, 'var(--purple)')} Testar IA com esta seção
         </button>
-        <button class="btn btn-primary btn-sm" onclick="_atdIASalvar('${secId}','${reg?.id || ''}')">
+        <button class="btn d-btn btn-primary d-btn-primary btn-sm d-btn-sm" onclick="_atdIASalvar('${secId}','${reg?.id || ''}')">
           ${lc('save', 12, '#fff')} Salvar
         </button>
       </div>
 
-      <div id="atdIAPreviewBox" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:var(--r8);overflow:hidden">
+      <div id="atdIAPreviewBox" style="display:none;margin-top:16px;border:1px solid var(--border);border-radius:var(--radius-field);overflow:hidden">
         <div style="padding:8px 12px;background:var(--bg-subtle);border-bottom:1px solid var(--border);font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:flex;align-items:center;gap:6px">
           ${lc('zap', 11, 'var(--purple)')} Testar resposta da IA
         </div>
         <div style="padding:12px;display:flex;gap:8px;align-items:flex-end">
-          <input id="atdIAMsgTeste" class="inp" style="flex:1;font-size:var(--text-xs)" placeholder="Minha pizza chegou fria..."
+          <input id="atdIAMsgTeste" class="inp d-input" style="flex:1;font-size:var(--text-xs)" placeholder="Minha pizza chegou fria..."
             onkeydown="if(event.key==='Enter'){_atdIAChamarPreview('${secId}')}">
-          <button class="btn btn-primary btn-sm" onclick="_atdIAChamarPreview('${secId}')">
+          <button class="btn d-btn btn-primary d-btn-primary btn-sm d-btn-sm" onclick="_atdIAChamarPreview('${secId}')">
             ${lc('send', 12, '#fff')}
           </button>
         </div>
         <div id="atdIARespostaBox" style="display:none;padding:12px;border-top:1px solid var(--border)">
           <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-bottom:6px">Resposta gerada:</div>
-          <div id="atdIAResposta" style="font-size:var(--text-sm);color:var(--text);line-height:1.6;white-space:pre-wrap;background:var(--success-bg);padding:10px 12px;border-radius:var(--r6)"></div>
+          <div id="atdIAResposta" style="font-size:var(--text-sm);color:var(--text);line-height:1.6;white-space:pre-wrap;background:var(--success-bg);padding:10px 12px;border-radius:var(--radius-sm)"></div>
         </div>
       </div>
     </div>`;
@@ -3182,7 +3386,7 @@ async function _atdIAChamarPreview(secId) {
   try {
     const res = await fetch(`${VTP_SUPABASE_URL}/functions/v1/gerar-resposta-preview`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() },
       body: JSON.stringify({ mensagem: msg, secao: secId }),
     });
     const json = res.ok ? await res.json() : null;
@@ -3199,7 +3403,7 @@ async function _atdRespostasPadraoRender() {
 
   const sb = _atdGetSbClient();
   const { data, error } = await sb.from('atd_respostas_rapidas').select('*').order('atalho');
-  if (error) { el.innerHTML = `<div style="color:var(--danger)">Erro ao carregar respostas.</div>`; return; }
+  if (error) { el.innerHTML = `<div style="color:var(--danger-fg)">Erro ao carregar respostas.</div>`; return; }
 
   const lista = data || [];
 
@@ -3212,28 +3416,28 @@ async function _atdRespostasPadraoRender() {
   const linhasHtml = lista.map((r, idx) => `
     <div style="display:grid;grid-template-columns:140px 1fr auto;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border);${r.ativo ? '' : 'opacity:.45'}">
       <div>
-        <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:4px">/${r.atalho}</code>
-        ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<div style="font-size:9px;color:var(--fg-subtle);margin-top:3px;text-transform:uppercase;letter-spacing:.4px">${r.canal_tipo}</div>` : ''}
+        <code style="font-size:var(--text-xs);font-weight:700;color:var(--purple);background:var(--purple-xlight);padding:2px 8px;border-radius:var(--radius-xs)">/${r.atalho}</code>
+        ${r.canal_tipo && r.canal_tipo !== 'todos' ? `<div style="font-size:var(--text-2xs);color:var(--fg-subtle);margin-top:3px;">${r.canal_tipo}</div>` : ''}
       </div>
       <div style="min-width:0">
-        <div style="font-weight:600;font-size:var(--text-sm);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? '<span style="font-size:10px;color:var(--fg-subtle);font-weight:400;margin-left:6px">inativo</span>' : ''}</div>
+        <div style="font-weight:600;font-size:var(--text-sm);color:var(--text);margin-bottom:2px">${r.titulo}${!r.ativo ? '<span style="font-size:var(--text-2xs);color:var(--fg-subtle);font-weight:400;margin-left:6px">inativo</span>' : ''}</div>
         <div style="font-size:var(--text-xs);color:var(--fg-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.conteudo}</div>
       </div>
       <div style="display:flex;gap:2px;flex-shrink:0">
-        <button class="btn btn-ghost" style="padding:4px 6px" title="Editar" onclick="window._atdRREdt(${idx})">${lc('edit-2', 14, 'var(--fg-muted)')}</button>
-        <button class="btn btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="window._atdRRTog(${idx})">${lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)')}</button>
-        <button class="btn" style="padding:4px 6px;background:#fff;border:1px solid var(--border)" title="Excluir" onclick="window._atdRRDel(${idx})">${lc('trash-2', 14, 'var(--fg-muted)')}</button>
+        <button class="btn d-btn btn-ghost d-btn-ghost" style="padding:4px 6px" title="Editar" onclick="window._atdRREdt(${idx})">${lc('edit-2', 14, 'var(--fg-muted)')}</button>
+        <button class="btn d-btn btn-ghost d-btn-ghost" style="padding:4px 6px" title="${r.ativo ? 'Desativar' : 'Ativar'}" onclick="window._atdRRTog(${idx})">${lc(r.ativo ? 'eye-off' : 'eye', 14, 'var(--fg-muted)')}</button>
+        <button class="btn d-btn" style="padding:4px 6px;background:var(--bg-elevated);border:1px solid var(--border)" title="Excluir" onclick="window._atdRRDel(${idx})">${lc('trash-2', 14, 'var(--fg-muted)')}</button>
       </div>
     </div>`).join('');
 
   el.innerHTML = `
-    <div style="background:var(--card-bg);border:1.5px solid var(--card-border);border-radius:var(--radius-lg);overflow:hidden">
+    <div style="background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-box);overflow:hidden">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
         <div>
           <div style="font-size:var(--text-sm);font-weight:700;color:var(--text)">${lista.length} resposta${lista.length !== 1 ? 's' : ''} rápida${lista.length !== 1 ? 's' : ''}</div>
-          <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:3px">/atalho</code> no campo de mensagem</div>
+          <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:1px">Ativadas com <code style="background:var(--purple-xlight);color:var(--purple);padding:0 4px;border-radius:var(--radius-xs)">/atalho</code> no campo de mensagem</div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="window._atdRespostaAbrirModal(null)">${lc('plus', 14, '#fff')} Nova resposta</button>
+        <button class="btn d-btn btn-primary d-btn-primary btn-sm d-btn-sm" onclick="window._atdRespostaAbrirModal(null)">${lc('plus', 14, '#fff')} Nova resposta</button>
       </div>
       ${lista.length === 0 ? `
         <div style="text-align:center;padding:48px 20px;color:var(--fg-subtle)">
@@ -3258,34 +3462,34 @@ window._atdRespostaAbrirModal = function _atdRespostaAbrirModal(idx) {
     <div class="mbox" style="width:520px;padding:24px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
           <div style="font-weight:700;font-size:var(--text-base)">${lc('zap', 16, 'var(--purple)')} ${r ? 'Editar resposta' : 'Nova resposta rápida'}</div>
-          <button class="btn btn-ghost" onclick="document.getElementById('atdModalResposta').remove()">${lc('x', 16, 'var(--fg-muted)')}</button>
+          <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('atdModalResposta').remove()">${lc('x', 16, 'var(--fg-muted)')}</button>
         </div>
         <div class="field" style="margin-bottom:12px">
           <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">ATALHO <span style="color:var(--fg-subtle);font-weight:400">(sem a barra — ex: horario)</span></label>
           <div style="display:flex;align-items:center;gap:0">
-            <span style="padding:0 8px;height:36px;display:flex;align-items:center;background:var(--bg-subtle);border:1px solid var(--border);border-right:none;border-radius:var(--r6) 0 0 var(--r6);font-size:var(--text-sm);color:var(--fg-muted);font-weight:700">/</span>
-            <input id="rrAtalho" class="inp" style="border-radius:0 var(--r6) var(--r6) 0;flex:1" placeholder="horario" value="${r?.atalho || ''}" oninput="this.value=this.value.replace(/[^a-z0-9_]/g,'')">
+            <span style="padding:0 8px;height:36px;display:flex;align-items:center;background:var(--bg-subtle);border:1px solid var(--border);border-right:none;border-radius:var(--radius-sm) 0 0 var(--radius-sm);font-size:var(--text-sm);color:var(--fg-muted);font-weight:700">/</span>
+            <input id="rrAtalho" class="inp d-input" style="border-radius:0 var(--radius-sm) var(--radius-sm) 0;flex:1" placeholder="horario" value="${r?.atalho || ''}" oninput="this.value=this.value.replace(/[^a-z0-9_]/g,'')">
           </div>
         </div>
         <div class="field" style="margin-bottom:12px">
           <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TÍTULO <span style="color:var(--fg-subtle);font-weight:400">(aparece no dropdown)</span></label>
-          <input id="rrTitulo" class="inp" placeholder="Horário de funcionamento" value="${r?.titulo || ''}">
+          <input id="rrTitulo" class="inp d-input" placeholder="Horário de funcionamento" value="${r?.titulo || ''}">
         </div>
         <div class="field" style="margin-bottom:12px">
           <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">CONTEÚDO DA RESPOSTA</label>
-          <textarea id="rrConteudo" class="inp" rows="4" placeholder="Olá! Nosso horário de atendimento é...">${r?.conteudo || ''}</textarea>
+          <textarea id="rrConteudo" class="inp d-textarea" rows="4" placeholder="Olá! Nosso horário de atendimento é...">${r?.conteudo || ''}</textarea>
         </div>
         <div class="field" style="margin-bottom:20px">
           <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">CANAL</label>
-          <select id="rrCanal" class="inp">
+          <select id="rrCanal" class="inp d-select">
             <option value="todos" ${(!r?.canal_tipo || r.canal_tipo === 'todos') ? 'selected' : ''}>Todos os canais</option>
             <option value="whatsapp" ${r?.canal_tipo === 'whatsapp' ? 'selected' : ''}>WhatsApp</option>
             <option value="instagram" ${r?.canal_tipo === 'instagram' ? 'selected' : ''}>Instagram</option>
           </select>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button class="btn btn-ghost" onclick="document.getElementById('atdModalResposta').remove()">Cancelar</button>
-          <button class="btn btn-primary" onclick="_atdRespostaSalvar('${r?.id || ''}')">
+          <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('atdModalResposta').remove()">Cancelar</button>
+          <button class="btn d-btn btn-primary d-btn-primary" onclick="_atdRespostaSalvar('${r?.id || ''}')">
             ${lc('save', 14, '#fff')} Salvar
           </button>
         </div>
@@ -3375,6 +3579,7 @@ function _atdRenderConfiguracoes() {
     <div style="max-width:760px">
       <div style="display:flex;gap:6px;margin-bottom:20px;margin-top:4px">
         <button class="atd-canal-tab active" data-cfg="tags" onclick="_atdCfgAba('tags')">Tags</button>
+        <button class="atd-canal-tab" data-cfg="templates" onclick="_atdCfgAba('templates')">${lc('layout', 13, 'currentColor')} Templates</button>
         <button class="atd-canal-tab" data-cfg="geral" onclick="_atdCfgAba('geral')">Geral</button>
       </div>
       <div id="atdCfgConteudo"></div>
@@ -3387,9 +3592,133 @@ function _atdCfgAba(aba) {
   const el = document.getElementById('atdCfgConteudo');
   if (aba === 'tags') {
     el.innerHTML = `<div class="atd-skeleton-page">${lc('tag', 36, 'var(--fg-subtle)')}<h3>Tags</h3><p>Cadastro de tags e regras de auto-tag por IA ao encerrar conversas. Em construção.</p></div>`;
+  } else if (aba === 'templates') {
+    _atdCfgTemplatesRender(el);
   } else {
     el.innerHTML = `<div class="atd-skeleton-page">${lc('sliders', 36, 'var(--fg-subtle)')}<h3>Configurações Gerais</h3><p>Horário de atendimento, tempo de inatividade para encerramento automático e nome do assistente. Em construção.</p></div>`;
   }
+}
+
+function _atdCfgTemplatesRender(container) {
+  const templates = _atdGetTemplates();
+  container.innerHTML = `
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="font-size:var(--text-md);font-weight:700;color:var(--text)">Templates HSM</div>
+          <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:2px">Mensagens para iniciar conversas no WhatsApp. O nome do template deve ser exatamente o aprovado no Meta Business Manager.</div>
+        </div>
+        <button class="btn d-btn btn-primary d-btn-primary btn-sm d-btn-sm" onclick="_atdTemplateNovoModal()">
+          ${lc('plus', 14, '#fff')} Novo template
+        </button>
+      </div>
+      ${templates.length === 0 ? `
+        <div style="border:1.5px dashed var(--border);border-radius:var(--radius-card);padding:32px;text-align:center;color:var(--fg-subtle)">
+          ${lc('layout', 32, 'var(--fg-subtle)')}<br>
+          <div style="margin-top:10px;font-size:var(--text-sm)">Nenhum template cadastrado ainda.</div>
+          <div style="font-size:var(--text-xs);margin-top:6px">Cadastre os templates aprovados no Meta Business Manager para poder enviar mensagens proativas.</div>
+        </div>
+      ` : templates.map((t, i) => `
+        <div class="card" style="margin-bottom:10px;padding:14px 16px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:var(--text-sm);color:var(--text)">${t.titulo}</div>
+              <div style="font-size:var(--text-xs);color:var(--fg-muted);margin-top:2px">Nome no Meta: <code style="background:var(--surface2);padding:1px 5px;border-radius:3px">${t.nome}</code> · Idioma: ${t.idioma || 'pt_BR'}</div>
+              ${t.corpo_preview ? `<div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:6px;white-space:pre-wrap;max-height:60px;overflow:hidden">${t.corpo_preview}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="_atdTemplateNovoModal(${i})" title="Editar">${lc('edit-2', 13, 'var(--muted)')}</button>
+              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="_atdTemplateExcluir(${i})" title="Excluir">${lc('trash-2', 13, 'var(--red)')}</button>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function _atdTemplateNovoModal(editIdx) {
+  const templates = _atdGetTemplates();
+  const t = editIdx !== undefined ? templates[editIdx] : null;
+
+  document.getElementById('popupAtdTemplateForm')?.remove();
+  const popup = document.createElement('div');
+  popup.id = 'popupAtdTemplateForm';
+  popup.className = 'overlay open';
+  popup.style.zIndex = '950';
+  popup.innerHTML = `
+    <div class="modal" style="max-width:480px">
+      <div class="mbox" style="padding:20px 24px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div style="font-size:var(--text-md);font-weight:700;color:var(--text)">${t ? 'Editar template' : 'Novo template'}</div>
+          <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="document.getElementById('popupAtdTemplateForm').remove()">${lc('x', 16, 'var(--muted)')}</button>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;margin-bottom:16px;font-size:var(--text-xs);color:var(--fg-muted)">
+          ${lc('info', 12, 'var(--purple)')} O <strong>Nome no Meta</strong> deve ser exatamente o nome do template aprovado no Meta Business Manager (ex: <code>vtp_entrega_endereco</code>).
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TÍTULO <span style="color:var(--fg-subtle);font-weight:400">(interno, aparece no seletor)</span></label>
+          <input id="tplTitulo" class="inp d-input" placeholder="Confirmar endereço de entrega" value="${t?.titulo || ''}">
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">NOME NO META <span style="color:var(--red)">*</span></label>
+          <input id="tplNome" class="inp d-input" placeholder="vtp_confirmar_endereco" value="${t?.nome || ''}">
+        </div>
+        <div class="field" style="margin-bottom:12px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">IDIOMA</label>
+          <select id="tplIdioma" class="inp d-select">
+            <option value="pt_BR" ${(t?.idioma||'pt_BR') === 'pt_BR' ? 'selected' : ''}>pt_BR (Português Brasil)</option>
+            <option value="en_US" ${t?.idioma === 'en_US' ? 'selected' : ''}>en_US (English)</option>
+            <option value="es" ${t?.idioma === 'es' ? 'selected' : ''}>es (Español)</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:20px">
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">PREVIEW DO CORPO <span style="color:var(--fg-subtle);font-weight:400">(para visualização — use {{1}}, {{2}}...)</span></label>
+          <textarea id="tplPreview" class="inp d-textarea" rows="4" placeholder="Olá {{1}}, aqui é a Vai Ter Pizza! Estamos com dificuldade para entregar seu pedido {{2}}. Pode confirmar seu endereço? 🍕">${t?.corpo_preview || ''}</textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('popupAtdTemplateForm').remove()">Cancelar</button>
+          <button class="btn d-btn btn-primary d-btn-primary" onclick="_atdTemplateSalvar(${editIdx !== undefined ? editIdx : 'undefined'})">
+            ${lc('save', 14, '#fff')} Salvar
+          </button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+}
+
+function _atdTemplateSalvar(editIdx) {
+  const titulo   = document.getElementById('tplTitulo')?.value.trim();
+  const nome     = document.getElementById('tplNome')?.value.trim();
+  const idioma   = document.getElementById('tplIdioma')?.value || 'pt_BR';
+  const preview  = document.getElementById('tplPreview')?.value.trim();
+
+  if (!nome) { toast('Nome no Meta é obrigatório', 'err'); return; }
+
+  const templates = _atdGetTemplates();
+  const entry = { titulo: titulo || nome, nome, idioma, corpo_preview: preview };
+
+  if (editIdx !== undefined && !isNaN(editIdx)) {
+    templates[editIdx] = entry;
+  } else {
+    templates.push(entry);
+  }
+
+  _atdSalvarTemplates(templates);
+  document.getElementById('popupAtdTemplateForm')?.remove();
+  toast(editIdx !== undefined ? 'Template atualizado!' : 'Template criado!', 'ok');
+
+  const el = document.getElementById('atdCfgConteudo');
+  if (el) _atdCfgTemplatesRender(el);
+}
+
+function _atdTemplateExcluir(idx) {
+  if (!confirm('Excluir este template?')) return;
+  const templates = _atdGetTemplates();
+  templates.splice(idx, 1);
+  _atdSalvarTemplates(templates);
+  toast('Template excluído', 'ok');
+  const el = document.getElementById('atdCfgConteudo');
+  if (el) _atdCfgTemplatesRender(el);
 }
 
 // Formata dígitos de WhatsApp (ex: "558287949894") em "+55 (82) 8794-9894".
@@ -3412,7 +3741,7 @@ async function _atdBuscarStatusWhatsAppLive() {
     ? VTP_SUPABASE_URL.replace('supabase.co', 'supabase.co/functions/v1')
     : '';
   try {
-    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
+    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: vtpBearer() } });
     if (!r.ok) return { state: 'erro' };
     return await r.json();
   } catch {
@@ -3440,49 +3769,49 @@ async function _atdRenderIntegracoes() {
     let statusHtml, acaoHtml, detalheHtml = '';
 
     if (!def.disponivel) {
-      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Em breve</span>`;
-      acaoHtml = `<button class="btn btn-ghost" disabled style="opacity:.5;cursor:not-allowed;font-size:var(--text-xs)">Indisponível</button>`;
+      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:var(--radius-selector)">Em breve</span>`;
+      acaoHtml = `<button class="btn d-btn btn-ghost d-btn-ghost" disabled style="opacity:.5;cursor:not-allowed;font-size:var(--text-xs)">Indisponível</button>`;
     } else if (def.tipo === 'whatsapp' && registro?.ativo && !conectado) {
       // Já foi conectado alguma vez, mas a instância caiu agora.
       const motivo = wppLive.state === 'connecting' ? 'Conectando…' : wppLive.state === 'erro' ? 'Erro ao checar status' : 'Desconectado';
-      const cor = wppLive.state === 'connecting' ? 'var(--warning-fg)' : 'var(--danger)';
+      const cor = wppLive.state === 'connecting' ? 'var(--warning-fg)' : 'var(--danger-fg)';
       const bg  = wppLive.state === 'connecting' ? 'var(--warning-bg)' : 'var(--danger-bg)';
-      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:${cor};background:${bg};padding:2px 8px;border-radius:999px">${lc('alert-triangle', 10, 'currentColor')} ${motivo}</span>`;
+      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:${cor};background:${bg};padding:2px 8px;border-radius:var(--radius-selector)">${lc('alert-triangle', 10, 'currentColor')} ${motivo}</span>`;
       if (wppLive.numero) {
         detalheHtml = `<div style="font-size:var(--text-2xs);color:var(--fg-subtle)">Último número: ${_atdFormatarTelefoneBR(wppLive.numero)}${wppLive.nome_perfil ? ` · ${wppLive.nome_perfil}` : ''}</div>`;
       }
-      acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Reconectar</button>`;
+      acaoHtml = `<button class="btn d-btn btn-primary d-btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Reconectar</button>`;
     } else if (conectado) {
-      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--green);background:var(--success-bg);padding:2px 8px;border-radius:999px">${lc('check', 10, 'currentColor')} Conectado</span>`;
+      statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--success-fg);background:var(--success-bg);padding:2px 8px;border-radius:var(--radius-selector)">${lc('check', 10, 'currentColor')} Conectado</span>`;
       if (def.tipo === 'whatsapp') {
         if (wppLive.numero) {
           detalheHtml = `<div style="font-size:var(--text-2xs);color:var(--fg-subtle)">${_atdFormatarTelefoneBR(wppLive.numero)}${wppLive.nome_perfil ? ` · ${wppLive.nome_perfil}` : ''}</div>`;
         }
-        acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">Reconectar / Trocar número</button>`;
+        acaoHtml = `<button class="btn d-btn btn-ghost d-btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">Reconectar / Trocar número</button>`;
       } else {
-        acaoHtml = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirDetalheCanal('${def.tipo}')">Gerenciar</button>`;
+        acaoHtml = `<button class="btn d-btn btn-ghost d-btn-ghost" style="font-size:var(--text-xs)" onclick="_atdAbrirDetalheCanal('${def.tipo}')">Gerenciar</button>`;
       }
     } else {
       // iFood: sempre disponível, status vem da configuração de credenciais (não de atd_canais)
       if (def.tipo === 'ifood') {
-        statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:#EA1D2C;background:#EA1D2C18;padding:2px 8px;border-radius:999px">Via API iFood</span>`;
-        acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs);background:#EA1D2C;border-color:#EA1D2C" onclick="_atdIrParaAvaliacoesIfood()">${lc('star', 13, '#fff')} Ver Avaliações</button>`;
+        statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:#EA1D2C;background:#EA1D2C18;padding:2px 8px;border-radius:var(--radius-selector)">Via API iFood</span>`;
+        acaoHtml = `<button class="btn d-btn btn-primary d-btn-primary" style="font-size:var(--text-xs);background:#EA1D2C;border-color:#EA1D2C" onclick="_atdIrParaAvaliacoesIfood()">${lc('star', 13, '#fff')} Ver Avaliações</button>`;
       } else {
-        statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:999px">Não conectado</span>`;
+        statusHtml = `<span style="font-size:var(--text-2xs);font-weight:700;color:var(--fg-subtle);background:var(--bg-subtle);padding:2px 8px;border-radius:var(--radius-selector)">Não conectado</span>`;
         if (def.tipo === 'whatsapp') {
-          acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Conectar via QR Code</button>`;
+          acaoHtml = `<button class="btn d-btn btn-primary d-btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirQRWhatsApp()">${lc('smartphone', 13, '#fff')} Conectar via QR Code</button>`;
         } else if (def.tipo === 'instagram') {
-          acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirGuiaInstagram()">${lc('link', 13, '#fff')} Conectar</button>`;
+          acaoHtml = `<button class="btn d-btn btn-primary d-btn-primary" style="font-size:var(--text-xs)" onclick="_atdAbrirGuiaInstagram()">${lc('link', 13, '#fff')} Conectar</button>`;
         } else {
-          acaoHtml = `<button class="btn btn-primary" style="font-size:var(--text-xs)" disabled>Conectar</button>`;
+          acaoHtml = `<button class="btn d-btn btn-primary d-btn-primary" style="font-size:var(--text-xs)" disabled>Conectar</button>`;
         }
       }
     }
 
     return `
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r12);padding:16px;display:flex;flex-direction:column;gap:10px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-box);padding:16px;display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;gap:10px">
-          <span style="width:38px;height:38px;border-radius:var(--r8);background:${def.cor}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <span style="width:38px;height:38px;border-radius:var(--radius-field);background:${def.cor}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
             ${_atdIconeCanal(def.tipo, 22)}
           </span>
           <div style="flex:1">
@@ -3520,12 +3849,12 @@ async function _atdAbrirQRWhatsApp() {
   modal.id = 'popupAtdQRWhatsApp';
   modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:420px;padding:28px;text-align:center">
+    <div style="background:var(--bg-elevated);border-radius:var(--radius-box);width:100%;max-width:420px;padding:28px;text-align:center">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
         <div style="font-weight:800;font-size:var(--text-lg);color:var(--text);display:flex;align-items:center;gap:8px">
           ${_atdIconeCanal('whatsapp', 20)} Conectar WhatsApp
         </div>
-        <button class="btn btn-ghost" onclick="_atdFecharQRWhatsApp()">${lc('x', 16, 'currentColor')}</button>
+        <button class="btn d-btn btn-ghost d-btn-ghost" onclick="_atdFecharQRWhatsApp()">${lc('x', 16, 'currentColor')}</button>
       </div>
       <div id="atdQRStatus" style="color:var(--fg-muted);font-size:var(--text-sm);margin-bottom:16px">Verificando conexão...</div>
       <div id="atdQRImagem" style="min-height:200px;display:flex;align-items:center;justify-content:center"></div>
@@ -3550,24 +3879,24 @@ async function _atdQRVerificarStatus() {
   if (!statusDiv) return;
 
   try {
-    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
+    const r = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: vtpBearer() } });
     const { state } = await r.json();
 
     if (state === 'open') {
-      statusDiv.innerHTML = `<span style="color:var(--green);font-weight:700">${lc('check-circle', 16, 'var(--green)')} WhatsApp conectado!</span>`;
+      statusDiv.innerHTML = `<span style="color:var(--success-fg);font-weight:700">${lc('check-circle', 16, 'var(--green)')} WhatsApp conectado!</span>`;
       imagemDiv.innerHTML = `<div style="font-size:48px">✅</div>`;
       acoesDiv.innerHTML = `
-        <button class="btn btn-ghost" style="color:var(--danger);font-size:var(--text-xs)" onclick="_atdQRDesconectar()">
+        <button class="btn d-btn btn-ghost d-btn-ghost" style="color:var(--danger-fg);font-size:var(--text-xs)" onclick="_atdQRDesconectar()">
           ${lc('log-out', 13, 'currentColor')} Desconectar / Trocar número
         </button>
-        <button class="btn btn-primary" onclick="_atdFecharQRWhatsApp()">Fechar</button>`;
+        <button class="btn d-btn btn-primary d-btn-primary" onclick="_atdFecharQRWhatsApp()">Fechar</button>`;
       clearInterval(window._atdQRPollInterval);
     } else {
       statusDiv.textContent = 'Escaneie o QR Code com o WhatsApp do número que deseja conectar:';
       await _atdQRCarregar();
       clearInterval(window._atdQRPollInterval);
       window._atdQRPollInterval = setInterval(async () => {
-        const r2 = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
+        const r2 = await fetch(`${BASE}/wpp-connect?action=status`, { headers: { Authorization: vtpBearer() } });
         const { state: s2 } = await r2.json();
         if (s2 === 'open') {
           clearInterval(window._atdQRPollInterval);
@@ -3591,16 +3920,16 @@ async function _atdQRCarregar() {
 
   imagemDiv.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm)">Gerando QR Code...</div>`;
   try {
-    const r = await fetch(`${BASE}/wpp-connect?action=qr`, { headers: { Authorization: `Bearer ${VTP_SUPABASE_KEY}` } });
+    const r = await fetch(`${BASE}/wpp-connect?action=qr`, { headers: { Authorization: vtpBearer() } });
     const { base64 } = await r.json();
     if (base64) {
-      imagemDiv.innerHTML = `<img src="${base64}" style="width:220px;height:220px;border-radius:var(--r8);border:4px solid var(--border)" alt="QR Code WhatsApp">`;
-      acoesDiv.innerHTML = `<button class="btn btn-ghost" style="font-size:var(--text-xs)" onclick="_atdQRCarregar()">${lc('refresh-cw', 13, 'currentColor')} Atualizar QR</button>`;
+      imagemDiv.innerHTML = `<img src="${base64}" style="width:220px;height:220px;border-radius:var(--radius-field);border:4px solid var(--border)" alt="QR Code WhatsApp">`;
+      acoesDiv.innerHTML = `<button class="btn d-btn btn-ghost d-btn-ghost" style="font-size:var(--text-xs)" onclick="_atdQRCarregar()">${lc('refresh-cw', 13, 'currentColor')} Atualizar QR</button>`;
     } else {
       imagemDiv.innerHTML = `<div style="color:var(--fg-subtle);font-size:var(--text-sm)">Não foi possível gerar o QR Code. A instância pode já estar conectada.</div>`;
     }
   } catch {
-    imagemDiv.innerHTML = `<div style="color:var(--danger);font-size:var(--text-sm)">Erro ao gerar QR Code.</div>`;
+    imagemDiv.innerHTML = `<div style="color:var(--danger-fg);font-size:var(--text-sm)">Erro ao gerar QR Code.</div>`;
   }
 }
 
@@ -3620,32 +3949,32 @@ async function _atdEncaminharLocalizacao(lat, lng) {
   modal.id = 'popupEncaminharLoc';
   modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--bg-elevated);border-radius:var(--r16);width:100%;max-width:400px;padding:24px">
+    <div style="background:var(--bg-elevated);border-radius:var(--radius-box);width:100%;max-width:400px;padding:24px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div style="font-weight:800;font-size:var(--text-base);display:flex;align-items:center;gap:8px">
           ${lc('send', 16, 'var(--purple)')} Encaminhar localização
         </div>
-        <button class="btn btn-ghost" onclick="document.getElementById('popupEncaminharLoc').remove()">${lc('x',15,'currentColor')}</button>
+        <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('popupEncaminharLoc').remove()">${lc('x',15,'currentColor')}</button>
       </div>
 
       <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-bottom:10px">Buscar na lista de contatos:</div>
-      <input id="encLocBusca" class="inp" placeholder="Nome ou número..." oninput="_atdEncLocFiltrar()" autocomplete="off" style="margin-bottom:8px">
-      <div id="encLocLista" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r8);margin-bottom:14px">
+      <input id="encLocBusca" class="inp d-input" placeholder="Nome ou número..." oninput="_atdEncLocFiltrar()" autocomplete="off" style="margin-bottom:8px">
+      <div id="encLocLista" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-field);margin-bottom:14px">
         ${(contatos || []).map(c => `
           <div class="enc-loc-item" data-tel="${c.telefone}" data-nome="${c.nome || c.telefone}"
                style="padding:9px 12px;cursor:pointer;font-size:var(--text-sm);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"
                onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''"
                onclick="_atdEncLocSelecionar('${c.telefone}','${(c.nome || c.telefone).replace(/'/g,"\\'")}')">
             <span>${c.nome || c.telefone}</span>
-            <span style="color:var(--fg-subtle);font-size:11px">${c.telefone}</span>
+            <span style="color:var(--fg-subtle);font-size:var(--text-2xs)">${c.telefone}</span>
           </div>`).join('') || '<div style="padding:12px;color:var(--fg-subtle);font-size:var(--text-sm);text-align:center">Nenhum contato com telefone cadastrado</div>'}
       </div>
 
       <div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-bottom:6px">Ou digite o número manualmente:</div>
-      <input id="encLocNumero" class="inp" placeholder="Ex: 82999999999" type="tel" style="margin-bottom:14px" oninput="document.getElementById('encLocNomeSelecionado').value=''">
+      <input id="encLocNumero" class="inp d-input" placeholder="Ex: 82999999999" type="tel" style="margin-bottom:14px" oninput="document.getElementById('encLocNomeSelecionado').value=''">
       <input id="encLocNomeSelecionado" type="hidden" value="">
 
-      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="_atdEncLocEnviar(${lat},${lng})">
+      <button class="btn d-btn btn-primary d-btn-primary" style="width:100%;justify-content:center" onclick="_atdEncLocEnviar(${lat},${lng})">
         ${lc('send', 13, '#fff')} Encaminhar
       </button>
       <div id="encLocStatus" style="margin-top:10px;font-size:var(--text-xs);text-align:center;color:var(--fg-subtle)"></div>
@@ -3679,19 +4008,19 @@ async function _atdEncLocEnviar(lat, lng) {
   try {
     const r = await fetch(`${BASE}/wpp-connect`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+      headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() },
       body: JSON.stringify({ action: 'forward-location', number: numero, latitude: lat, longitude: lng }),
     });
     const d = await r.json();
     if (r.ok && d.ok !== false) {
-      if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--green)">✓ Localização enviada!</span>`;
+      if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--success-fg)">✓ Localização enviada!</span>`;
       // Registra nota interna na conversa para o atendente saber que foi enviado
       const convId = _atdState.conversaAtivaId;
       if (convId) {
         const nomeLabel = document.getElementById('encLocNomeSelecionado')?.value?.trim() || numero;
         await fetch(`${BASE}/enviar-mensagem`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` },
+          headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() },
           body: JSON.stringify({
             conversa_id: convId,
             texto: `📍 Localização encaminhada para ${nomeLabel} (${numero})`,
@@ -3702,10 +4031,10 @@ async function _atdEncLocEnviar(lat, lng) {
       }
       setTimeout(() => document.getElementById('popupEncaminharLoc')?.remove(), 1500);
     } else {
-      if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--danger)">Erro: ${d.detalhe?.message || 'falha ao enviar'}</span>`;
+      if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--danger-fg)">Erro: ${d.detalhe?.message || 'falha ao enviar'}</span>`;
     }
   } catch (e) {
-    if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--danger)">Erro de conexão.</span>`;
+    if (statusDiv) statusDiv.innerHTML = `<span style="color:var(--danger-fg)">Erro de conexão.</span>`;
   }
 }
 
@@ -3715,7 +4044,7 @@ async function _atdQRDesconectar() {
     : '';
   const acoesDiv = document.getElementById('atdQRAcoes');
   if (acoesDiv) acoesDiv.innerHTML = `<div style="color:var(--fg-muted);font-size:var(--text-sm)">Desconectando...</div>`;
-  await fetch(`${BASE}/wpp-connect`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VTP_SUPABASE_KEY}` }, body: JSON.stringify({ action: 'disconnect' }) });
+  await fetch(`${BASE}/wpp-connect`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: vtpBearer() }, body: JSON.stringify({ action: 'disconnect' }) });
   await _atdQRVerificarStatus();
 }
 
@@ -3728,12 +4057,12 @@ function _atdAbrirGuiaInstagram() {
   modal.id = 'popupAtdGuiaInstagram';
   modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--bg-elevated);border-radius:var(--r16);max-width:560px;width:100%;max-height:85vh;overflow-y:auto;padding:24px">
+    <div style="background:var(--bg-elevated);border-radius:var(--radius-box);max-width:560px;width:100%;max-height:85vh;overflow-y:auto;padding:24px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div style="font-weight:800;font-size:var(--text-lg);color:var(--text);display:flex;align-items:center;gap:8px">
           ${lc('camera', 18, '#E1306C')} Conectar Instagram
         </div>
-        <button class="btn btn-ghost" onclick="document.getElementById('popupAtdGuiaInstagram').remove()">${lc('x', 16, 'currentColor')}</button>
+        <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('popupAtdGuiaInstagram').remove()">${lc('x', 16, 'currentColor')}</button>
       </div>
 
       <div style="font-size:var(--text-sm);color:var(--fg-muted);margin-bottom:16px">
@@ -3748,17 +4077,17 @@ function _atdAbrirGuiaInstagram() {
         <li>Anote o <strong>Page ID</strong> e o <strong>Instagram Business Account ID</strong> (aparecem no Graph API Explorer).</li>
       </ol>
 
-      <div style="background:var(--warning-bg);border:1px dashed var(--warning-border);border-radius:var(--r8);padding:10px 12px;font-size:var(--text-xs);color:var(--text);margin-bottom:18px">
+      <div style="background:var(--warning-bg);border:1px dashed var(--warning-border);border-radius:var(--radius-field);padding:10px 12px;font-size:var(--text-xs);color:var(--text);margin-bottom:18px">
         ${lc('shield', 13, 'currentColor')} O Access Token e o App Secret são credenciais sensíveis — nunca cole eles no chat. Quando tiver em mãos, eu te passo o comando exato pra salvar como secret no Supabase (igual fizemos com a chave da Anthropic).
       </div>
 
       <div style="font-weight:700;font-size:var(--text-sm);color:var(--text);margin-bottom:8px">Quando tiver os IDs (não-sensíveis), preencha aqui:</div>
       <label style="font-size:var(--text-xs);color:var(--fg-muted)">Page ID (Facebook)</label>
-      <input id="atdInstaPageId" class="inp" style="margin-bottom:10px" placeholder="Ex: 123456789012345" value="${pageIdAtual}">
+      <input id="atdInstaPageId" class="inp d-input" style="margin-bottom:10px" placeholder="Ex: 123456789012345" value="${pageIdAtual}">
       <label style="font-size:var(--text-xs);color:var(--fg-muted)">Instagram Business Account ID</label>
-      <input id="atdInstaIgId" class="inp" style="margin-bottom:16px" placeholder="Ex: 178414..." value="${igIdAtual}">
+      <input id="atdInstaIgId" class="inp d-input" style="margin-bottom:16px" placeholder="Ex: 178414..." value="${igIdAtual}">
 
-      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="_atdSalvarConfigInstagram()">
+      <button class="btn d-btn btn-primary d-btn-primary" style="width:100%;justify-content:center" onclick="_atdSalvarConfigInstagram()">
         ${lc('save', 14, '#fff')} Salvar e continuar
       </button>
     </div>
