@@ -43,9 +43,9 @@ async function _atdFetch(url, opts = {}) {
   const res = await fetch(url, opts);
   if (res.status === 401 || res.status === 403) {
     const json = await res.json().catch(() => ({}));
-    const msg = json.erro || json.error || json.message || 'Sessão expirada';
-    toast(msg + '. Faça login novamente.', 'err');
-    setTimeout(() => { if (typeof showLogin === 'function') showLogin(); }, 1500);
+    const msg = json.erro || json.error || json.message || 'Sem autorização';
+    console.error('[atd] 401/403 em', url, '| resposta:', json);
+    toast('Erro ao enviar: ' + msg, 'err');
     throw new Error(msg);
   }
   return res;
