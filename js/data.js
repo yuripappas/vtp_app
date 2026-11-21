@@ -26,7 +26,7 @@ let items = db._get('vtp_items', null) || [
 ];
 
 // Tipo × categoria: o tipo (insumo/processado) é o isProd; a categoria é
-// onde o item pesa no custo (Laticínios, Carnes e Frios…). Até out/2026 os
+// onde o item pesa no custo (Laticínios, Proteínas…). Até out/2026 os
 // processados ficavam todos na categoria "PREPARADOS" — esta migração dá a
 // eles a categoria real (a mesma que o usuário usa no Pinch) e, se o nome não
 // estiver no mapa, a categoria do ingrediente de maior peso na ficha.
@@ -35,9 +35,9 @@ let items = db._get('vtp_items', null) || [
   const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
   const VARIANTES = new Set(['PREPARADOS', 'PREPARADO', 'PRODUCAO INTERNA']);
   const MAPA = {
-    'FRANGO DESFIADO': 'CARNES E FRIOS', 'CARNE DE SOL DESFIADA': 'CARNES E FRIOS',
-    'COSTELA BOVINA DESFIADA': 'CARNES E FRIOS', 'COSTELINHA BOVINA DESFIADA': 'CARNES E FRIOS',
-    'PRESUNTO TRITURADO': 'CARNES E FRIOS', 'PONTA DE ALCATRA CUBO': 'CARNES E FRIOS', 'PONTA DE ALCATRA EM CUBO': 'CARNES E FRIOS',
+    'FRANGO DESFIADO': 'PROTEÍNAS', 'CARNE DE SOL DESFIADA': 'PROTEÍNAS',
+    'COSTELA BOVINA DESFIADA': 'PROTEÍNAS', 'COSTELINHA BOVINA DESFIADA': 'PROTEÍNAS',
+    'PRESUNTO TRITURADO': 'PROTEÍNAS', 'PONTA DE ALCATRA CUBO': 'PROTEÍNAS', 'PONTA DE ALCATRA EM CUBO': 'PROTEÍNAS',
     'MUSSARELA TRITURADA': 'LATICÍNIOS',
     'BRIGADEIRO DE CHOCOLATE': 'DOCES', 'BRIGADEIRO DE NINHO': 'DOCES', 'FAROFA DE BISCOITO': 'DOCES',
     'CREME DE MARSHMALLOW': 'DOCES', 'GELEIA DE MORANGO': 'DOCES',
@@ -444,8 +444,8 @@ let PERMS = {
     label: 'Gestor', icon: 'crown', color: '#6B21D4', bg: '#EDE9FE', mutavel: false,
     perms: [
       'Ver Dashboard','Omnichannel',
-      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
-      'Pré-produção','Desperdício','Previsão',
+      'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações','Estoque: Atender requisições',
+      'Pré-produção','Pré-produção: Criar ordens','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
@@ -461,7 +461,7 @@ let PERMS = {
     perms: [
       'Ver Dashboard','Omnichannel',
       'Estoque','Estoque: Contagem Diária','Estoque: Contagem Semanal','Estoque: Movimentações','Estoque: Editar movimentações',
-      'Pré-produção','Desperdício','Previsão',
+      'Pré-produção','Pré-produção: Criar ordens','Desperdício','Previsão',
       'Compras','Aprovação de compras',
       'Fornecedores','Relatórios',
       'Checklist Meu','Checklist',
@@ -534,6 +534,27 @@ let PERMS = {
     if (u.role === 'gerente' && Array.isArray(u.perms) && !u.perms.includes('Gestão')) { u.perms.push('Gestão'); mudouUsers = true; }
   });
   cfg.permGestaoMigrado = true;
+  db._set('vtp_config', cfg);
+  if (mudouPerfis) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
+  if (mudouUsers)  setTimeout(() => typeof saveU === 'function' && saveU(), 0);
+})();
+// Pré-produção / requisição (15/11/2026): os perfis salvos substituem o
+// padrão, então ganham uma vez as permissões novas — atender requisição só o
+// Gestor; criar ordens Gestor e Supervisor. Depois disso vale o que estiver em
+// Configurações › Usuários › Perfis.
+(function() {
+  const cfg = db._get('vtp_config', {}) || {};
+  if (cfg.permPreProdMigrado) return;
+  let mudouPerfis = false, mudouUsers = false;
+  const dar = (lista, perm) => { if (Array.isArray(lista) && !lista.includes(perm)) { lista.push(perm); return true; } return false; };
+  if (dar(PERMS.gerente?.perms, 'Estoque: Atender requisições')) mudouPerfis = true;
+  ['gerente', 'supervisor'].forEach(k => { if (PERMS[k]?.perms?.includes('Pré-produção') && dar(PERMS[k].perms, 'Pré-produção: Criar ordens')) mudouPerfis = true; });
+  (users || []).forEach(u => {
+    if (u.role !== 'gerente' || !Array.isArray(u.perms)) return;
+    if (dar(u.perms, 'Estoque: Atender requisições')) mudouUsers = true;
+    if (u.perms.includes('Pré-produção') && dar(u.perms, 'Pré-produção: Criar ordens')) mudouUsers = true;
+  });
+  cfg.permPreProdMigrado = true;
   db._set('vtp_config', cfg);
   if (mudouPerfis) setTimeout(() => typeof savePerms === 'function' && savePerms(), 0);
   if (mudouUsers)  setTimeout(() => typeof saveU === 'function' && saveU(), 0);

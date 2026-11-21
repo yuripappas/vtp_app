@@ -8,7 +8,9 @@
  *   Compra avulsa     — entrada automática da compra lançada direto na aba Compras
  *   Produção          — entrada de processado lançada pela produção
  *   Entrada manual    — entrada sem compra
- *   Transferência     — sai de um local e entra em outro (sem valor financeiro)
+ *   Transferência     — sai de um local e entra em outro (sem valor financeiro);
+ *                       a entrega de uma requisição é uma transferência (ref_tipo 'requisicao')
+ *   Consumo produção  — insumo usado numa ordem de produção (sai do local da cozinha)
  *   Baixa             — saída sem venda, com o tipo (cortesia, acidente…)
  *   Ajuste contagem   — diferença aplicada quando a contagem é aprovada
  *
@@ -29,6 +31,7 @@ const EST_MOV_TIPOS = {
   producao:        { label: 'Produção',        icon: 'chef-hat',          cor: 'var(--orange-fg)',  bg: 'var(--orange-bg)'  },
   entrada_manual:  { label: 'Entrada manual',  icon: 'plus-circle',       cor: 'var(--info-fg)',    bg: 'var(--info-bg)'    },
   transferencia:   { label: 'Transferência',   icon: 'repeat',            cor: 'var(--text2)',      bg: 'var(--surface2)'   },
+  consumo_producao:{ label: 'Consumo produção', icon: 'chef-hat',         cor: 'var(--orange-fg)',  bg: 'var(--orange-bg)'  },
   baixa:           { label: 'Saída',           icon: 'minus-circle',      cor: 'var(--danger-fg)',  bg: 'var(--danger-bg)'  },
   ajuste_contagem: { label: 'Ajuste contagem', icon: 'clipboard-check',   cor: 'var(--warning-fg)', bg: 'var(--warning-bg)' },
 };

@@ -35,6 +35,7 @@ const ETQ_CAT_ICONS = {
   'Queijos':            'droplets',
 
   // Proteínas
+  'Proteínas':          'flame',
   'Carnes e Frios':     'flame',
   'Carnes':             'flame',
   'Frios':              'flame',
@@ -110,8 +111,16 @@ let _etqTab    = 'imprimir';
 window._vtpGetTab_etiquetagem = () => _etqTab;
 window._vtpSetTab_etiquetagem = (v) => { _etqTab = v; };
 let _etqCadTab = 'metodos';
-let _etqWizardStep = 1;
+// O responsável é quem está logado (cada pessoa tem login): o assistente
+// começa na Categoria. Passo 1 (escolher responsável) não é mais usado.
+const ETQ_PRIMEIRO_PASSO = 2;
+let _etqWizardStep = ETQ_PRIMEIRO_PASSO;
 let _etqWizardState = {};
+function _etqRespLogado() {
+  const u = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  return u ? { id: 'u_' + u.id, nome: u.name, cargo: u.role } : null;
+}
+const _etqEstadoInicial = () => ({ responsavel: _etqRespLogado() });
 
 // Dados
 let _etqMetodos   = null;
@@ -162,8 +171,8 @@ const _saveEtqPontos    = () => db._set('vtp_etiq_pontos',    _etqPontos);
 function renderEtiquetagem() {
   _etqInit();
   _etqTab = 'imprimir';
-  _etqWizardStep = 1;
-  _etqWizardState = {};
+  _etqWizardStep = ETQ_PRIMEIRO_PASSO;
+  _etqWizardState = _etqEstadoInicial();
   _etqValidDrill  = null;
 
   const el = document.getElementById('etqContent');
@@ -222,8 +231,8 @@ function _etqSetTab(tab) {
     return;
   }
   _etqTab = tab;
-  _etqWizardStep  = 1;
-  _etqWizardState = {};
+  _etqWizardStep  = ETQ_PRIMEIRO_PASSO;
+  _etqWizardState = _etqEstadoInicial();
   _etqValidDrill  = null;
 
   document.querySelectorAll('#etqTabBar .tab-btn').forEach(b => b.classList.remove('active'));
@@ -302,20 +311,22 @@ function _etqBackfillLotePosicao() {
 
 function _etqRenderWizard(el) {
   const catLabel   = _etqWizardState.categoria || 'Produto';
-  const stepTitles = ['','Responsável','Categoria', catLabel, 'Conservação','Confirmar'];
+  const stepTitles = ['','','Categoria', catLabel, 'Conservação','Confirmar'];
   const step = _etqWizardStep;
+  const nPasso = step - ETQ_PRIMEIRO_PASSO + 1, totPassos = 5 - ETQ_PRIMEIRO_PASSO + 1;
+  if (!_etqWizardState.responsavel) _etqWizardState.responsavel = _etqRespLogado();
 
   el.innerHTML = `
     <div style="display:flex;flex-direction:column;min-height:calc(100vh - 112px)">
       ${step <= 5 ? `
         <div style="padding:16px 24px 0;flex-shrink:0">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            ${step > 1 ? `<button onclick="_etqWizBack()" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:flex;align-items:center;gap:4px;font-size:.75rem;font-weight:600">${lc('arrow-left',14,'currentColor')} Voltar</button>` : ''}
+            ${step > ETQ_PRIMEIRO_PASSO ? `<button onclick="_etqWizBack()" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:flex;align-items:center;gap:4px;font-size:.75rem;font-weight:600">${lc('arrow-left',14,'currentColor')} Voltar</button>` : ''}
             <div style="flex:1"></div>
-            <span style="font-size:.72rem;color:var(--muted);font-weight:600">${step} de 5</span>
+            <span style="font-size:.72rem;color:var(--muted);font-weight:600">${nPasso} de ${totPassos}</span>
           </div>
           <div style="height:4px;background:var(--surface2);border-radius:4px;overflow:hidden;margin-bottom:4px">
-            <div style="height:100%;width:${step*20}%;background:var(--brand-purple);border-radius:4px;transition:width .3s"></div>
+            <div style="height:100%;width:${nPasso / totPassos * 100}%;background:var(--brand-purple);border-radius:4px;transition:width .3s"></div>
           </div>
           <div style="font-size:1rem;font-weight:800;color:var(--text);padding:8px 0 4px">${stepTitles[step]}</div>
         </div>
@@ -337,7 +348,7 @@ function _etqRenderWizStep(el) {
 }
 
 function _etqWizBack() {
-  if (_etqWizardStep <= 1) return;
+  if (_etqWizardStep <= ETQ_PRIMEIRO_PASSO) return;
   _etqWizardStep--;
   _etqRenderWizard(document.getElementById('etqTabContent'));
 }
@@ -386,19 +397,21 @@ function _etqStep2(el) {
   const allItems = typeof items !== 'undefined' ? items : [];
   // Categorias exatamente como estão em item.cat — sem normalização, sem mapeamento
   const habilitadas = typeof db !== 'undefined' ? db._get('vtp_etiq_categorias', null) : null;
-  const todasCats = [...new Set(allItems.map(i => i.cat || 'Outros'))].filter(Boolean).sort();
+  const usadas = new Set(allItems.map(i => i.cat));
+  const todasCats = catLista().filter(c => usadas.has(c));
   const cats = habilitadas !== null ? todasCats.filter(c => habilitadas.includes(c)) : todasCats;
-  // Processados ficam na categoria real (ex.: Mussarela Triturada em
-  // Laticínios), mas a produção etiqueta quase só eles — atalho no topo.
-  if (allItems.some(i => i.isProd)) cats.unshift(ETQ_CAT_PROCESSADOS);
+  // "Processado" não é categoria: é um tipo de item. Cada um fica na categoria
+  // real (ex.: Mussarela Triturada em Laticínios) e, dentro dela, o filtro
+  // Processados × Insumos e o selo no card separam os dois.
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;max-width:700px">
       ${cats.map(cat => {
-        const count = _etqItensDaCat(allItems, cat).length;
-        const icon  = cat === ETQ_CAT_PROCESSADOS ? 'chef-hat' : _etqIconCat(cat);
+        const doCat = _etqItensDaCat(allItems, cat).filter(i => i.active !== false);
+        const count = doCat.length, nProc = doCat.filter(i => i.isProd).length;
+        const icon  = _etqIconCat(cat);
         return `
-          <button onclick="_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
+          <button onclick="_etqWizardState._tipo='';_etqWizardState.categoria='${cat.replace(/'/g,'\\\'')
           }';_etqWizNext()"
             class="etq-card"
             style="padding:18px 14px;border-radius:var(--r12);border:2px solid var(--border);background:var(--surface);
@@ -408,7 +421,7 @@ function _etqStep2(el) {
               ${lc(icon, 20, '#fff')}
             </div>
             <div style="font-size:.8rem;font-weight:700;color:var(--text);line-height:1.2">${cat}</div>
-            <div style="font-size:.66rem;color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}</div>
+            <div style="font-size:.66rem;color:var(--muted)">${count} ${count === 1 ? 'item' : 'itens'}${nProc ? ` · <b style="color:var(--brand-purple)">${nProc} processado${nProc > 1 ? 's' : ''}</b>` : ''}</div>
           </button>
         `;
       }).join('')}
@@ -422,16 +435,26 @@ function _etqStep2(el) {
 function _etqStep3(el) {
   const allItems  = typeof items !== 'undefined' ? items : [];
   const cat       = _etqWizardState.categoria;
-  const catItems  = _etqItensDaCat(allItems, cat);
+  // Processados primeiro; dentro da categoria dá pra separar Processados × Insumos
+  // (ex.: Laticínios tem Mussarela em Barra = insumo e Mussarela Triturada = processado)
+  const catItems  = _etqItensDaCat(allItems, cat).filter(i => i.active !== false)
+    .sort((a, b) => (b.isProd ? 1 : 0) - (a.isProd ? 1 : 0) || a.name.localeCompare(b.name));
+  const temOsDois = catItems.some(i => i.isProd) && catItems.some(i => !i.isProd);
+  const tipo      = temOsDois ? (_etqWizardState._tipo || '') : '';
   const busca     = _etqWizardState._buscaProd || '';
-  const filtrados = catItems.filter(i => i.name.toLowerCase().includes(busca.toLowerCase()));
+  const filtrados = catItems.filter(i => i.name.toLowerCase().includes(busca.toLowerCase()))
+    .filter(i => !tipo || (tipo === 'proc' ? i.isProd : !i.isProd));
   const selId     = _etqWizardState.item?.id;
+  const chipTipo  = (id, label, n) => `<button onclick="_etqWizardState._tipo='${id}';_etqRenderWizStep(document.getElementById('etqWizContent'))"
+    style="padding:7px 14px;border-radius:999px;border:1.5px solid ${tipo === id ? 'var(--brand-purple)' : 'var(--border)'};background:${tipo === id ? 'var(--brand-purple)' : 'var(--surface)'};
+    color:${tipo === id ? '#fff' : 'var(--text2)'};font-weight:700;font-size:.75rem;cursor:pointer;font-family:Inter,sans-serif">${label} <span style="opacity:.75">${n}</span></button>`;
 
   el.innerHTML = `
     <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <input class="inp" id="etqBuscaProd" placeholder="Buscar produto..." value="${busca}"
         oninput="_etqWizardState._buscaProd=this.value;_etqRenderWizStep(document.getElementById('etqWizContent'))"
         style="max-width:300px">
+      ${temOsDois ? `<div style="display:flex;gap:6px">${chipTipo('', 'Todos', catItems.length)}${chipTipo('proc', 'Processados', catItems.filter(i => i.isProd).length)}${chipTipo('ins', 'Insumos', catItems.filter(i => !i.isProd).length)}</div>` : ''}
       <span style="font-size:.72rem;color:var(--muted)">${filtrados.length} ${filtrados.length === 1 ? 'item' : 'itens'}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;max-width:700px">
@@ -444,6 +467,8 @@ function _etqStep3(el) {
             style="padding:14px;border-radius:var(--r10);border:2px solid ${isSel ? 'var(--brand-purple)' : 'var(--border)'};
               background:${isSel ? 'var(--purple-xlight)' : 'var(--surface)'};
               text-align:left;font-family:Inter,sans-serif">
+            <div style="margin-bottom:6px"><span style="display:inline-block;font-size:.6rem;font-weight:800;letter-spacing:.04em;padding:2px 7px;border-radius:999px;
+              ${item.isProd ? 'background:var(--brand-purple);color:#fff' : 'background:var(--surface2);color:var(--text2);border:1px solid var(--border)'}">${item.isProd ? 'PROCESSADO' : 'INSUMO'}</span></div>
             <div style="font-size:.82rem;font-weight:700;color:${isSel ? 'var(--brand-purple)' : 'var(--text)'};line-height:1.3;margin-bottom:4px">${item.name}</div>
             <div style="font-size:.66rem;color:var(--muted)">${item.cat || 'Outros'}</div>
             <div style="font-size:.64rem;color:var(--muted);margin-top:3px">${valids.length} conservação${valids.length !== 1 ? 'ões' : ''} conf.</div>

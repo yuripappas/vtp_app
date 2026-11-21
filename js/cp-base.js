@@ -2,12 +2,13 @@
  * VTP Compras — Vai Ter Pizza!
  * cp-base.js — Módulo de Compras (novo): abas no topo, dados e utilitários
  *
- * Abas: Compras (visão geral) · Lista de compra · Cotação · Recebimento
- * (o fluxo antigo de 6 etapas em compras.js não é mais alcançável pela tela)
+ * Abas: Compras (visão geral + Nova compra) · Cotação · Recebimento
  *
- * Fluxo: Lista de compra (aprovada) → Cotação (lotes) → Recebimento (1 pedido
- * por fornecedor) → conferido = Compra + entrada no estoque.
- * Compra avulsa / nota importada vai direto para Compras + estoque.
+ * Fluxo: Cotação (um pedido por fornecedor: rascunho → aprovação → aprovado →
+ * enviado) → Recebimento (conferência com a nota) → Compra + entrada no estoque.
+ * Compra avulsa (Nova compra) vai direto para Compras + estoque.
+ * Listas e lotes de cotação antigos (cp-listas.js / cp-cotacao.js) ficam só
+ * como histórico; algumas funções deles são reaproveitadas.
  *
  * Dados: tabelas cp_* no Supabase (migration 20261013120000). Fornecedores
  * continuam em vtp_suppliers. Entrada no estoque = est_movimentacoes
@@ -16,14 +17,13 @@
 
 const CP_ABAS = [
   { id: 'compras',     icon: 'shopping-bag',   label: 'Compras'        },
-  { id: 'listas',      icon: 'clipboard-list', label: 'Lista de compra' },
   { id: 'cotacao',     icon: 'tag',            label: 'Cotação' },
   { id: 'recebimento', icon: 'truck',          label: 'Recebimento' },
 ];
 
 let _cpAba = 'compras';
 window._vtpGetTab_compras = () => _cpAba;
-window._vtpSetTab_compras = v => { if (CP_ABAS.some(a => a.id === v)) _cpAba = v; };
+window._vtpSetTab_compras = v => { if (v === 'listas') v = 'cotacao'; if (CP_ABAS.some(a => a.id === v)) _cpAba = v; };
 
 function cpTabsHtml() {
   return `<div style="display:flex;gap:2px;border-bottom:1.5px solid var(--border);padding:0 24px;background:var(--bg);flex-wrap:wrap;align-items:flex-end">
@@ -57,8 +57,7 @@ function cpRenderAba() {
   }
   el.innerHTML = `<div style="padding:20px 24px" id="cpAbaBody"></div>`;
   if (aba.id === 'compras') cpRenderAbaCompras();
-  else if (aba.id === 'listas') cpRenderAbaListas();
-  else if (aba.id === 'cotacao') cpRenderAbaCotacao();
+  else if (aba.id === 'cotacao') cpRenderAbaPedidos();
   else if (aba.id === 'recebimento') cpRenderAbaRecebimento();
 }
 

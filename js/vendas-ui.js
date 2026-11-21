@@ -647,19 +647,25 @@ function _prFiltros() {
       ${canais.map(c => `<option value="${c}"${c===_vdCanal?' selected':''}>${c}</option>`).join('')}
     </select>
     <div style="margin-left:auto"></div>
+    <button class="btn btn-outline btn-xs" id="prBaixar" ${_prLinhas ? '' : 'disabled'} onclick="vendasBaixarCurvaABC()">${lc('download',12,'currentColor')} Baixar planilha</button>
     <button class="btn btn-outline btn-xs" onclick="_prReload()">${lc('refresh-cw',12,'currentColor')} Atualizar</button>
   </div>`;
 }
 
+// Linhas do período carregado (todos os canais) — base da planilha
+let _prLinhas = null;
+
 async function renderVendasProdutos() {
   const el = document.getElementById('vendasTabContent');
   if (!el) return;
+  _prLinhas = null;   // planilha só libera quando o período novo terminar de carregar
   el.innerHTML = _prFiltros() + `<div style="padding:40px;text-align:center;color:var(--muted)">${lc('refresh-cw',18,'currentColor')} Interpretando os pedidos...</div>`;
 
   const range = _perRange('produtos');
   let linhas;
   try { linhas = await vendasCarregarPeriodo(range.inicioISO, range.fimISO); }
-  catch (e) { el.innerHTML = _prFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+  catch (e) { _prLinhas = null; el.innerHTML = _prFiltros() + `<div style="padding:40px;text-align:center;color:var(--red)">Erro: ${e.message}</div>`; return; }
+  _prLinhas = linhas;
   if (_vdCanal) linhas = linhas.filter(l => l.canal === _vdCanal);
 
   const abc = vendasABCsabores(linhas);
@@ -1117,4 +1123,57 @@ function renderVendasPrecos() {
         </table>
       </div>
     </div>`;
+}
+
+
+// ── Planilha da Curva ABC ──────────────────────────────────────
+// Período e canal que estão na tela. Com "Todos os canais": bloco Geral +
+// um bloco por canal na MESMA linha do sabor (dá pra comparar lado a lado);
+// a ordem é a do Geral. Com um canal escolhido: só aquele canal.
+const _PR_CANAL_LABEL = { ifood: 'iFood', '99food': '99Food', site: 'Site', outro: 'Outros' };
+function vendasBaixarCurvaABC() {
+  if (!_prLinhas) return toast('Carregue o período antes de baixar', 'err');
+  if (typeof XLSX === 'undefined') return toast('Biblioteca de planilha não carregou', 'err');
+  const base = _vdCanal ? _prLinhas.filter(l => l.canal === _vdCanal) : _prLinhas;
+  const geral = vendasABCsabores(base);
+  if (!geral.itens.length) return toast('Sem vendas no período para exportar', 'err');
+  const blocos = [{ titulo: _vdCanal ? (_PR_CANAL_LABEL[_vdCanal] || _vdCanal) : 'Geral (todos os canais)', abc: geral }];
+  if (!_vdCanal) {
+    const canais = [...new Set(_prLinhas.map(l => l.canal || 'outro'))]
+      .map(c => ({ c, abc: vendasABCsabores(_prLinhas.filter(l => (l.canal || 'outro') === c)) }))
+      .filter(x => x.abc.total > 0).sort((a, b) => b.abc.total - a.abc.total);
+    canais.forEach(x => blocos.push({ titulo: _PR_CANAL_LABEL[x.c] || x.c, abc: x.abc }));
+  }
+  const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+  const COLS = ['ABC', 'Pizza grande', 'Pizza pequena', 'Quantidade', 'Receita (R$)', '% do volume'];
+  const porNome = blocos.map(b => new Map(b.abc.itens.map(x => [x.nome, x])));
+  const periodo = _perLabel('produtos');
+  const rg = _perRange('produtos'), dBr = iso => new Date(iso).toLocaleDateString('pt-BR');
+  const datas = rg?.inicioISO ? `${dBr(rg.inicioISO)} a ${dBr(rg.fimISO || new Date().toISOString())}` : '';
+  const aoa = [
+    [`Curva ABC de sabores · ${periodo}${datas && datas !== periodo ? ` (${datas})` : ''}${_vdCanal ? ' · canal ' + (_PR_CANAL_LABEL[_vdCanal] || _vdCanal) : ''} · receita de combos rateada por porção · gerado em ${new Date().toLocaleString('pt-BR')}`],
+    ['', ...blocos.flatMap(b => [b.titulo, ...Array(COLS.length - 1).fill('')])],
+    ['Sabor', ...blocos.flatMap(() => COLS)],
+  ];
+  for (const x of geral.itens) {
+    aoa.push([x.nome, ...porNome.flatMap(m => {
+      const y = m.get(x.nome);
+      return y ? [y.classe, y.grande, y.pequena, y.qtd, r2(y.receita), r2(y.pct)] : ['—', 0, 0, 0, 0, 0];
+    })]);
+  }
+  aoa.push(['TOTAL', ...blocos.flatMap(b => {
+    const it = b.abc.itens;
+    return ['', it.reduce((s, x) => s + x.grande, 0), it.reduce((s, x) => s + x.pequena, 0), b.abc.total, r2(it.reduce((s, x) => s + x.receita, 0)), 100];
+  })]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: blocos.length * COLS.length } },
+    ...blocos.map((_, i) => ({ s: { r: 1, c: 1 + i * COLS.length }, e: { r: 1, c: i * COLS.length + COLS.length } }))];
+  ws['!cols'] = [{ wch: 40 }, ...blocos.flatMap(() => [{ wch: 5 }, { wch: 12 }, { wch: 13 }, { wch: 11 }, { wch: 13 }, { wch: 11 }])];
+  ws['!freeze'] = { xSplit: 1, ySplit: 3 };
+  ws['!views'] = [{ state: 'frozen', xSplit: 1, ySplit: 3 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Curva ABC');
+  const slug = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  XLSX.writeFile(wb, `curva-abc-${slug(periodo)}${_vdCanal ? '-' + slug(_vdCanal) : ''}.xlsx`);
+  toast('Planilha baixada', 'ok');
 }

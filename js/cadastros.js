@@ -55,6 +55,13 @@ function renderCadastros() {
 // CADASTRO DE INSUMOS
 // ══════════════════════════════════════════════════════════════
 
+function _cadLimparFiltros() {
+  window._cadFilEmb = false; window._cadFilDiaria = false;
+  const c = document.getElementById('catCadFil'); if (c) c.value = '';
+  const b = document.getElementById('srchCadInsumos'); if (b) b.value = '';
+  renderCadInsumos();
+}
+
 function renderCadInsumos() {
   const q   = document.getElementById('srchCadInsumos')?.value?.toLowerCase() || '';
   const cat = document.getElementById('catCadFil')?.value || '';
@@ -83,7 +90,13 @@ function renderCadInsumos() {
 
   const el = document.getElementById('cadInsumosGrid');
   if (!filt.length) {
-    el.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("package",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum insumo cadastrado</div><div>Clique em "Novo Insumo" para começar</div></div>`;
+    // Filtro ativo sem resultado: diz quais filtros estão ligados e deixa limpar
+    // (antes os botões de filtro sumiam junto e parecia que não havia insumo)
+    const ativos = [cat && `categoria ${cat}`, q && `busca "${q}"`, window._cadFilEmb && 'só com embalagem', window._cadFilDiaria && 'só débito automático'].filter(Boolean);
+    el.innerHTML = ativos.length
+      ? `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("filter",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum insumo com estes filtros</div><div>${_estEsc(ativos.join(' + '))}</div>
+          <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="_cadLimparFiltros()">${lc('x',12,'currentColor')} Limpar filtros</button></div>`
+      : `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">${lc("package",14,"currentColor")}</div><div style="font-weight:700;margin-bottom:4px">Nenhum insumo cadastrado</div><div>Clique em "Novo Insumo" para começar</div></div>`;
     return;
   }
 
@@ -227,7 +240,8 @@ function openItemModal() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   document.getElementById('itemModalSub').innerHTML = '';
-  _cadAps = [];
+  _cadAps = []; _cadSoEmb = false;
+  _cadCatRender('');
   _cadSetUnit('kg', false);
   populateSupChecks([]);
   _estBoxRender('fEstoqueBox', null, false);
@@ -244,6 +258,7 @@ function openEditItem(id) {
   document.getElementById('itemModalTitle').textContent = `${item.name}`;
   document.getElementById('fName').value  = item.name;
   document.getElementById('fCat').value   = item.cat;
+  _cadCatRender(item.cat);
   document.getElementById('fUnit').value  = item.unit;
   document.getElementById('fMin').value   = item.min;
   document.getElementById('fIdeal').value = item.ideal;
@@ -254,6 +269,7 @@ function openEditItem(id) {
   document.getElementById('fB1').value = b[1] || '';
   document.getElementById('fB2').value = b[2] || '';
   _cadAps = estApresentacoes(item, false).map(a => ({ ...a }));
+  _cadSoEmb = !!item.soEmbalagem;
   _cadSetUnit(item.unit || 'kg', _cadItemTemHistorico(item));
   const deb = (estDebitoAutoMapa().get(item.id) || []).length;
   document.getElementById('itemModalSub').innerHTML = `<span class="badge b-gray">Insumo</span>${item.cat ? `<span class="badge b-gray">${item.cat}</span>` : ''}
@@ -451,6 +467,7 @@ function getSupCheckedIds() {
 function saveItem() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
+  if (!catEncontrar(document.getElementById('fCat').value)) { toast('Escolha a categoria (lista de Configurações › Categorias de Insumo)', 'err'); return; }
   const supIds    = getSupCheckedIds();
   const newBrands = [
     document.getElementById('fB0').value.trim(),
@@ -492,7 +509,7 @@ function _saveItemConfirmado(name, supIds) {
   const supIdExclusivo = getSupExclusivoId();
   const data = {
     name,
-    cat:        document.getElementById('fCat').value.trim() || 'Outros',
+    cat:        catEncontrar(document.getElementById('fCat').value) || document.getElementById('fCat').value.trim(),
     unit:       document.getElementById('fUnit').value,
     min:        parseFloat(document.getElementById('fMin').value)   || 0,
     ideal:      parseFloat(document.getElementById('fIdeal').value) || 0,
@@ -504,6 +521,7 @@ function _saveItemConfirmado(name, supIds) {
     unidCompra,
     qtdEmb,
     apresentacoes,
+    soEmbalagem: _cadSoEmb && !!padrao,
     brands: [
       document.getElementById('fB0').value.trim(),
       document.getElementById('fB1').value.trim(),
@@ -528,8 +546,10 @@ function _saveItemConfirmado(name, supIds) {
 }
 
 // ── Cadastro de insumo: unidade, apresentações, custo e estoque ──
-const _CAD_UNIDADES = [['kg', 'Quilo (kg)'], ['g', 'Grama (g)'], ['L', 'Litro (L)'], ['ml', 'Mililitro (ml)'], ['un', 'Unidade (un)'], ['cx', 'Caixa (cx)'], ['pct', 'Pacote (pct)'], ['fardo', 'Fardo']];
+// Só 3 unidades de controle; caixa, pacote, fardo… são apresentações de compra
+const _CAD_UNIDADES = [['kg', 'Quilo (kg)'], ['L', 'Litro (L)'], ['un', 'Unidade (un)']];
 let _cadAps = [];        // apresentações em edição no modal
+let _cadSoEmb = false;   // "só se compra fechado": compras e sugestão na apresentação padrão
 let _cadApEdit = null;   // id da apresentação aberta para editar
 
 // Unidade não muda depois que o item tem histórico (compras, estoque ou ficha técnica)
@@ -540,6 +560,13 @@ function _cadItemTemHistorico(item) {
   const usa = f => (f?.ingredientes || []).some(g => g.item_id === item.id);
   return [...(produtos || []), ...(produtosPizza || []), ...(opcoes || []), ...items].some(x => usa(x.fichaTecnica));
 }
+// Categoria: busca nas categorias cadastradas no sistema (Configurações)
+function _cadCatRender(valor) {
+  const box = document.getElementById('fCatBox'); if (!box) return;
+  document.getElementById('fCat').value = valor || '';
+  box.innerHTML = cpComboHtml('fCatCb', { tipo: 'categoria', valor: valor || null, placeholder: 'Selecionar categoria…', ao: "document.getElementById('fCat').value=%v" });
+}
+
 function _cadSetUnit(u, travada = null) {
   const el = document.getElementById('fUnit'); el.value = u;
   if (travada !== null) el.dataset.travada = travada ? '1' : '';
@@ -577,6 +604,9 @@ function _cadApsRender() {
       <thead><tr><th>Apresentação</th><th>Conteúdo</th><th class="r">Custo pelo estimado</th><th style="text-align:center">Padrão</th><th></th></tr></thead>
       <tbody>${_cadAps.map(linha).join('')}</tbody></table>`
     : `<div class="cad-box" style="color:var(--text2)">Nenhuma apresentação. O insumo é comprado só em ${u}.</div>`}
+    ${_cadAps.some(a => a.ativa !== false) ? `<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:var(--text-sm);cursor:pointer;text-transform:none;letter-spacing:0;color:var(--text);font-weight:500">
+      <input type="checkbox" ${_cadSoEmb ? 'checked' : ''} onchange="_cadSoEmb=this.checked" style="accent-color:var(--purple);margin-top:2px">
+      <span><strong>Só se compra fechado</strong> (não vende a granel em ${u})<br><span style="color:var(--text2);font-size:var(--text-xs)">Na cotação e na compra o item já vem na apresentação padrão ★ e o sugerido é arredondado para embalagens inteiras. Sem marcar, o padrão é comprar em ${u}.</span></span></label>` : ''}
     <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;align-items:end;margin-top:12px">
       <div class="field" style="margin:0"><label>Nova apresentação</label><input class="inp" id="apNovoNome" placeholder="ex: Pacote 5 kg, Caixa 50 kg, Fardo 12 un" onkeydown="if(event.key==='Enter')_cadApAdd()"></div>
       <div class="field" style="margin:0"><label>Quanto vem (${u})</label><input class="inp" id="apNovoQtd" type="text" inputmode="decimal" placeholder="ex: 5" style="text-align:right" onkeydown="if(event.key==='Enter')_cadApAdd()"></div>
@@ -1259,16 +1289,15 @@ function openEditPreparo(id) {
 
 // Mesmas categorias dos insumos — processado não tem categoria própria
 function _fpPopularCategorias() {
-  const dl = document.getElementById('fpCatDL');
-  if (!dl) return;
-  const cats = [...new Set([...(typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []), ...items.map(i => i.cat)].filter(Boolean))].sort();
-  dl.innerHTML = cats.map(c => `<option value="${c}">`).join('');
+  const box = document.getElementById('fpCatBox'); if (!box) return;
+  const v = document.getElementById('fpCat').value || null;
+  box.innerHTML = cpComboHtml('fpCatCb', { tipo: 'categoria', valor: v, placeholder: 'Selecionar categoria…', ao: "document.getElementById('fpCat').value=%v" });
 }
 
 function savePreparo() {
   const name = document.getElementById('fpName').value.trim();
   if (!name) { toast('Informe o nome', 'err'); return; }
-  if (!document.getElementById('fpCat').value.trim()) { toast('Informe a categoria', 'err'); return; }
+  if (!catEncontrar(document.getElementById('fpCat').value)) { toast('Escolha a categoria (lista de Configurações › Categorias de Insumo)', 'err'); return; }
   const rendimento_kg = parseFloat(document.getElementById('ftRendimento').value) || 0;
   const novaFT = { ingredientes: _ftRows.filter(r => r.item_id), rendimento_kg };
 
@@ -1291,14 +1320,9 @@ function savePreparo() {
 
 // Usa a grafia já cadastrada quando só muda maiúscula/acento (ex.: "laticinios" → "LATICÍNIOS")
 function _fpCategoria() {
+  // Só categorias da lista única (Configurações › Categorias de Insumo)
   const v = document.getElementById('fpCat').value.trim();
-  const n = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
-  const existente = [...(typeof CATEGORIAS_INSUMO !== 'undefined' ? CATEGORIAS_INSUMO : []), ...items.map(i => i.cat)].find(c => c && n(c) === n(v));
-  if (existente) return existente;
-  if (typeof CATEGORIAS_INSUMO !== 'undefined' && typeof saveCategoriasInsumo === 'function') {
-    CATEGORIAS_INSUMO.push(v); CATEGORIAS_INSUMO.sort(); saveCategoriasInsumo();
-  }
-  return v;
+  return catEncontrar(v) || v;
 }
 
 function _savePreparoConfirmado(name, fichaTecnica) {

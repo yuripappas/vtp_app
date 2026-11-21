@@ -380,7 +380,7 @@ function _empRemoveTipoDesp(idx) {
 function _empRenderCatInsumo() {
   document.getElementById('empCatInsumoList').innerHTML = `
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${
-      CATEGORIAS_INSUMO.map((c,i) => `
+      catLista().map((c,i) => `
         <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--surface2);border-radius:var(--r8);font-size:var(--text-sm);color:var(--text)">
           ${c}
           <button class="btn-ghost" style="padding:2px;color:var(--text2);line-height:1" onclick="_empRemoveCatInsumo(${i})" title="Remover">${lc('x',12,'var(--text2)')}</button>
@@ -399,28 +399,12 @@ function _empNovaCatInsumo() {
 }
 
 function _empAddCatInsumo() {
-  const val = document.getElementById('empCatInsumoNew').value.trim();
-  if (!val) { toast('Informe o nome da categoria','err'); return; }
-  if (CATEGORIAS_INSUMO.map(c=>c.toLowerCase()).includes(val.toLowerCase())) { toast('Categoria já existe','err'); return; }
-  CATEGORIAS_INSUMO.push(val);
-  saveCategoriasInsumo();
-  _empRenderCatInsumo();
-  toast('Categoria adicionada','ok');
+  try { catAdicionar(document.getElementById('empCatInsumoNew').value); _empRenderCatInsumo(); toast('Categoria adicionada','ok'); }
+  catch (e) { toast(e.message, 'err'); }
 }
 
 function _empRemoveCatInsumo(idx) {
-  const catLabel = CATEGORIAS_INSUMO[idx];
-  vtpConfirm({
-    title: `Remover categoria "${catLabel}"`,
-    message: 'Esta ação não pode ser desfeita.',
-    confirmLabel: 'Remover',
-    onConfirm: () => {
-      CATEGORIAS_INSUMO.splice(idx, 1);
-      saveCategoriasInsumo();
-      _empRenderCatInsumo();
-      toast('Categoria removida','ok');
-    }
-  });
+  catExcluirUI(catLista()[idx], _empRenderCatInsumo);
 }
 
 // ─── Tipos de Ausência ────────────────────────────────────────
