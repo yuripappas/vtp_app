@@ -2739,16 +2739,19 @@ async function _atdAbrirConversaDePedido(pedido) {
     .limit(1)
     .maybeSingle();
 
+  const pedidoId = pedido.id ? String(pedido.id) : null;
+
   let conversaId = conversaExistente?.id;
   if (conversaId) {
-    await sb.from('atd_conversas').update({ pedido_id: String(pedido.id), pedido_data: pedidoSnapshot }).eq('id', conversaId);
+    const upd = { pedido_data: pedidoSnapshot };
+    if (pedidoId) upd.pedido_id = pedidoId;
+    await sb.from('atd_conversas').update(upd).eq('id', conversaId);
   } else {
+    const novaRow = { contato_id: contato.id, canal_id: canal?.id ?? null, canal_tipo: 'whatsapp', status: 'aberta', pedido_data: pedidoSnapshot };
+    if (pedidoId) novaRow.pedido_id = pedidoId;
     const { data: novaConversa, error: convErr } = await sb
       .from('atd_conversas')
-      .insert({
-        contato_id: contato.id, canal_id: canal?.id ?? null, canal_tipo: 'whatsapp', status: 'aberta',
-        pedido_id: String(pedido.id), pedido_data: pedidoSnapshot,
-      })
+      .insert(novaRow)
       .select('id')
       .single();
     if (convErr || !novaConversa) { toast('Erro ao criar conversa', 'err'); return; }
