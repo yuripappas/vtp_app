@@ -7,14 +7,10 @@
  * pela Edge Function enviar-mensagem (ela fala com a Evolution API).
  */
 
+let _atdSbClient = null;
 function _atdGetSbClient() {
-  // Prefere o cliente Auth criado no login (window._vtpSbAuth),
-  // depois o cliente global da migração (vtpSb), por fim cria um próprio.
-  return window._vtpSbAuth
-    || (typeof vtpSb === 'function' ? vtpSb() : null)
-    || supabase.createClient(VTP_SUPABASE_URL, VTP_SUPABASE_KEY, {
-         auth: { persistSession: true, autoRefreshToken: true },
-       });
+  if (!_atdSbClient) _atdSbClient = vtpSb(); // cliente único (sessão do Auth)
+  return _atdSbClient;
 }
 
 // Garante sessão Supabase Auth ativa antes de chamar edge functions.
@@ -43,9 +39,9 @@ async function _atdFetch(url, opts = {}) {
   const res = await fetch(url, opts);
   if (res.status === 401 || res.status === 403) {
     const json = await res.json().catch(() => ({}));
-    const msg = json.erro || json.error || json.message || 'Sem autorização';
-    console.error('[atd] 401/403 em', url, '| resposta:', json);
-    toast('Erro ao enviar: ' + msg, 'err');
+    const msg = json.erro || json.error || json.message || 'Sessão expirada';
+    toast(msg + '. Faça login novamente.', 'err');
+    setTimeout(() => { if (typeof showLogin === 'function') showLogin(); }, 1500);
     throw new Error(msg);
   }
   return res;
@@ -2664,71 +2660,99 @@ async function _atdAbrirConversaDePedido(pedido) {
 
 // ── TEMPLATES HSM ────────────────────────────────────────────────
 
-function _atdGetTemplates() {
-  try { return JSON.parse(localStorage.getItem('vtp_atd_templates') || '[]'); } catch { return []; }
-}
-function _atdSalvarTemplates(list) {
-  localStorage.setItem('vtp_atd_templates', JSON.stringify(list));
+// Cache em memória para evitar múltiplas buscas na mesma sessão
+let _atdTemplatesCache = null;
+
+async function _atdGetTemplates() {
+  if (_atdTemplatesCache) return _atdTemplatesCache;
+  try {
+    const sb = _atdGetSbClient();
+    const { data, error } = await sb.from('atd_templates').select('*').eq('ativo', true).order('titulo');
+    if (error) throw error;
+    _atdTemplatesCache = data || [];
+    return _atdTemplatesCache;
+  } catch (e) {
+    console.warn('[atd] Erro ao carregar templates, usando localStorage:', e?.message);
+    try { return JSON.parse(localStorage.getItem('vtp_atd_templates') || '[]'); } catch { return []; }
+  }
 }
 
-function _atdAbrirModalTemplate(conversaId, pedido) {
-  const templates = _atdGetTemplates();
+async function _atdSalvarTemplate(template) {
+  _atdTemplatesCache = null; // invalida cache
+  const sb = _atdGetSbClient();
+  if (template.id) {
+    return sb.from('atd_templates').update({
+      titulo: template.titulo, nome: template.nome, idioma: template.idioma,
+      corpo_preview: template.corpo_preview, ativo: template.ativo ?? true,
+      atualizado_em: new Date().toISOString(),
+    }).eq('id', template.id);
+  }
+  return sb.from('atd_templates').insert({
+    titulo: template.titulo, nome: template.nome, idioma: template.idioma || 'pt_BR',
+    corpo_preview: template.corpo_preview,
+  });
+}
 
+async function _atdExcluirTemplate(id) {
+  _atdTemplatesCache = null;
+  return _atdGetSbClient().from('atd_templates').delete().eq('id', id);
+}
+
+async function _atdAbrirModalTemplate(conversaId, pedido) {
   document.getElementById('popupAtdTemplate')?.remove();
   const popup = document.createElement('div');
   popup.id = 'popupAtdTemplate';
   popup.className = 'overlay open';
   popup.style.zIndex = '950';
+  popup.innerHTML = `<div class="modal" style="max-width:440px"><div class="mbox" style="padding:20px 24px 24px"><div style="text-align:center;padding:20px;color:var(--fg-subtle)">${lc('loader', 18, 'var(--fg-subtle)')} Carregando templates...</div></div></div>`;
+  document.body.appendChild(popup);
+  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
 
+  const templates = await _atdGetTemplates();
   const templateOptions = templates.map((t, i) =>
     `<option value="${i}">${t.titulo}</option>`
   ).join('');
 
-  popup.innerHTML = `
-    <div class="modal" style="max-width:440px">
-      <div class="mbox" style="padding:20px 24px 24px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-md);font-weight:700;color:var(--text)">
-            ${lc('send', 16, 'var(--purple)')} Enviar mensagem ao cliente
-          </div>
-          <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="document.getElementById('popupAtdTemplate').remove()">${lc('x', 16, 'var(--muted)')}</button>
-        </div>
-        <div style="background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;margin-bottom:16px;font-size:var(--text-sm);color:var(--fg-muted)">
-          ${lc('info', 14, 'var(--purple)')} Para iniciar uma conversa no WhatsApp ou reativar uma conversa inativa há mais de 24h, é necessário usar um <strong>template aprovado pelo Meta</strong>.
-        </div>
-        ${templates.length === 0 ? `
-          <div style="text-align:center;padding:20px 0;color:var(--fg-subtle);font-size:var(--text-sm)">
-            Nenhum template cadastrado.<br>
-            <button class="btn d-btn btn-ghost d-btn-ghost btn-sm d-btn-sm" style="margin-top:10px" onclick="document.getElementById('popupAtdTemplate').remove();_atdSetPaginaAtiva('configuracoes');_atdRenderConfiguracoes()">
-              Cadastrar template
-            </button>
-          </div>
-        ` : `
-          <div class="field" style="margin-bottom:12px">
-            <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TEMPLATE</label>
-            <select id="atdTemplateSelect" class="inp d-select" onchange="_atdTemplateOnChange(this, ${JSON.stringify(JSON.stringify(pedido)).replace(/"/g,'&quot;')})">
-              <option value="">— Selecione —</option>
-              ${templateOptions}
-            </select>
-          </div>
-          <div id="atdTemplateParams" style="margin-bottom:16px"></div>
-          <div id="atdTemplatePreview" style="display:none;background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;font-size:var(--text-sm);color:var(--text);margin-bottom:16px;white-space:pre-wrap"></div>
-          <div style="display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('popupAtdTemplate').remove()">Pular</button>
-            <button id="atdTemplateBtnEnviar" class="btn d-btn btn-primary d-btn-primary" disabled onclick="_atdEnviarTemplate('${conversaId}')">
-              ${lc('send', 14, '#fff')} Enviar template
-            </button>
-          </div>
-        `}
+  const pedidoJson = JSON.stringify(JSON.stringify(pedido)).replace(/"/g, '&quot;');
+  popup.querySelector('.mbox').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-md);font-weight:700;color:var(--text)">
+        ${lc('send', 16, 'var(--purple)')} Enviar mensagem ao cliente
       </div>
-    </div>`;
-  document.body.appendChild(popup);
-  popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
+      <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="document.getElementById('popupAtdTemplate').remove()">${lc('x', 16, 'var(--muted)')}</button>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;margin-bottom:16px;font-size:var(--text-sm);color:var(--fg-muted)">
+      ${lc('info', 14, 'var(--purple)')} Para iniciar uma conversa no WhatsApp ou reativar uma conversa inativa há mais de 24h, é necessário usar um <strong>template aprovado pelo Meta</strong>.
+    </div>
+    ${templates.length === 0 ? `
+      <div style="text-align:center;padding:20px 0;color:var(--fg-subtle);font-size:var(--text-sm)">
+        Nenhum template cadastrado.<br>
+        <button class="btn d-btn btn-ghost d-btn-ghost btn-sm d-btn-sm" style="margin-top:10px" onclick="document.getElementById('popupAtdTemplate').remove();_atdSetPaginaAtiva('configuracoes');_atdRenderConfiguracoes()">
+          Cadastrar template
+        </button>
+      </div>
+    ` : `
+      <div class="field" style="margin-bottom:12px">
+        <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TEMPLATE</label>
+        <select id="atdTemplateSelect" class="inp d-select" onchange="_atdTemplateOnChange(this, ${pedidoJson})">
+          <option value="">— Selecione —</option>
+          ${templateOptions}
+        </select>
+      </div>
+      <div id="atdTemplateParams" style="margin-bottom:16px"></div>
+      <div id="atdTemplatePreview" style="display:none;background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;font-size:var(--text-sm);color:var(--text);margin-bottom:16px;white-space:pre-wrap"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('popupAtdTemplate').remove()">Pular</button>
+        <button id="atdTemplateBtnEnviar" class="btn d-btn btn-primary d-btn-primary" disabled onclick="_atdEnviarTemplate('${conversaId}')">
+          ${lc('send', 14, '#fff')} Enviar template
+        </button>
+      </div>
+    `}`;
 }
 
-function _atdTemplateOnChange(sel, pedidoJson) {
+async function _atdTemplateOnChange(sel, pedidoJson) {
   const pedido = typeof pedidoJson === 'string' ? JSON.parse(pedidoJson) : pedidoJson;
-  const templates = _atdGetTemplates();
+  const templates = await _atdGetTemplates();
   const idx = parseInt(sel.value);
   const paramsEl = document.getElementById('atdTemplateParams');
   const previewEl = document.getElementById('atdTemplatePreview');
@@ -2765,8 +2789,8 @@ function _atdTemplateSugerirParam(pos, sugestoes) {
   return sugestoes[ordem[pos - 1]] || '';
 }
 
-function _atdTemplateAtualizarPreview() {
-  const templates = _atdGetTemplates();
+async function _atdTemplateAtualizarPreview() {
+  const templates = await _atdGetTemplates();
   const sel = document.getElementById('atdTemplateSelect');
   const idx = parseInt(sel?.value);
   if (isNaN(idx) || !templates[idx]) return;
@@ -2783,7 +2807,7 @@ function _atdTemplateAtualizarPreview() {
 }
 
 async function _atdEnviarTemplate(conversaId) {
-  const templates = _atdGetTemplates();
+  const templates = await _atdGetTemplates();
   const sel = document.getElementById('atdTemplateSelect');
   const idx = parseInt(sel?.value);
   if (isNaN(idx) || !templates[idx]) return;
@@ -3603,8 +3627,9 @@ function _atdCfgAba(aba) {
   }
 }
 
-function _atdCfgTemplatesRender(container) {
-  const templates = _atdGetTemplates();
+async function _atdCfgTemplatesRender(container) {
+  container.innerHTML = `<div style="text-align:center;padding:32px;color:var(--fg-subtle)">${lc('loader', 18, 'var(--fg-subtle)')} Carregando...</div>`;
+  const templates = await _atdGetTemplates();
   container.innerHTML = `
     <div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -3622,7 +3647,7 @@ function _atdCfgTemplatesRender(container) {
           <div style="margin-top:10px;font-size:var(--text-sm)">Nenhum template cadastrado ainda.</div>
           <div style="font-size:var(--text-xs);margin-top:6px">Cadastre os templates aprovados no Meta Business Manager para poder enviar mensagens proativas.</div>
         </div>
-      ` : templates.map((t, i) => `
+      ` : templates.map(t => `
         <div class="card" style="margin-bottom:10px;padding:14px 16px">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
             <div style="flex:1;min-width:0">
@@ -3631,23 +3656,27 @@ function _atdCfgTemplatesRender(container) {
               ${t.corpo_preview ? `<div style="font-size:var(--text-xs);color:var(--fg-subtle);margin-top:6px;white-space:pre-wrap;max-height:60px;overflow:hidden">${t.corpo_preview}</div>` : ''}
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="_atdTemplateNovoModal(${i})" title="Editar">${lc('edit-2', 13, 'var(--muted)')}</button>
-              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="_atdTemplateExcluir(${i})" title="Excluir">${lc('trash-2', 13, 'var(--red)')}</button>
+              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="_atdTemplateNovoModal('${t.id}')" title="Editar">${lc('edit-2', 13, 'var(--muted)')}</button>
+              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="_atdTemplateExcluir('${t.id}')" title="Excluir">${lc('trash-2', 13, 'var(--red)')}</button>
             </div>
           </div>
         </div>`).join('')}
     </div>`;
 }
 
-function _atdTemplateNovoModal(editIdx) {
-  const templates = _atdGetTemplates();
-  const t = editIdx !== undefined ? templates[editIdx] : null;
-
+async function _atdTemplateNovoModal(editId) {
   document.getElementById('popupAtdTemplateForm')?.remove();
   const popup = document.createElement('div');
   popup.id = 'popupAtdTemplateForm';
   popup.className = 'overlay open';
   popup.style.zIndex = '950';
+
+  let t = null;
+  if (editId) {
+    const templates = await _atdGetTemplates();
+    t = templates.find(x => x.id === editId) || null;
+  }
+
   popup.innerHTML = `
     <div class="modal" style="max-width:480px">
       <div class="mbox" style="padding:20px 24px 24px">
@@ -3656,15 +3685,15 @@ function _atdTemplateNovoModal(editIdx) {
           <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="document.getElementById('popupAtdTemplateForm').remove()">${lc('x', 16, 'var(--muted)')}</button>
         </div>
         <div style="background:var(--surface2);border-radius:var(--radius-field);padding:10px 14px;margin-bottom:16px;font-size:var(--text-xs);color:var(--fg-muted)">
-          ${lc('info', 12, 'var(--purple)')} O <strong>Nome no Meta</strong> deve ser exatamente o nome do template aprovado no Meta Business Manager (ex: <code>vtp_entrega_endereco</code>).
+          ${lc('info', 12, 'var(--purple)')} O <strong>Nome no Meta</strong> deve ser exatamente o nome do template aprovado no Meta Business Manager (ex: <code>_vtp_atendimento_pedido</code>).
         </div>
         <div class="field" style="margin-bottom:12px">
           <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TÍTULO <span style="color:var(--fg-subtle);font-weight:400">(interno, aparece no seletor)</span></label>
-          <input id="tplTitulo" class="inp d-input" placeholder="Confirmar endereço de entrega" value="${t?.titulo || ''}">
+          <input id="tplTitulo" class="inp d-input" placeholder="Atendimento ao Pedido" value="${t?.titulo || ''}">
         </div>
         <div class="field" style="margin-bottom:12px">
           <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">NOME NO META <span style="color:var(--red)">*</span></label>
-          <input id="tplNome" class="inp d-input" placeholder="vtp_confirmar_endereco" value="${t?.nome || ''}">
+          <input id="tplNome" class="inp d-input" placeholder="_vtp_atendimento_pedido" value="${t?.nome || ''}">
         </div>
         <div class="field" style="margin-bottom:12px">
           <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">IDIOMA</label>
@@ -3675,12 +3704,12 @@ function _atdTemplateNovoModal(editIdx) {
           </select>
         </div>
         <div class="field" style="margin-bottom:20px">
-          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">PREVIEW DO CORPO <span style="color:var(--fg-subtle);font-weight:400">(para visualização — use {{1}}, {{2}}...)</span></label>
-          <textarea id="tplPreview" class="inp d-textarea" rows="4" placeholder="Olá {{1}}, aqui é a Vai Ter Pizza! Estamos com dificuldade para entregar seu pedido {{2}}. Pode confirmar seu endereço? 🍕">${t?.corpo_preview || ''}</textarea>
+          <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">PREVIEW DO CORPO <span style="color:var(--fg-subtle);font-weight:400">(use {{1}}, {{2}}... para as variáveis)</span></label>
+          <textarea id="tplPreview" class="inp d-textarea" rows="4" placeholder="Olá {{1}}! Aqui é a Vai Ter Pizza. Seu pedido nº {{2}} está a caminho 🍕">${t?.corpo_preview || ''}</textarea>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button class="btn d-btn btn-ghost d-btn-ghost" onclick="document.getElementById('popupAtdTemplateForm').remove()">Cancelar</button>
-          <button class="btn d-btn btn-primary d-btn-primary" onclick="_atdTemplateSalvar(${editIdx !== undefined ? editIdx : 'undefined'})">
+          <button class="btn d-btn btn-primary d-btn-primary" onclick="_atdTemplateSalvar('${editId || ''}')">
             ${lc('save', 14, '#fff')} Salvar
           </button>
         </div>
@@ -3690,36 +3719,31 @@ function _atdTemplateNovoModal(editIdx) {
   popup.addEventListener('click', e => { if (e.target === popup) popup.remove(); });
 }
 
-function _atdTemplateSalvar(editIdx) {
-  const titulo   = document.getElementById('tplTitulo')?.value.trim();
-  const nome     = document.getElementById('tplNome')?.value.trim();
-  const idioma   = document.getElementById('tplIdioma')?.value || 'pt_BR';
-  const preview  = document.getElementById('tplPreview')?.value.trim();
+async function _atdTemplateSalvar(editId) {
+  const titulo  = document.getElementById('tplTitulo')?.value.trim();
+  const nome    = document.getElementById('tplNome')?.value.trim();
+  const idioma  = document.getElementById('tplIdioma')?.value || 'pt_BR';
+  const preview = document.getElementById('tplPreview')?.value.trim();
 
   if (!nome) { toast('Nome no Meta é obrigatório', 'err'); return; }
 
-  const templates = _atdGetTemplates();
   const entry = { titulo: titulo || nome, nome, idioma, corpo_preview: preview };
+  if (editId) entry.id = editId;
 
-  if (editIdx !== undefined && !isNaN(editIdx)) {
-    templates[editIdx] = entry;
-  } else {
-    templates.push(entry);
-  }
+  const { error } = await _atdSalvarTemplate(entry);
+  if (error) { toast('Erro ao salvar: ' + (error.message || error), 'err'); return; }
 
-  _atdSalvarTemplates(templates);
   document.getElementById('popupAtdTemplateForm')?.remove();
-  toast(editIdx !== undefined ? 'Template atualizado!' : 'Template criado!', 'ok');
+  toast(editId ? 'Template atualizado!' : 'Template criado!', 'ok');
 
   const el = document.getElementById('atdCfgConteudo');
   if (el) _atdCfgTemplatesRender(el);
 }
 
-function _atdTemplateExcluir(idx) {
+async function _atdTemplateExcluir(id) {
   if (!confirm('Excluir este template?')) return;
-  const templates = _atdGetTemplates();
-  templates.splice(idx, 1);
-  _atdSalvarTemplates(templates);
+  const { error } = await _atdExcluirTemplate(id);
+  if (error) { toast('Erro ao excluir: ' + (error.message || error), 'err'); return; }
   toast('Template excluído', 'ok');
   const el = document.getElementById('atdCfgConteudo');
   if (el) _atdCfgTemplatesRender(el);
