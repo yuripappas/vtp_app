@@ -9,7 +9,15 @@
 
 let _atdSbClient = null;
 function _atdGetSbClient() {
-  if (!_atdSbClient) _atdSbClient = vtpSb(); // cliente único (sessão do Auth)
+  if (!_atdSbClient) {
+    if (typeof vtpSb === 'function') {
+      _atdSbClient = vtpSb();
+    } else if (window._vtpSb) {
+      _atdSbClient = window._vtpSb;
+    } else {
+      throw new Error('vtpSb não disponível — config.js não carregou');
+    }
+  }
   return _atdSbClient;
 }
 
@@ -483,7 +491,7 @@ async function _atdCarregarConversas() {
     .limit(viewMode === 'concluidos' ? 200 : 500);
 
   if (error) { console.error('[atendimento] erro ao carregar conversas', error); return; }
-  _atdState.conversas = (data || []).filter(c => c.ultima_mensagem !== null);
+  _atdState.conversas = data || [];
   _atdRenderLista();
 }
 
@@ -2501,6 +2509,20 @@ const ATD_STATUS_LABELS = {
 };
 const ATD_CANAL_LABELS = { ifood: 'iFood', '99food': '99Food', site: 'Site' };
 
+function _atdMapStatus(rawStatus) {
+  if (typeof CW_STATUS_MAP !== 'undefined') return CW_STATUS_MAP[rawStatus] || 'aguardando';
+  const m = { confirmed:'aguardando', placed:'aguardando', integrated:'aguardando', preparation:'em_preparo', ready:'pronto', dispatched:'em_rota', concluded:'entregue' };
+  return m[rawStatus] || 'aguardando';
+}
+function _atdMapCanal(salesChannel) {
+  if (typeof _cwMapCanal === 'function') return _cwMapCanal(salesChannel);
+  if (!salesChannel) return 'site';
+  const s = String(salesChannel).toLowerCase();
+  if (s.includes('ifood')) return 'ifood';
+  if (s.includes('99')) return '99food';
+  return 'site';
+}
+
 function _atdAbrirBuscaPedido() {
   document.getElementById('popupAtdBuscaPedido')?.remove();
   _atdState.pedidosDia = [];
@@ -2674,7 +2696,7 @@ function _atdRenderPedidos() {
   const numeroLimpo = termo.replace(/^#/, '');
   const filtroStatus = _atdState.pedidosFiltroStatus || 'todos';
 
-  let lista = _atdState.pedidosDia.map(p => ({ ...p, _statusMapeado: CW_STATUS_MAP[p.status] || 'aguardando' }));
+  let lista = _atdState.pedidosDia.map(p => ({ ...p, _statusMapeado: _atdMapStatus(p.status) }));
 
   if (filtroStatus !== 'todos') lista = lista.filter(p => p._statusMapeado === filtroStatus);
   if (termo) {
@@ -2690,7 +2712,7 @@ function _atdRenderPedidos() {
   }
 
   resEl.innerHTML = lista.map(p => {
-    const canal = ATD_CANAL_LABELS[_cwMapCanal(p.sales_channel)] || 'Site';
+    const canal = ATD_CANAL_LABELS[_atdMapCanal(p.sales_channel)] || 'Site';
     return `
     <div class="conv-item" style="border-radius:var(--radius-field);border-bottom:none;margin-bottom:4px" onclick='_atdAbrirConversaDePedido(${JSON.stringify(p).replace(/'/g, "&#39;")})'>
       <span style="width:34px;height:34px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:var(--text-xs)">#${p.display_id ?? '—'}</span>
@@ -2716,12 +2738,20 @@ async function _atdAbrirConversaDePedido(pedido) {
   const sb = _atdGetSbClient();
 
   // 1. Upsert contato pelo telefone do pedido
-  const { data: contato, error: contatoErr } = await sb
-    .from('atd_contatos')
-    .upsert({ telefone: pedido.customer_phone, nome: pedido.customer_name || null, canal_origem: 'whatsapp' }, { onConflict: 'telefone' })
-    .select('id')
-    .single();
-  if (contatoErr || !contato) { toast('Erro ao vincular contato', 'err'); return; }
+  // Nota: .upsert com onConflict='telefone' gera 409 no Supabase JS v2 sem resolution=merge-duplicates.
+  // Usamos insert + fallback em caso de conflito (código 23505).
+  let contato = null;
+  const contatoPayload = { telefone: pedido.customer_phone, nome: pedido.customer_name || null, canal_origem: 'whatsapp' };
+  const { data: insertContato, error: insertErr } = await sb.from('atd_contatos').insert(contatoPayload).select('id').single();
+  if (insertErr && insertErr.code === '23505') {
+    const { data: existente } = await sb.from('atd_contatos').select('id').eq('telefone', pedido.customer_phone).single();
+    contato = existente;
+  } else if (insertErr) {
+    toast('Erro ao vincular contato', 'err'); return;
+  } else {
+    contato = insertContato;
+  }
+  if (!contato) { toast('Erro ao vincular contato', 'err'); return; }
 
   // 2. Busca conversa aberta existente desse contato, ou cria uma nova já com o pedido
   const { data: canal } = await sb.from('atd_canais').select('id').eq('tipo', 'whatsapp').eq('ativo', true).limit(1).single();
