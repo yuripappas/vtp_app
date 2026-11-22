@@ -294,7 +294,7 @@ function _atdRenderInbox() {
               style="flex:1;justify-content:center;font-size:var(--text-2xs);padding:4px 8px">Concluídos</button>
             <button class="btn d-btn btn-warm d-btn-secondary" onclick="_atdAbrirBuscaPedido()"
               style="font-size:var(--text-2xs);padding:4px 8px;white-space:nowrap">
-              ${lc('package', 12, 'var(--text)')} Pedidos
+              ${lc('message-circle', 12, 'var(--text)')} Iniciar Conversa
             </button>
           </div>
         </div>
