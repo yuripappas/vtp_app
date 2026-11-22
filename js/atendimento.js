@@ -2515,20 +2515,64 @@ function _atdAbrirBuscaPedido() {
       <div class="mbox" style="display:flex;flex-direction:column;flex:1;min-height:0;padding:0;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
           <div style="display:flex;align-items:center;gap:8px;font-size:var(--text-md);font-weight:700;color:var(--text)">
-            ${lc('search', 16, 'var(--purple)')} Pedidos de hoje
+            ${lc('message-circle', 16, 'var(--purple)')} Iniciar conversa
           </div>
           <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs" onclick="document.getElementById('popupAtdBuscaPedido').remove()">${lc('x', 16, 'var(--muted)')}</button>
         </div>
-        <div style="padding:14px 20px 10px;flex-shrink:0">
-          <input id="atdBuscaInput" class="inp d-input" placeholder="Filtrar por nome ou número do pedido..." autocomplete="off" oninput="_atdRenderPedidos()">
-          <div id="atdFiltrosStatus" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
-            ${['todos', 'aguardando', 'em_preparo', 'pronto', 'em_rota', 'entregue'].map(s => `
-              <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs atd-filtro-status ${s === 'todos' ? 'active' : ''}" data-status="${s}" onclick="_atdFiltrarPedidosPorStatus('${s}')">
-                ${s === 'todos' ? 'Todos' : ATD_STATUS_LABELS[s]}
-              </button>`).join('')}
+
+        <!-- Abas -->
+        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 20px">
+          <button id="atdTabPedidos" onclick="_atdBuscaAba('pedidos')" style="padding:10px 12px;font-size:var(--text-xs);font-weight:700;border:none;background:none;cursor:pointer;color:var(--purple);border-bottom:2px solid var(--purple);margin-bottom:-1px">
+            ${lc('shopping-bag', 13, 'currentColor')} Pedidos
+          </button>
+          <button id="atdTabClientes" onclick="_atdBuscaAba('clientes')" style="padding:10px 12px;font-size:var(--text-xs);font-weight:700;border:none;background:none;cursor:pointer;color:var(--fg-muted);border-bottom:2px solid transparent;margin-bottom:-1px">
+            ${lc('users', 13, 'currentColor')} Clientes
+          </button>
+          <button id="atdTabManual" onclick="_atdBuscaAba('manual')" style="padding:10px 12px;font-size:var(--text-xs);font-weight:700;border:none;background:none;cursor:pointer;color:var(--fg-muted);border-bottom:2px solid transparent;margin-bottom:-1px">
+            ${lc('phone', 13, 'currentColor')} Manual
+          </button>
+        </div>
+
+        <!-- Aba Pedidos -->
+        <div id="atdAbaPedidos" style="display:flex;flex-direction:column;flex:1;min-height:0">
+          <div style="padding:14px 20px 10px;flex-shrink:0">
+            <input id="atdBuscaInput" class="inp d-input" placeholder="Filtrar por nome ou número do pedido..." autocomplete="off" oninput="_atdRenderPedidos()">
+            <div id="atdFiltrosStatus" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+              ${['todos', 'aguardando', 'em_preparo', 'pronto', 'em_rota', 'entregue'].map(s => `
+                <button class="btn d-btn btn-ghost d-btn-ghost btn-xs d-btn-xs atd-filtro-status ${s === 'todos' ? 'active' : ''}" data-status="${s}" onclick="_atdFiltrarPedidosPorStatus('${s}')">
+                  ${s === 'todos' ? 'Todos' : ATD_STATUS_LABELS[s]}
+                </button>`).join('')}
+            </div>
+          </div>
+          <div id="atdBuscaResultados" style="flex:1;overflow-y:auto;padding:4px 12px 16px"></div>
+        </div>
+
+        <!-- Aba Clientes (histórico atd_contatos) -->
+        <div id="atdAbaClientes" style="display:none;flex-direction:column;flex:1;min-height:0">
+          <div style="padding:14px 20px 10px;flex-shrink:0">
+            <input id="atdClientesBusca" class="inp d-input" placeholder="Buscar por nome ou telefone..." autocomplete="off" oninput="_atdBuscarContatos(this.value)">
+          </div>
+          <div id="atdClientesResultados" style="flex:1;overflow-y:auto;padding:4px 12px 16px">
+            <div style="padding:24px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Digite para buscar no histórico de clientes.</div>
           </div>
         </div>
-        <div id="atdBuscaResultados" style="flex:1;overflow-y:auto;padding:4px 12px 16px"></div>
+
+        <!-- Aba Manual -->
+        <div id="atdAbaManual" style="display:none;padding:20px 20px 24px">
+          <div class="field" style="margin-bottom:12px">
+            <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">TELEFONE <span style="color:var(--red)">*</span></label>
+            <input id="atdManualTelefone" class="inp d-input" placeholder="(82) 99999-9999" autocomplete="off" type="tel">
+          </div>
+          <div class="field" style="margin-bottom:20px">
+            <label style="font-size:var(--text-xs);font-weight:700;color:var(--fg-muted);display:block;margin-bottom:4px">NOME DO CLIENTE <span style="color:var(--fg-subtle);font-weight:400">(opcional)</span></label>
+            <input id="atdManualNome" class="inp d-input" placeholder="Nome para identificação">
+          </div>
+          <div style="display:flex;justify-content:flex-end">
+            <button class="btn d-btn btn-primary d-btn-primary" onclick="_atdAbrirConversaManual()">
+              ${lc('message-circle', 14, '#fff')} Iniciar conversa
+            </button>
+          </div>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(popup);
@@ -2536,6 +2580,67 @@ function _atdAbrirBuscaPedido() {
 
   document.getElementById('atdBuscaResultados').innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Carregando pedidos de hoje...</div>`;
   _atdCarregarPedidosDoDia();
+}
+
+function _atdBuscaAba(aba) {
+  document.getElementById('atdAbaPedidos').style.display  = aba === 'pedidos'  ? 'flex'  : 'none';
+  document.getElementById('atdAbaClientes').style.display = aba === 'clientes' ? 'flex'  : 'none';
+  document.getElementById('atdAbaManual').style.display   = aba === 'manual'   ? 'block' : 'none';
+  const cor = id => document.getElementById(id).style;
+  ['atdTabPedidos','atdTabClientes','atdTabManual'].forEach(id => {
+    const match = (id === 'atdTabPedidos' && aba === 'pedidos') || (id === 'atdTabClientes' && aba === 'clientes') || (id === 'atdTabManual' && aba === 'manual');
+    cor(id).color        = match ? 'var(--purple)'              : 'var(--fg-muted)';
+    cor(id).borderBottom = match ? '2px solid var(--purple)'    : '2px solid transparent';
+  });
+  if (aba === 'manual')   document.getElementById('atdManualTelefone')?.focus();
+  if (aba === 'clientes') document.getElementById('atdClientesBusca')?.focus();
+}
+
+let _atdContatosBuscaTimer = null;
+function _atdBuscarContatos(termo) {
+  clearTimeout(_atdContatosBuscaTimer);
+  const el = document.getElementById('atdClientesResultados');
+  if (!termo || termo.trim().length < 2) {
+    if (el) el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Digite para buscar no histórico de clientes.</div>`;
+    return;
+  }
+  if (el) el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">${lc('loader', 16, 'var(--fg-subtle)')} Buscando...</div>`;
+  _atdContatosBuscaTimer = setTimeout(async () => {
+    const sb = _atdGetSbClient();
+    const q = termo.trim();
+    const { data } = await sb.from('atd_contatos')
+      .select('id, nome, telefone, canal_origem')
+      .or(`nome.ilike.%${q}%,telefone.ilike.%${q}%`)
+      .order('nome')
+      .limit(30);
+
+    if (!el) return;
+    if (!data?.length) {
+      el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--fg-subtle);font-size:var(--text-sm)">Nenhum cliente encontrado.</div>`;
+      return;
+    }
+    el.innerHTML = data.map(c => `
+      <div class="conv-item" style="border-radius:var(--radius-field);border-bottom:none;margin-bottom:4px" onclick='_atdAbrirConversaDePedido(${JSON.stringify({ customer_phone: c.telefone, customer_name: c.nome, display_id: null, id: null, status: null, total: null, order_type: null, delivery_address: null }).replace(/'/g,"&#39;")})'>
+        <span style="width:34px;height:34px;border-radius:50%;background:var(--purple-xlight);color:var(--purple);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:var(--text-xs)">${(c.nome||'?')[0].toUpperCase()}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:var(--text-sm);color:var(--text)">${c.nome || 'Sem nome'}</div>
+          <div style="font-size:var(--text-xs);color:var(--fg-subtle)">${_atdFormatarTelefoneBR(c.telefone) || c.telefone || '—'}</div>
+        </div>
+        ${lc('message-circle', 14, 'var(--purple)')}
+      </div>`).join('');
+  }, 300);
+}
+
+async function _atdAbrirConversaManual() {
+  const telefoneRaw = (document.getElementById('atdManualTelefone')?.value || '').trim();
+  const nome        = (document.getElementById('atdManualNome')?.value || '').trim();
+
+  const digits = telefoneRaw.replace(/\D/g, '');
+  if (digits.length < 10) { toast('Informe um número de telefone válido', 'err'); return; }
+
+  const pedidoFake = { customer_phone: digits, customer_name: nome || null, display_id: null, id: null, status: null, total: null, order_type: null, delivery_address: null };
+  document.getElementById('popupAtdBuscaPedido')?.remove();
+  await _atdAbrirConversaDePedido(pedidoFake);
 }
 
 function _atdFiltrarPedidosPorStatus(status) {
