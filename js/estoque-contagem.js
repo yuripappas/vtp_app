@@ -561,6 +561,7 @@ async function estAbrirContagem(id) {
   _ctgAtual = { c, itens, ultimas, q: '', cat: '', az: false, abertos: new Set(), rasc: {}, grupo: 'todos', ordemRev: 'seq', editRev: null };
   // Saldo do sistema neste local — só para a trava de digitação (a contagem continua cega)
   estSaldos().then(sd => { if (_ctgAtual?.c.id === id) _ctgAtual.saldos = sd; }).catch(() => {});
+  try { _ctgAtual.debAuto = estDebitoAutoMapa(); } catch (e) { _ctgAtual.debAuto = new Map(); }
   if (c.status === 'andamento' || c.status === 'pendente') {
     const prox = _ctgOrdenados().find(i => i.contado === null);
     if (prox) _ctgAtual.abertos.add(prox.id);
@@ -770,6 +771,9 @@ function _ctgPasso(rowId, campo, delta) {
 //  • gramas:  item em kg/L mais de 10× acima (pesado em g/ml)
 //  • acima:   mais de 10× o normal
 //  • abaixo:  menos de 10% do esperado (vírgula/ponto trocados, zero a menos…)
+//  • falta:   item com débito automático (sai pela venda, ex.: caixas) mais de
+//             30% abaixo do saldo do sistema — contou a pilha errada, digitou o
+//             número de outro item… (caso da tampa pequena em 23/11)
 // Ao conferir, o alerta pede confirmação; a ação (quando há) corrige com 1 toque.
 const CTG_UN_INTEIRA = /^(un|und|unid|unidade|cx|pct)$/i;
 function _ctgAlerta(row, tot) {
@@ -797,6 +801,11 @@ function _ctgAlerta(row, tot) {
   if (refBaixo >= 1 && tot > 0 && tot < refBaixo / 10)
     return { tipo: 'abaixo', titulo: 'Quantidade muito abaixo do esperado',
       msg: `${_estQ(tot)} ${u} é menos de 10% do que costuma ter neste local. Confira vírgula e ponto (1,437 é "um vírgula quatro"; mil quatrocentos e trinta e sete se escreve 1437) e se não faltou um zero.`,
+      acao: null };
+  const debAuto = row.debito_auto || _ctgAtual?.debAuto?.has(row.item_id);
+  if (debAuto && esperado >= (CTG_UN_INTEIRA.test(u) ? 20 : 1) && tot < esperado * 0.7)
+    return { tipo: 'falta', titulo: 'Bem abaixo do que o sistema espera',
+      msg: `${_estQ(tot)} ${u} está mais de 30% abaixo do que o sistema calcula para este local (este item sai pelas vendas). Reconte e confira se não pegou o número de outro item.`,
       acao: null };
   return null;
 }
