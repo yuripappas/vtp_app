@@ -547,6 +547,7 @@ async function estAbrirContagem(id) {
   if (error) return toast('Não consegui abrir a contagem: ' + error.message, 'err');
   // Última contagem aplicada de cada item neste local
   const ultimas = new Map();
+  const hist = new Map();   // item → contagens aplicadas neste local (para a média)
   const ids = itens.map(i => i.item_id);
   for (let i = 0; i < ids.length; i += 200) {
     const rows = await _estSelectTodos(() => sb.from('est_contagem_itens')
@@ -554,14 +555,27 @@ async function estAbrirContagem(id) {
       .eq('contagem.local_id', c.local_id).eq('contagem.status', 'aplicada').is('contagem.excluido_em', null)
       .is('removido_em', null).not('contado', 'is', null).in('item_id', ids.slice(i, i + 200)));
     rows.filter(r => r.contagem.id !== id).forEach(r => {
+      (hist.get(r.item_id) || hist.set(r.item_id, []).get(r.item_id)).push({ contado: Number(r.contado), data: r.contagem.data_ref });
       const a = ultimas.get(r.item_id);
       if (!a || _estMs(r.contagem.data_ref) > _estMs(a.data)) ultimas.set(r.item_id, { contado: Number(r.contado), pacotes: r.pacotes, data: r.contagem.data_ref });
     });
   }
-  _ctgAtual = { c, itens, ultimas, q: '', cat: '', az: false, abertos: new Set(), rasc: {}, grupo: 'todos', ordemRev: 'seq', editRev: null };
+  // Média das últimas CTG_MEDIA_N contagens de cada item neste local
+  const medias = new Map();
+  for (const [itemId, l] of hist) {
+    const ult = l.filter(x => _estMs(x.data) < _estMs(c.data_ref)).sort((a, b) => _estMs(b.data) - _estMs(a.data)).slice(0, CTG_MEDIA_N);
+    if (!ult.length) continue;
+    // Contagem antiga que já foi erro (ex.: "1,467" em vez de 1467) não entra na média:
+    // descarta o que estiver mais de 50% longe da mediana
+    const vs = ult.map(x => x.contado).sort((a, b) => a - b), m = vs.length;
+    const mediana = m % 2 ? vs[(m - 1) / 2] : (vs[m / 2 - 1] + vs[m / 2]) / 2;
+    const bons = vs.filter(v => mediana <= 0 || Math.abs(v - mediana) <= mediana * CTG_MEDIA_TOL);
+    const base = bons.length ? bons : vs;
+    medias.set(itemId, { media: base.reduce((s, v) => s + v, 0) / base.length, n: base.length });
+  }
+  _ctgAtual = { c, itens, ultimas, medias, q: '', cat: '', az: false, abertos: new Set(), rasc: {}, grupo: 'todos', ordemRev: 'seq', editRev: null };
   // Saldo do sistema neste local — só para a trava de digitação (a contagem continua cega)
   estSaldos().then(sd => { if (_ctgAtual?.c.id === id) _ctgAtual.saldos = sd; }).catch(() => {});
-  try { _ctgAtual.debAuto = estDebitoAutoMapa(); } catch (e) { _ctgAtual.debAuto = new Map(); }
   if (c.status === 'andamento' || c.status === 'pendente') {
     const prox = _ctgOrdenados().find(i => i.contado === null);
     if (prox) _ctgAtual.abertos.add(prox.id);
@@ -771,11 +785,12 @@ function _ctgPasso(rowId, campo, delta) {
 //  • gramas:  item em kg/L mais de 10× acima (pesado em g/ml)
 //  • acima:   mais de 10× o normal
 //  • abaixo:  menos de 10% do esperado (vírgula/ponto trocados, zero a menos…)
-//  • falta:   item com débito automático (sai pela venda, ex.: caixas) mais de
-//             30% abaixo do saldo do sistema — contou a pilha errada, digitou o
-//             número de outro item… (caso da tampa pequena em 23/11)
+//  • media:   mais de 50% acima ou abaixo da média das últimas 4 contagens do
+//             item neste local — contou a pilha errada, digitou o número de outro
+//             item… (caso da tampa pequena em 23/11)
 // Ao conferir, o alerta pede confirmação; a ação (quando há) corrige com 1 toque.
 const CTG_UN_INTEIRA = /^(un|und|unid|unidade|cx|pct)$/i;
+const CTG_MEDIA_N = 4, CTG_MEDIA_TOL = 0.5;
 function _ctgAlerta(row, tot) {
   if (tot === null || isNaN(tot)) return null;
   const u = _ctgUn(row), it = _ctgItem(row), ult = _ctgAtual?.ultimas?.get(row.item_id);
@@ -802,11 +817,15 @@ function _ctgAlerta(row, tot) {
     return { tipo: 'abaixo', titulo: 'Quantidade muito abaixo do esperado',
       msg: `${_estQ(tot)} ${u} é menos de 10% do que costuma ter neste local. Confira vírgula e ponto (1,437 é "um vírgula quatro"; mil quatrocentos e trinta e sete se escreve 1437) e se não faltou um zero.`,
       acao: null };
-  const debAuto = row.debito_auto || _ctgAtual?.debAuto?.has(row.item_id);
-  if (debAuto && esperado >= (CTG_UN_INTEIRA.test(u) ? 20 : 1) && tot < esperado * 0.7)
-    return { tipo: 'falta', titulo: 'Bem abaixo do que o sistema espera',
-      msg: `${_estQ(tot)} ${u} está mais de 30% abaixo do que o sistema calcula para este local (este item sai pelas vendas). Reconte e confira se não pegou o número de outro item.`,
+  // Fora do padrão: mais de 50% acima ou abaixo da média das últimas contagens deste local
+  const md = _ctgAtual?.medias?.get(row.item_id);
+  // (zero não avisa: item que acabou é normal)
+  if (md && tot > 0 && md.media >= (CTG_UN_INTEIRA.test(u) ? 20 : 1) && Math.abs(tot - md.media) > md.media * CTG_MEDIA_TOL) {
+    const pctDif = Math.round(Math.abs(tot - md.media) / md.media * 100);
+    return { tipo: 'media', titulo: 'Fora do padrão das últimas contagens',
+      msg: `${_estQ(tot)} ${u} está ${pctDif}% ${tot > md.media ? 'acima' : 'abaixo'} da média das últimas ${md.n > 1 ? md.n + ' contagens' : 'contagem'} deste local (${_estQ(_estRound(md.media))} ${u}). Reconte e confira se não pegou o número de outro item.`,
       acao: null };
+  }
   return null;
 }
 function _ctgTotHtml(row) {
