@@ -29,10 +29,10 @@
  * O resultado guarda as duas (porBase) e os campos da tela seguem _cmvBase.
  */
 
-let _cmvBase = (() => { try { return localStorage.getItem('vtp_cmv_base') === 'compras' ? 'compras' : 'geral'; } catch (e) { return 'geral'; } })();
+// Padrão: CMV Compras (25/11/2026). A troca para Geral vale até recarregar a página.
+let _cmvBase = 'compras';
 function cmvSetBase(b) {
   _cmvBase = b === 'compras' ? 'compras' : 'geral';
-  try { localStorage.setItem('vtp_cmv_base', _cmvBase); } catch (e) {}
   if (typeof _cmvAba !== 'undefined' && _cmvAba === 'consumo' && typeof _csRender === 'function') _csRender();
   else estRenderAbaCMV();
 }
@@ -184,10 +184,13 @@ async function estCalcularCMV(ciclo, contagens) {
     const real = temIni && temFim ? ei + compras - ef : null;
     const gap = real !== null ? real - teorico - perdas : null;
     const consumoDe = r => r[I] + r.compras + (r.proc ? r.producao : 0) - r[F];
-    const divergencias = temIni && temFim ? lista.filter(r => r.debAuto).map(r => {
-      const consumo = consumoDe(r), dif = consumo - r.vendas - r.perdas;
-      return { ...r, consumo, dif, difV: dif * r.custo };
-    }).filter(r => Math.abs(r.dif) > 0.0005).sort((a, b) => Math.abs(b.difV) - Math.abs(a.difV)) : [];
+    // Tabela do ciclo: todo item do CMV que teve estoque, compra ou venda.
+    // Teórico = vendas pela ficha + baixas registradas; diferença = real − teórico.
+    const divergencias = temIni && temFim ? lista.map(r => {
+      const consumo = consumoDe(r), teorico = r.vendas + r.perdas, dif = consumo - teorico;
+      return { ...r, ei: r[I], ef: r[F], consumo, teorico, dif, difV: dif * r.custo };
+    }).filter(r => [r.ei, r.ef, r.compras, r.teorico].some(v => Math.abs(v) > 0.0005))
+      .sort((a, b) => Math.abs(b.difV) - Math.abs(a.difV)) : [];
     const consumoTop = temIni && temFim ? lista.map(r => ({ ...r, consumoV: r[I + 'V'] + r.comprasV - r[F + 'V'] }))
       .filter(r => r.consumoV > 0.005).sort((a, b) => b.consumoV - a.consumoV).slice(0, 10) : [];
     // Itens do Consumo de insumos: na geral o processado com ficha some (está nos insumos); na compras fica à parte
@@ -250,6 +253,9 @@ async function estRenderAbaCMV(forcar = false) {
   _cmvRender(_cmvCache[ciclo.id]);
 }
 
+const CMV_TAB_LINHAS = 30;
+let _cmvTabTodos = false;
+
 function _cmvRender(r) {
   const el = document.getElementById('cmvAbaBody');
   const ciclos = _ctgDados.ciclos;
@@ -259,7 +265,6 @@ function _cmvRender(r) {
     <div style="background:${destaque ? 'var(--purple-xlight)' : 'var(--card-bg)'};border:1.5px solid ${destaque ? 'var(--purple)' : 'var(--card-border)'};border-radius:var(--r12);padding:14px 18px">
       <div style="font-size:var(--text-sm);font-weight:700;color:var(--text2)">${titulo}</div>
       <div style="font-size:var(--text-2xl);font-weight:800;color:${cor};margin-top:4px">${valor}</div>
-      <div style="font-size:var(--text-xs);color:var(--muted);margin-top:2px;line-height:1.4">${sub}</div>
     </div>`;
   const nd = '<span style="color:var(--muted)">—</span>';
   const cmvPct = r.real !== null && r.fat > 0 ? r.real / r.fat * 100 : null;
@@ -278,16 +283,10 @@ function _cmvRender(r) {
         ${ciclos.map(c => `<option value="${c.id}"${c.id === _cmvCicloId ? ' selected' : ''}>Ciclo ${new Date(c.inicio).toLocaleDateString('pt-BR')} → ${c.fim ? new Date(c.fim).toLocaleDateString('pt-BR') : 'em aberto'}</option>`).join('')}
       </select>
       ${cmvBaseHtml()}
-      <span style="font-size:var(--text-sm);color:var(--muted)">${r.pedidos} pedidos · ${_cmvBase === 'geral' ? 'insumos comprados + processados contados (convertidos pela ficha)' : 'só insumos comprados (processados ficam fora)'}</span>
+      <span style="font-size:var(--text-sm);color:var(--muted)">${r.pedidos} pedidos</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="estRenderAbaCMV(true)" title="Recalcular">${lc('refresh-cw', 13, 'currentColor')}</button>
     </div>
     ${aviso ? `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--warning-bg);color:var(--warning-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('info', 14, 'currentColor')}<div>${aviso}</div></div>` : ''}
-    ${_cmvBase === 'compras' && r.temIni && (r.procIni || r.procFim) ? (() => {
-      const v = r.procFim - r.procIni;
-      return `<div style="display:flex;gap:8px;padding:10px 14px;border-radius:var(--r8);background:var(--info-bg);color:var(--info-fg);font-size:var(--text-sm);line-height:1.5;margin-bottom:14px">${lc('chef-hat', 14, 'currentColor')}<div>
-        <strong>Estoque de processados fora do cálculo:</strong> ${_estR(r.procIni)} no início${r.temFim ? ` → ${_estR(r.procFim)} no fim (<strong>${v >= 0 ? '+' : '−'}${_estR(Math.abs(v)).replace('−', '')}</strong>)` : ''}.
-        ${r.temFim && Math.abs(v) > 0.005 ? (v < 0 ? 'A cozinha usou processado feito antes do ciclo — o insumo dele não entra neste CMV, que tende a ficar menor.' : 'A produção estocou processado — o insumo usado nele conta como consumido neste CMV, que tende a ficar maior.') : ''}
-        Os processados aparecem só para confronto em Consumo de insumos.</div></div>`; })() : ''}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:12px">
       ${card('CMV real %', cmvPct !== null ? pct(r.real, r.fat) : nd, `meta ${meta}% · teórico ${teoPct !== null ? pct(r.teorico, r.fat) : '—'}${r.outra?.real != null ? ` · ${_cmvBase === 'geral' ? 'Compras' : 'Geral'}: ${pct(r.outra.real, r.fat)}` : ''}`, cmvPct === null ? 'var(--text)' : cmvPct > meta ? 'var(--danger-fg)' : 'var(--success-fg)', true)}
@@ -306,23 +305,26 @@ function _cmvRender(r) {
       ${card('GAP %', r.gap !== null ? pct(r.gap, r.fat) : nd, 'do faturamento — ficha errada, porcionamento ou perda não registrada')}
     </div>
 
-    ${r.divergencias.length ? `<div class="card" style="margin-bottom:16px">
-      <div style="padding:14px 16px;border-bottom:1.5px solid var(--border)">
-        <div style="font-size:var(--text-lg);font-weight:800">Onde está o GAP</div>
-        <div style="font-size:var(--text-sm);color:var(--text2);margin-top:2px">Itens com débito automático: o que saiu de verdade (inicial + entradas − final) contra o que as vendas e as baixas explicam.</div>
+    ${r.divergencias.length ? (() => {
+      const lista = _cmvTabTodos ? r.divergencias : r.divergencias.slice(0, CMV_TAB_LINHAS);
+      const q = (v, u) => `${_estQ(v)} <span style="color:var(--muted);font-size:var(--text-xs)">${_estEsc(u)}</span>`;
+      const td = (v, extra = '') => `<td style="padding:9px 12px;text-align:right;white-space:nowrap${extra}">${v}</td>`;
+      return `<div class="card" style="margin-bottom:16px">
+      <div style="padding:14px 16px;border-bottom:1.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div style="font-size:var(--text-lg);font-weight:800">Itens do ciclo</div>
+        <span style="font-size:var(--text-sm);color:var(--muted)">${r.divergencias.length} itens · maior diferença em R$ primeiro</span>
       </div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
-        <thead style="background:var(--surface2)"><tr>${th('Item', 'left')}${th('Consumo real')}${th('Vendas (ficha)')}${th('Baixas')}${th('Diferença')}${th('Valor')}</tr></thead>
-        <tbody>${r.divergencias.slice(0, 30).map(x => `<tr style="border-top:1px solid var(--border)">
-          <td style="padding:9px 12px">${_estEsc(x.nome)}<div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(x.cat || '')}</div></td>
-          <td style="padding:9px 12px;text-align:right;white-space:nowrap">${_estQ(x.consumo)} ${_estEsc(x.unid)}</td>
-          <td style="padding:9px 12px;text-align:right;white-space:nowrap">${_estQ(x.vendas)} ${_estEsc(x.unid)}</td>
-          <td style="padding:9px 12px;text-align:right;white-space:nowrap">${_estQ(x.perdas)} ${_estEsc(x.unid)}</td>
-          <td style="padding:9px 12px;text-align:right;white-space:nowrap;font-weight:700;color:${x.dif > 0 ? 'var(--danger-fg)' : 'var(--warning-fg)'}">${x.dif > 0 ? '+' : '−'}${_estQ(Math.abs(x.dif))} ${_estEsc(x.unid)}</td>
-          <td style="padding:9px 12px;text-align:right;white-space:nowrap">${_estR(x.difV)}</td></tr>`).join('')}</tbody>
+        <thead style="background:var(--surface2)"><tr>${th('Item', 'left')}${th('Estoque inicial')}${th('Compras')}${th('Estoque final')}${th('Consumo real')}${th('Teórico')}${th('Diferença')}${th('Valor diferença')}</tr></thead>
+        <tbody>${lista.map(x => `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:9px 12px;min-width:220px">${_estEsc(x.nome)}<div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(x.cat || '')}</div></td>
+          ${td(q(x.ei, x.unid))}${td(q(x.compras, x.unid))}${td(q(x.ef, x.unid))}
+          ${td(q(x.consumo, x.unid), ';font-weight:700')}${td(q(x.teorico, x.unid))}
+          ${td(Math.abs(x.dif) <= 0.0005 ? '<span style="color:var(--muted)">0</span>' : `${x.dif > 0 ? '+' : '−'}${_estQ(Math.abs(x.dif))} ${_estEsc(x.unid)}`, `;font-weight:700;color:${Math.abs(x.dif) <= 0.0005 ? 'var(--muted)' : x.dif > 0 ? 'var(--danger-fg)' : 'var(--warning-fg)'}`)}
+          ${td(_estR(x.difV), `;font-weight:700;color:${x.difV > 0.005 ? 'var(--danger-fg)' : x.difV < -0.005 ? 'var(--warning-fg)' : 'var(--muted)'}`)}</tr>`).join('')}</tbody>
       </table></div>
-      <div style="padding:10px 16px;font-size:var(--text-xs);color:var(--muted);border-top:1.5px solid var(--border)">Diferença positiva = saiu mais do que as vendas explicam (ficha pesando menos que o real, porção acima, perda não registrada). Negativa = sobrou (ficha pesando mais que o real).</div>
-    </div>` : ''}
+      ${r.divergencias.length > CMV_TAB_LINHAS ? `<button class="btn btn-ghost btn-sm" style="width:100%;border-radius:0;border-top:1px solid var(--border);color:var(--purple)" onclick="_cmvTabTodos=!_cmvTabTodos;_cmvRender(_cmvCache[_cmvCicloId])">${_cmvTabTodos ? 'Mostrar menos' : `Mostrar todos (${r.divergencias.length})`}</button>` : ''}
+    </div>`; })() : ''}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;margin-bottom:14px">
       <div class="card" style="margin:0;padding:16px 18px">
