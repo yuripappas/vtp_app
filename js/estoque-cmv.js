@@ -25,7 +25,16 @@
  *  • 'compras': só os insumos comprados; processados à parte, só para confronto
  *    (real = inicial + produção lançada − final). Oscila quando o estoque de
  *    processados sobe ou desce no ciclo (procIni → procFim, avisado na tela).
- * Nas duas, teórico (vendas × ficha) e perdas descem o processado até o insumo comprado.
+ * Teórico e perdas:
+ *  • 'geral': vendas × ficha, descendo o processado até o insumo comprado.
+ *  • 'compras' (padrão desde 25/11/2026): o processado com ficha só puxa insumo
+ *    pelo que teve que ser PRODUZIDO no ciclo, descontando o estoque dele:
+ *      produção = saída digital do processado (vendas + baixas) − estoque inicial
+ *                 do processado + estoque final do processado   (mín. 0)
+ *    e essa produção desce pela ficha até o insumo comprado. Ex.: Barra 50 kg,
+ *    Triturada 10 kg no início, saíram 30 kg de Triturada e ela zerou → produção
+ *    20 kg → teórico da Barra = 20 kg pela ficha. Esses insumos ficam marcados
+ *    como "estimado" (estimadoDe). Ordens de produção ainda não entram aqui.
  * O resultado guarda as duas (porBase) e os campos da tela seguem _cmvBase.
  */
 
@@ -112,7 +121,7 @@ async function estCalcularCMV(ciclo, contagens) {
       const it = items.find(i => i.id === id);
       porItem.set(id, { id, nome: nome || it?.name || '—', cat: cat ?? it?.cat, unid: unid || it?.unit || '',
         debAuto: false, ini: 0, iniV: 0, fim: 0, fimV: 0, iniG: 0, iniGV: 0, fimG: 0, fimGV: 0, compras: 0, comprasV: 0, producao: 0,
-        vendas: 0, vendasV: 0, perdas: 0, perdasV: 0, custo: it?.cost || 0,
+        vendas: 0, vendasV: 0, perdas: 0, perdasV: 0, vendasC: 0, vendasCV: 0, perdasC: 0, perdasCV: 0, estimadoDe: null, custo: it?.cost || 0,
         proc: !!it?.isProd, semFicha: !!(it?.isProd && !it.fichaTecnica?.ingredientes?.length), viaProc: {} });
     }
     return porItem.get(id);
@@ -158,25 +167,44 @@ async function estCalcularCMV(ciclo, contagens) {
     else if (m.tipo === 'baixa') {
       lancar(m.item_id, m.qtd, v, 'perdas', 'perdasV', info);
       if (comFicha(m.item_id)) { const r = reg(m.item_id, m.item_nome, m.categoria, m.unidade); r.perdas += +m.qtd; }
+      else { const r = reg(m.item_id, m.item_nome, m.categoria, m.unidade); r.perdasC += +m.qtd; r.perdasCV += v; }
     }
   }
   for (const p of debitos) {
     for (const [id, q] of Object.entries(p.itens)) {
       lancar(Number(id), q, null, 'vendas', 'vendasV').forEach(([k]) => { reg(k).debAuto = true; });
       if (comFicha(id)) { const r = reg(Number(id)); r.vendas += q; r.debAuto = true; }
+      else { const r = reg(Number(id)); r.vendasC += q; r.vendasCV += q * r.custo; r.debAuto = true; }
     }
   }
 
   const temIni = abertura.length > 0, temFim = fechamento.length > 0;
+  // Base Compras: processado com ficha puxa insumo só pelo que foi produzido no ciclo
+  for (const rp of [...porItem.values()].filter(r => comFicha(r.id))) {
+    const saida = rp.vendas + rp.perdas;
+    const prod = Math.max(0, saida - (temIni ? rp.ini : 0) + (temFim ? rp.fim : 0));
+    if (!(prod > 0.0005)) continue;
+    const fv = saida > 0 ? rp.vendas / saida : 1;   // parte venda × parte baixa
+    for (const [k, q] of Object.entries(estExplodirItem(rp.id, prod))) {
+      const r = reg(Number(k));
+      r.vendasC += q * fv; r.vendasCV += q * fv * r.custo;
+      r.perdasC += q * (1 - fv); r.perdasCV += q * (1 - fv) * r.custo;
+      r.debAuto = true;
+      (r.estimadoDe ||= []).push({ nome: rp.nome, unid: rp.unid, saida, ini: temIni ? rp.ini : 0, fim: temFim ? rp.fim : 0, prod, usa: q });
+    }
+  }
+
   const procs = [...porItem.values()].filter(r => noCmv(r.cat) && r.proc);
   const procIni = procs.reduce((s, r) => s + r.iniV, 0), procFim = procs.reduce((s, r) => s + r.fimV, 0);
-  const teorico = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc).reduce((s, r) => s + r.vendasV, 0);
-  const perdas = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc).reduce((s, r) => s + r.perdasV, 0);
   const compras = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc).reduce((s, r) => s + r.comprasV, 0);
 
   // Monta a visão de uma base: g = true usa os estoques com processados convertidos
   const montar = g => {
     const I = g ? 'iniG' : 'ini', F = g ? 'fimG' : 'fim';
+    const V = g ? 'vendas' : 'vendasC', P = g ? 'perdas' : 'perdasC';
+    const insumos = [...porItem.values()].filter(r => noCmv(r.cat) && !r.proc);
+    const teorico = insumos.reduce((s, r) => s + r[V + 'V'], 0);
+    const perdas = insumos.reduce((s, r) => s + r[P + 'V'], 0);
     // geral: processado com ficha já está dentro dos insumos; sem ficha fica como linha própria
     const entra = r => noCmv(r.cat) && (!r.proc || (g && r.semFicha));
     const lista = [...porItem.values()].filter(entra);
@@ -185,10 +213,12 @@ async function estCalcularCMV(ciclo, contagens) {
     const gap = real !== null ? real - teorico - perdas : null;
     const consumoDe = r => r[I] + r.compras + (r.proc ? r.producao : 0) - r[F];
     // Tabela do ciclo: todo item do CMV que teve estoque, compra ou venda.
-    // Teórico = vendas pela ficha + baixas registradas; diferença = real − teórico.
+    // Teórico = vendas pela ficha + baixas registradas. Diferença = teórico − real:
+    // positivo = sobrou (sobra), negativo = sumiu (falta).
     const divergencias = temIni && temFim ? lista.map(r => {
-      const consumo = consumoDe(r), teorico = r.vendas + r.perdas, dif = consumo - teorico;
-      return { ...r, ei: r[I], ef: r[F], consumo, teorico, dif, difV: dif * r.custo };
+      const consumo = consumoDe(r), teorico = r[V] + r[P], dif = teorico - consumo;
+      return { ...r, ei: r[I], ef: r[F], consumo, teorico, dif, difV: dif * r.custo,
+        difPct: teorico > 0.0005 ? dif / teorico * 100 : null, estimadoDe: g ? null : r.estimadoDe };
     }).filter(r => [r.ei, r.ef, r.compras, r.teorico].some(v => Math.abs(v) > 0.0005))
       .sort((a, b) => Math.abs(b.difV) - Math.abs(a.difV)) : [];
     const consumoTop = temIni && temFim ? lista.map(r => ({ ...r, consumoV: r[I + 'V'] + r.comprasV - r[F + 'V'] }))
@@ -196,21 +226,21 @@ async function estCalcularCMV(ciclo, contagens) {
     // Itens do Consumo de insumos: na geral o processado com ficha some (está nos insumos); na compras fica à parte
     const itens = [...porItem.values()].filter(r => !(g && r.proc && !r.semFicha)).map(r => {
       const real = temIni && temFim ? consumoDe(r) : null;
-      const digital = r.vendas + r.perdas;
-      return { ...r, viaProc: g ? r.viaProc : {}, proc: g ? false : r.proc, noCmv: noCmv(r.cat), real, realV: real !== null ? real * r.custo : null, digital, digitalV: digital * r.custo,
+      const digital = r[V] + r[P];
+      return { ...r, estimadoDe: g ? null : r.estimadoDe, viaProc: g ? r.viaProc : {}, proc: g ? false : r.proc, noCmv: noCmv(r.cat), real, realV: real !== null ? real * r.custo : null, digital, digitalV: digital * r.custo,
         dif: real !== null ? real - digital : null, difV: real !== null ? (real - digital) * r.custo : null };
     });
-    return { ei, ef, real, gap, divergencias, consumoTop, itens };
+    return { ei, ef, real, gap, teorico, perdas, divergencias, consumoTop, itens };
   };
   const porBase = { geral: montar(true), compras: montar(false) };
 
   const res = {
     ciclo, inicio, fim: fimReal, aberto: !fimReal, temIni, temFim, aberturaCount: abertura.length,
-    compras, teorico, perdas, fat: fat.total, pedidos: fat.pedidos, procIni, procFim, nProc: procs.length, porBase,
+    compras, fat: fat.total, pedidos: fat.pedidos, procIni, procFim, nProc: procs.length, porBase,
     custos: _cmvVariacaoCustos(inicio, fimReal), geradoEm: new Date().toISOString(),
   };
   // Campos da base escolhida (seguem o seletor sem recalcular) + a outra base para comparação
-  for (const k of ['ei', 'ef', 'real', 'gap', 'divergencias', 'consumoTop', 'itens'])
+  for (const k of ['ei', 'ef', 'real', 'gap', 'teorico', 'perdas', 'divergencias', 'consumoTop', 'itens'])
     Object.defineProperty(res, k, { get: () => res.porBase[_cmvBase][k], enumerable: true });
   Object.defineProperty(res, 'outra', { get: () => res.porBase[_cmvBase === 'geral' ? 'compras' : 'geral'] });
   return res;
@@ -254,6 +284,13 @@ async function estRenderAbaCMV(forcar = false) {
 }
 
 const CMV_TAB_LINHAS = 30;
+// Teórico com ícone quando vem da produção estimada de um processado (base Compras)
+function _cmvTeoricoHtml(x, q) {
+  if (!x.estimadoDe?.length) return q(x.teorico, x.unid);
+  const dica = 'Estimado pela produção do processado (saída − estoque inicial + estoque final):\n'
+    + x.estimadoDe.map(e => `${e.nome}: ${_estQ(e.saida)} − ${_estQ(e.ini)} + ${_estQ(e.fim)} = ${_estQ(e.prod)} ${e.unid} produzidos → ${_estQ(e.usa)} ${x.unid} deste item`).join('\n');
+  return `<span title="${_estEsc(dica)}" style="cursor:help;display:inline-flex;align-items:center;gap:5px">${lc('git-branch', 12, 'var(--purple)')}${q(x.teorico, x.unid)}</span>`;
+}
 let _cmvTabTodos = false;
 
 function _cmvRender(r) {
@@ -312,16 +349,21 @@ function _cmvRender(r) {
       return `<div class="card" style="margin-bottom:16px">
       <div style="padding:14px 16px;border-bottom:1.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div style="font-size:var(--text-lg);font-weight:800">Itens do ciclo</div>
-        <span style="font-size:var(--text-sm);color:var(--muted)">${r.divergencias.length} itens · maior diferença em R$ primeiro</span>
+        <span style="font-size:var(--text-sm);color:var(--muted);display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <span><b style="color:var(--success-fg)">+ sobra</b> · <b style="color:var(--danger-fg)">− falta</b></span>
+          <span>${lc('git-branch', 12, 'var(--purple)')} teórico estimado pela produção do processado</span>
+          <span>${r.divergencias.length} itens</span></span>
       </div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:var(--text-md)">
-        <thead style="background:var(--surface2)"><tr>${th('Item', 'left')}${th('Estoque inicial')}${th('Compras')}${th('Estoque final')}${th('Consumo real')}${th('Teórico')}${th('Diferença')}${th('Valor diferença')}</tr></thead>
+        <thead style="background:var(--surface2)"><tr>${th('Item', 'left')}${th('Estoque inicial')}${th('Compras')}${th('Estoque final')}${th('Consumo real')}${th('Teórico')}${th('Diferença')}${th('Diferença %')}${th('Valor diferença')}</tr></thead>
         <tbody>${lista.map(x => `<tr style="border-top:1px solid var(--border)">
           <td style="padding:9px 12px;min-width:220px">${_estEsc(x.nome)}<div style="font-size:var(--text-xs);color:var(--muted)">${_estEsc(x.cat || '')}</div></td>
           ${td(q(x.ei, x.unid))}${td(q(x.compras, x.unid))}${td(q(x.ef, x.unid))}
-          ${td(q(x.consumo, x.unid), ';font-weight:700')}${td(q(x.teorico, x.unid))}
-          ${td(Math.abs(x.dif) <= 0.0005 ? '<span style="color:var(--muted)">0</span>' : `${x.dif > 0 ? '+' : '−'}${_estQ(Math.abs(x.dif))} ${_estEsc(x.unid)}`, `;font-weight:700;color:${Math.abs(x.dif) <= 0.0005 ? 'var(--muted)' : x.dif > 0 ? 'var(--danger-fg)' : 'var(--warning-fg)'}`)}
-          ${td(_estR(x.difV), `;font-weight:700;color:${x.difV > 0.005 ? 'var(--danger-fg)' : x.difV < -0.005 ? 'var(--warning-fg)' : 'var(--muted)'}`)}</tr>`).join('')}</tbody>
+          ${td(q(x.consumo, x.unid), ';font-weight:700')}${td(_cmvTeoricoHtml(x, q))}
+          ${(() => { const cor = Math.abs(x.dif) <= 0.0005 ? 'var(--muted)' : x.dif > 0 ? 'var(--success-fg)' : 'var(--danger-fg)';
+            return td(Math.abs(x.dif) <= 0.0005 ? '0' : `${x.dif > 0 ? '+' : '−'}${_estQ(Math.abs(x.dif))} ${_estEsc(x.unid)}`, `;font-weight:700;color:${cor}`)
+              + td(x.difPct === null ? '—' : `${x.difPct > 0 ? '+' : x.difPct < 0 ? '−' : ''}${Math.abs(x.difPct).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`, `;font-weight:700;color:${x.difPct === null ? 'var(--muted)' : cor}`)
+              + td(`${x.difV > 0.005 ? '+' : x.difV < -0.005 ? '−' : ''}${_estR(Math.abs(x.difV))}`, `;font-weight:700;color:${cor}`); })()}</tr>`).join('')}</tbody>
       </table></div>
       ${r.divergencias.length > CMV_TAB_LINHAS ? `<button class="btn btn-ghost btn-sm" style="width:100%;border-radius:0;border-top:1px solid var(--border);color:var(--purple)" onclick="_cmvTabTodos=!_cmvTabTodos;_cmvRender(_cmvCache[_cmvCicloId])">${_cmvTabTodos ? 'Mostrar menos' : `Mostrar todos (${r.divergencias.length})`}</button>` : ''}
     </div>`; })() : ''}
